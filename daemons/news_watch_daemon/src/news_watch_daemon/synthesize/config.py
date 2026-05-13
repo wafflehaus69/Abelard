@@ -85,18 +85,36 @@ class SignalSinkConfig(BaseModel):
     timeout_s: float = Field(default=30.0, gt=0)
 
 
+class TelegramBotSinkConfig(BaseModel):
+    """TelegramBotSink configuration.
+
+    `bot_token_env` and `chat_id_env` are env-var NAMES, not values.
+    The factory resolves them at construction time. Storing names in
+    config (rather than values) keeps the actual token/id out of the
+    YAML and lets the env-var redaction filter scrub them from logs.
+
+    `timeout_s` caps each HTTPS request to the Bot API.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    bot_token_env: str = "NWD_TG_BOT_TOKEN"
+    chat_id_env: str = "NWD_TG_BOT_CHAT_ID"
+    timeout_s: float = Field(default=30.0, gt=0)
+
+
 class AlertSinkConfig(BaseModel):
     """Top-level alert-sink configuration.
 
-    `type` selects which sink the factory instantiates. Step 6 lands
-    the Signal sub-section; Step 7 lands TelegramBotSink. Until then
-    the telegram_bot sub-section is tolerated as an unknown dict.
+    `type` selects which sink the factory instantiates: "signal" or
+    "telegram_bot".
     """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     type: str = "signal"
     signal: SignalSinkConfig = Field(default_factory=SignalSinkConfig)
+    telegram_bot: TelegramBotSinkConfig = Field(default_factory=TelegramBotSinkConfig)
 
 
 # ---------- top-level synthesis config ----------
@@ -150,6 +168,7 @@ __all__ = [
     "SignalSinkConfig",
     "SynthesisConfigError",
     "SynthesisDaemonConfig",
+    "TelegramBotSinkConfig",
     "TriggerGateConfig",
     "load_synthesis_config",
 ]
