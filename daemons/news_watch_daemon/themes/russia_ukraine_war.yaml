@@ -1,0 +1,160 @@
+theme_id: russia_ukraine_war
+display_name: Russia–Ukraine War
+status: active
+created_at: 2026-05-13
+
+brief: |
+  Tracks the trajectory of the Russia–Ukraine war: military situation,
+  Western support, sanctions regime, energy supply impacts, and the
+  broader implications for European defense posture and global grain
+  flows. The narrative is into its fourth-plus year; the current phase
+  is structural, not acute. Material changes happen at the margin —
+  weapons-system commitments, sanctions enforcement shifts, energy
+  infrastructure attacks, prisoner exchanges, and any movement on
+  ceasefire frameworks.
+
+  Material signals: front-line territorial changes (reported in regional
+  oblast terms — Donetsk, Zaporizhzhia, Kharkiv, Kherson), Western
+  weapons commitments (specific systems: ATACMS, Patriot, F-16, Taurus,
+  Storm Shadow), Russian production capacity disclosures, sanctions
+  package updates (EU 14th/15th/16th, U.S. OFAC actions), energy
+  infrastructure strikes on either side, Black Sea grain corridor
+  status, ICC actions, G7/NATO statements with operational substance,
+  statements from named principals (Zelensky, Putin,
+  Stoltenberg/successor, Lavrov, Kuleba).
+
+  Noise: anniversary commentary, op-eds without new reporting, social
+  media propaganda on either side without sourcing, recycled framing of
+  long-known facts, retail-political "negotiate now" commentary absent
+  governmental policy substance, generic war-fatigue pieces, and
+  cross-asset price-action stories (those are downstream effects tracked
+  separately from price data, not signal for this theme).
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  primary:
+    - "Ukraine"
+    - "Ukrainian"
+    - "Russia"
+    - "Russian"
+    - "Kremlin"
+    - "Zelensky"
+    - "Zelenskyy"
+    - "Putin"
+    - "Donetsk"
+    - "Kharkiv"
+    - "Kherson"
+    - "Zaporizhzhia"
+    - "Crimea"
+  secondary:
+    - "ATACMS"
+    - "Patriot missile"
+    - "Storm Shadow"
+    - "Taurus missile"
+    - "HIMARS"
+    - "Lavrov"
+    - "Kuleba"
+    - "Wagner"
+    - "Black Sea"
+    - "grain corridor"
+    - "Nord Stream"
+    - "NATO"
+    - "OFAC"
+    - "EU sanctions"
+    - "Russian oil"
+    - "price cap"
+    - "frozen assets"
+    - "ICC"
+  exclusions:
+    - "Russian dressing"
+    - "Russian cuisine"
+    - "Russian literature"
+    - "Russian roulette"
+    - "Ukrainian cuisine"
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
+
+tracked_entities:
+  tickers:
+    - LHX
+    - MOG.A
+    - RTX
+    - LMT
+    - GD
+    - WEAT
+    - CORN
+    - URA
+    - CTRA
+  companies:
+    - Gazprom
+    - Rosneft
+    - Lukoil
+    - Rheinmetall
+    - BAE Systems
+    - Saab
+    - Hanwha
+  countries:
+    - Russia
+    - Ukraine
+    - Belarus
+    - Poland
+    - Romania
+    - Germany
+    - France
+    - United Kingdom
+    - United States
+    - China
+    - North Korea
+    - Iran
+  commodities:
+    - natural gas
+    - LNG
+    - wheat
+    - corn
+    - sunflower oil
+    - fertilizer
+    - urea
+    - ammonia
+    - crude oil
+  people:
+    - Vladimir Putin
+    - Volodymyr Zelensky
+    - Sergei Lavrov
+    - Dmytro Kuleba
+    - Andrii Yermak
+    - Sergei Shoigu
+    - Valery Gerasimov
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-7
+  max_tokens_output: 1000
+
+alerts:
+  velocity_baseline_headlines_per_day: 10.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds: []
+
+telegram_channels:
+  - username: CIG_telegram
+    cadence_minutes: 15
+  - username: bloomberg
+    cadence_minutes: 30
+  - username: trading
+    cadence_minutes: 30

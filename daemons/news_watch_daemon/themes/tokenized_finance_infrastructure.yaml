@@ -1,0 +1,198 @@
+theme_id: tokenized_finance_infrastructure
+display_name: Tokenized Finance Infrastructure
+status: active
+created_at: 2026-05-13
+
+brief: |
+  Tracks the migration of traditional financial infrastructure onto
+  blockchain rails. This is one narrative with four facets: stablecoins
+  (the dollar primitive and the regulatory battleground), real-world
+  asset tokenization (treasuries, money-market funds, commodities, real
+  estate on-chain), securities migration (equities and debt instruments
+  issued, traded, or settled on-chain), and crypto legislation (the
+  policy framework that enables or constrains all of the above). The
+  thesis is that this is a structural rewiring of financial plumbing,
+  that regulatory clarity is the largest near-term catalyst, and that
+  the beneficiaries are infrastructure layers (custody, oracles, on/off
+  ramps, tokenization platforms) more than speculative asset prices.
+
+  Material signals: U.S. stablecoin legislation movement (GENIUS Act,
+  market-structure bills, FIT21 successors), MiCA enforcement actions,
+  SEC/CFTC jurisdictional developments, BlackRock/Fidelity/Franklin
+  Templeton tokenization product announcements, on-chain treasury fund
+  AUM milestones (BUIDL, BENJI, Ondo), specific RWA platform launches
+  (Securitize, Backed, Centrifuge), settlement-layer adoption news
+  (DTCC, Euroclear, SWIFT on-chain experiments), stablecoin issuer
+  earnings and reserve composition disclosures (Circle, Tether, Paxos),
+  corporate treasury moves into stablecoins, central bank digital
+  currency policy developments where they intersect with private
+  stablecoin markets, and oracle infrastructure adoption (Chainlink
+  CCIP, real-world data feeds).
+
+  Noise — aggressive filtering required: this theme is about FINANCIAL
+  PLUMBING migrating on-chain, not about crypto-asset price action. BTC
+  and ETH price-action coverage, altcoin pumps, NFT news, meme-coin
+  developments, generic "crypto adoption" PR, "crypto winter"/"crypto
+  bull" cycle commentary, DeFi yield/yield-farming/liquidity-mining
+  stories, and retail-trading hype all get filtered. The distinction to
+  maintain: a story about Circle's stablecoin float hitting a new high
+  IS this theme; a story about MSTR buying more Bitcoin or Bitcoin
+  breaking $X is NOT this theme. Price data and asset-level moves are
+  tracked separately.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  primary:
+    - "stablecoin"
+    - "USDC"
+    - "Tether"
+    - "USDT"
+    - "Circle Internet"
+    - "tokenized"
+    - "tokenization"
+    - "real world asset"
+    - "RWA"
+    - "on-chain"
+    - "onchain"
+    - "MiCA"
+    - "GENIUS Act"
+    - "FIT21"
+    - "market structure bill"
+    - "Chainlink"
+    - "CCIP"
+  secondary:
+    - "BUIDL"
+    - "BENJI"
+    - "Ondo Finance"
+    - "Securitize"
+    - "Backed Finance"
+    - "Centrifuge"
+    - "DTCC"
+    - "Euroclear"
+    - "SWIFT"
+    - "tokenized treasury"
+    - "tokenized fund"
+    - "tokenized bond"
+    - "on-chain settlement"
+    - "stablecoin issuer"
+    - "stablecoin reserves"
+    - "Paxos"
+    - "Gemini Dollar"
+    - "PYUSD"
+    - "First Digital"
+    - "FDUSD"
+    - "CBDC"
+  exclusions:
+    - "Bitcoin price"
+    - "BTC price"
+    - "Bitcoin all-time high"
+    - "Bitcoin rally"
+    - "Bitcoin crash"
+    - "Bitcoin surge"
+    - "Bitcoin plunge"
+    - "ETH price"
+    - "Ethereum price"
+    - "Ether price"
+    - "NFT"
+    - "meme coin"
+    - "memecoin"
+    - "Dogecoin"
+    - "Shiba Inu"
+    - "altcoin pump"
+    - "crypto winter"
+    - "crypto bull"
+    - "crypto bear"
+    - "BTC dominance"
+    - "ETH gas"
+    - "DeFi yield"
+    - "yield farming"
+    - "liquidity mining"
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
+
+tracked_entities:
+  tickers:
+    - CRCL
+    - COIN
+    - LINK
+    - MSTR
+    - BLK
+    - BEN
+    - SQ
+    - PYPL
+  companies:
+    - Circle Internet Financial
+    - Tether
+    - Paxos
+    - Coinbase
+    - BlackRock
+    - Franklin Templeton
+    - Fidelity Investments
+    - Ondo Finance
+    - Securitize
+    - Backed Finance
+    - Centrifuge
+    - Chainlink Labs
+    - DTCC
+    - Euroclear
+    - JPMorgan Onyx
+    - Visa
+    - Mastercard
+  countries:
+    - United States
+    - European Union
+    - United Kingdom
+    - Singapore
+    - Hong Kong
+    - Switzerland
+    - United Arab Emirates
+  commodities: []
+  people:
+    - Jeremy Allaire
+    - Paolo Ardoino
+    - Brian Armstrong
+    - Larry Fink
+    - Gary Gensler
+    - Hester Peirce
+    - Caroline Pham
+    - Cynthia Lummis
+    - Bill Hagerty
+    - Maxine Waters
+    - French Hill
+    - Patrick McHenry
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 4
+  model: claude-sonnet-4-7
+  max_tokens_output: 1000
+
+alerts:
+  velocity_baseline_headlines_per_day: 4.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds: []
+
+telegram_channels:
+  - username: CIG_telegram
+    cadence_minutes: 15
+  - username: bloomberg
+    cadence_minutes: 30
+  - username: trading
+    cadence_minutes: 30
+  - username: chainlinkbreadcrumbs
+    cadence_minutes: 60

@@ -4,22 +4,35 @@ status: active
 created_at: 2026-05-12
 
 brief: |
-  Tracks the trajectory of U.S.–Iran tensions and their cascade effects on
+  Tracks the trajectory of U.S.–Iran conflict and its cascade effects on
   commodities (oil, fertilizer feedstock, grains), defense procurement,
-  and emerging-market risk. The thesis is that escalation is structurally
-  underpriced and that supply-chain cascades from any kinetic event would
-  reprice fertilizer (urea, ammonia, potash), industrial gases, and defense
-  primes faster than equity markets currently reflect.
+  and emerging-market risk. The thesis is that supply-chain cascades
+  from kinetic events reprice fertilizer (urea, ammonia, potash),
+  industrial gases, and defense primes faster than equity markets
+  currently reflect.
+
+  Vocabulary note: the discourse has hardened from "tensions" and
+  "escalation" framing to "Iran war" as the operative term across
+  major outlets. The synthesis layer should treat "Iran war" as the
+  current consensus framing while remaining aware that the theme_id
+  retains the older "escalation" naming for continuity. Track
+  vocabulary shifts as themselves a signal — if framing softens back
+  toward "tensions" or moves to "ceasefire," that's narrative-shift
+  evidence worth surfacing.
 
   Material signals: military movements, sanctions changes, diplomatic
-  breakdowns, oil infrastructure attacks, statements from named principals
-  (Khamenei, IRGC leadership, U.S. SecDef, SecState, CENTCOM commander),
-  proxy actions (Houthi, Hezbollah, PMF), nuclear program developments.
+  breakdowns or progress, oil infrastructure attacks, statements from
+  named principals (Khamenei, IRGC leadership, U.S. SecDef, SecState,
+  CENTCOM commander, Pezeshkian), proxy actions (Houthi, Hezbollah,
+  PMF), nuclear program developments, Strait of Hormuz tanker activity,
+  and any movement on ceasefire frameworks.
 
   Noise: routine diplomatic statements, anniversary commentary, op-eds
-  without new information, retail sentiment posts. The synthesis layer
-  should be skeptical of articles that recycle prior framing without
-  new facts.
+  without new information, retail sentiment posts, generic war-fatigue
+  pieces. The synthesis layer should be skeptical of articles that
+  recycle prior framing without new facts. Cross-asset price-action
+  stories are downstream effects tracked separately from price data,
+  not signal for this theme.
 
   Prior thesis (updated by synthesis cycles): unset at theme creation.
 
@@ -44,20 +57,30 @@ keywords:
     - "Iraqi militia"
     - "Yemen"
   exclusions:
-    - "Iran-Contra"            # historical reference, not current
+    - "Iran-Contra"
     - "Iranian cuisine"
     - "Iranian film"
     - "Persian cat"
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
 
 tracked_entities:
   tickers:
-    - LHX                       # defense prime
-    - MOG.A                     # defense components
-    - NTR                       # fertilizer
-    - NEU                       # specialty chemicals / fertilizer feedstock
-    - CTRA                      # E&P oil/gas
-    - LIN                       # industrial gas
-    - GLD                       # safe haven
+    - LHX
+    - MOG.A
+    - NTR
+    - NEU
+    - CTRA
+    - LIN
+    - GLD
     - CORN
     - WEAT
   companies:
@@ -96,8 +119,6 @@ synthesis:
   max_tokens_output: 1000
 
 alerts:
-  # NOTE: velocity_baseline_headlines_per_day is a placeholder.
-  # Real calibration happens after ~2 weeks of scrape data exists.
   velocity_baseline_headlines_per_day: 8.0
   velocity_spike_multiplier: 3.0
   on_narrative_shift: true
@@ -106,19 +127,8 @@ alerts:
     - telegram
     - abelard_queue
 
-# Optional per-theme RSS feeds. Empty list disables RSS for this theme.
-# Each feed is fetched independently and tagged to this theme at the
-# scrape layer's keyword-match step. If the same feed URL appears in
-# multiple themes, it is fetched once globally and its entries may
-# attach to multiple themes.
 rss_feeds: []
 
-# Telegram channels monitored for this theme. The same channel may be
-# registered against multiple themes; the scrape factory deduplicates
-# and uses the lowest cadence across all referencing themes. Several
-# of these channels (e.g. bloomberg) carry wide-coverage content; the
-# theme keyword/exclusion machinery filters what's actually relevant
-# to us_iran_escalation.
 telegram_channels:
   - username: CIG_telegram
     cadence_minutes: 15
@@ -126,5 +136,3 @@ telegram_channels:
     cadence_minutes: 30
   - username: trading
     cadence_minutes: 30
-  - username: chainlinkbreadcrumbs
-    cadence_minutes: 60

@@ -5,29 +5,35 @@ created_at: 2026-05-13
 
 brief: |
   Tracks U.S. monetary policy trajectory: FOMC decisions, the labor and
-  inflation data that drive them, the terminal rate debate, balance-sheet
-  policy, and the Fed's coordination posture with the Treasury and other
-  central banks. The narrative is the upstream cause of nearly every
-  cross-asset price movement; tracking it well anchors interpretation of
-  everything else. The thesis is that the Fed is structurally behind on
-  inflation in the AI-capex and onshoring era, that the natural rate is
-  higher than pre-2020 priors assumed, and that cyclical cuts can occur
-  inside a secularly-higher-rate regime.
+  inflation data that drive them, balance-sheet policy, and the Fed's
+  coordination posture with the Treasury and other central banks. The
+  goal of this theme is to surface what the Fed is doing and what
+  upstream data informs those decisions, without imposing a directional
+  thesis. The synthesis layer should report what the Fed has done and
+  is signaling, what the latest prints show, and how named principals
+  are framing the path — leaving interpretation of "behind/ahead" or
+  "tight/loose" to the reader.
 
-  Material signals: FOMC statement releases and press conferences, named
-  Fed governor speeches with policy substance (not boilerplate), CPI and
-  PPI prints (headline and core, services and goods), employment situation
-  reports (NFP, unemployment, wage growth, JOLTS), GDP releases, ISM
-  manufacturing and services prints, Fed minutes releases, balance-sheet
-  policy updates (QT pace, MBS runoff), Treasury issuance schedule changes,
-  cross-currency-swap arrangements with foreign central banks, and named
+  Material signals: FOMC statement releases and press conferences,
+  named Fed governor speeches with policy substance (not boilerplate),
+  CPI and PPI prints (headline and core, services and goods, including
+  spelled-out forms like "producer prices" and "consumer prices"),
+  employment situation reports (NFP, unemployment, wage growth, JOLTS),
+  GDP releases, ISM manufacturing and services prints, Fed minutes
+  releases, balance-sheet policy updates (QT pace, MBS runoff),
+  Treasury issuance schedule changes, cross-currency-swap arrangements
+  with foreign central banks, Treasury yield movements where they
+  reflect policy expectations (10-year, 2s10s curve), and named
   principals (Powell, Bowman, Waller, Williams, Kugler, Cook, Jefferson,
-  successor names as the FOMC composition changes).
+  Daly, Kashkari, successor names as the FOMC composition changes).
 
-  Noise: backward-looking econ punditry without forward implication, fringe
-  rate-call predictions absent institutional substance, generic recession
-  fearmongering, partisan commentary about the Fed's politicization that
-  doesn't reference specific policy actions, retail-trader rate bets.
+  Noise: backward-looking econ punditry without forward implication,
+  fringe rate-call predictions absent institutional substance, generic
+  recession fearmongering, partisan commentary about the Fed's
+  politicization that doesn't reference specific policy actions,
+  retail-trader rate bets, and cross-asset price-action stories (those
+  are downstream effects tracked separately from price data, not signal
+  for this theme).
 
   Prior thesis (updated by synthesis cycles): unset at theme creation.
 
@@ -41,6 +47,9 @@ keywords:
     - "interest rate"
     - "CPI"
     - "PPI"
+    - "producer price"
+    - "producer prices"
+    - "consumer price"
     - "inflation"
     - "core inflation"
     - "jobs report"
@@ -48,6 +57,7 @@ keywords:
     - "unemployment rate"
     - "Fed minutes"
     - "Jackson Hole"
+    - "Treasury yield"
   secondary:
     - "Jerome Powell"
     - "Michelle Bowman"
@@ -70,29 +80,41 @@ keywords:
     - "Beige Book"
     - "Treasury issuance"
     - "yield curve"
+    - "10-year yield"
+    - "2-year yield"
   exclusions:
-    - "Fed Cup"                # tennis
-    - "Federal Reserve Bank of Australia"  # different country
+    - "Fed Cup"
+    - "Federal Reserve Bank of Australia"
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
 
 tracked_entities:
   tickers:
-    - TLT                     # 20+ year treasuries
-    - IEF                     # 7-10 year treasuries
-    - SHY                     # 1-3 year treasuries
-    - DXY                     # dollar index (proxy)
-    - UUP                     # dollar ETF
-    - GLD                     # gold, rate-sensitive
-    - SPY                     # broad market reaction
-    - QQQ                     # tech, duration-sensitive
-    - XLF                     # financials
-    - KRE                     # regional banks, rate-sensitive
-  companies: []               # Fed-policy theme is institutional, not company-driven
+    - TLT
+    - IEF
+    - SHY
+    - DXY
+    - UUP
+    - GLD
+    - SPY
+    - QQQ
+    - XLF
+    - KRE
+  companies: []
   countries:
     - United States
-    - Japan                   # BOJ coordination signal
-    - European Union          # ECB coordination signal
-    - United Kingdom          # BoE coordination signal
-    - China                   # PBOC reaction signal
+    - Japan
+    - European Union
+    - United Kingdom
+    - China
   commodities:
     - U.S. dollar
     - gold
@@ -100,7 +122,7 @@ tracked_entities:
   people:
     - Jerome Powell
     - Janet Yellen
-    - Scott Bessent           # if Treasury Secretary at time of read
+    - Scott Bessent
     - Michelle Bowman
     - Christopher Waller
     - John Williams
@@ -116,7 +138,7 @@ synthesis:
 
 alerts:
   velocity_baseline_headlines_per_day: 8.0
-  velocity_spike_multiplier: 4.0   # higher multiplier — Fed news is often clustered around scheduled events
+  velocity_spike_multiplier: 4.0
   on_narrative_shift: true
   on_new_counter_evidence: true
   alert_channels:

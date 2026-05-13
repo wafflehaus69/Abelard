@@ -1,0 +1,172 @@
+theme_id: china_us_decoupling
+display_name: China–U.S. Decoupling
+status: active
+created_at: 2026-05-13
+
+brief: |
+  Tracks the structural decoupling of the U.S. and Chinese economies across
+  technology, capital flows, manufacturing, and rare-earth supply chains.
+
+  The thesis is that the U.S.-led containment strategy is failing: China's
+  industrial, technological, and financial capacity is growing faster than
+  Western policy tools can constrain. Decoupling is real but asymmetric —
+  the U.S. and allies are accepting structural costs (supply chain
+  restructuring, capex acceleration, defense industrial-base rebuilding)
+  to slow a competitor that is outpacing the constraint mechanisms. The
+  strategic backdrop is one of containment shortfall, not containment
+  success. Mechanical cascades flow from each escalation event: export
+  controls reshape semiconductor demand, rare-earth restrictions reprice
+  industrial gas and defense supply chains, capital-flow restrictions
+  reroute investment globally.
+
+  Material signals: BIS and Commerce Department actions (entity-list
+  additions, foreign direct product rule expansions), MOFCOM
+  countermeasures, Taiwan-specific military or political developments,
+  rare-earth export quotas, Chinese capability disclosures (new
+  semiconductor fabs, shipyard output, currency arrangements,
+  industrial-policy milestones) — these should be weighted heavily
+  because they evidence the containment-failure thesis. Semiconductor
+  capex announcements tied to onshoring, outbound-investment restriction
+  news, port and shipping disruptions tied to trade tension, and
+  statements from named principals (USTR, SecCommerce, MOFCOM, Wang
+  Wentao, Xi Jinping on economic policy).
+
+  Noise: routine bilateral commentary, anniversary recaps without new
+  facts, think-tank op-eds absent fresh reporting, retail sentiment
+  about TikTok or specific consumer brands, China-domestic political
+  news with no U.S. dimension, generic "tensions rise" framing absent
+  specific policy or industrial substance, and especially: cross-asset
+  price-action stories (those are downstream effects tracked separately
+  from price data, not signal for this theme).
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  primary:
+    - "export control"
+    - "export controls"
+    - "entity list"
+    - "decoupling"
+    - "de-risking"
+    - "BIS"
+    - "Bureau of Industry"
+    - "MOFCOM"
+    - "rare earth"
+    - "rare earths"
+    - "Taiwan"
+    - "TSMC"
+    - "SMIC"
+    - "semiconductor export"
+    - "chip export"
+    - "Xi Jinping"
+    - "Commerce Department"
+  secondary:
+    - "tariff"
+    - "tariffs"
+    - "Section 301"
+    - "Section 232"
+    - "outbound investment"
+    - "Foreign Direct Product Rule"
+    - "FDPR"
+    - "CFIUS"
+    - "USTR"
+    - "Strait of Taiwan"
+    - "Taiwan Strait"
+    - "Belt and Road"
+    - "yuan"
+    - "renminbi"
+    - "Wang Wentao"
+    - "Janet Yellen"
+    - "Gina Raimondo"
+  exclusions:
+    - "Chinese cuisine"
+    - "Chinese New Year"
+    - "Chinese zodiac"
+    - "Taiwan independence party"
+    - "Made in China 2025"
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
+
+tracked_entities:
+  tickers:
+    - TSM
+    - NVDA
+    - AMD
+    - ASML
+    - LRCX
+    - AMAT
+    - KLAC
+    - INTC
+    - MU
+    - GFS
+    - SMCI
+    - MP
+    - LIN
+    - LHX
+  companies:
+    - Taiwan Semiconductor Manufacturing
+    - SMIC
+    - YMTC
+    - Huawei
+    - ZTE
+    - ByteDance
+    - CATL
+    - BYD
+    - BlackRock
+    - Sequoia
+  countries:
+    - China
+    - Taiwan
+    - United States
+    - South Korea
+    - Japan
+    - Netherlands
+  commodities:
+    - gallium
+    - germanium
+    - graphite
+    - lithium
+    - cobalt
+    - silicon
+    - silicon wafer
+  people:
+    - Xi Jinping
+    - Wang Wentao
+    - Gina Raimondo
+    - Janet Yellen
+    - Jake Sullivan
+    - Tsai Ing-wen
+    - Lai Ching-te
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-7
+  max_tokens_output: 1000
+
+alerts:
+  velocity_baseline_headlines_per_day: 6.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds: []
+
+telegram_channels:
+  - username: CIG_telegram
+    cadence_minutes: 15
+  - username: bloomberg
+    cadence_minutes: 30
+  - username: trading
+    cadence_minutes: 30

@@ -279,15 +279,22 @@ def test_config_hash_changes_when_rss_feeds_change():
 # ---------- telegram_channels extension (Pass B) ----------
 
 
-def test_seed_theme_registers_four_telegram_channels():
+def test_seed_theme_registers_core_telegram_channels():
+    """The seed theme always declares the core CIG/bloomberg/trading trio.
+
+    Channel-list-agnostic beyond that core set — themes evolve, and the
+    formerly-fourth chainlinkbreadcrumbs channel has migrated to the
+    tokenized_finance_infrastructure theme where it fits better.
+    """
     theme = load_theme(SEED_THEME)
-    usernames = [c.username for c in theme.telegram_channels]
-    assert usernames == ["CIG_telegram", "bloomberg", "trading", "chainlinkbreadcrumbs"]
-    # Verify cadences match the seed YAML
+    usernames = {c.username for c in theme.telegram_channels}
+    core = {"CIG_telegram", "bloomberg", "trading"}
+    assert core.issubset(usernames)
+    # Cadences for the core trio are stable
     by_username = {c.username: c for c in theme.telegram_channels}
     assert by_username["CIG_telegram"].cadence_minutes == 15
     assert by_username["bloomberg"].cadence_minutes == 30
-    assert by_username["chainlinkbreadcrumbs"].cadence_minutes == 60
+    assert by_username["trading"].cadence_minutes == 30
 
 
 def test_seed_theme_telegram_channels_all_enabled_by_default():

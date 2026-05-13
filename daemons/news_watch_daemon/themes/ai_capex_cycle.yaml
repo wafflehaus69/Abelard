@@ -1,0 +1,196 @@
+theme_id: ai_capex_cycle
+display_name: AI Capex Cycle
+status: active
+created_at: 2026-05-13
+
+brief: |
+  Tracks the hyperscaler-led AI infrastructure buildout: capital
+  expenditure trajectories, GPU supply and allocation, datacenter
+  expansion, power procurement, and the cascading second-order demand
+  it creates in industrial gas, transformer manufacturing, electrical
+  equipment, and uranium/natural-gas-fired generation. The investment
+  thesis is that this is the largest capex cycle in modern industrial
+  history, that bottlenecks shift through the supply chain as each
+  constraint is resolved, and that the cycle's duration depends more on
+  power availability than on chip supply.
+
+  Material signals: hyperscaler earnings-call capex guidance changes
+  (META, MSFT, GOOG, AMZN, ORCL — both raises and cuts are signal),
+  NVIDIA allocation news, specific datacenter site announcements with
+  capacity numbers in megawatts, power purchase agreements for nuclear
+  or natural gas, transformer shortage disclosures, electrical equipment
+  lead-time reports, foundry capacity announcements (TSMC, Samsung,
+  Intel), specific GPU launches with allocation implications (H100,
+  H200, B100, B200, GB200, successor generations), and statements from
+  named principals (Jensen Huang, Sundar Pichai, Satya Nadella, Mark
+  Zuckerberg, Larry Ellison).
+
+  Noise — this theme should be aggressive about filtering: AI
+  safety/policy debate without industrial substance, AGI/ASI timeline
+  speculation, AI ethics discussions, "AI bubble" or "AI mania"
+  framings, chatbot product launches without capacity implications, AI
+  hype pieces about generic productivity gains, AI-replaces-jobs
+  narratives, doom commentary, retail enthusiasm posts, and cross-asset
+  price-action stories. The synthesis layer should treat policy-only and
+  hype-only content as low-weight; if it doesn't carry operational
+  signal about capex, capacity, allocation, or supply, it's not for this
+  theme.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  primary:
+    - "hyperscaler"
+    - "capex"
+    - "capital expenditure"
+    - "datacenter"
+    - "data center"
+    - "GPU"
+    - "Nvidia"
+    - "Blackwell"
+    - "Hopper"
+    - "H100"
+    - "H200"
+    - "B100"
+    - "B200"
+    - "GB200"
+    - "TSMC"
+    - "foundry"
+  secondary:
+    - "power purchase agreement"
+    - "PPA"
+    - "megawatt"
+    - "gigawatt"
+    - "transformer shortage"
+    - "AI infrastructure"
+    - "training cluster"
+    - "inference"
+    - "Jensen Huang"
+    - "Sundar Pichai"
+    - "Satya Nadella"
+    - "Mark Zuckerberg"
+    - "Larry Ellison"
+    - "CoreWeave"
+    - "Lambda Labs"
+  exclusions:
+    - "AI girlfriend"
+    - "AI boyfriend"
+    - "AI cheating"
+    - "AI homework"
+    - "AI art"
+    - "ChatGPT prompts"
+    - "AI hype"
+    - "AGI"
+    - "ASI"
+    - "AI safety"
+    - "AI ethics"
+    - "AI bubble"
+    - "AI mania"
+    - "AI killed"
+    - "AI replaces"
+    - "AI takeover"
+    - "AI doom"
+    - "AI risk"
+    - "AI extinction"
+    - "AI alignment"
+    - "AI consciousness"
+    - "AI sentience"
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
+
+tracked_entities:
+  tickers:
+    - NVDA
+    - META
+    - MSFT
+    - GOOGL
+    - GOOG
+    - AMZN
+    - ORCL
+    - ASML
+    - TSM
+    - AVGO
+    - AMD
+    - SMCI
+    - DELL
+    - HPE
+    - VRT
+    - ETN
+    - GEV
+    - LIN
+    - CCJ
+    - URA
+    - CRWV
+    - NOW
+  companies:
+    - Nvidia
+    - Taiwan Semiconductor Manufacturing
+    - ASML
+    - Samsung Electronics
+    - SK Hynix
+    - Micron
+    - Broadcom
+    - Vertiv
+    - Eaton
+    - Schneider Electric
+    - CoreWeave
+    - Lambda Labs
+    - Crusoe Energy
+  countries:
+    - United States
+    - Taiwan
+    - South Korea
+    - Japan
+    - Netherlands
+    - China
+  commodities:
+    - electricity
+    - natural gas
+    - uranium
+    - copper
+    - silicon
+    - silicon wafer
+  people:
+    - Jensen Huang
+    - Sundar Pichai
+    - Satya Nadella
+    - Mark Zuckerberg
+    - Larry Ellison
+    - Sam Altman
+    - Dario Amodei
+    - Lisa Su
+    - Pat Gelsinger
+    - C.C. Wei
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-7
+  max_tokens_output: 1000
+
+alerts:
+  velocity_baseline_headlines_per_day: 12.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds: []
+
+telegram_channels:
+  - username: CIG_telegram
+    cadence_minutes: 15
+  - username: bloomberg
+    cadence_minutes: 30
+  - username: trading
+    cadence_minutes: 30

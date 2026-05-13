@@ -211,16 +211,20 @@ def test_paused_theme_telegram_channels_skipped(tmp_path, http):
     assert tg == []
 
 
-def test_seed_theme_yields_four_telegram_sources(tmp_path, http):
+def test_seed_theme_telegram_channels_become_sources(tmp_path, http):
+    """The factory produces one TelegramSource per channel the seed declares.
+
+    Channel-list-agnostic — derives the expected set from the seed YAML
+    itself, so future channel additions/removals don't break this test.
+    """
     from news_watch_daemon.theme_config import load_theme
     from news_watch_daemon.sources.telegram import TelegramSource
     from pathlib import Path
     seed = load_theme(Path(__file__).resolve().parent.parent / "themes" / "us_iran_escalation.yaml")
+    expected = sorted(c.username for c in seed.telegram_channels if c.enabled)
     sources = build_sources(_tg_cfg(tmp_path), themes=[seed], http_client=http)
     tg = [s for s in sources if isinstance(s, TelegramSource)]
-    assert len(tg) == 4
-    usernames = sorted(s.channel_username for s in tg)
-    assert usernames == sorted(["CIG_telegram", "bloomberg", "trading", "chainlinkbreadcrumbs"])
+    assert sorted(s.channel_username for s in tg) == expected
 
 
 def test_constructor_failure_logs_and_continues(tmp_path, http, caplog, monkeypatch):
