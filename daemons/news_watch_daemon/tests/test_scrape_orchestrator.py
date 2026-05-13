@@ -186,6 +186,95 @@ def test_no_match_skips_tag(conn):
     assert result.theme_tags_inserted_total == 0
 
 
+# ---------- word-boundary regex (Pass C Step 1, MiCA fix) ----------
+
+
+def test_word_boundary_substring_does_not_falsely_tag(conn):
+    """The MiCA-in-chemical class of false positive must not occur.
+
+    Loads the real tokenized_finance_infrastructure theme (which has
+    `MiCA` as a primary keyword) and runs against the exact headline
+    that triggered the false positive in Pass B smoke. With word
+    boundaries enabled, `chemical` must not match `MiCA`.
+    """
+    from pathlib import Path
+    from news_watch_daemon.theme_config import load_theme
+    repo = Path(__file__).resolve().parent.parent
+    tokfi = load_theme(repo / "themes" / "tokenized_finance_infrastructure.yaml")
+    src = _fake_source(
+        "finnhub:general",
+        items=[_item(
+            "Europe's chemical makers catch a break as Iran war hits Asian rivals",
+        )],
+    )
+    # Insert the tokfi theme into the registry so FK constraints pass
+    conn.execute(
+        "INSERT INTO themes (theme_id, display_name, status, config_hash, "
+        "loaded_at_unix, loaded_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (tokfi.theme_id, tokfi.display_name, tokfi.status, tokfi.config_hash(), 0, "t"),
+    )
+    result = run_scrape(conn, [src], [tokfi], now_unix=FIXED_NOW)
+    # The headline must NOT be tagged to tokenized_finance_infrastructure
+    rows = conn.execute(
+        "SELECT 1 FROM headline_theme_tags WHERE theme_id = ?",
+        (tokfi.theme_id,),
+    ).fetchall()
+    assert rows == [], (
+        "MiCA matched substring 'mica' inside 'chemical' — word-boundary fix failed"
+    )
+    assert result.theme_tags_inserted_total == 0
+
+
+def test_word_boundary_standalone_keyword_still_matches(conn):
+    """`MiCA regulation` must still match the MiCA primary keyword.
+
+    Word boundaries don't break the legitimate case; they only block
+    substring collisions inside unrelated words.
+    """
+    from pathlib import Path
+    from news_watch_daemon.theme_config import load_theme
+    repo = Path(__file__).resolve().parent.parent
+    tokfi = load_theme(repo / "themes" / "tokenized_finance_infrastructure.yaml")
+    src = _fake_source(
+        "finnhub:general",
+        items=[_item("EU MiCA regulation phases in next quarter, issuers prepare")],
+    )
+    conn.execute(
+        "INSERT INTO themes (theme_id, display_name, status, config_hash, "
+        "loaded_at_unix, loaded_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (tokfi.theme_id, tokfi.display_name, tokfi.status, tokfi.config_hash(), 0, "t"),
+    )
+    result = run_scrape(conn, [src], [tokfi], now_unix=FIXED_NOW)
+    rows = conn.execute(
+        "SELECT confidence FROM headline_theme_tags WHERE theme_id = ?",
+        (tokfi.theme_id,),
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["confidence"] == "primary"
+
+
+def test_word_boundary_apostrophe_s_edge_case(conn):
+    """`\\bIran\\b` must still match `Iran` in `Iran's nuclear program`.
+
+    The apostrophe is a non-word character, so it provides the right
+    word boundary. This is the most likely surprise in the fix; verify
+    explicitly. Uses the real us_iran_escalation seed theme.
+    """
+    theme = _seed_theme()
+    src = _fake_source(
+        "finnhub:general",
+        items=[_item("Iran's nuclear program restart raises stakes")],
+    )
+    result = run_scrape(conn, [src], [theme], now_unix=FIXED_NOW)
+    rows = conn.execute(
+        "SELECT confidence FROM headline_theme_tags WHERE theme_id = ?",
+        (theme.theme_id,),
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["confidence"] == "primary"
+    assert result.theme_tags_inserted_total == 1
+
+
 # ---------- dedup ----------
 
 

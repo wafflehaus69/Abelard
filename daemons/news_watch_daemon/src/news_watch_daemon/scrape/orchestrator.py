@@ -92,17 +92,33 @@ class _ThemeRegexes:
     exclusion: re.Pattern[str] | None
 
 
+def _join_keywords_wb(keywords: list[str]) -> str:
+    """Build a word-boundary-wrapped alternation regex.
+
+    Pass C Step 1: keywords are matched with `\\b...\\b` boundaries so
+    short acronyms (MiCA, QT, BIS, RWA) don't collide with substrings
+    inside unrelated words (chemical, antique, business, drawer).
+    Multi-word keywords ("rate cut", "Federal Reserve") are similarly
+    bounded at the phrase start/end, not within. `re.escape` handles
+    special chars in keywords (hyphens, dots, dollar signs).
+
+    Apostrophe edge case verified: `\\bIran\\b` still matches `Iran` in
+    `Iran's` because `'` is non-word, providing the right boundary.
+    """
+    return "|".join(rf"\b{re.escape(k)}\b" for k in keywords)
+
+
 def _compile_theme_regexes(themes: Iterable[ThemeConfig]) -> list[_ThemeRegexes]:
     out: list[_ThemeRegexes] = []
     for theme in themes:
-        primary = re.compile("|".join(theme.keywords.primary), re.IGNORECASE)
+        primary = re.compile(_join_keywords_wb(theme.keywords.primary), re.IGNORECASE)
         secondary = (
-            re.compile("|".join(theme.keywords.secondary), re.IGNORECASE)
+            re.compile(_join_keywords_wb(theme.keywords.secondary), re.IGNORECASE)
             if theme.keywords.secondary
             else None
         )
         exclusion = (
-            re.compile("|".join(theme.keywords.exclusions), re.IGNORECASE)
+            re.compile(_join_keywords_wb(theme.keywords.exclusions), re.IGNORECASE)
             if theme.keywords.exclusions
             else None
         )
