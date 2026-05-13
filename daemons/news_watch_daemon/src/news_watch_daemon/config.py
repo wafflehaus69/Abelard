@@ -82,6 +82,25 @@ def _default_brief_archive_path() -> Path:
     return Path.home() / ".openclaw" / "news_watch" / "briefs"
 
 
+def _default_synthesis_config_path() -> Path:
+    """Resolve `<repo_root>/config/synthesis_config.yaml`.
+
+    Mac mini deploy target reads from a workspace-local copy via
+    NEWS_WATCH_SYNTHESIS_CONFIG; this bundled file is the daemon
+    default + the source-of-truth for new installs.
+    """
+    return Path(__file__).resolve().parent.parent.parent / "config" / "synthesis_config.yaml"
+
+
+def _default_trigger_log_path() -> Path:
+    """Default append-only trigger log: `~/.openclaw/news_watch/trigger_log.jsonl`.
+
+    Per Pass C §9. Append-only, never rotated — historical value
+    compounds (calibration §14). Override via NEWS_WATCH_TRIGGER_LOG.
+    """
+    return Path.home() / ".openclaw" / "news_watch" / "trigger_log.jsonl"
+
+
 @dataclass(frozen=True)
 class Config:
     db_path: Path
@@ -95,6 +114,8 @@ class Config:
     telegram_session_string: str | None = None
     tracked_tickers_path: Path = field(default_factory=_default_tracked_tickers_path)
     brief_archive_path: Path = field(default_factory=_default_brief_archive_path)
+    synthesis_config_path: Path = field(default_factory=_default_synthesis_config_path)
+    trigger_log_path: Path = field(default_factory=_default_trigger_log_path)
 
     def secrets(self) -> tuple[str, ...]:
         """Values that must be scrubbed from log output.
@@ -227,6 +248,28 @@ class Config:
         else:
             archive_path = _default_brief_archive_path()
 
+        # ---- Synthesis config + trigger log paths (Pass C Step 4) ----
+
+        synth_raw = os.environ.get("NEWS_WATCH_SYNTHESIS_CONFIG", "").strip()
+        if synth_raw:
+            synth_path = Path(synth_raw).expanduser()
+            if not synth_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_SYNTHESIS_CONFIG must be an absolute path; got {synth_raw!r}"
+                )
+        else:
+            synth_path = _default_synthesis_config_path()
+
+        trigger_raw = os.environ.get("NEWS_WATCH_TRIGGER_LOG", "").strip()
+        if trigger_raw:
+            trigger_path = Path(trigger_raw).expanduser()
+            if not trigger_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_TRIGGER_LOG must be an absolute path; got {trigger_raw!r}"
+                )
+        else:
+            trigger_path = _default_trigger_log_path()
+
         return cls(
             db_path=db_path,
             log_level=log_level,
@@ -239,6 +282,8 @@ class Config:
             telegram_session_string=tg_session,
             tracked_tickers_path=tickers_path,
             brief_archive_path=archive_path,
+            synthesis_config_path=synth_path,
+            trigger_log_path=trigger_path,
         )
 
 

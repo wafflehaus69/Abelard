@@ -1,0 +1,50 @@
+# Synthesis-layer configuration for News Watch Daemon.
+#
+# Mando-tunable, deploy-overridable via NEWS_WATCH_SYNTHESIS_CONFIG env
+# var pointing at a file in OpenClaw's workspace area on the Mac mini.
+# This bundled copy is the default; the deploy-target copy is what
+# runs in production.
+#
+# Pass C lands sections incrementally:
+#   Step 4  →  trigger_gate          (this commit)
+#   Step 8  →  synthesis (materiality)
+#   Step 9  →  synthesis (model)
+#   Step 10 →  drift_watcher
+#   Step 6  →  alert_sink
+#
+# Sections not yet modeled are tolerated by Pydantic (extra="ignore" at
+# top level). Sections that ARE modeled enforce extra="forbid" inside.
+
+trigger_gate:
+  # Minimum number of new tagged headlines for a single theme to fire
+  # the delta-threshold trigger. Per-theme overrides below.
+  delta_threshold_default: 3
+  delta_threshold_overrides:
+    # us_iran_escalation is high-volume in the current corpus (Pass B
+    # smoke saw 55/100 tagged); lift the bar so synthesis isn't
+    # firing on routine coverage.
+    us_iran_escalation: 5
+
+  # Phrase-level signals — specificity matters. Single words like
+  # "sanctions" or "strike" fire constantly; use phrases that
+  # describe events, not topics. PLACEHOLDER list — calibration
+  # (§14) will refine after first week of trigger_log data.
+  high_signal_phrases:
+    - "new sanctions"
+    - "imposes sanctions"
+    - "ceasefire"
+    - "war declared"
+    - "declares war"
+    - "emergency rate cut"
+    - "emergency rate hike"
+    - "halts trading"
+    - "suspends trading"
+    - "sovereign default"
+    - "central bank intervention"
+
+  # When a single headline tags to multiple themes, treat it as
+  # material by default. PROVISIONAL — Pass B smoke saw 8/100 such
+  # headlines; at scale this could fire dozens of times per day.
+  # Trigger_log instrumentation logs every fire so calibration can
+  # raise/lower this floor.
+  cross_theme_always_triggers: true

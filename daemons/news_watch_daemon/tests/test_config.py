@@ -208,6 +208,55 @@ def test_brief_archive_path_relative_rejected(monkeypatch, tmp_path):
         Config.from_env()
 
 
+# ---------- synthesis_config_path + trigger_log_path (Pass C Step 4) ----------
+
+
+def test_synthesis_config_path_defaults_to_bundled(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.delenv("NEWS_WATCH_SYNTHESIS_CONFIG", raising=False)
+    cfg = Config.from_env()
+    assert cfg.synthesis_config_path.name == "synthesis_config.yaml"
+    assert cfg.synthesis_config_path.parent.name == "config"
+
+
+def test_synthesis_config_path_env_override(monkeypatch, tmp_path):
+    custom = tmp_path / "deploy" / "synth.yaml"
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_SYNTHESIS_CONFIG", str(custom))
+    cfg = Config.from_env()
+    assert cfg.synthesis_config_path == custom
+
+
+def test_synthesis_config_path_relative_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_SYNTHESIS_CONFIG", "relative/path.yaml")
+    with pytest.raises(ConfigError, match="NEWS_WATCH_SYNTHESIS_CONFIG"):
+        Config.from_env()
+
+
+def test_trigger_log_path_defaults_to_openclaw(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.delenv("NEWS_WATCH_TRIGGER_LOG", raising=False)
+    cfg = Config.from_env()
+    assert cfg.trigger_log_path.name == "trigger_log.jsonl"
+    assert cfg.trigger_log_path.parent.name == "news_watch"
+
+
+def test_trigger_log_path_env_override(monkeypatch, tmp_path):
+    custom = tmp_path / "elsewhere" / "tlog.jsonl"
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_TRIGGER_LOG", str(custom))
+    cfg = Config.from_env()
+    assert cfg.trigger_log_path == custom
+
+
+def test_trigger_log_path_relative_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_TRIGGER_LOG", "rel/path.jsonl")
+    with pytest.raises(ConfigError, match="NEWS_WATCH_TRIGGER_LOG"):
+        Config.from_env()
+
+
 # ---------- Telegram credentials (Pass B) ----------
 
 
