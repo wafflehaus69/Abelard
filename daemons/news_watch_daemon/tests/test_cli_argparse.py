@@ -196,32 +196,47 @@ def test_themes_load_requires_initialized_db(env, capsys):
 
 
 def test_themes_load_then_list_returns_seed(env, capsys):
+    """End-to-end: load all themes from the seed dir, list them back.
+
+    Count-agnostic: as more themes land in the seed dir, the only
+    invariant is that load_count == list_count == #YAMLs, and that
+    `us_iran_escalation` (the canonical foundation seed) is among them.
+    """
     assert main(["db", "init"]) == 0
     capsys.readouterr()
 
     assert main(["themes", "load"]) == 0
     load_env = _read_envelope(capsys)
     assert load_env["status"] == "ok"
-    assert load_env["data"]["loaded_count"] == 1
+    loaded_count = load_env["data"]["loaded_count"]
+    assert loaded_count >= 1
     assert "us_iran_escalation" in load_env["data"]["loaded_theme_ids"]
-    assert load_env["data"]["inserted"] == 1
+    assert load_env["data"]["inserted"] == loaded_count
 
     assert main(["themes", "list"]) == 0
     list_env = _read_envelope(capsys)
     assert list_env["status"] == "ok"
-    assert list_env["data"]["count"] == 1
-    assert list_env["data"]["themes"][0]["theme_id"] == "us_iran_escalation"
+    assert list_env["data"]["count"] == loaded_count
+    listed_ids = [t["theme_id"] for t in list_env["data"]["themes"]]
+    assert "us_iran_escalation" in listed_ids
 
 
 def test_themes_load_is_idempotent(env, capsys):
+    """Re-loading the same theme set produces zero inserts / updates.
+
+    Count-agnostic: `unchanged` equals the total theme count, `inserted`
+    and `updated` are both 0.
+    """
     assert main(["db", "init"]) == 0
     assert main(["themes", "load"]) == 0
     capsys.readouterr()
     assert main(["themes", "load"]) == 0
     env_doc = _read_envelope(capsys)
-    assert env_doc["data"]["unchanged"] == 1
+    assert env_doc["data"]["unchanged"] >= 1
     assert env_doc["data"]["inserted"] == 0
     assert env_doc["data"]["updated"] == 0
+    # All themes that exist on disk should have been re-evaluated.
+    assert env_doc["data"]["unchanged"] == env_doc["data"]["loaded_count"]
 
 
 def test_status_before_init_returns_partial(env, capsys):
@@ -313,8 +328,11 @@ def test_scrape_after_load_runs_orchestrator_envelope_shape(env, capsys, monkeyp
     assert data["sources_succeeded"] == 1
     assert data["sources_failed"] == 0
     assert data["headlines_inserted_total"] == 1
-    assert data["theme_tags_inserted_total"] == 1
-    assert data["themes_active"] == ["us_iran_escalation"]
+    # The canned headline matches the us_iran_escalation primary keyword "Iran".
+    # It may also match future themes that include Iran-relevant keywords; the
+    # invariant is "at least one tag, and us_iran_escalation is among them".
+    assert data["theme_tags_inserted_total"] >= 1
+    assert "us_iran_escalation" in data["themes_active"]
     assert data["per_source"][0]["name"] == "finnhub:general"
 
 
