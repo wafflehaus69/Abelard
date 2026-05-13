@@ -73,6 +73,15 @@ def _default_tracked_tickers_path() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "config" / "tracked_tickers.yaml"
 
 
+def _default_brief_archive_path() -> Path:
+    """Resolve the default Brief archive path: `~/.openclaw/news_watch/briefs/`.
+
+    Per Pass C §9. Override via NEWS_WATCH_BRIEF_ARCHIVE env var on
+    the deploy target (Mac mini) or for tests.
+    """
+    return Path.home() / ".openclaw" / "news_watch" / "briefs"
+
+
 @dataclass(frozen=True)
 class Config:
     db_path: Path
@@ -85,6 +94,7 @@ class Config:
     telegram_api_hash: str | None = None
     telegram_session_string: str | None = None
     tracked_tickers_path: Path = field(default_factory=_default_tracked_tickers_path)
+    brief_archive_path: Path = field(default_factory=_default_brief_archive_path)
 
     def secrets(self) -> tuple[str, ...]:
         """Values that must be scrubbed from log output.
@@ -205,6 +215,18 @@ class Config:
         else:
             tickers_path = _default_tracked_tickers_path()
 
+        # ---- Brief archive path (Pass C Step 2) ----
+
+        archive_raw = os.environ.get("NEWS_WATCH_BRIEF_ARCHIVE", "").strip()
+        if archive_raw:
+            archive_path = Path(archive_raw).expanduser()
+            if not archive_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_BRIEF_ARCHIVE must be an absolute path; got {archive_raw!r}"
+                )
+        else:
+            archive_path = _default_brief_archive_path()
+
         return cls(
             db_path=db_path,
             log_level=log_level,
@@ -216,6 +238,7 @@ class Config:
             telegram_api_hash=tg_api_hash,
             telegram_session_string=tg_session,
             tracked_tickers_path=tickers_path,
+            brief_archive_path=archive_path,
         )
 
 

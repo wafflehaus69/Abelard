@@ -181,6 +181,33 @@ def test_tracked_tickers_path_relative_rejected(monkeypatch, tmp_path):
         Config.from_env()
 
 
+# ---------- brief_archive_path (Pass C Step 2) ----------
+
+
+def test_brief_archive_path_defaults_to_openclaw_workspace(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.delenv("NEWS_WATCH_BRIEF_ARCHIVE", raising=False)
+    cfg = Config.from_env()
+    # Default resolves to ~/.openclaw/news_watch/briefs
+    assert cfg.brief_archive_path.name == "briefs"
+    assert cfg.brief_archive_path.parent.name == "news_watch"
+
+
+def test_brief_archive_path_env_override(monkeypatch, tmp_path):
+    custom = tmp_path / "elsewhere" / "briefs"
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_BRIEF_ARCHIVE", str(custom))
+    cfg = Config.from_env()
+    assert cfg.brief_archive_path == custom
+
+
+def test_brief_archive_path_relative_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_BRIEF_ARCHIVE", "relative/briefs")
+    with pytest.raises(ConfigError, match="NEWS_WATCH_BRIEF_ARCHIVE"):
+        Config.from_env()
+
+
 # ---------- Telegram credentials (Pass B) ----------
 
 
