@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Mixed timestamp feed</title>
+    <link>https://example.com/mixed</link>
+    <description>Some entries lack pubDate; should be dropped as parse-drops.</description>
+    <item>
+      <title>Has date</title>
+      <link>https://example.com/mixed/1</link>
+      <guid>https://example.com/mixed/1</guid>
+      <pubDate>Mon, 12 May 2026 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>No date</title>
+      <link>https://example.com/mixed/2</link>
+      <guid>https://example.com/mixed/2</guid>
+    </item>
+  </channel>
+</rss>

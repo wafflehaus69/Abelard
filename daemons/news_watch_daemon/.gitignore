@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+*.egg-info/
+build/
+dist/
+.env
+*.db
+*.db-wal
+*.db-shm
+
+# Test fixtures captured from real APIs — kept local for offline parser
+# verification. The committed *_synthetic.json fixtures are
+# structurally identical and what CI runs against.
+tests/fixtures/*_real.json

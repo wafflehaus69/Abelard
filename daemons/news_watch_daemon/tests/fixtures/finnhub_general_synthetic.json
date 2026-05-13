@@ -1,0 +1,35 @@
+[
+  {
+    "category": "general",
+    "datetime": 1778600000,
+    "headline": "Test news item one",
+    "id": 100001,
+    "image": "https://example.com/img1.jpg",
+    "related": "",
+    "source": "TestWire",
+    "summary": "Synthetic summary one.",
+    "url": "https://example.com/news/1"
+  },
+  {
+    "category": "general",
+    "datetime": 1778603600,
+    "headline": "Test news item two",
+    "id": 100002,
+    "image": "https://example.com/img2.jpg",
+    "related": "",
+    "source": "TestWire",
+    "summary": "Synthetic summary two.",
+    "url": "https://example.com/news/2"
+  },
+  {
+    "category": "general",
+    "datetime": 1778607200,
+    "headline": "Test news item three",
+    "id": 100003,
+    "image": "https://example.com/img3.jpg",
+    "related": "",
+    "source": "OtherWire",
+    "summary": "Synthetic summary three.",
+    "url": "https://example.com/news/3"
+  }
+]

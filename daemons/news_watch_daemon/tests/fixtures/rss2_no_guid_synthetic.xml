@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Synthetic RSS Without GUIDs</title>
+    <link>https://example.com/no-guid</link>
+    <description>Test feed where entries omit guid; source_item_id falls back to hash.</description>
+    <item>
+      <title>No-guid entry one</title>
+      <link>https://example.com/noguid/1</link>
+      <pubDate>Mon, 12 May 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

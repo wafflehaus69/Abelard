@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Synthetic RSS 2.0 Feed</title>
+    <link>https://example.com/feed</link>
+    <description>Test feed for RssSource.</description>
+    <item>
+      <title>RSS test entry one</title>
+      <link>https://example.com/rss/1</link>
+      <guid>https://example.com/rss/1</guid>
+      <pubDate>Mon, 12 May 2026 12:00:00 GMT</pubDate>
+      <description>Synthetic entry one.</description>
+    </item>
+    <item>
+      <title>RSS test entry two</title>
+      <link>https://example.com/rss/2</link>
+      <guid>https://example.com/rss/2</guid>
+      <pubDate>Mon, 12 May 2026 13:00:00 GMT</pubDate>
+      <description>Synthetic entry two.</description>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,130 @@
+theme_id: us_iran_escalation
+display_name: U.S.–Iran Escalation
+status: active
+created_at: 2026-05-12
+
+brief: |
+  Tracks the trajectory of U.S.–Iran tensions and their cascade effects on
+  commodities (oil, fertilizer feedstock, grains), defense procurement,
+  and emerging-market risk. The thesis is that escalation is structurally
+  underpriced and that supply-chain cascades from any kinetic event would
+  reprice fertilizer (urea, ammonia, potash), industrial gases, and defense
+  primes faster than equity markets currently reflect.
+
+  Material signals: military movements, sanctions changes, diplomatic
+  breakdowns, oil infrastructure attacks, statements from named principals
+  (Khamenei, IRGC leadership, U.S. SecDef, SecState, CENTCOM commander),
+  proxy actions (Houthi, Hezbollah, PMF), nuclear program developments.
+
+  Noise: routine diplomatic statements, anniversary commentary, op-eds
+  without new information, retail sentiment posts. The synthesis layer
+  should be skeptical of articles that recycle prior framing without
+  new facts.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  primary:
+    - "Iran"
+    - "Tehran"
+    - "IRGC"
+    - "Revolutionary Guard"
+    - "Khamenei"
+    - "Strait of Hormuz"
+    - "Houthi"
+    - "Hezbollah"
+    - "Iranian"
+  secondary:
+    - "Persian Gulf"
+    - "CENTCOM"
+    - "nuclear program"
+    - "JCPOA"
+    - "sanctions"
+    - "Quds Force"
+    - "Iraqi militia"
+    - "Yemen"
+  exclusions:
+    - "Iran-Contra"            # historical reference, not current
+    - "Iranian cuisine"
+    - "Iranian film"
+    - "Persian cat"
+
+tracked_entities:
+  tickers:
+    - LHX                       # defense prime
+    - MOG.A                     # defense components
+    - NTR                       # fertilizer
+    - NEU                       # specialty chemicals / fertilizer feedstock
+    - CTRA                      # E&P oil/gas
+    - LIN                       # industrial gas
+    - GLD                       # safe haven
+    - CORN
+    - WEAT
+  companies:
+    - L3Harris Technologies
+    - Moog
+    - Nutrien
+    - NewMarket Corporation
+    - Coterra Energy
+    - Linde
+  countries:
+    - Iran
+    - Israel
+    - Saudi Arabia
+    - Iraq
+    - Yemen
+    - Lebanon
+    - United States
+  commodities:
+    - crude oil
+    - Brent
+    - WTI
+    - urea
+    - ammonia
+    - potash
+    - natural gas
+  people:
+    - Ali Khamenei
+    - Masoud Pezeshkian
+    - Hossein Salami
+    - Mohammed bin Salman
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-7
+  max_tokens_output: 1000
+
+alerts:
+  # NOTE: velocity_baseline_headlines_per_day is a placeholder.
+  # Real calibration happens after ~2 weeks of scrape data exists.
+  velocity_baseline_headlines_per_day: 8.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+# Optional per-theme RSS feeds. Empty list disables RSS for this theme.
+# Each feed is fetched independently and tagged to this theme at the
+# scrape layer's keyword-match step. If the same feed URL appears in
+# multiple themes, it is fetched once globally and its entries may
+# attach to multiple themes.
+rss_feeds: []
+
+# Telegram channels monitored for this theme. The same channel may be
+# registered against multiple themes; the scrape factory deduplicates
+# and uses the lowest cadence across all referencing themes. Several
+# of these channels (e.g. bloomberg) carry wide-coverage content; the
+# theme keyword/exclusion machinery filters what's actually relevant
+# to us_iran_escalation.
+telegram_channels:
+  - username: CIG_telegram
+    cadence_minutes: 15
+  - username: bloomberg
+    cadence_minutes: 30
+  - username: trading
+    cadence_minutes: 30
+  - username: chainlinkbreadcrumbs
+    cadence_minutes: 60

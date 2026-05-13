@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Synthetic Atom Feed</title>
+  <link href="https://example.com/atom"/>
+  <updated>2026-05-12T14:00:00Z</updated>
+  <id>tag:example.com,2026:atom-feed</id>
+  <entry>
+    <title>Atom test entry one</title>
+    <link href="https://example.com/atom/1"/>
+    <id>tag:example.com,2026:atom-1</id>
+    <published>2026-05-12T12:00:00Z</published>
+    <updated>2026-05-12T12:00:00Z</updated>
+    <summary>Atom synthetic entry one.</summary>
+  </entry>
+  <entry>
+    <title>Atom test entry two</title>
+    <link href="https://example.com/atom/2"/>
+    <id>tag:example.com,2026:atom-2</id>
+    <published>2026-05-12T13:30:00Z</published>
+    <updated>2026-05-12T13:30:00Z</updated>
+    <summary>Atom synthetic entry two.</summary>
+  </entry>
+</feed>

@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Environment / secrets
+.env
+*.env
+!.env.example
+
+# SQLite databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# News Watch Daemon — real (non-synthetic) fixtures captured from live APIs.
+# The committed *_synthetic.* fixtures are structurally identical and what
+# CI runs against. Real captures stay local for occasional offline
+# parser-verification work.
+daemons/news_watch_daemon/tests/fixtures/finnhub_real_*.json
+daemons/news_watch_daemon/tests/fixtures/telegram_real_*.json
+# Defensive generic — catches any future daemon's _real.* convention.
+**/tests/fixtures/*_real.*
