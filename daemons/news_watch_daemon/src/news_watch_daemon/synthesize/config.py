@@ -117,6 +117,34 @@ class AlertSinkConfig(BaseModel):
     telegram_bot: TelegramBotSinkConfig = Field(default_factory=TelegramBotSinkConfig)
 
 
+# ---------- synthesis (Pass C Step 8 — materiality + Step 9 — model) ----------
+
+
+class SynthesisConfig(BaseModel):
+    """Synthesis orchestrator settings.
+
+    `materiality_threshold` is the gate's pass/fail line: events whose
+    score is below this are filtered out. PLACEHOLDER 0.55 — §14
+    calibration will tune.
+
+    `dedup_window_hours` is how far back the materiality gate scans the
+    Brief archive for duplicate-event fingerprints. Per §9 default 6.
+
+    `max_events_per_brief` caps the events the synthesis prompt is
+    allowed to emit; prevents Sonnet from over-listing.
+
+    `default_model` is the model ID for the synthesis call (Step 9).
+    Per-theme override via each theme YAML's `synthesis.model` field.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_model: str = "claude-sonnet-4-7"
+    materiality_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
+    dedup_window_hours: int = Field(default=6, gt=0)
+    max_events_per_brief: int = Field(default=8, gt=0)
+
+
 # ---------- top-level synthesis config ----------
 
 
@@ -133,6 +161,7 @@ class SynthesisDaemonConfig(BaseModel):
 
     trigger_gate: TriggerGateConfig = Field(default_factory=TriggerGateConfig)
     alert_sink: AlertSinkConfig = Field(default_factory=AlertSinkConfig)
+    synthesis: SynthesisConfig = Field(default_factory=SynthesisConfig)
 
 
 class SynthesisConfigError(RuntimeError):
@@ -166,6 +195,7 @@ def load_synthesis_config(path: Path) -> SynthesisDaemonConfig:
 __all__ = [
     "AlertSinkConfig",
     "SignalSinkConfig",
+    "SynthesisConfig",
     "SynthesisConfigError",
     "SynthesisDaemonConfig",
     "TelegramBotSinkConfig",

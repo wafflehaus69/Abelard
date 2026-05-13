@@ -15,6 +15,27 @@
 # Sections not yet modeled are tolerated by Pydantic (extra="ignore" at
 # top level). Sections that ARE modeled enforce extra="forbid" inside.
 
+synthesis:
+  # Default model for the synthesis call (Step 9). Per-theme override
+  # via each theme YAML's `synthesis.model` field. At build time the
+  # claude-api skill resolves the exact dated model id (e.g.
+  # claude-sonnet-4-7-YYYYMMDD); this string is the family-name fallback.
+  default_model: "claude-sonnet-4-7"
+
+  # PLACEHOLDER (§14 calibration). Events scoring below this on
+  # Sonnet's self-rated materiality are filtered out by the gate.
+  materiality_threshold: 0.55
+
+  # The materiality gate scans the Brief archive this far back for
+  # duplicate-event fingerprints. Briefs older than this are not
+  # consulted for dedup. PLACEHOLDER.
+  dedup_window_hours: 6
+
+  # Cap on events the synthesis prompt may emit per brief. Prevents
+  # "everything is interesting" failure mode.
+  max_events_per_brief: 8
+
+
 trigger_gate:
   # Minimum number of new tagged headlines for a single theme to fire
   # the delta-threshold trigger. Per-theme overrides below.

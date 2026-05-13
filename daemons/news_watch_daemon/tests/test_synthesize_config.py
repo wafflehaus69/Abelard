@@ -99,13 +99,15 @@ def test_load_empty_yaml_uses_defaults(tmp_path):
 
 def test_unknown_top_level_section_ignored(tmp_path):
     """Forward-compat: synthesis_config.yaml can declare sections that
-    later Pass C steps will model (synthesis, drift_watcher, alert_sink).
-    Top-level extra="ignore" tolerates them; later steps tighten.
+    later Pass C steps will model. Top-level extra='ignore' tolerates
+    them; once a section is modeled, sub-models tighten to 'forbid'.
+
+    drift_watcher is not yet modeled (lands at Step 10) — use it as
+    the unknown-section example.
     """
     p = _write_yaml(tmp_path, {
         "trigger_gate": {"delta_threshold_default": 4},
-        "synthesis": {"some_future_field": "value"},
-        "drift_watcher": {"another_future_field": 1},
+        "drift_watcher": {"future_field_for_step_10": 1},
     })
     cfg = load_synthesis_config(p)
     assert cfg.trigger_gate.delta_threshold_default == 4
