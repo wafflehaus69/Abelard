@@ -48,3 +48,30 @@ trigger_gate:
   # Trigger_log instrumentation logs every fire so calibration can
   # raise/lower this floor.
   cross_theme_always_triggers: true
+
+
+alert_sink:
+  # Which sink the factory instantiates. Currently "signal" only;
+  # Step 7 will land TelegramBotSink and "telegram_bot" becomes valid.
+  type: signal
+
+  signal:
+    # The ONLY allowed destination. The destination-validation gate
+    # in alert/signal_sink.py refuses any other value. Brief §15:
+    # "Whichever ships must be the single value the SignalSink
+    # destination-validation gate compares against."
+    destination: "note_to_self"
+
+    # signal-cli executable. Bare name works if on PATH; on the Mac
+    # mini deploy target this resolves to /usr/local/bin/signal-cli
+    # or wherever Homebrew installed it.
+    cli_path: "signal-cli"
+
+    # Subprocess timeout per invocation.
+    timeout_s: 30.0
+
+  # telegram_bot sub-section lands in Step 7. The model tolerates
+  # this declaration via extra="ignore" until then.
+  telegram_bot:
+    bot_token_env: NWD_TG_BOT_TOKEN
+    chat_id_env: NWD_TG_BOT_CHAT_ID

@@ -61,6 +61,44 @@ class TriggerGateConfig(BaseModel):
         return v
 
 
+# ---------- alert_sink (Pass C Step 6) ----------
+
+
+class SignalSinkConfig(BaseModel):
+    """SignalSink-specific configuration.
+
+    `destination` is the literal string the destination-validation gate
+    (`_assert_destination_allowed` in alert/signal_sink.py) compares
+    against. Currently only "note_to_self" is supported; any other
+    value will be refused by the gate.
+
+    `cli_path` is the signal-cli executable. Absolute path on the
+    Mac mini deploy target; bare "signal-cli" works if it's on PATH.
+
+    `timeout_s` caps each signal-cli subprocess invocation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    destination: str = "note_to_self"
+    cli_path: str = "signal-cli"
+    timeout_s: float = Field(default=30.0, gt=0)
+
+
+class AlertSinkConfig(BaseModel):
+    """Top-level alert-sink configuration.
+
+    `type` selects which sink the factory instantiates. Step 6 lands
+    the Signal sub-section; Step 7 lands TelegramBotSink. Until then
+    the telegram_bot sub-section is tolerated as an unknown dict.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    type: str = "signal"
+    signal: SignalSinkConfig = Field(default_factory=SignalSinkConfig)
+
+
 # ---------- top-level synthesis config ----------
 
 
@@ -68,14 +106,15 @@ class SynthesisDaemonConfig(BaseModel):
     """Top-level shape of synthesis_config.yaml.
 
     `extra="ignore"` allows the bundled YAML to declare sections that
-    later Pass C steps will model (synthesis, drift_watcher,
-    alert_sink). Once a section is modeled, its sub-model enforces
-    `extra="forbid"` to catch typos.
+    later Pass C steps will model (synthesis, drift_watcher). Once a
+    section is modeled, its sub-model enforces `extra="forbid"` to
+    catch typos.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     trigger_gate: TriggerGateConfig = Field(default_factory=TriggerGateConfig)
+    alert_sink: AlertSinkConfig = Field(default_factory=AlertSinkConfig)
 
 
 class SynthesisConfigError(RuntimeError):
@@ -107,6 +146,8 @@ def load_synthesis_config(path: Path) -> SynthesisDaemonConfig:
 
 
 __all__ = [
+    "AlertSinkConfig",
+    "SignalSinkConfig",
     "SynthesisConfigError",
     "SynthesisDaemonConfig",
     "TriggerGateConfig",
