@@ -1,0 +1,44 @@
+# Tickers the orchestrator tags against headlines on ingest.
+#
+# Mando-curated. Edited by hand; orchestrator reads on startup (no live
+# reload). Two tiers:
+#
+#   conviction: positions held with directional thesis
+#   watchlist:  pre-position monitoring; tracked but not held
+#
+# Matching is word-boundary case-sensitive against headline text, so
+# tickers must be uppercase. Dotted share-class suffixes (MOG.A, BRK.B,
+# BF.A) are preserved via regex escape.
+#
+# A separate `$`-prefix cashtag pattern (e.g. "$AAPL", "$BRK.B") catches
+# tickers mentioned by their cashtag form even if they're not in this
+# list — Telegram channels in particular tend to cashtag explicitly.
+#
+# Deploy target (Mac mini) reads from:
+#   ~/.openclaw/news_watch/tracked_tickers.yaml
+# Override the path via NEWS_WATCH_TRACKED_TICKERS_PATH env var.
+
+conviction:
+  - MSTR
+  - META
+  - COIN
+  - CRCL
+  - CRWV
+  - NOW
+  - ONDS
+  - TSLA
+  - LINK
+  - ETH
+  - BTC
+
+watchlist:
+  - NTR
+  - NEU
+  - GLD
+  - MOG.A
+  - LHX
+  - CORN
+  - WEAT
+  - LIN
+  - CTRA
+  - GFS

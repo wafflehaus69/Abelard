@@ -155,6 +155,32 @@ def test_default_user_agent_format():
     assert "://" not in DEFAULT_USER_AGENT  # no URL portion
 
 
+# ---------- tracked_tickers_path (Pass C Step 0) ----------
+
+
+def test_tracked_tickers_path_defaults_to_bundled_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.delenv("NEWS_WATCH_TRACKED_TICKERS_PATH", raising=False)
+    cfg = Config.from_env()
+    assert cfg.tracked_tickers_path.name == "tracked_tickers.yaml"
+    assert cfg.tracked_tickers_path.parent.name == "config"
+
+
+def test_tracked_tickers_path_env_override(monkeypatch, tmp_path):
+    custom = tmp_path / "custom" / "tickers.yaml"
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_TRACKED_TICKERS_PATH", str(custom))
+    cfg = Config.from_env()
+    assert cfg.tracked_tickers_path == custom
+
+
+def test_tracked_tickers_path_relative_rejected(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_TRACKED_TICKERS_PATH", "relative/path.yaml")
+    with pytest.raises(ConfigError, match="NEWS_WATCH_TRACKED_TICKERS_PATH"):
+        Config.from_env()
+
+
 # ---------- Telegram credentials (Pass B) ----------
 
 

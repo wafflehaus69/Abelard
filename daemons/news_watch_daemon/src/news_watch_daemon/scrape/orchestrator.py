@@ -42,6 +42,7 @@ from ..db import record_heartbeat, to_json_column, transaction
 from ..sources.base import FetchedItem, FetchResult, SourcePlugin
 from ..theme_config import ThemeConfig
 from .dedup import compute_dedupe_hash
+from .ticker_extract import TrackedTickers
 
 
 _LOG = logging.getLogger("news_watch_daemon.scrape")
@@ -272,12 +273,19 @@ def _insert_headline_and_tags(
     headline_id: str,
     source_name: str,
     item: FetchedItem,
+    tickers: list[str],
     dedupe_hash: str,
     fetched_at_unix: int,
     fetched_at_iso: str,
     tag_rows: list[tuple[str, str]],  # (theme_id, confidence)
 ) -> int:
-    """Insert one headline + N theme tags atomically. Returns tag count inserted."""
+    """Insert one headline + N theme tags atomically. Returns tag count inserted.
+
+    `tickers` is the orchestrator-computed merge of (source-provided
+    tickers from FetchedItem.tickers) ∪ (extracted tickers from the
+    headline text via TrackedTickers). Lands in the existing
+    `headlines.tickers_json` column.
+    """
     with transaction(conn):
         conn.execute(
             "INSERT INTO headlines "
@@ -296,7 +304,7 @@ def _insert_headline_and_tags(
                 fetched_at_unix,
                 fetched_at_iso,
                 dedupe_hash,
-                to_json_column(item.tickers),
+                to_json_column(tickers),
                 None,
             ),
         )
@@ -319,6 +327,7 @@ def run_scrape(
     themes: list[ThemeConfig],
     *,
     now_unix: int | None = None,
+    tracked_tickers: TrackedTickers | None = None,
 ) -> ScrapeResult:
     """Execute one scrape sweep. Caller owns conn lifecycle.
 
@@ -326,6 +335,11 @@ def run_scrape(
       - the DB schema is applied
       - at least one active theme exists
     This function assumes those invariants hold.
+
+    `tracked_tickers`, when provided, runs ticker extraction over each
+    headline's text. Extracted tickers union with any tickers the source
+    plugin pre-tagged on the `FetchedItem`. When None, no extraction —
+    only source-provided tickers are persisted (Pass A/B behavior).
     """
     start_unix, start_iso = _now_pair(now_unix)
     start_perf = time.perf_counter()
@@ -378,12 +392,19 @@ def run_scrape(
                         tag_rows.append((regs.theme_id, confidence))
 
                 hid = _headline_id(item.headline, source.name)
+                # Merge source-provided tickers with extracted ones (Step 0).
+                if tracked_tickers is not None:
+                    extracted = tracked_tickers.extract(item.headline)
+                    merged_tickers = sorted(set(item.tickers) | set(extracted))
+                else:
+                    merged_tickers = list(item.tickers)
                 try:
                     tags_inserted = _insert_headline_and_tags(
                         conn,
                         headline_id=hid,
                         source_name=source.name,
                         item=item,
+                        tickers=merged_tickers,
                         dedupe_hash=dedupe_hash,
                         fetched_at_unix=start_unix,
                         fetched_at_iso=start_iso,

@@ -37,6 +37,7 @@ from .envelope import Source, build_error, build_ok, make_warning
 from .http_client import HttpClient
 from .scrape.factory import build_sources
 from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, write_heartbeat
+from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
 from .theme_config import ThemeLoadError, load_all_themes
 
 
@@ -298,7 +299,16 @@ def _handle_scrape(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
         sources = build_sources(cfg, themes, http)
 
         try:
-            result = run_scrape(conn, sources, themes)
+            tracked_tickers = load_tracked_tickers(cfg.tracked_tickers_path)
+        except TickerExtractError as exc:
+            return build_error(
+                status="error",
+                source="internal",
+                detail=f"tracked_tickers load failed: {exc}",
+            )
+
+        try:
+            result = run_scrape(conn, sources, themes, tracked_tickers=tracked_tickers)
             write_heartbeat(
                 conn,
                 status="ok",
