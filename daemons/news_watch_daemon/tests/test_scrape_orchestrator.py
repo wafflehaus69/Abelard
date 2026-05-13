@@ -275,6 +275,38 @@ def test_word_boundary_apostrophe_s_edge_case(conn):
     assert result.theme_tags_inserted_total == 1
 
 
+def test_pluralization_sweep_rate_cuts_matches_fed_policy_path(conn):
+    """Post-pluralization-sweep: `rate cuts` (plural) is a separate
+    keyword from `rate cut` (singular) in fed_policy_path's primary list.
+
+    With word boundaries, `\\brate cut\\b` does NOT match "rate cuts"
+    (the trailing `s` is a word char), so both forms must be in the
+    keyword list for both forms to tag. Audit-trail test for the
+    "pluralization sweep post-MiCA-fix" commit.
+    """
+    from pathlib import Path
+    from news_watch_daemon.theme_config import load_theme
+    repo = Path(__file__).resolve().parent.parent
+    fed = load_theme(repo / "themes" / "fed_policy_path.yaml")
+    src = _fake_source(
+        "finnhub:general",
+        items=[_item("Fed signals two more rate cuts this year")],
+    )
+    conn.execute(
+        "INSERT INTO themes (theme_id, display_name, status, config_hash, "
+        "loaded_at_unix, loaded_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (fed.theme_id, fed.display_name, fed.status, fed.config_hash(), 0, "t"),
+    )
+    result = run_scrape(conn, [src], [fed], now_unix=FIXED_NOW)
+    rows = conn.execute(
+        "SELECT confidence FROM headline_theme_tags WHERE theme_id = ?",
+        (fed.theme_id,),
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["confidence"] == "primary"
+    assert result.theme_tags_inserted_total == 1
+
+
 # ---------- dedup ----------
 
 
