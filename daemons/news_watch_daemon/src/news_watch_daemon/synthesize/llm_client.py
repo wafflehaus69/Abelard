@@ -18,9 +18,18 @@ Design choices:
     adaptive thinking is the modern default for "anything remotely
     complicated."
 
-  - Streaming is OFF. Synthesis output is bounded (~2-4K tokens), well
-    under request-timeout risk. Non-streaming keeps the orchestrator
-    simpler.
+  - Streaming is ON via the SDK's `messages.stream()` context manager
+    + `.get_final_message()` helper. Non-streaming hits a 3-minute
+    server-side disconnect on cross-theme synthesis with adaptive
+    thinking (first surfaced 2026-05-14 live smoke #2:
+    `httpx.RemoteProtocolError: Server disconnected without sending a
+    response` at exactly 180s). Streaming keeps the connection alive
+    by receiving thinking-block deltas incrementally; the final
+    Message object is identical in shape so downstream parsing is
+    unchanged. Per the claude-api skill's standing recommendation:
+    "default to streaming for any request that may involve long
+    input, long output, or high max_tokens — it prevents hitting
+    request timeouts."
 
   - Client is INJECTED (caller constructs the `anthropic.Anthropic`
     instance). This module does NOT import the `anthropic` package
@@ -164,13 +173,20 @@ def call_synthesis_llm(
         SynthesisLLMError: parse failure or shape violation.
         anthropic.* exceptions: bubble up untouched.
     """
-    response = client.messages.create(
+    # Stream the response — non-streaming hits a 3-minute server
+    # disconnect on synthesis calls long enough to trigger adaptive
+    # thinking (live smoke #2, 2026-05-14). `get_final_message()`
+    # blocks until the stream completes and returns the same Message
+    # shape `create()` would have returned, so parsing below is
+    # unchanged.
+    with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
         thinking={"type": "adaptive"},
         system=payload["system"],
         messages=payload["messages"],
-    )
+    ) as stream:
+        response = stream.get_final_message()
 
     text = _extract_text_from_response(response).strip()
     if not text:

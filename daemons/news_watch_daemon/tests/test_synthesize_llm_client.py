@@ -52,17 +52,38 @@ def _response(
     )
 
 
+class _FakeStreamContext:
+    """Mimics anthropic's MessageStreamManager — yields itself on
+    __enter__, surfaces the canned final-message via .get_final_message().
+
+    The production code uses `with client.messages.stream(...) as s:
+    s.get_final_message()` after the 2026-05-14 live-smoke fix
+    switched off the non-streaming `messages.create()` path.
+    """
+    def __init__(self, response):
+        self._response = response
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def get_final_message(self):
+        return self._response
+
+
 class _FakeClient:
-    """Mock Anthropic client. Captures the last call's kwargs."""
+    """Mock Anthropic client. Captures the last stream() call's kwargs."""
 
     def __init__(self, response: SimpleNamespace):
         self.response = response
         self.last_call_kwargs: dict | None = None
-        self.messages = SimpleNamespace(create=self._create)
+        self.messages = SimpleNamespace(stream=self._stream)
 
-    def _create(self, **kwargs):
+    def _stream(self, **kwargs):
         self.last_call_kwargs = kwargs
-        return self.response
+        return _FakeStreamContext(self.response)
 
 
 # ---------- parse_synthesis_response ----------
@@ -165,6 +186,31 @@ def test_call_passes_correct_kwargs_to_sdk():
     assert kwargs["messages"] == payload["messages"]
     # Adaptive thinking — non-trivial task default per claude-api skill.
     assert kwargs["thinking"] == {"type": "adaptive"}
+
+
+def test_call_uses_streaming_path_not_create():
+    """Live smoke #2 (2026-05-14) regression pin: the synthesis call
+    MUST go through `client.messages.stream(...)` + .get_final_message(),
+    not `client.messages.create(...)`. Non-streaming hits a 3-minute
+    server-side disconnect on long synthesis calls with adaptive
+    thinking.
+
+    The _FakeClient mock only exposes `stream` — if production code
+    ever reverts to `create()`, this test will fail with AttributeError
+    before the rest of the suite even gets the chance.
+    """
+    client = _FakeClient(_response([_text_block(_valid_json())]))
+    # Streaming path is what the production code calls. If anyone
+    # refactors back to `messages.create()`, this would raise
+    # AttributeError when called against our mock.
+    assert hasattr(client.messages, "stream")
+    assert not hasattr(client.messages, "create")
+    # Sanity check: the call goes through and returns a parsed response.
+    result = call_synthesis_llm(
+        client=client, model="m", max_tokens=2048,
+        payload={"system": [], "messages": []},
+    )
+    assert isinstance(result, SynthesisResponse)
 
 
 def test_call_extracts_cache_telemetry():

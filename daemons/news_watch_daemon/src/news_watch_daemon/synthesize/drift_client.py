@@ -16,7 +16,13 @@ Adaptive thinking ENABLED — per claude-api skill defaults for
 than synthesis but still nontrivial: Haiku has to cross-reference
 candidate keywords against existing theme lists and judge tier.
 
-Streaming OFF — drift output is small (~500-1500 tokens).
+Streaming ON via `messages.stream()` + `.get_final_message()`. Mirror
+of the synthesis path's fix after live smoke #2 (2026-05-14) caught a
+3-minute server-disconnect on non-streaming long-running calls. Drift
+output is shorter than synthesis, so the risk is lower in practice,
+but matching the streaming discipline keeps the two LLM call paths
+symmetric (per the SOUL.md doctrine) and pre-empts the same failure
+mode if Haiku ever returns a slow response.
 
 The Anthropic effort parameter is OMITTED on this call path: per the
 claude-api skill, effort is supported on Opus / Sonnet 4.6 but ERRORS
@@ -145,13 +151,18 @@ def call_drift_llm(
         DriftLLMError: parse failure or shape violation.
         anthropic.* exceptions: bubble up.
     """
-    response = client.messages.create(
+    # Stream the response — mirror of llm_client.py's fix for the
+    # 3-minute server-disconnect that hit synthesis on its first
+    # live smoke (2026-05-14). Drift output is smaller, but using
+    # the same call shape keeps the two paths symmetric.
+    with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
         thinking={"type": "adaptive"},
         system=payload["system"],
         messages=payload["messages"],
-    )
+    ) as stream:
+        response = stream.get_final_message()
 
     text = _extract_text_from_response(response).strip()
     if not text:

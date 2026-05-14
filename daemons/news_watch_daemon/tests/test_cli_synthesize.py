@@ -109,17 +109,29 @@ def _insert_tagged_headline(
 # ---------- helpers for mocking the LLM ----------
 
 
+class _FakeStreamContext:
+    """Mimics anthropic's MessageStreamManager (post-2026-05-14 fix)."""
+    def __init__(self, response):
+        self._response = response
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        return False
+    def get_final_message(self):
+        return self._response
+
+
 class _FakeClient:
     """Stand-in for anthropic.Anthropic; captures last call kwargs."""
 
     def __init__(self, response):
         self.last_call_kwargs: dict | None = None
-        self.messages = SimpleNamespace(create=self._create)
+        self.messages = SimpleNamespace(stream=self._stream)
         self._response = response
 
-    def _create(self, **kwargs):
+    def _stream(self, **kwargs):
         self.last_call_kwargs = kwargs
-        return self._response
+        return _FakeStreamContext(self._response)
 
 
 def _llm_response(events: list[dict] | None = None, narrative: str = "n") -> SimpleNamespace:
