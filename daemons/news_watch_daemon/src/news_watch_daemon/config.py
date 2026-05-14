@@ -15,6 +15,9 @@ Anthropic key + theses-doc path:
                                       (default: `config/synthesis_config.yaml`
                                       adjacent to the package)
 - NEWS_WATCH_TRIGGER_LOG           — optional, default `~/.openclaw/news_watch/trigger_log.jsonl`
+- NEWS_WATCH_PROPOSALS_PATH        — optional, default `~/.openclaw/news_watch/proposals/`.
+                                      Holds pending.json (active drift proposals) and
+                                      resolved.jsonl (append-only audit trail).
 - NEWS_WATCH_THESES_PATH           — optional; absolute path to Abelard's THESES.md.
                                       Unset → synthesis runs the no-theses prompt
                                       variant and records a WARN in
@@ -114,6 +117,18 @@ def _default_trigger_log_path() -> Path:
     return Path.home() / ".openclaw" / "news_watch" / "trigger_log.jsonl"
 
 
+def _default_proposals_path() -> Path:
+    """Default drift-proposals directory: `~/.openclaw/news_watch/proposals/`.
+
+    Pass C Step 11. Holds:
+      - pending.json (active proposals, mutated by approve/reject)
+      - resolved.jsonl (append-only audit trail, never rotated)
+
+    Override via NEWS_WATCH_PROPOSALS_PATH on the deploy target.
+    """
+    return Path.home() / ".openclaw" / "news_watch" / "proposals"
+
+
 @dataclass(frozen=True)
 class Config:
     db_path: Path
@@ -130,6 +145,7 @@ class Config:
     brief_archive_path: Path = field(default_factory=_default_brief_archive_path)
     synthesis_config_path: Path = field(default_factory=_default_synthesis_config_path)
     trigger_log_path: Path = field(default_factory=_default_trigger_log_path)
+    proposals_path: Path = field(default_factory=_default_proposals_path)
     theses_path: Path | None = None
 
     def secrets(self) -> tuple[str, ...]:
@@ -288,6 +304,18 @@ class Config:
         else:
             trigger_path = _default_trigger_log_path()
 
+        # ---- Proposals directory (Pass C Step 11) ----
+
+        proposals_raw = os.environ.get("NEWS_WATCH_PROPOSALS_PATH", "").strip()
+        if proposals_raw:
+            proposals_path = Path(proposals_raw).expanduser()
+            if not proposals_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_PROPOSALS_PATH must be an absolute path; got {proposals_raw!r}"
+                )
+        else:
+            proposals_path = _default_proposals_path()
+
         # ---- Theses doc path (Pass C Step 9) ----
         # Unset is fine — synthesis runs the no-theses prompt variant and
         # records a WARN in synthesis_metadata.theses_doc_warning.
@@ -317,6 +345,7 @@ class Config:
             brief_archive_path=archive_path,
             synthesis_config_path=synth_path,
             trigger_log_path=trigger_path,
+            proposals_path=proposals_path,
             theses_path=theses_path,
         )
 

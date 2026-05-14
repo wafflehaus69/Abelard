@@ -64,6 +64,7 @@ def test_parser_has_all_top_level_commands():
     assert set(sub_action.choices.keys()) == {
         "scrape", "synthesize", "alert-check", "status",
         "themes", "theme", "headlines", "alerts", "db",
+        "proposals",
     }
 
 

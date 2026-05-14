@@ -38,6 +38,14 @@ from .http_client import HttpClient
 from .scrape.factory import build_sources
 from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, write_heartbeat
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
+from .synthesize.proposals_store import (
+    ProposalsStoreError,
+    append_resolved,
+    find_proposal,
+    read_pending,
+    remove_proposal,
+)
+from .synthesize.theme_mutator import ThemeMutationError, apply_proposal_to_theme
 from .theme_config import ThemeLoadError, load_all_themes
 
 
@@ -112,6 +120,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Days back to look (1..90). Default 7.",
     )
 
+    # ---- proposals (drift watcher review) ----
+
+    p_proposals = top.add_parser(
+        "proposals", help="Review drift-watcher keyword proposals.",
+    )
+    proposals_sub = p_proposals.add_subparsers(dest="proposals_action", required=True)
+    proposals_sub.add_parser("list", help="List all pending drift proposals.")
+    p_pshow = proposals_sub.add_parser("show", help="Show one proposal in detail.")
+    p_pshow.add_argument("proposal_id")
+    p_papprove = proposals_sub.add_parser(
+        "approve", help="Approve a proposal and append its keyword to the theme YAML.",
+    )
+    p_papprove.add_argument("proposal_id")
+    p_papprove.add_argument(
+        "--dry-run", action="store_true",
+        help="Show what WOULD change without modifying disk.",
+    )
+    p_preject = proposals_sub.add_parser(
+        "reject", help="Reject a proposal (remove from pending; log to resolved.jsonl).",
+    )
+    p_preject.add_argument("proposal_id")
+    p_preject.add_argument(
+        "--reason",
+        help="Optional free-text rationale; recorded in resolved.jsonl.",
+    )
+
     # ---- db (admin) ----
 
     p_db = top.add_parser("db", help="Database administration.")
@@ -129,6 +163,7 @@ _NESTED_DEST = {
     "theme": "theme_action",
     "headlines": "headlines_action",
     "alerts": "alerts_action",
+    "proposals": "proposals_action",
     "db": "db_action",
 }
 
@@ -382,6 +417,197 @@ def _per_source_to_dict(p: PerSourceResult) -> dict[str, Any]:
     }
 
 
+# ---------- handlers: proposals (Pass C Step 11) ----------
+
+
+def _handle_proposals_list(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    try:
+        proposals = read_pending(cfg.proposals_path)
+    except ProposalsStoreError as exc:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposals store unreadable: {exc}",
+        )
+    return build_ok(
+        {
+            "proposals_path": str(cfg.proposals_path),
+            "count": len(proposals),
+            "proposals": [
+                {
+                    "proposal_id": p.proposal_id,
+                    "theme_id": p.theme_id,
+                    "proposed_keyword": p.proposed_keyword,
+                    "suggested_tier": p.suggested_tier,
+                    "evidence_count": p.evidence_count,
+                    "generated_at": p.generated_at,
+                }
+                for p in proposals
+            ],
+        },
+        source="internal",
+    )
+
+
+def _handle_proposals_show(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    try:
+        proposal = find_proposal(cfg.proposals_path, args.proposal_id)
+    except ProposalsStoreError as exc:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposals store unreadable: {exc}",
+        )
+    if proposal is None:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposal_id {args.proposal_id!r} not found in pending",
+        )
+    return build_ok(
+        {"proposal": proposal.model_dump(mode="json")},
+        source="internal",
+    )
+
+
+def _handle_proposals_approve(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Approve a proposal: mutate the theme YAML, remove from pending,
+    record in resolved.jsonl.
+
+    On dry-run, only report what WOULD happen — no disk writes.
+    """
+    try:
+        proposal = find_proposal(cfg.proposals_path, args.proposal_id)
+    except ProposalsStoreError as exc:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposals store unreadable: {exc}",
+        )
+    if proposal is None:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposal_id {args.proposal_id!r} not found in pending",
+        )
+
+    if args.dry_run:
+        return build_ok(
+            {
+                "action": "approve",
+                "proposal_id": proposal.proposal_id,
+                "theme_id": proposal.theme_id,
+                "proposed_keyword": proposal.proposed_keyword,
+                "suggested_tier": proposal.suggested_tier,
+                "would_mutate_file": str(cfg.themes_dir / f"{proposal.theme_id}.yaml"),
+                "dry_run": True,
+                "applied": False,
+            },
+            source="internal",
+        )
+
+    # Mutate the theme YAML first — if that fails, we leave the
+    # proposal in pending so Mando can retry or reject.
+    try:
+        mutated_path = apply_proposal_to_theme(
+            cfg.themes_dir,
+            theme_id=proposal.theme_id,
+            proposed_keyword=proposal.proposed_keyword,
+            suggested_tier=proposal.suggested_tier,
+        )
+    except ThemeMutationError as exc:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"theme mutation failed: {exc}",
+        )
+
+    # Remove from pending + audit.
+    try:
+        remove_proposal(cfg.proposals_path, proposal.proposal_id)
+        append_resolved(
+            cfg.proposals_path,
+            proposal=proposal,
+            action="approve",
+            applied_to_yaml=True,
+        )
+    except ProposalsStoreError as exc:
+        # YAML was already mutated — surface the store error but the
+        # mutation is real. Mando can manually clean up pending.json.
+        return build_error(
+            status="error",
+            source="internal",
+            detail=(
+                f"theme YAML at {mutated_path} was mutated successfully, "
+                f"but proposals store update failed: {exc}. "
+                f"Manually remove proposal_id {proposal.proposal_id!r} from "
+                f"{cfg.proposals_path / 'pending.json'}."
+            ),
+        )
+
+    return build_ok(
+        {
+            "action": "approve",
+            "proposal_id": proposal.proposal_id,
+            "theme_id": proposal.theme_id,
+            "proposed_keyword": proposal.proposed_keyword,
+            "suggested_tier": proposal.suggested_tier,
+            "mutated_file": str(mutated_path),
+            "applied": True,
+        },
+        source="internal",
+    )
+
+
+def _handle_proposals_reject(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Reject a proposal: remove from pending, record in resolved.jsonl.
+
+    Does NOT mutate any theme YAML. The proposal's keyword stays out
+    of the theme; future drift cycles may propose it again unless
+    Mando explicitly added it to keywords.exclusions.
+    """
+    try:
+        proposal = find_proposal(cfg.proposals_path, args.proposal_id)
+    except ProposalsStoreError as exc:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposals store unreadable: {exc}",
+        )
+    if proposal is None:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposal_id {args.proposal_id!r} not found in pending",
+        )
+    try:
+        remove_proposal(cfg.proposals_path, proposal.proposal_id)
+        append_resolved(
+            cfg.proposals_path,
+            proposal=proposal,
+            action="reject",
+            applied_to_yaml=False,
+            reason=args.reason,
+        )
+    except ProposalsStoreError as exc:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"proposals store update failed: {exc}",
+        )
+    return build_ok(
+        {
+            "action": "reject",
+            "proposal_id": proposal.proposal_id,
+            "theme_id": proposal.theme_id,
+            "proposed_keyword": proposal.proposed_keyword,
+            "reason": args.reason,
+            "applied": False,
+        },
+        source="internal",
+    )
+
+
 def _handle_status(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
     """Show schema version, daemon heartbeats, and per-source health.
 
@@ -436,6 +662,10 @@ HANDLERS: dict[str, Handler] = {
     "themes list": _handle_themes_list,
     "status": _handle_status,
     "scrape": _handle_scrape,
+    "proposals list": _handle_proposals_list,
+    "proposals show": _handle_proposals_show,
+    "proposals approve": _handle_proposals_approve,
+    "proposals reject": _handle_proposals_reject,
 }
 
 
