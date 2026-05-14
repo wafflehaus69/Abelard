@@ -21,6 +21,7 @@ import sqlite3
 import sys
 import time
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .config import Config, ConfigError, configure_logging
@@ -38,7 +39,20 @@ from .http_client import HttpClient
 from .scrape.factory import build_sources
 from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, write_heartbeat
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
-from .synthesize.archive import ArchiveError, list_brief_ids, read_brief
+from .alert.factory import AlertSinkFactoryError, build_alert_sink
+from .synthesize.archive import ArchiveError, list_brief_ids, read_brief, write_brief
+from .synthesize.brief import (
+    Brief,
+    Dispatch,
+    SynthesisMetadata,
+    Trigger,
+    TriggerWindow,
+)
+from .synthesize.config import (
+    SynthesisConfigError,
+    SynthesisDaemonConfig,
+    load_synthesis_config,
+)
 from .synthesize.proposals_store import (
     ProposalsStoreError,
     append_resolved,
@@ -47,6 +61,17 @@ from .synthesize.proposals_store import (
     remove_proposal,
 )
 from .synthesize.theme_mutator import ThemeMutationError, apply_proposal_to_theme
+from .synthesize.cluster import ClusterInput, cluster_headlines
+from .synthesize.materiality import evaluate_materiality
+from .synthesize.synthesize import (
+    SynthesisError,
+    build_anthropic_client,
+    synthesize_brief,
+)
+from .synthesize.llm_client import SynthesisLLMError
+from .synthesize.trigger import TriggerHeadline, evaluate_gate
+from .synthesize.trigger_log import read_last_n as read_trigger_log_last_n
+from .synthesize.trigger_log import write_entry as write_trigger_log_entry
 from .theme_config import ThemeLoadError, load_all_themes
 
 
@@ -70,10 +95,59 @@ def build_parser() -> argparse.ArgumentParser:
     p_synth = top.add_parser("synthesize", help="Run synthesis for one or all themes.")
     p_synth.add_argument(
         "--theme",
-        help="Restrict synthesis to a single theme_id (default: all due themes).",
+        help=(
+            "Force a pull-trigger synthesis for a single theme_id "
+            "(bypasses the trigger gate). Default: event-trigger over all "
+            "active themes."
+        ),
+    )
+    p_synth.add_argument(
+        "--window-hours", type=int, default=_DEFAULT_SYNTHESIS_WINDOW_HOURS,
+        help=(
+            "Hours back to scan headlines + recent briefs (1..168). "
+            f"Default {_DEFAULT_SYNTHESIS_WINDOW_HOURS}."
+        ),
+    )
+    p_synth.add_argument(
+        "--dry-run", action="store_true",
+        help=(
+            "Run the pipeline up to (but not including) the Sonnet call. "
+            "Reports trigger decision + cluster count. No archive write, "
+            "no dispatch, no LLM call."
+        ),
     )
 
     top.add_parser("alert-check", help="Re-evaluate alert conditions across themes.")
+
+    # ---- alert-sink (sink verification) ----
+
+    p_alert_sink = top.add_parser(
+        "alert-sink", help="Verify the configured AlertSink transport.",
+    )
+    alert_sink_sub = p_alert_sink.add_subparsers(dest="alert_sink_action", required=True)
+    p_as_test = alert_sink_sub.add_parser(
+        "test",
+        help="Send a synthetic test brief through the configured sink.",
+    )
+    p_as_test.add_argument(
+        "--message",
+        default=None,
+        help="Custom narrative for the test brief (default: timestamped self-test).",
+    )
+
+    # ---- trigger-log (recent fires + suppressions) ----
+
+    p_trigger_log = top.add_parser(
+        "trigger-log", help="Inspect the append-only trigger-gate log.",
+    )
+    trigger_log_sub = p_trigger_log.add_subparsers(dest="trigger_log_action", required=True)
+    p_tl_tail = trigger_log_sub.add_parser(
+        "tail", help="Show the last N trigger-gate decisions (oldest-first).",
+    )
+    p_tl_tail.add_argument(
+        "--limit", type=int, default=20,
+        help="Number of entries to return (1..500). Default 20.",
+    )
 
     top.add_parser("status", help="Report daemon component heartbeats and schema version.")
 
@@ -193,6 +267,8 @@ _NESTED_DEST = {
     "alerts": "alerts_action",
     "proposals": "proposals_action",
     "briefs": "briefs_action",
+    "alert-sink": "alert_sink_action",
+    "trigger-log": "trigger_log_action",
     "db": "db_action",
 }
 
@@ -226,7 +302,6 @@ def _stub_envelope(leaf: str, detail: str) -> dict[str, Any]:
 
 
 _STUB_DETAILS: dict[str, str] = {
-    "synthesize": "implemented in synthesis brief",
     "alert-check": "implemented in alert brief",
     "theme show": "implemented in synthesis brief (depends on narrative storage)",
     "theme history": "implemented in synthesis brief",
@@ -443,6 +518,482 @@ def _per_source_to_dict(p: PerSourceResult) -> dict[str, Any]:
         "items_inserted": p.items_inserted,
         "error_detail": p.error_detail,
     }
+
+
+# ---------- handlers: synthesize (Pass C Step 13) ----------
+
+
+_DEFAULT_SYNTHESIS_WINDOW_HOURS = 4
+_DEFAULT_SYNTHESIS_MAX_TOKENS = 2048
+
+
+def _iso_from_unix(ts: int) -> str:
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _query_window_headlines(
+    conn: sqlite3.Connection,
+    *,
+    window_since_unix: int,
+    window_until_unix: int,
+) -> tuple[list[TriggerHeadline], list[ClusterInput]]:
+    """Read headlines in the synthesis window. Returns (trigger_input, cluster_input).
+
+    One round trip to headlines + one to headline_theme_tags. Both
+    inputs are derived from the same rows so the trigger gate and the
+    clustering pass agree on what's in scope.
+    """
+    rows = conn.execute(
+        "SELECT headline_id, headline, raw_source, url, "
+        "       published_at_unix, fetched_at_unix "
+        "FROM headlines "
+        "WHERE published_at_unix >= ? AND published_at_unix <= ? "
+        "ORDER BY published_at_unix DESC",
+        (window_since_unix, window_until_unix),
+    ).fetchall()
+    if not rows:
+        return [], []
+
+    ids = [r["headline_id"] for r in rows]
+    placeholders = ",".join("?" * len(ids))
+    tag_rows = conn.execute(
+        f"SELECT headline_id, theme_id FROM headline_theme_tags "
+        f"WHERE headline_id IN ({placeholders})",
+        ids,
+    ).fetchall()
+    tags_by_id: dict[str, list[str]] = {hid: [] for hid in ids}
+    for tr in tag_rows:
+        tags_by_id[tr["headline_id"]].append(tr["theme_id"])
+
+    trigger_inputs: list[TriggerHeadline] = []
+    cluster_inputs: list[ClusterInput] = []
+    for r in rows:
+        themes_for_row = tuple(tags_by_id.get(r["headline_id"], []))
+        # Trigger gate is keyed on tagged headlines only.
+        if themes_for_row:
+            trigger_inputs.append(TriggerHeadline(
+                headline_id=r["headline_id"],
+                headline=r["headline"],
+                themes=themes_for_row,
+                fetched_at_unix=r["fetched_at_unix"],
+            ))
+        # Clustering operates on all headlines (the headline can be
+        # untagged and still cluster with a tagged sibling); the
+        # orchestrator later filters clusters to the in-scope themes.
+        cluster_inputs.append(ClusterInput(
+            headline_id=r["headline_id"],
+            headline=r["headline"],
+            url=r["url"],
+            publisher=r["raw_source"],
+            published_at_unix=r["published_at_unix"],
+        ))
+    return trigger_inputs, cluster_inputs
+
+
+def _filter_clusters_to_scope(
+    clusters,  # list[Cluster]
+    *,
+    in_scope_headline_ids: set[str],
+):
+    """Keep clusters whose leader (or any member) tagged to a scoped theme.
+
+    Cheap defensive filter — Sonnet only sees clusters relevant to the
+    themes in scope. A cluster of fully-untagged headlines is dropped.
+    """
+    if not in_scope_headline_ids:
+        return []
+    kept = []
+    for c in clusters:
+        if any(m.headline_id in in_scope_headline_ids for m in c.members):
+            kept.append(c)
+    return kept
+
+
+def _handle_synthesize(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Run one synthesis cycle end-to-end.
+
+    Pipeline: cluster recent headlines → evaluate trigger gate (or
+    skip to pull-mode if --theme is set) → call Sonnet → run
+    materiality gate → write Brief to archive → dispatch via AlertSink
+    if material → append to trigger_log → return envelope.
+
+    --dry-run short-circuits before the Sonnet call and returns the
+    gate decision + cluster count. No real API call, no archive write,
+    no dispatch.
+    """
+    if not args.dry_run and not cfg.anthropic_api_key:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=(
+                "ANTHROPIC_API_KEY is not set; synthesis cannot run. "
+                "Export the key or use --dry-run to exercise the pipeline "
+                "without an LLM call."
+            ),
+        )
+
+    synth_cfg, err = _load_synthesis_config_for_cli(cfg)
+    if err is not None:
+        return err
+    assert synth_cfg is not None
+
+    try:
+        all_themes = load_all_themes(cfg.themes_dir)
+    except ThemeLoadError as exc:
+        return build_error(
+            status="error", source="internal",
+            detail=f"theme load failed: {exc}",
+        )
+    active_themes = [t for t in all_themes if t.status == "active"]
+    active_ids = {t.theme_id for t in active_themes}
+
+    pull_mode = args.theme is not None
+    if pull_mode and args.theme not in active_ids:
+        return build_error(
+            status="error", source="internal",
+            detail=(
+                f"theme {args.theme!r} is not in the active themes set; "
+                f"active themes: {sorted(active_ids)}"
+            ),
+        )
+
+    window_hours = max(1, min(168, args.window_hours))
+    now_unix = int(time.time())
+    window_since = now_unix - window_hours * 3600
+    window_until = now_unix
+
+    conn = connect(cfg.db_path)
+    try:
+        if schema_version(conn) == 0:
+            return build_error(
+                status="error", source="internal",
+                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
+            )
+
+        trigger_inputs, cluster_inputs = _query_window_headlines(
+            conn,
+            window_since_unix=window_since,
+            window_until_unix=window_until,
+        )
+    finally:
+        conn.close()
+
+    # Determine themes_in_scope + trigger object.
+    if pull_mode:
+        themes_in_scope = [args.theme]
+        trigger_obj = Trigger(
+            type="pull",
+            reason=f"pull-trigger for {args.theme}",
+            window=TriggerWindow(
+                since=_iso_from_unix(window_since),
+                until=_iso_from_unix(window_until),
+            ),
+        )
+        trigger_decision = None
+    else:
+        trigger_decision = evaluate_gate(
+            trigger_inputs,
+            config=synth_cfg.trigger_gate,
+            window_since_unix=window_since,
+            window_until_unix=window_until,
+        )
+        # Always log the gate decision, fire or suppress.
+        try:
+            write_trigger_log_entry(cfg.trigger_log_path, trigger_decision)
+        except OSError as exc:
+            # Don't fail synthesis on log-write error; surface as a warning.
+            log = logging.getLogger("news_watch_daemon.cli")
+            log.warning("trigger_log append failed: %s", exc)
+        if not trigger_decision.fire:
+            return build_ok(
+                {
+                    "trigger_decision": {
+                        "fire": False,
+                        "reason": trigger_decision.reason,
+                        "window_since_unix": window_since,
+                        "window_until_unix": window_until,
+                    },
+                    "synthesis_run": False,
+                },
+                source="internal",
+            )
+        themes_in_scope = list(trigger_decision.themes_in_scope)
+        trigger_obj = Trigger(
+            type="event",
+            reason=trigger_decision.reason,
+            window=TriggerWindow(
+                since=_iso_from_unix(window_since),
+                until=_iso_from_unix(window_until),
+            ),
+        )
+
+    # Build clusters + filter to in-scope headlines.
+    clusters = cluster_headlines(cluster_inputs)
+    in_scope_ids = {h.headline_id for h in trigger_inputs if any(
+        t in themes_in_scope for t in h.themes
+    )}
+    if pull_mode:
+        # In pull-mode the trigger gate didn't run; include every
+        # tagged headline whose theme matches the pull target.
+        in_scope_ids = {
+            h.headline_id for h in trigger_inputs if args.theme in h.themes
+        }
+    scoped_clusters = _filter_clusters_to_scope(
+        clusters, in_scope_headline_ids=in_scope_ids,
+    )
+
+    if args.dry_run:
+        return build_ok(
+            {
+                "dry_run": True,
+                "themes_in_scope": themes_in_scope,
+                "trigger_type": trigger_obj.type,
+                "trigger_reason": trigger_obj.reason,
+                "headlines_in_window": len(cluster_inputs),
+                "tagged_headlines_in_window": len(trigger_inputs),
+                "cluster_count": len(scoped_clusters),
+                "synthesis_run": False,
+            },
+            source="internal",
+        )
+
+    # Build theme briefs from active themes in scope.
+    theme_briefs: dict[str, str] = {
+        t.theme_id: t.brief for t in active_themes if t.theme_id in themes_in_scope
+    }
+
+    # Call Sonnet.
+    try:
+        client = build_anthropic_client(cfg.anthropic_api_key)
+    except SynthesisError as exc:
+        return build_error(
+            status="error", source="internal",
+            detail=f"Anthropic client construction failed: {exc}",
+        )
+
+    try:
+        brief = synthesize_brief(
+            client=client,
+            model=synth_cfg.synthesis.default_model,
+            max_tokens=_DEFAULT_SYNTHESIS_MAX_TOKENS,
+            trigger=trigger_obj,
+            themes_in_scope=themes_in_scope,
+            theme_briefs=theme_briefs,
+            clusters=scoped_clusters,
+            max_events_per_brief=synth_cfg.synthesis.max_events_per_brief,
+            theses_path=cfg.theses_path,
+        )
+    except (SynthesisError, SynthesisLLMError) as exc:
+        return build_error(
+            status="error", source="internal",
+            detail=f"synthesis call failed: {exc}",
+        )
+
+    # Materiality gate.
+    decision = evaluate_materiality(
+        brief,
+        threshold=synth_cfg.synthesis.materiality_threshold,
+        dedup_window_hours=synth_cfg.synthesis.dedup_window_hours,
+        archive_root=cfg.brief_archive_path,
+    )
+
+    # Patch brief.dispatch from the gate's verdict.
+    if decision.dispatch:
+        brief = brief.model_copy(update={"dispatch": Dispatch(alerted=True)})
+    else:
+        brief = brief.model_copy(update={"dispatch": Dispatch(
+            alerted=False, suppressed_reason=decision.reason,
+        )})
+
+    # Write to archive (always — gate suppression doesn't prevent
+    # archival; we want the audit trail).
+    try:
+        archive_path = write_brief(cfg.brief_archive_path, brief)
+    except (ArchiveError, OSError) as exc:
+        return build_error(
+            status="error", source="internal",
+            detail=f"brief archive write failed: {exc}",
+        )
+
+    # Dispatch via configured sink, if material.
+    dispatch_result_payload: dict[str, Any] | None = None
+    if decision.dispatch:
+        try:
+            sink = build_alert_sink(synth_cfg.alert_sink)
+        except AlertSinkFactoryError as exc:
+            # Sink construction failed; surface but do NOT raise — the
+            # archive write succeeded. Operator can fix sink config and
+            # re-dispatch.
+            dispatch_result_payload = {
+                "success": False,
+                "channel": None,
+                "error": f"sink construction failed: {exc}",
+            }
+        else:
+            result = sink.dispatch(brief)
+            dispatch_result_payload = {
+                "success": result.success,
+                "channel": result.channel,
+                "error": result.error,
+                "dispatched_at_unix": result.dispatched_at_unix,
+            }
+            # Re-write brief with channel + actual alerted state.
+            brief = brief.model_copy(update={"dispatch": Dispatch(
+                alerted=result.success,
+                channel=result.channel if result.success and result.channel in ("signal", "telegram_bot") else None,
+                suppressed_reason=None if result.success else f"dispatch_failed:{result.error}",
+            )})
+            try:
+                write_brief(cfg.brief_archive_path, brief)
+            except (ArchiveError, OSError):
+                # Keep the success envelope; the original brief is
+                # already on disk. Just don't crash on a second write.
+                pass
+
+    md = brief.synthesis_metadata
+    payload: dict[str, Any] = {
+        "synthesis_run": True,
+        "brief_id": brief.brief_id,
+        "archive_path": str(archive_path),
+        "themes_covered": list(brief.themes_covered),
+        "trigger": {
+            "type": trigger_obj.type,
+            "reason": trigger_obj.reason,
+        },
+        "materiality_decision": {
+            "dispatch": decision.dispatch,
+            "reason": decision.reason,
+            "above_threshold_count": decision.above_threshold_count,
+            "new_events_count": decision.new_events_count,
+            "deduped_against_brief_ids": list(decision.deduped_against_brief_ids),
+        },
+        "dispatch_result": dispatch_result_payload,
+        "telemetry": {
+            "model_used": md.model_used,
+            "input_tokens": md.input_tokens,
+            "output_tokens": md.output_tokens,
+            "cache_creation_input_tokens": md.cache_creation_input_tokens,
+            "cache_read_input_tokens": md.cache_read_input_tokens,
+        },
+        "events_count": len(brief.events),
+    }
+    if trigger_decision is not None:
+        payload["trigger_decision"] = {
+            "fire": trigger_decision.fire,
+            "reason": trigger_decision.reason,
+        }
+    return build_ok(payload, source="internal")
+
+
+# ---------- handlers: alert-sink (Pass C Step 13) ----------
+
+
+def _load_synthesis_config_for_cli(
+    cfg: Config,
+) -> tuple[SynthesisDaemonConfig | None, dict[str, Any] | None]:
+    """Load synthesis_config.yaml. On failure, return (None, error_envelope).
+
+    Helper used by `alert-sink test`, `synthesize`, and `trigger-log
+    tail` — all three need the same config + error-envelope discipline.
+    """
+    try:
+        synth_cfg = load_synthesis_config(cfg.synthesis_config_path)
+    except SynthesisConfigError as exc:
+        return None, build_error(
+            status="error",
+            source="internal",
+            detail=f"synthesis_config load failed: {exc}",
+        )
+    return synth_cfg, None
+
+
+def _handle_alert_sink_test(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Verify the configured AlertSink transport with a synthetic brief.
+
+    Builds the sink from synthesis_config.yaml, constructs a minimal
+    Brief (narrative is either --message or a timestamped self-test
+    line), calls dispatch(), surfaces DispatchResult.
+    """
+    synth_cfg, err = _load_synthesis_config_for_cli(cfg)
+    if err is not None:
+        return err
+    assert synth_cfg is not None
+
+    try:
+        sink = build_alert_sink(synth_cfg.alert_sink)
+    except AlertSinkFactoryError as exc:
+        return build_error(
+            status="error",
+            source="internal",
+            detail=f"alert sink construction failed: {exc}",
+        )
+
+    now = datetime.now(timezone.utc)
+    iso = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    narrative = (
+        args.message
+        if args.message
+        else f"News Watch Daemon alert-sink self-test at {iso}."
+    )
+
+    # Construct a minimal valid Brief. The sink only reads narrative +
+    # brief_id + themes_covered; the rest is required by the schema
+    # but is not transport-visible.
+    test_brief = Brief(
+        brief_id=Brief.new_brief_id(now),
+        generated_at=iso,
+        trigger=Trigger(
+            type="pull", reason="alert-sink self-test",
+            window=TriggerWindow(since=iso, until=iso),
+        ),
+        themes_covered=["alert_sink_self_test"],
+        events=[],
+        narrative=narrative,
+        dispatch=Dispatch(alerted=False),
+        synthesis_metadata=SynthesisMetadata(
+            model_used="(no model — self-test)",
+            theses_doc_available=False,
+        ),
+    )
+
+    result = sink.dispatch(test_brief)
+    payload = {
+        "sink_type": synth_cfg.alert_sink.type,
+        "channel_name": sink.channel_name,
+        "test_brief_id": test_brief.brief_id,
+        "narrative": narrative,
+        "success": result.success,
+        "channel": result.channel,
+        "error": result.error,
+        "dispatched_at_unix": result.dispatched_at_unix,
+    }
+    if result.success:
+        return build_ok(payload, source="internal")
+    return build_error(
+        status="error",
+        source="internal",
+        detail=f"alert-sink dispatch failed: {result.error}",
+        data=payload,
+    )
+
+
+# ---------- handlers: trigger-log (Pass C Step 13) ----------
+
+
+def _handle_trigger_log_tail(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Show the last N trigger-gate decisions (oldest-first within window)."""
+    limit = max(1, min(500, args.limit))
+    log_path = cfg.trigger_log_path
+    entries = read_trigger_log_last_n(log_path, limit)
+    return build_ok(
+        {
+            "trigger_log_path": str(log_path),
+            "limit": limit,
+            "count": len(entries),
+            "entries": entries,
+        },
+        source="internal",
+    )
 
 
 # ---------- handlers: briefs (Pass C Step 12) ----------
@@ -883,6 +1434,9 @@ HANDLERS: dict[str, Handler] = {
     "briefs list": _handle_briefs_list,
     "briefs show": _handle_briefs_show,
     "headlines recent": _handle_headlines_recent,
+    "synthesize": _handle_synthesize,
+    "alert-sink test": _handle_alert_sink_test,
+    "trigger-log tail": _handle_trigger_log_tail,
 }
 
 

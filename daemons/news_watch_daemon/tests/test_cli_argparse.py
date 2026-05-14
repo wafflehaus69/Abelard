@@ -45,6 +45,8 @@ ALL_LEAVES = {
     "proposals reject",
     "briefs list",
     "briefs show",
+    "alert-sink test",
+    "trigger-log tail",
 }
 
 
@@ -70,7 +72,7 @@ def test_parser_has_all_top_level_commands():
     assert set(sub_action.choices.keys()) == {
         "scrape", "synthesize", "alert-check", "status",
         "themes", "theme", "headlines", "alerts", "db",
-        "proposals", "briefs",
+        "proposals", "briefs", "alert-sink", "trigger-log",
     }
 
 
@@ -141,8 +143,6 @@ def test_every_known_leaf_is_either_real_or_stub():
 
 
 @pytest.mark.parametrize("argv", [
-    ["synthesize"],
-    ["synthesize", "--theme", "us_iran_escalation"],
     ["alert-check"],
     ["theme", "show", "us_iran_escalation"],
     ["theme", "history", "us_iran_escalation"],
@@ -161,7 +161,9 @@ def test_stub_commands_emit_not_implemented_envelope(env, capsys, argv):
 
 
 def test_stub_writes_nothing_else_to_stdout(env, capsys):
-    main(["synthesize"])
+    """Pick any still-stubbed leaf — `alert-check` is the cleanest one
+    that doesn't depend on theme YAML state."""
+    main(["alert-check"])
     captured = capsys.readouterr()
     # One trailing newline after the JSON envelope is acceptable.
     out = captured.out.rstrip("\n")
