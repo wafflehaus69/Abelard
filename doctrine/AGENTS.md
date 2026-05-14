@@ -374,3 +374,202 @@ the record. Do not paper over the error.
 
 If you find yourself about to edit a file in the third category, stop
 and ask.
+
+## Daemons
+
+Inventory of personal daemons under my read interface. Each entry
+carries the same shape so future daemons (Price Daemon next) extend
+this section cleanly.
+
+Daemons live in the Abelard monorepo at
+`/mnt/c/Users/mdiba/Code/Abelard/daemons/` (Orban / WSL view).
+Repo: `https://github.com/wafflehaus69/Abelard.git`.
+
+### News Watch Daemon
+
+**Status:** Operational. Pass C shipped (2026-05-14).
+**Model tier:** Sonnet 4.6 (synthesis judgment), Haiku 4.5 (drift
+detection). The model-ID source of truth is the `claude-api` skill,
+not memory — when a newer model ships, update theme YAMLs +
+`synthesis_config.yaml` + the Pydantic default.
+**Repository location:** `daemons/news_watch_daemon/` in the Abelard
+monorepo (`github.com/wafflehaus69/Abelard`).
+**Doctrine:** `daemons/news_watch_daemon/SOUL.md` — read this when
+making any change that touches the daemon's behavior, write surfaces,
+or test discipline.
+**Read interface I use:** `daemons/news_watch_daemon/SKILL.md` — the
+output contract, command catalog, and usage patterns.
+
+#### What it is
+
+A narrative-state engine. Scrapes news (Finnhub + RSS + Telegram
+channels @CIG_telegram / @bloomberg / @trading / @chainlinkbreadcrumbs),
+tags against the six active themes (us_iran_escalation, fed_policy_path,
+ai_capex_cycle, china_us_decoupling, russia_ukraine_war,
+tokenized_finance_infrastructure), clusters near-duplicate wire
+variants, synthesizes Briefs via Sonnet on trigger fire, dispatches
+material Briefs to Mando's Signal Note-to-Self via signal-cli linked
+device on his real phone.
+
+#### What it produces for me
+
+Structured JSON Briefs at `~/.openclaw/news_watch/briefs/YYYY-MM/*.json`.
+Each Brief carries: clustered events with materiality scores, source
+headlines with publisher/url/timestamp, thesis_links (when THESES.md
+is readable), Sonnet's narrative prose, dispatch state with
+suppression reasons, synthesis metadata including cache telemetry.
+
+I read these Briefs via the daemon's CLI, not by parsing the JSON
+files directly. The CLI is the contract; the file layout is the
+daemon's implementation detail.
+
+#### What it does NOT do
+
+- Does not predict prices or recommend trades.
+- Does not auto-apply drift proposals — every theme-keyword change
+  passes through Mando's approval.
+- Does not retry failed Sonnet calls; SDK errors surface in the
+  envelope.
+- Does not read filings (that's Research Daemon's scope).
+- Does not read intraday prices (Price Daemon's scope, future).
+
+#### Write surfaces (operator-facing only — not mine)
+
+Two write surfaces in the daemon. Both are operator-facing. I do not
+invoke either of them.
+
+1. **SignalSink** — dispatches Briefs to Mando's Signal Note-to-Self.
+   The daemon's only external write. Hardened with destination
+   validation and a paranoid grep test.
+2. **theme_mutator** — appends approved drift keywords to theme YAMLs.
+   Gated through `proposals approve` (operator command). Round-trip
+   safe via ruamel.yaml with rollback on validation failure.
+
+#### My read commands
+
+| Mando's question | My command |
+|---|---|
+| "What did the daemon alert today?" | `news-watch-daemon briefs list --limit 20` then `briefs show` on entries that look material |
+| "What's happening with [ticker]?" | `news-watch-daemon headlines recent --ticker X --hours N` |
+| "What's the daemon seeing on [theme]?" | `news-watch-daemon briefs list --theme X` then `headlines recent --theme X` if needed |
+| "Why didn't the daemon alert on X?" | `news-watch-daemon trigger-log tail --limit 50` |
+| "What's the drift watcher proposing?" | `news-watch-daemon proposals list` then `proposals show <id>` |
+| "Is the daemon healthy?" | `news-watch-daemon status` |
+
+The daemon's SKILL.md has the full pattern catalog. Consult it when
+in doubt.
+
+#### Operational notes
+
+- The daemon runs continuously on Mando's always-on host (Orban now,
+  Mac mini after migration).
+- Brief archive at `~/.openclaw/news_watch/briefs/` is append-only
+  and the source of truth — Signal is a notification copy.
+- Trigger log at `~/.openclaw/news_watch/trigger_log.jsonl` is
+  append-only, never rotated, never pruned. Historical record of
+  what looked interesting at any given timestamp.
+- ANTHROPIC_API_KEY required in daemon environment for synthesis;
+  not required for the read commands I use.
+
+#### Relationship to my doctrine
+
+The News Watch Daemon serves the **material-not-quiet interruption
+bar** in my MEMORY.md: it alerts when something material happens,
+stays silent otherwise. The materiality gate is calibrated to err
+toward false negatives (one missed alert) over false positives
+(noise-trained dismissal of the channel).
+
+The daemon's outputs feed my **cascade frame** (WORLDVIEW.md) — Briefs
+identify events that move named theses, including thesis-breakers, so
+my reasoning operates against fresh state rather than stale
+assumptions.
+
+When Mando asks "what's changed," the daemon's archive is the first
+place I look.
+
+### Research Daemon
+
+**Status:** Operational. Predates News Watch; may warrant a retrofit
+SOUL.md when convenient.
+**Model tier:** None. Read-only fetcher; no LLM in the daemon itself.
+The judgment layer is me, against the JSON envelopes the daemon emits.
+**Repository location:** `daemons/research_daemon/` in the Abelard
+monorepo (`github.com/wafflehaus69/Abelard`).
+**Doctrine:** No SOUL.md yet (pre-dates the SOUL.md-as-first-class
+discipline). Tracked as a retrofit candidate.
+**Read interface I use:** `daemons/research_daemon/SKILL.md` — the
+output contract, command catalog, and usage patterns.
+
+#### What it is
+
+Read-only market and SEC research. Wraps Finnhub (free tier, 60 req/min)
+for quotes / news / insider trades / 13F holdings, and SEC EDGAR for
+filings (10-K, 10-Q, 8-K, DEF 14A). Two monitoring sweeps on top of
+the deep-read calls compact output to "what changed / what's material"
+across 10–40 tickers.
+
+#### What it produces for me
+
+Every subcommand emits one JSON envelope on stdout with
+`{status, data_completeness, data, source, timestamp, error_detail,
+warnings[]}`. Logs on stderr. Exit 0 iff `status == "ok"` (partial
+completeness still exits 0). Warning `reason` is a closed enum —
+pattern-match, don't parse prose.
+
+I parse the JSON and reason. The daemon does not summarize, interpret,
+or cache. Every call hits the upstream fresh.
+
+#### What it does NOT do
+
+- Does not provide real-time intraday tick data or options/futures/
+  crypto chains.
+- Does not provide analyst estimates, earnings dates, or guidance.
+- Does not have write capability of any kind. Read-only by design.
+- Does not summarize or interpret filings — body text is returned, I
+  locate sections myself within byte-offset pagination.
+- Does not expose Finnhub volume on quotes (free-tier gap; standing
+  warning documents it — don't treat as failure).
+
+#### Write surfaces
+
+None. Read-only daemon by design.
+
+#### My read commands
+
+| Mando's question | My command |
+|---|---|
+| "What's [ticker] trading at?" | `research-daemon fetch-quote X` |
+| "What's the news on [ticker]?" | `research-daemon fetch-news X --days 7` |
+| "Any insider activity on [ticker]?" | `research-daemon fetch-insider-transactions X --days 30` |
+| "Who's holding [ticker]?" | `research-daemon fetch-institutional-holdings X --top-n 10 --num-quarters 2` |
+| "Get me [ticker]'s latest 10-K." | `research-daemon fetch-sec-filing X 10-K --limit 1 --include-body` |
+| "Any 8-Ks lately on [ticker]?" | `research-daemon fetch-sec-filing X 8-K --limit 10` |
+| "Sweep the watchlist for institutional moves." | `research-daemon detect-institutional-changes T1 T2 T3 --min-change-pct 10` |
+| "Sweep the watchlist for material insider buys." | `research-daemon detect-insider-activity T1 T2 T3 --lookback-days 30 --min-value-usd 100000` |
+
+The daemon's SKILL.md has the full pattern catalog including
+morning-sweep and deep-dive templates.
+
+#### Operational notes
+
+- Rate limit: Finnhub free tier is 60 req/minute. Daemon retries 429s
+  with exponential backoff, but large sweeps can still hit the wall —
+  space them or stage across minutes.
+- EDGAR requires a descriptive `User-Agent`. `EDGAR_USER_AGENT` env
+  var is required at daemon startup.
+- 13F filings lag ~45 days behind quarter-end by construction. Weight
+  `reported_at` + `latest_filed_at` before time-sensitive use.
+- Required env: `FINNHUB_API_KEY`, `EDGAR_USER_AGENT`. Daemon fails
+  loudly on startup without them.
+
+#### Relationship to my doctrine
+
+Research Daemon is the primary-source layer for AGENTS.md's research
+discipline. SEC filings and Form 4 trades come back as structured
+primary-source data, not aggregator scrape. When Mando asks about a
+position, this is where I start.
+
+Insider activity and 13F changes are the read layer for the
+portfolio-monitoring side of THESES.md — institutional QoQ moves on a
+watchlist name surface as catalyst signal; material insider buys on a
+held name are position-management signal.
