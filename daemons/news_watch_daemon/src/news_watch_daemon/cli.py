@@ -524,7 +524,11 @@ def _per_source_to_dict(p: PerSourceResult) -> dict[str, Any]:
 
 
 _DEFAULT_SYNTHESIS_WINDOW_HOURS = 4
-_DEFAULT_SYNTHESIS_MAX_TOKENS = 2048
+# NOTE: max_tokens is no longer a CLI-side constant — it's read from
+# synthesis_config.yaml's synthesis.default_max_tokens (default 8192).
+# The first live smoke (2026-05-14) hit a budget-exhaustion bug at
+# 2048 where adaptive thinking consumed the entire output budget.
+# Routing through config makes per-deploy tuning the standard knob.
 
 
 def _iso_from_unix(ts: int) -> str:
@@ -775,7 +779,7 @@ def _handle_synthesize(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
         brief = synthesize_brief(
             client=client,
             model=synth_cfg.synthesis.default_model,
-            max_tokens=_DEFAULT_SYNTHESIS_MAX_TOKENS,
+            max_tokens=synth_cfg.synthesis.default_max_tokens,
             trigger=trigger_obj,
             themes_in_scope=themes_in_scope,
             theme_briefs=theme_briefs,

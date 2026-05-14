@@ -40,6 +40,16 @@ synthesis:
   # "everything is interesting" failure mode.
   max_events_per_brief: 8
 
+  # API-level output budget for the synthesis call. Adaptive thinking
+  # (always on for Sonnet) counts against this budget — if it's too
+  # low, the model exhausts tokens in reasoning blocks and returns a
+  # content list with thinking blocks only, no text. The parser then
+  # raises SynthesisLLMError with stop_reason='max_tokens' diagnostics.
+  # First live smoke (2026-05-14) hit this at 2048; 8192 leaves
+  # comfortable headroom for 8 events + narrative + full thinking.
+  # Sonnet 4.6 supports up to 64K output.
+  default_max_tokens: 8192
+
 
 trigger_gate:
   # Minimum number of new tagged headlines for a single theme to fire

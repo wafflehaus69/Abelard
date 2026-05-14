@@ -97,8 +97,14 @@ def main() -> int:
         help="Number of sequential calls (cache verification). Default: 2.",
     )
     parser.add_argument(
-        "--max-tokens", type=int, default=2048,
-        help="Output cap per call. Default: 2048.",
+        "--max-tokens", type=int, default=4096,
+        help=(
+            "API-level output cap per call. Default: 4096. Adaptive "
+            "thinking counts against this budget; the synthesis side "
+            "hit a 2048-too-low bug on its first live smoke "
+            "(2026-05-14). Drift output is smaller than synthesis, "
+            "so 4096 is sufficient headroom for Haiku."
+        ),
     )
     parser.add_argument(
         "--max-proposals", type=int, default=8,

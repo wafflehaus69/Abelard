@@ -155,9 +155,27 @@ def call_drift_llm(
 
     text = _extract_text_from_response(response).strip()
     if not text:
+        # Mirror of llm_client.py's diagnostic surface — the first
+        # live-smoke (2026-05-14, synthesis path) showed adaptive
+        # thinking can exhaust max_tokens before emitting any text.
+        # Drift hasn't hit this in the wild yet, but the request shape
+        # is identical (adaptive thinking + JSON output); the same
+        # diagnostic fields prevent a future drift failure from being
+        # opaque.
+        stop_reason = getattr(response, "stop_reason", "unknown")
+        usage = getattr(response, "usage", None)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        block_types = [
+            getattr(b, "type", "unknown")
+            for b in (getattr(response, "content", None) or [])
+        ]
         raise DriftLLMError(
             "drift response had no text content "
-            "(all blocks were non-text or content was empty)"
+            f"(stop_reason={stop_reason!r}, output_tokens={output_tokens}, "
+            f"max_tokens_requested={max_tokens}, block_types={block_types!r}). "
+            "If stop_reason='max_tokens' and block_types is all 'thinking', "
+            "increase drift_watcher.max_tokens or pass a higher max_tokens "
+            "to the orchestrator."
         )
 
     proposals = parse_drift_response(text)

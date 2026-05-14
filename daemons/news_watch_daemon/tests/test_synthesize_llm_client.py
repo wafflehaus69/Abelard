@@ -262,6 +262,103 @@ def test_call_empty_content_raises():
         )
 
 
+# ---------- diagnostic detail on no-text-blocks (live-smoke 2026-05-14) ----
+
+
+def _budget_exhausted_response(max_tokens_consumed: int = 2048) -> SimpleNamespace:
+    """The shape Anthropic returns when adaptive thinking exhausts the
+    output budget before emitting any text block. Captured from the
+    first live smoke failure (2026-05-14, Pass C close).
+
+    Pinned here as a fixture so any regression on the diagnostic
+    surface (or on the error-construction logic) is caught by
+    hermetic tests.
+    """
+    return SimpleNamespace(
+        content=[_thinking_block("long internal reasoning ...")],
+        model="claude-sonnet-4-6-20251029",
+        stop_reason="max_tokens",
+        usage=SimpleNamespace(
+            input_tokens=2400,
+            output_tokens=max_tokens_consumed,
+            cache_creation_input_tokens=1800,
+            cache_read_input_tokens=0,
+        ),
+    )
+
+
+def test_no_text_error_surfaces_stop_reason():
+    """Error message must include stop_reason — operators diagnose
+    'max_tokens' vs 'end_turn' vs 'refusal' from the envelope alone."""
+    client = _FakeClient(_budget_exhausted_response())
+    with pytest.raises(SynthesisLLMError, match="stop_reason='max_tokens'"):
+        call_synthesis_llm(
+            client=client, model="m", max_tokens=2048,
+            payload={"system": [], "messages": []},
+        )
+
+
+def test_no_text_error_surfaces_output_tokens_used():
+    client = _FakeClient(_budget_exhausted_response(max_tokens_consumed=2048))
+    with pytest.raises(SynthesisLLMError, match="output_tokens=2048"):
+        call_synthesis_llm(
+            client=client, model="m", max_tokens=2048,
+            payload={"system": [], "messages": []},
+        )
+
+
+def test_no_text_error_surfaces_max_tokens_requested():
+    """The CALLER's max_tokens ceiling must appear in the error so
+    operators see the gap between request and consumption."""
+    client = _FakeClient(_budget_exhausted_response(max_tokens_consumed=2048))
+    with pytest.raises(SynthesisLLMError, match="max_tokens_requested=2048"):
+        call_synthesis_llm(
+            client=client, model="m", max_tokens=2048,
+            payload={"system": [], "messages": []},
+        )
+
+
+def test_no_text_error_surfaces_block_types():
+    """Block types list lets operators see 'only thinking blocks
+    came back' without instrumenting a live call."""
+    client = _FakeClient(_budget_exhausted_response())
+    with pytest.raises(SynthesisLLMError, match=r"block_types=\['thinking'\]"):
+        call_synthesis_llm(
+            client=client, model="m", max_tokens=2048,
+            payload={"system": [], "messages": []},
+        )
+
+
+def test_no_text_error_includes_remediation_hint():
+    """The error must point at the tuning knob — operators shouldn't
+    have to read the source to know where to bump max_tokens."""
+    client = _FakeClient(_budget_exhausted_response())
+    with pytest.raises(
+        SynthesisLLMError,
+        match="increase synthesis.default_max_tokens",
+    ):
+        call_synthesis_llm(
+            client=client, model="m", max_tokens=2048,
+            payload={"system": [], "messages": []},
+        )
+
+
+def test_no_text_error_when_stop_reason_missing():
+    """If the SDK response lacks stop_reason (older SDK / mock without
+    the attr), the error still surfaces with stop_reason='unknown'."""
+    response = SimpleNamespace(
+        content=[_thinking_block()],
+        model="m",
+        # No stop_reason attribute.
+    )
+    client = _FakeClient(response)
+    with pytest.raises(SynthesisLLMError, match="stop_reason='unknown'"):
+        call_synthesis_llm(
+            client=client, model="m", max_tokens=2048,
+            payload={"system": [], "messages": []},
+        )
+
+
 def test_call_missing_usage_returns_zero_telemetry():
     """If the SDK response lacks `usage` (mock without it), counts default to 0."""
     response = SimpleNamespace(

@@ -154,8 +154,14 @@ def main() -> int:
                         help="Anthropic model id. Default: claude-sonnet-4-6.")
     parser.add_argument("--calls", type=int, default=3,
                         help="Number of sequential calls (cache verification). Default: 3.")
-    parser.add_argument("--max-tokens", type=int, default=2048,
-                        help="Output cap per call. Default: 2048.")
+    parser.add_argument("--max-tokens", type=int, default=8192,
+                        help=(
+                            "API-level output cap per call. Default: 8192. "
+                            "Adaptive thinking counts against this budget; "
+                            "first live smoke (2026-05-14) demonstrated 2048 "
+                            "is too low — model exhausts tokens in thinking "
+                            "blocks. 8192 gives comfortable headroom."
+                        ))
     parser.add_argument("--max-events", type=int, default=8,
                         help="max_events_per_brief constraint. Default: 8.")
     args = parser.parse_args()

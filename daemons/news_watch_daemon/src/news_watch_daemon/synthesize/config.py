@@ -135,6 +135,20 @@ class SynthesisConfig(BaseModel):
 
     `default_model` is the model ID for the synthesis call (Step 9).
     Per-theme override via each theme YAML's `synthesis.model` field.
+
+    `default_max_tokens` is the API-level output cap for the synthesis
+    call. With adaptive thinking enabled on Sonnet 4.6, thinking blocks
+    count against this budget; if it's too low, the model exhausts
+    tokens in reasoning before emitting the JSON output and returns
+    a content list with thinking blocks only — no text block. The
+    parser then raises `SynthesisLLMError("synthesis response had no
+    text content ...")` with diagnostic detail.
+
+    The first live-smoke (2026-05-14, Pass C close) hit this bug at
+    max_tokens=2048: cross-theme cluster + 8-event JSON output + full
+    adaptive-thinking trace blew through the budget. Default raised to
+    8192 (Sonnet 4.6 supports up to 64K output, so the headroom is
+    cheap). Operator can tune per-deploy.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -143,6 +157,7 @@ class SynthesisConfig(BaseModel):
     materiality_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
     dedup_window_hours: int = Field(default=6, gt=0)
     max_events_per_brief: int = Field(default=8, gt=0)
+    default_max_tokens: int = Field(default=8192, gt=0)
 
 
 # ---------- drift_watcher (Pass C Step 10) ----------

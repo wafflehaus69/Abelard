@@ -174,9 +174,26 @@ def call_synthesis_llm(
 
     text = _extract_text_from_response(response).strip()
     if not text:
+        # Diagnostic detail — the first live-smoke failure (2026-05-14)
+        # hit this path because max_tokens=2048 was exhausted in
+        # adaptive thinking blocks before the model emitted text.
+        # Surface stop_reason + output_tokens + block types so future
+        # failures of the same shape are diagnosable from the error
+        # envelope alone, without needing to instrument live calls.
+        stop_reason = getattr(response, "stop_reason", "unknown")
+        usage = getattr(response, "usage", None)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        block_types = [
+            getattr(b, "type", "unknown")
+            for b in (getattr(response, "content", None) or [])
+        ]
         raise SynthesisLLMError(
             "synthesis response had no text content "
-            "(all blocks were non-text or content was empty)"
+            f"(stop_reason={stop_reason!r}, output_tokens={output_tokens}, "
+            f"max_tokens_requested={max_tokens}, block_types={block_types!r}). "
+            "If stop_reason='max_tokens' and block_types is all 'thinking', "
+            "increase synthesis.default_max_tokens in synthesis_config.yaml "
+            "or pass a higher max_tokens to the orchestrator."
         )
 
     events, narrative = parse_synthesis_response(text)
