@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from news_watch_daemon.synthesize.config import (
+    DriftWatcherConfig,
     SynthesisConfigError,
     SynthesisDaemonConfig,
     TriggerGateConfig,
@@ -50,6 +51,40 @@ def test_trigger_gate_empty_phrase_rejected():
 def test_trigger_gate_extra_field_forbidden():
     with pytest.raises(Exception):
         TriggerGateConfig.model_validate({"surprise": 1})
+
+
+# ---------- DriftWatcherConfig validation (Step 10) ----------
+
+
+def test_drift_watcher_defaults():
+    cfg = DriftWatcherConfig()
+    assert cfg.default_model == "claude-haiku-4-5"
+    assert cfg.max_proposals_per_batch == 8
+    assert cfg.min_evidence_count == 3
+
+
+def test_drift_watcher_zero_max_proposals_rejected():
+    with pytest.raises(Exception):
+        DriftWatcherConfig(max_proposals_per_batch=0)
+
+
+def test_drift_watcher_zero_min_evidence_rejected():
+    with pytest.raises(Exception):
+        DriftWatcherConfig(min_evidence_count=0)
+
+
+def test_drift_watcher_extra_field_forbidden():
+    with pytest.raises(Exception):
+        DriftWatcherConfig.model_validate({"surprise": 1})
+
+
+def test_drift_watcher_typo_in_yaml_fails(tmp_path):
+    """Sub-models keep extra='forbid' — typos within drift_watcher fail loud."""
+    p = _write_yaml(tmp_path, {
+        "drift_watcher": {"default_modle": "claude-haiku-4-5"},  # typo
+    })
+    with pytest.raises(SynthesisConfigError):
+        load_synthesis_config(p)
 
 
 # ---------- load_synthesis_config ----------
@@ -99,15 +134,17 @@ def test_load_empty_yaml_uses_defaults(tmp_path):
 
 def test_unknown_top_level_section_ignored(tmp_path):
     """Forward-compat: synthesis_config.yaml can declare sections that
-    later Pass C steps will model. Top-level extra='ignore' tolerates
-    them; once a section is modeled, sub-models tighten to 'forbid'.
+    later Pass C steps (or future post-Pass-C calibration steps) will
+    model. Top-level extra='ignore' tolerates them; once a section is
+    modeled, sub-models tighten to 'forbid'.
 
-    drift_watcher is not yet modeled (lands at Step 10) — use it as
-    the unknown-section example.
+    drift_watcher modeled at Step 10 — use a synthetic future section
+    here so the forward-compat property keeps a probe even after every
+    current Pass C section has been modeled.
     """
     p = _write_yaml(tmp_path, {
         "trigger_gate": {"delta_threshold_default": 4},
-        "drift_watcher": {"future_field_for_step_10": 1},
+        "future_calibration_section": {"some_field": 1},
     })
     cfg = load_synthesis_config(p)
     assert cfg.trigger_gate.delta_threshold_default == 4
@@ -130,3 +167,8 @@ def test_bundled_synthesis_config_loads_cleanly():
     assert cfg.trigger_gate.delta_threshold_overrides == {"us_iran_escalation": 5}
     assert "ceasefire" in cfg.trigger_gate.high_signal_phrases
     assert cfg.trigger_gate.cross_theme_always_triggers is True
+    # drift_watcher (Step 10): bundled defaults should match the
+    # Pydantic class defaults.
+    assert cfg.drift_watcher.default_model == "claude-haiku-4-5"
+    assert cfg.drift_watcher.max_proposals_per_batch == 8
+    assert cfg.drift_watcher.min_evidence_count == 3

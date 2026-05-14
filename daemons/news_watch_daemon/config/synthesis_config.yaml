@@ -5,12 +5,12 @@
 # This bundled copy is the default; the deploy-target copy is what
 # runs in production.
 #
-# Pass C lands sections incrementally:
-#   Step 4  →  trigger_gate          (this commit)
+# Pass C section coverage:
+#   Step 4  →  trigger_gate
+#   Step 6/7 →  alert_sink
 #   Step 8  →  synthesis (materiality)
 #   Step 9  →  synthesis (model)
 #   Step 10 →  drift_watcher
-#   Step 6  →  alert_sink
 #
 # Sections not yet modeled are tolerated by Pydantic (extra="ignore" at
 # top level). Sections that ARE modeled enforce extra="forbid" inside.
@@ -101,3 +101,22 @@ alert_sink:
   telegram_bot:
     bot_token_env: NWD_TG_BOT_TOKEN
     chat_id_env: NWD_TG_BOT_CHAT_ID
+
+
+drift_watcher:
+  # Anthropic model id for the drift-watcher call. Haiku is the
+  # tier-down model: cheap, fast, with adaptive thinking on individual
+  # proposals. Step 10 commit. Per the claude-api skill snapshot:
+  # claude-haiku-4-5 is the current Haiku family-name id.
+  default_model: "claude-haiku-4-5"
+
+  # Hard cap on proposals Haiku may emit per batch. Prevents a
+  # flood-of-proposals failure mode and keeps the
+  # `proposals approve|reject` review queue manageable. PLACEHOLDER;
+  # §14 calibration may tune.
+  max_proposals_per_batch: 8
+
+  # Orchestrator-side floor on evidence_count — the prompt itself asks
+  # for >= 3, this is the defense-in-depth filter so a misbehaving
+  # response can't slip a singleton proposal through.
+  min_evidence_count: 3

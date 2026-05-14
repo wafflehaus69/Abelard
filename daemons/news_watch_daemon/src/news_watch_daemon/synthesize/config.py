@@ -145,6 +145,32 @@ class SynthesisConfig(BaseModel):
     max_events_per_brief: int = Field(default=8, gt=0)
 
 
+# ---------- drift_watcher (Pass C Step 10) ----------
+
+
+class DriftWatcherConfig(BaseModel):
+    """Drift-watcher (Haiku) settings.
+
+    `default_model` is the Anthropic model ID for the drift call. Haiku
+    is cheap + fast — drift detection is lower-judgment than synthesis
+    but still benefits from adaptive thinking on individual proposals.
+
+    `max_proposals_per_batch` caps what Haiku may emit per run.
+    Prevents flood-of-proposals failure mode and keeps the
+    `proposals approve|reject` review queue manageable.
+
+    `min_evidence_count` is a defensive floor — the prompt also asks
+    for `>=3`; this is the orchestrator-side filter so a misbehaving
+    Haiku response can't slip a singleton proposal through.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_model: str = "claude-haiku-4-5"
+    max_proposals_per_batch: int = Field(default=8, gt=0)
+    min_evidence_count: int = Field(default=3, gt=0)
+
+
 # ---------- top-level synthesis config ----------
 
 
@@ -152,9 +178,14 @@ class SynthesisDaemonConfig(BaseModel):
     """Top-level shape of synthesis_config.yaml.
 
     `extra="ignore"` allows the bundled YAML to declare sections that
-    later Pass C steps will model (synthesis, drift_watcher). Once a
-    section is modeled, its sub-model enforces `extra="forbid"` to
-    catch typos.
+    later Pass C steps will model. Once a section is modeled, its
+    sub-model enforces `extra="forbid"` to catch typos.
+
+    All known sections at Pass C close:
+      - trigger_gate     (Step 4)
+      - alert_sink       (Step 6/7)
+      - synthesis        (Step 8/9)
+      - drift_watcher    (Step 10)
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -162,6 +193,7 @@ class SynthesisDaemonConfig(BaseModel):
     trigger_gate: TriggerGateConfig = Field(default_factory=TriggerGateConfig)
     alert_sink: AlertSinkConfig = Field(default_factory=AlertSinkConfig)
     synthesis: SynthesisConfig = Field(default_factory=SynthesisConfig)
+    drift_watcher: DriftWatcherConfig = Field(default_factory=DriftWatcherConfig)
 
 
 class SynthesisConfigError(RuntimeError):
@@ -194,6 +226,7 @@ def load_synthesis_config(path: Path) -> SynthesisDaemonConfig:
 
 __all__ = [
     "AlertSinkConfig",
+    "DriftWatcherConfig",
     "SignalSinkConfig",
     "SynthesisConfig",
     "SynthesisConfigError",

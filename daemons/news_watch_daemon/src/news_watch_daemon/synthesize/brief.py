@@ -115,6 +115,11 @@ class DriftProposal(BaseModel):
 
     `notes` (Pass C Step 0 addition) captures Haiku's rationale for the
     suggested_tier choice — triage convenience when Mando reviews.
+
+    `proposal_id` format (Step 10): `dp-{ISO-dashed-timestamp}-{8-char-hex}`,
+    matching the Brief ID pattern. The orchestrator mints these — Haiku
+    never generates them, so a malicious or malformed response can't
+    spoof an existing proposal_id.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -127,6 +132,22 @@ class DriftProposal(BaseModel):
     sample_headlines: list[str] = Field(default_factory=list)
     notes: Optional[str] = None
     generated_at: str
+
+    @staticmethod
+    def new_proposal_id(when: datetime | None = None) -> str:
+        """Mint a fresh proposal_id: `dp-{iso-dashed}-{8-char-hex}`.
+
+        Matches Brief.new_brief_id() format — same filesystem-safe
+        timestamp (dashes for colons) + 8-char disambiguation suffix.
+        """
+        dt = when if when is not None else datetime.now(timezone.utc)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        iso = dt.strftime("%Y-%m-%dT%H-%M-%SZ")
+        suffix = uuid.uuid4().hex[:8]
+        return f"dp-{iso}-{suffix}"
 
 
 class SynthesisMetadata(BaseModel):
