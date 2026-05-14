@@ -117,7 +117,7 @@ tracked_entities:
 synthesis:
   cadence_hours: 4
   min_headlines_to_synthesize: 5
-  model: claude-sonnet-4-7
+  model: claude-sonnet-4-6
   max_tokens_output: 1000
 
 alerts:

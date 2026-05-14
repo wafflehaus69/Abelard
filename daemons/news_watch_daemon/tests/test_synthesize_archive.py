@@ -37,7 +37,7 @@ def _make_brief(brief_id: str = "nwd-2026-05-13T14-32-08Z-a1b2c3d4", narrative: 
         narrative=narrative,
         dispatch=Dispatch(alerted=False),
         synthesis_metadata=SynthesisMetadata(
-            model_used="claude-sonnet-4-7",
+            model_used="claude-sonnet-4-6",
             theses_doc_available=True,
         ),
     )

@@ -1,7 +1,8 @@
 """Configuration loaded once from environment variables.
 
 Pass A added Finnhub and HTTP fields; Pass B added the Telegram triple;
-Pass C Step 0 adds the tracked-tickers path:
+Pass C Step 0 added the tracked-tickers path; Pass C Step 9 adds the
+Anthropic key + theses-doc path:
 
 - NEWS_WATCH_DB_PATH               — required, absolute path to the SQLite database
 - NEWS_WATCH_THEMES_DIR            — optional, directory of `*.yaml` theme files
@@ -9,9 +10,20 @@ Pass C Step 0 adds the tracked-tickers path:
 - NEWS_WATCH_TRACKED_TICKERS_PATH  — optional, path to `tracked_tickers.yaml`
                                       (default: `config/tracked_tickers.yaml`
                                       adjacent to the package)
+- NEWS_WATCH_BRIEF_ARCHIVE         — optional, default `~/.openclaw/news_watch/briefs`
+- NEWS_WATCH_SYNTHESIS_CONFIG      — optional, path to `synthesis_config.yaml`
+                                      (default: `config/synthesis_config.yaml`
+                                      adjacent to the package)
+- NEWS_WATCH_TRIGGER_LOG           — optional, default `~/.openclaw/news_watch/trigger_log.jsonl`
+- NEWS_WATCH_THESES_PATH           — optional; absolute path to Abelard's THESES.md.
+                                      Unset → synthesis runs the no-theses prompt
+                                      variant and records a WARN in
+                                      synthesis_metadata.theses_doc_warning.
 - LOG_LEVEL                        — optional, default INFO
 - FINNHUB_API_KEY                  — optional at load time; the Finnhub source plugin
                                       errors cleanly if missing at use time
+- ANTHROPIC_API_KEY                — optional at load time; the synthesis layer
+                                      errors cleanly at use time if missing
 - NEWS_WATCH_USER_AGENT            — optional; default "news-watch-daemon/<version>"
 - NEWS_WATCH_HTTP_TIMEOUT_S        — optional, default 10.0; positive float
 - TELEGRAM_API_ID                  — optional; positive int if set (from my.telegram.org)
@@ -20,9 +32,10 @@ Pass C Step 0 adds the tracked-tickers path:
                                       one-time `python -m news_watch_daemon.telegram_setup`
 
 The _RedactingFilter scrubs any secret returned by `secrets()` from log
-output. FINNHUB_API_KEY, TELEGRAM_API_HASH, and TELEGRAM_SESSION_STRING
-join that set when present. TELEGRAM_API_ID is not redacted — it's a
-numeric identifier publicly visible on the my.telegram.org page.
+output. FINNHUB_API_KEY, ANTHROPIC_API_KEY, TELEGRAM_API_HASH, and
+TELEGRAM_SESSION_STRING join that set when present. TELEGRAM_API_ID is
+not redacted — it's a numeric identifier publicly visible on the
+my.telegram.org page.
 
 Fails loudly on missing required values — the daemon should never start
 with half-configuration.
@@ -107,6 +120,7 @@ class Config:
     log_level: str
     themes_dir: Path = field(default_factory=_default_themes_dir)
     finnhub_api_key: str | None = None
+    anthropic_api_key: str | None = None
     http_user_agent: str = DEFAULT_USER_AGENT
     http_default_timeout_s: float = DEFAULT_HTTP_TIMEOUT_S
     telegram_api_id: int | None = None
@@ -116,17 +130,20 @@ class Config:
     brief_archive_path: Path = field(default_factory=_default_brief_archive_path)
     synthesis_config_path: Path = field(default_factory=_default_synthesis_config_path)
     trigger_log_path: Path = field(default_factory=_default_trigger_log_path)
+    theses_path: Path | None = None
 
     def secrets(self) -> tuple[str, ...]:
         """Values that must be scrubbed from log output.
 
-        Currently: Finnhub API key, Telegram api_hash, Telegram session
-        string. TELEGRAM_API_ID is not included — it is a numeric
-        identifier publicly visible on my.telegram.org.
+        Currently: Finnhub API key, Anthropic API key, Telegram api_hash,
+        Telegram session string. TELEGRAM_API_ID is not included — it is
+        a numeric identifier publicly visible on my.telegram.org.
         """
         s: list[str] = []
         if self.finnhub_api_key:
             s.append(self.finnhub_api_key)
+        if self.anthropic_api_key:
+            s.append(self.anthropic_api_key)
         if self.telegram_api_hash:
             s.append(self.telegram_api_hash)
         if self.telegram_session_string:
@@ -173,6 +190,7 @@ class Config:
             themes_dir = _default_themes_dir()
 
         finnhub_key = os.environ.get("FINNHUB_API_KEY", "").strip() or None
+        anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "").strip() or None
 
         user_agent = os.environ.get("NEWS_WATCH_USER_AGENT", "").strip() or DEFAULT_USER_AGENT
 
@@ -270,11 +288,26 @@ class Config:
         else:
             trigger_path = _default_trigger_log_path()
 
+        # ---- Theses doc path (Pass C Step 9) ----
+        # Unset is fine — synthesis runs the no-theses prompt variant and
+        # records a WARN in synthesis_metadata.theses_doc_warning.
+        theses_raw = os.environ.get("NEWS_WATCH_THESES_PATH", "").strip()
+        theses_path: Path | None
+        if theses_raw:
+            theses_path = Path(theses_raw).expanduser()
+            if not theses_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_THESES_PATH must be an absolute path; got {theses_raw!r}"
+                )
+        else:
+            theses_path = None
+
         return cls(
             db_path=db_path,
             log_level=log_level,
             themes_dir=themes_dir,
             finnhub_api_key=finnhub_key,
+            anthropic_api_key=anthropic_key,
             http_user_agent=user_agent,
             http_default_timeout_s=timeout,
             telegram_api_id=tg_api_id,
@@ -284,6 +317,7 @@ class Config:
             brief_archive_path=archive_path,
             synthesis_config_path=synth_path,
             trigger_log_path=trigger_path,
+            theses_path=theses_path,
         )
 
 

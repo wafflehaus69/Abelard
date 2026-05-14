@@ -63,7 +63,7 @@ def _brief(narrative: str = "Brief body for test.") -> Brief:
         narrative=narrative,
         dispatch=Dispatch(alerted=False),
         synthesis_metadata=SynthesisMetadata(
-            model_used="claude-sonnet-4-7", theses_doc_available=True,
+            model_used="claude-sonnet-4-6", theses_doc_available=True,
         ),
     )
 

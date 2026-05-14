@@ -139,7 +139,7 @@ class SynthesisConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    default_model: str = "claude-sonnet-4-7"
+    default_model: str = "claude-sonnet-4-6"
     materiality_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
     dedup_window_hours: int = Field(default=6, gt=0)
     max_events_per_brief: int = Field(default=8, gt=0)

@@ -17,10 +17,15 @@
 
 synthesis:
   # Default model for the synthesis call (Step 9). Per-theme override
-  # via each theme YAML's `synthesis.model` field. At build time the
-  # claude-api skill resolves the exact dated model id (e.g.
-  # claude-sonnet-4-7-YYYYMMDD); this string is the family-name fallback.
-  default_model: "claude-sonnet-4-7"
+  # via each theme YAML's `synthesis.model` field.
+  #
+  # Model-ID note: the Pass C brief specified "Sonnet 4.7", but as of
+  # the claude-api skill snapshot consulted at Step 9 there is no
+  # public Sonnet 4.7 — the current Sonnet model id is
+  # `claude-sonnet-4-6`. (Opus has a 4.7; Sonnet's latest is 4.6.) The
+  # daemon defers to whatever the claude-api skill reports current at
+  # build time. When Sonnet 4.7 ships, bump this string.
+  default_model: "claude-sonnet-4-6"
 
   # PLACEHOLDER (§14 calibration). Events scoring below this on
   # Sonnet's self-rated materiality are filtered out by the gate.

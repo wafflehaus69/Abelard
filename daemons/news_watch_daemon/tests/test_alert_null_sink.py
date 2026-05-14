@@ -27,7 +27,7 @@ def _brief(narrative: str = "test brief") -> Brief:
         narrative=narrative,
         dispatch=Dispatch(alerted=False),
         synthesis_metadata=SynthesisMetadata(
-            model_used="claude-sonnet-4-7",
+            model_used="claude-sonnet-4-6",
             theses_doc_available=False,
         ),
     )

@@ -98,7 +98,7 @@ class Synthesis(BaseModel):
 
     cadence_hours: int = Field(default=4, gt=0)
     min_headlines_to_synthesize: int = Field(default=5, gt=0)
-    model: str = Field(default="claude-sonnet-4-7", min_length=1)
+    model: str = Field(default="claude-sonnet-4-6", min_length=1)
     max_tokens_output: int = Field(default=1000, gt=0)
 
 

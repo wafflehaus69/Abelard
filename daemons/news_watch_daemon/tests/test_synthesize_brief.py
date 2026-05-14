@@ -35,7 +35,7 @@ def _minimal_brief() -> Brief:
         narrative="No material events in window.",
         dispatch=Dispatch(alerted=False, suppressed_reason="below_materiality_threshold"),
         synthesis_metadata=SynthesisMetadata(
-            model_used="claude-sonnet-4-7",
+            model_used="claude-sonnet-4-6",
             theses_doc_available=True,
             theses_doc_path="/x/theses.md",
         ),

@@ -89,7 +89,7 @@ def _valid_payload() -> dict:
 def test_minimal_valid_theme_constructs():
     theme = ThemeConfig.model_validate(_valid_payload())
     assert theme.synthesis.cadence_hours == 4
-    assert theme.synthesis.model == "claude-sonnet-4-7"
+    assert theme.synthesis.model == "claude-sonnet-4-6"
     assert theme.alerts.velocity_spike_multiplier == 3.0
 
 
