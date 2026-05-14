@@ -136,6 +136,19 @@ change that touches `alert/` or `synthesize/theme_mutator.py`.
   `budget_tokens` (capped well below max_tokens) post-calibration if
   output quality warrants the cost. The `effort` parameter is also
   omitted — it errors on Haiku 4.5 per the same skill snapshot.
+- **Epistemic discipline against confirmation bias.** Encoded in
+  `prompt.SYSTEM_PROMPT`'s `[EPISTEMIC DISCIPLINE]` section after
+  the first-smoke output (2026-05-14) directed 4 confirm + 4
+  ambiguous + 0 break across 8 events. Mando's framing privileges
+  cascade and escalation; without explicit counter-pressure the
+  model defaults to confirming that framing. The section instructs:
+  consider the strongest counter-reading before tagging confirm;
+  treat positioning by escalation- AND de-escalation-talking actors
+  symmetrically; default toward break/ambiguous when readings are
+  in equal weight (false confirms compound, false breaks
+  self-correct); reread if 6+ of 8 events direct confirm in a
+  single cycle. Pinned by `test_synthesize_prompt.py` —
+  silent erosion at a future prompt edit will fail the build.
 - **Model-ID source of truth: the `claude-api` skill, not the brief.**
   Step 9 pinned `claude-sonnet-4-6` (the brief specified "Sonnet 4.7",
   which doesn't exist as a public model). When `claude-api` reports a

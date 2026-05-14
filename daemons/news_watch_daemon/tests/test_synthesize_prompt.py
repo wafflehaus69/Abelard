@@ -73,6 +73,60 @@ def test_system_prompt_forbids_invented_events():
     assert "training data" in SYSTEM_PROMPT or "training-data" in SYSTEM_PROMPT
 
 
+# ---------- [EPISTEMIC DISCIPLINE] section (2026-05-14 architect directive) ----
+
+
+def test_system_prompt_has_epistemic_discipline_section():
+    """First-smoke output (4 confirm + 4 ambiguous + 0 break across 8
+    events) revealed that the prompt was confirmation-bias-friendly:
+    Sonnet read every event through the cascade frame because nothing
+    in the prompt told it to resist Mando's own framing.
+
+    Mando's architect directive: encode counter-reading discipline +
+    direction-default-toward-break + compounding-false-confirms
+    asymmetry. Pin the section so future prompt edits can't silently
+    drop it."""
+    assert "[EPISTEMIC DISCIPLINE]" in SYSTEM_PROMPT
+
+
+def test_system_prompt_warns_against_confirming_mando_framing():
+    """The doctrine: 'you are NOT here to confirm Mando's framing of
+    the world. You are here to test it.' Pin both halves."""
+    assert "NOT here to confirm" in SYSTEM_PROMPT
+    assert "test it" in SYSTEM_PROMPT
+
+
+def test_system_prompt_requires_counter_reading_for_confirm():
+    """Every confirm-direction tag must have considered the strongest
+    counter-reading."""
+    assert "counter-reading" in SYSTEM_PROMPT.lower()
+    assert "strongest counter-reading" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_states_fog_of_war_both_directions():
+    """Symmetry: actors talking the war up have interests; actors
+    talking it down have interests too."""
+    assert "Fog-of-War" in SYSTEM_PROMPT
+    assert "BOTH directions" in SYSTEM_PROMPT
+
+
+def test_system_prompt_states_direction_default_toward_break():
+    """When a single event has both readings in equal weight, lean
+    toward break/ambiguous, not confirm."""
+    # The doctrine itself.
+    assert "lean toward" in SYSTEM_PROMPT.lower()
+    # The compounding-vs-self-correcting asymmetry.
+    assert "compound" in SYSTEM_PROMPT.lower()
+    assert "self-correct" in SYSTEM_PROMPT.lower() or "self correct" in SYSTEM_PROMPT.lower()
+
+
+def test_system_prompt_states_six_of_eight_confirm_audit_rule():
+    """The audit floor: if 6+ of 8 events direct 'confirm', reread."""
+    # Look for either the exact "6 or more" phrasing or the
+    # numeric pattern.
+    assert "6 or more" in SYSTEM_PROMPT or "6/8" in SYSTEM_PROMPT or "6 of 8" in SYSTEM_PROMPT
+
+
 # ---------- build_system_blocks: caching shape ----------
 
 
