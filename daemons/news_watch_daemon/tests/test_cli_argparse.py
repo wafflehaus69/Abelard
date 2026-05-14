@@ -39,6 +39,12 @@ ALL_LEAVES = {
     "alerts recent",
     "db init",
     "db migrate",
+    "proposals list",
+    "proposals show",
+    "proposals approve",
+    "proposals reject",
+    "briefs list",
+    "briefs show",
 }
 
 
@@ -64,7 +70,7 @@ def test_parser_has_all_top_level_commands():
     assert set(sub_action.choices.keys()) == {
         "scrape", "synthesize", "alert-check", "status",
         "themes", "theme", "headlines", "alerts", "db",
-        "proposals",
+        "proposals", "briefs",
     }
 
 
@@ -140,7 +146,6 @@ def test_every_known_leaf_is_either_real_or_stub():
     ["alert-check"],
     ["theme", "show", "us_iran_escalation"],
     ["theme", "history", "us_iran_escalation"],
-    ["headlines", "recent"],
     ["alerts", "recent"],
 ])
 def test_stub_commands_emit_not_implemented_envelope(env, capsys, argv):

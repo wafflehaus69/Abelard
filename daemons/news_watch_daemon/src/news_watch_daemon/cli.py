@@ -38,6 +38,7 @@ from .http_client import HttpClient
 from .scrape.factory import build_sources
 from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, write_heartbeat
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
+from .synthesize.archive import ArchiveError, list_brief_ids, read_brief
 from .synthesize.proposals_store import (
     ProposalsStoreError,
     append_resolved,
@@ -106,9 +107,36 @@ def build_parser() -> argparse.ArgumentParser:
     p_h_recent = headlines_sub.add_parser("recent", help="Recent headlines, optionally by theme.")
     p_h_recent.add_argument("--theme", help="Filter to one theme_id.")
     p_h_recent.add_argument(
+        "--ticker",
+        help=(
+            "Filter to headlines whose tickers_json contains this symbol "
+            "(matches both tracked-list and cashtag extractions)."
+        ),
+    )
+    p_h_recent.add_argument(
         "--hours", type=int, default=24,
         help="Hours back to look (1..168). Default 24.",
     )
+    p_h_recent.add_argument(
+        "--limit", type=int, default=50,
+        help="Maximum headlines to return (1..500). Default 50.",
+    )
+
+    # ---- briefs (Abelard read-access) ----
+
+    p_briefs = top.add_parser("briefs", help="Inspect archived Briefs.")
+    briefs_sub = p_briefs.add_subparsers(dest="briefs_action", required=True)
+    p_b_list = briefs_sub.add_parser("list", help="List recent briefs (summary view).")
+    p_b_list.add_argument(
+        "--limit", type=int, default=30,
+        help="Maximum briefs to return (1..500). Default 30.",
+    )
+    p_b_list.add_argument(
+        "--theme",
+        help="Filter to briefs whose themes_covered includes this theme_id.",
+    )
+    p_b_show = briefs_sub.add_parser("show", help="Show one brief's full payload.")
+    p_b_show.add_argument("brief_id")
 
     # ---- alerts ----
 
@@ -164,6 +192,7 @@ _NESTED_DEST = {
     "headlines": "headlines_action",
     "alerts": "alerts_action",
     "proposals": "proposals_action",
+    "briefs": "briefs_action",
     "db": "db_action",
 }
 
@@ -201,7 +230,6 @@ _STUB_DETAILS: dict[str, str] = {
     "alert-check": "implemented in alert brief",
     "theme show": "implemented in synthesis brief (depends on narrative storage)",
     "theme history": "implemented in synthesis brief",
-    "headlines recent": "implemented after `headlines recent` query work",
     "alerts recent": "implemented in alert brief",
 }
 
@@ -415,6 +443,192 @@ def _per_source_to_dict(p: PerSourceResult) -> dict[str, Any]:
         "items_inserted": p.items_inserted,
         "error_detail": p.error_detail,
     }
+
+
+# ---------- handlers: briefs (Pass C Step 12) ----------
+
+
+def _brief_summary(brief: Any) -> dict[str, Any]:
+    """Project a Brief into the compact summary shape used by `briefs list`.
+
+    Full Brief JSONs can run 1-10 KB; `briefs list` returns up to 500
+    summaries so the envelope stays inspectable.
+    """
+    max_mat = max((e.materiality_score for e in brief.events), default=0.0)
+    return {
+        "brief_id": brief.brief_id,
+        "generated_at": brief.generated_at,
+        "themes_covered": list(brief.themes_covered),
+        "events_count": len(brief.events),
+        "max_materiality_score": round(max_mat, 3),
+        "alerted": brief.dispatch.alerted,
+        "channel": brief.dispatch.channel,
+        "suppressed_reason": brief.dispatch.suppressed_reason,
+    }
+
+
+def _handle_briefs_list(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    limit = max(1, min(500, args.limit))
+    archive_root = cfg.brief_archive_path
+    warnings: list[dict[str, Any]] = []
+
+    # Walk newest-first; load each Brief; project to the summary view.
+    # If a brief fails to load (corrupt JSON or schema drift), surface
+    # one warning per failure but keep going — Abelard should still get
+    # the readable subset.
+    summaries: list[dict[str, Any]] = []
+    seen = 0
+    for brief_id in list_brief_ids(archive_root):
+        try:
+            brief = read_brief(archive_root, brief_id)
+        except ArchiveError as exc:
+            warnings.append(make_warning(
+                field="briefs",
+                reason="parse_error",
+                source="internal",
+                detail=f"brief {brief_id!r} unreadable: {exc}",
+            ))
+            continue
+        if args.theme and args.theme not in brief.themes_covered:
+            continue
+        summaries.append(_brief_summary(brief))
+        seen += 1
+        if seen >= limit:
+            break
+
+    completeness = "partial" if warnings else "complete"
+    return build_ok(
+        {
+            "archive_path": str(archive_root),
+            "count": len(summaries),
+            "limit": limit,
+            "filter_theme": args.theme,
+            "briefs": summaries,
+        },
+        source="internal",
+        data_completeness=completeness,
+        warnings=warnings,
+    )
+
+
+def _handle_briefs_show(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    try:
+        brief = read_brief(cfg.brief_archive_path, args.brief_id)
+    except ArchiveError as exc:
+        return build_error(
+            status="not_found" if "not found" in str(exc) else "error",
+            source="internal",
+            detail=str(exc),
+        )
+    return build_ok(
+        {"brief": brief.model_dump(mode="json")},
+        source="internal",
+    )
+
+
+# ---------- handlers: headlines (Pass C Step 12 — `recent` made real) ----
+
+
+def _handle_headlines_recent(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Recent headlines with optional theme + ticker + hours filters.
+
+    --ticker filter uses JSON-quoted substring match against tickers_json,
+    so it matches BOTH tracked-list extractions (Pass C Step 0) and
+    cashtag extractions (same column). Pattern is `"<SYM>"` quoted to
+    avoid `AAPL` matching inside `BAAPL`.
+    """
+    hours = max(1, min(168, args.hours))
+    limit = max(1, min(500, args.limit))
+    since_unix = int(time.time()) - hours * 3600
+
+    sql = (
+        "SELECT h.headline_id, h.source, h.raw_source, h.headline, h.url, "
+        "       h.published_at, h.published_at_unix, h.tickers_json, h.entities_json "
+        "FROM headlines h "
+    )
+    params: list[Any] = []
+    where_clauses: list[str] = ["h.published_at_unix >= ?"]
+    params.append(since_unix)
+
+    if args.theme:
+        sql += (
+            "INNER JOIN headline_theme_tags t "
+            "  ON t.headline_id = h.headline_id "
+        )
+        where_clauses.append("t.theme_id = ?")
+        params.append(args.theme)
+
+    if args.ticker:
+        # JSON-quoted substring match — robust against substring collisions
+        # (e.g. "AAPL" matching inside "BAAPL"). Both tracked-list and
+        # cashtag extractions write to tickers_json with the symbol quoted.
+        where_clauses.append('h.tickers_json LIKE ?')
+        params.append(f'%"{args.ticker}"%')
+
+    sql += "WHERE " + " AND ".join(where_clauses)
+    sql += " ORDER BY h.published_at_unix DESC LIMIT ?"
+    params.append(limit)
+
+    conn = connect(cfg.db_path)
+    try:
+        if schema_version(conn) == 0:
+            return build_error(
+                status="error",
+                source="internal",
+                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
+            )
+        rows = conn.execute(sql, params).fetchall()
+        # Pull theme tags per headline in one extra round trip; cheaper
+        # than N+1 selects, simple enough not to need a separate index.
+        ids = [r["headline_id"] for r in rows]
+        tags_by_id: dict[str, list[str]] = {hid: [] for hid in ids}
+        if ids:
+            placeholders = ",".join("?" * len(ids))
+            tag_rows = conn.execute(
+                f"SELECT headline_id, theme_id "
+                f"FROM headline_theme_tags WHERE headline_id IN ({placeholders}) "
+                f"ORDER BY headline_id, theme_id",
+                ids,
+            ).fetchall()
+            for tr in tag_rows:
+                tags_by_id[tr["headline_id"]].append(tr["theme_id"])
+    finally:
+        conn.close()
+
+    headlines = []
+    for r in rows:
+        try:
+            tickers = json.loads(r["tickers_json"]) if r["tickers_json"] else []
+        except json.JSONDecodeError:
+            tickers = []
+        try:
+            entities = json.loads(r["entities_json"]) if r["entities_json"] else {}
+        except json.JSONDecodeError:
+            entities = {}
+        headlines.append({
+            "headline_id": r["headline_id"],
+            "source": r["source"],
+            "publisher": r["raw_source"],
+            "headline": r["headline"],
+            "url": r["url"],
+            "published_at": r["published_at"],
+            "themes": tags_by_id.get(r["headline_id"], []),
+            "tickers": tickers,
+            "entities": entities,
+        })
+
+    return build_ok(
+        {
+            "since_unix": since_unix,
+            "since_hours": hours,
+            "filter_theme": args.theme,
+            "filter_ticker": args.ticker,
+            "count": len(headlines),
+            "limit": limit,
+            "headlines": headlines,
+        },
+        source="internal",
+    )
 
 
 # ---------- handlers: proposals (Pass C Step 11) ----------
@@ -666,6 +880,9 @@ HANDLERS: dict[str, Handler] = {
     "proposals show": _handle_proposals_show,
     "proposals approve": _handle_proposals_approve,
     "proposals reject": _handle_proposals_reject,
+    "briefs list": _handle_briefs_list,
+    "briefs show": _handle_briefs_show,
+    "headlines recent": _handle_headlines_recent,
 }
 
 
