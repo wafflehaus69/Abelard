@@ -151,14 +151,17 @@ def call_drift_llm(
         DriftLLMError: parse failure or shape violation.
         anthropic.* exceptions: bubble up.
     """
-    # Stream the response — mirror of llm_client.py's fix for the
-    # 3-minute server-disconnect that hit synthesis on its first
-    # live smoke (2026-05-14). Drift output is smaller, but using
-    # the same call shape keeps the two paths symmetric.
+    # Stream the response + thinking disabled — mirror of llm_client.py
+    # after live smokes #2 and #3 (2026-05-14): streaming dodges the
+    # 3-minute server disconnect, and disabling thinking prevents the
+    # model from consuming the entire output budget on internal
+    # reasoning. Drift is a structured-output task like synthesis;
+    # the prompt encodes the judgment (cross-tier check, evidence
+    # floor, hard rules), so direct emission is the right call.
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        thinking={"type": "adaptive"},
+        thinking={"type": "disabled"},
         system=payload["system"],
         messages=payload["messages"],
     ) as stream:

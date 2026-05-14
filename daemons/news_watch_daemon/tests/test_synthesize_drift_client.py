@@ -143,7 +143,9 @@ def test_call_passes_correct_kwargs_to_sdk():
     k = client.last_call_kwargs
     assert k["model"] == "claude-haiku-4-5"
     assert k["max_tokens"] == 1024
-    assert k["thinking"] == {"type": "adaptive"}
+    # Drift mirrors synthesis: thinking DISABLED after live smoke #3
+    # (2026-05-14). Structured-output task; judgment lives in the prompt.
+    assert k["thinking"] == {"type": "disabled"}
     assert k["system"] == payload["system"]
     assert k["messages"] == payload["messages"]
 

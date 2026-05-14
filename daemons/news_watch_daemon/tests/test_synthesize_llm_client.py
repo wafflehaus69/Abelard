@@ -184,8 +184,12 @@ def test_call_passes_correct_kwargs_to_sdk():
     assert kwargs["max_tokens"] == 2048
     assert kwargs["system"] == payload["system"]
     assert kwargs["messages"] == payload["messages"]
-    # Adaptive thinking — non-trivial task default per claude-api skill.
-    assert kwargs["thinking"] == {"type": "adaptive"}
+    # Thinking is DISABLED on synthesis — live smoke #3 (2026-05-14)
+    # showed adaptive thinking consumed the entire output budget on a
+    # structured-JSON task. Regression pin: any reintroduction of
+    # adaptive thinking must update this assertion deliberately + add
+    # a `budget_tokens` cap so output emission has guaranteed headroom.
+    assert kwargs["thinking"] == {"type": "disabled"}
 
 
 def test_call_uses_streaming_path_not_create():

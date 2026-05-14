@@ -12,11 +12,16 @@ Pass C Step 9. Thin shell around the Anthropic Messages API:
 
 Design choices:
 
-  - Adaptive thinking is ENABLED (`thinking={"type": "adaptive"}`).
-    Synthesis is non-trivial — materiality scoring + thesis linking +
-    source-headline selection all benefit. Per the claude-api skill,
-    adaptive thinking is the modern default for "anything remotely
-    complicated."
+  - Thinking is DISABLED (`thinking={"type": "disabled"}`). The
+    claude-api skill recommends adaptive thinking for "anything
+    remotely complicated" — but live smoke #3 (2026-05-14) showed
+    adaptive thinking consumes the entire output budget on a
+    structured-JSON task like synthesis, leaving no room for emission.
+    Synthesis is a STRUCTURED task: the judgment is encoded in the
+    prompt (materiality tiers, hard rules, output schema). Sonnet 4.6
+    emits the JSON directly without an internal reasoning pass.
+    Reinstate adaptive (or fixed `budget_tokens`) post-calibration if
+    output quality warrants the cost.
 
   - Streaming is ON via the SDK's `messages.stream()` context manager
     + `.get_final_message()` helper. Non-streaming hits a 3-minute
@@ -174,15 +179,27 @@ def call_synthesis_llm(
         anthropic.* exceptions: bubble up untouched.
     """
     # Stream the response — non-streaming hits a 3-minute server
-    # disconnect on synthesis calls long enough to trigger adaptive
-    # thinking (live smoke #2, 2026-05-14). `get_final_message()`
-    # blocks until the stream completes and returns the same Message
-    # shape `create()` would have returned, so parsing below is
-    # unchanged.
+    # disconnect on long-running calls (live smoke #2, 2026-05-14).
+    # `get_final_message()` blocks until the stream completes and
+    # returns the same Message shape `create()` would have returned,
+    # so parsing below is unchanged.
+    #
+    # Thinking is DISABLED, not adaptive. Live smoke #3 (2026-05-14)
+    # surfaced an adaptive-thinking pathology: the model consumed the
+    # entire 8K output budget on thinking blocks and emitted no text
+    # (stop_reason='max_tokens', block_types=['thinking']). The
+    # claude-api skill recommends adaptive thinking for "anything
+    # remotely complicated" — but synthesis is a STRUCTURED task. The
+    # judgment lives in the prompt (materiality tiers, hard rules,
+    # output schema); Sonnet 4.6 emits the JSON directly without an
+    # internal reasoning pass. If post-calibration we want reasoning
+    # back, switch to `thinking={"type": "enabled", "budget_tokens":
+    # N}` with N capped well below max_tokens so the output gets
+    # guaranteed headroom.
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        thinking={"type": "adaptive"},
+        thinking={"type": "disabled"},
         system=payload["system"],
         messages=payload["messages"],
     ) as stream:

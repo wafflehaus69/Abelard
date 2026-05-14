@@ -125,10 +125,17 @@ change that touches `alert/` or `synthesize/theme_mutator.py`.
   `DispatchResult.channel` are free strings; `Brief.dispatch.channel`
   is the closed `Literal["signal", "telegram_bot"]`. Production sinks
   return the exact literal; mapping happens at the orchestrator.
-- **Adaptive thinking, no `effort` on Haiku.** Synthesis (Sonnet 4.6)
-  enables `thinking={"type": "adaptive"}`; the `effort` parameter is
-  omitted on the drift call because it errors on Haiku 4.5 per the
-  `claude-api` skill snapshot.
+- **Thinking disabled on both LLM call paths.** Initial design used
+  adaptive thinking per the claude-api skill's recommendation for
+  "anything remotely complicated." Live smoke #3 (2026-05-14) showed
+  adaptive thinking consumes the entire output budget on a
+  structured-JSON task — model emits only thinking blocks, no text.
+  Both synthesis and drift now run `thinking={"type": "disabled"}`:
+  the judgment lives in the prompt (materiality tiers, hard rules,
+  output schema), not in opaque reasoning. Reinstate with explicit
+  `budget_tokens` (capped well below max_tokens) post-calibration if
+  output quality warrants the cost. The `effort` parameter is also
+  omitted — it errors on Haiku 4.5 per the same skill snapshot.
 - **Model-ID source of truth: the `claude-api` skill, not the brief.**
   Step 9 pinned `claude-sonnet-4-6` (the brief specified "Sonnet 4.7",
   which doesn't exist as a public model). When `claude-api` reports a
