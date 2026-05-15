@@ -4,37 +4,32 @@ status: active
 created_at: 2026-05-12
 
 brief: |
-  Tracks the trajectory of U.S.–Iran conflict and its cascade effects on
-  commodities (oil, fertilizer feedstock, grains), defense procurement,
-  and emerging-market risk. The thesis is that supply-chain cascades
-  from kinetic events reprice fertilizer (urea, ammonia, potash),
-  industrial gases, and defense primes faster than equity markets
-  currently reflect.
+  Tracks the state of U.S.–Iran relations across kinetic, diplomatic,
+  economic, and proxy dimensions. The relationship can move toward
+  intensified conflict, sustained equilibrium, or normalization — all
+  three are real possibilities and all three produce material events.
 
-  Vocabulary note: the discourse has hardened from "tensions" and
-  "escalation" framing to "Iran war" as the operative term across
-  major outlets. The synthesis layer should treat "Iran war" as the
-  current consensus framing while remaining aware that the theme_id
-  retains the older "escalation" naming for continuity. Track
-  vocabulary shifts as themselves a signal — if framing softens back
-  toward "tensions" or moves to "ceasefire," that's narrative-shift
-  evidence worth surfacing.
+  Material events include, with equal weight in either direction:
+    - Kinetic actions and the absence/reversal of kinetic actions
+    - Diplomatic statements, openings, closures, signed agreements
+    - Sanctions imposed, modified, lifted, or evaded
+    - Named-principal statements that move conflict-or-resolution probability
+    - Proxy activity in regional theaters (Iraq, Yemen, Lebanon, Syria, Gaza)
+    - Cascade effects on oil supply, shipping insurance, defense
+      procurement, central bank reaction functions
+    - Accessibility of the Strait of Hormuz — open passage, threats to
+      closure, actual interruption, or restoration of normal transit
 
-  Material signals: military movements, sanctions changes, diplomatic
-  breakdowns or progress, oil infrastructure attacks, statements from
-  named principals (Khamenei, IRGC leadership, U.S. SecDef, SecState,
-  CENTCOM commander, Pezeshkian), proxy actions (Houthi, Hezbollah,
-  PMF), nuclear program developments, Strait of Hormuz tanker activity,
-  and any movement on ceasefire frameworks.
+  Fog of War doctrine applies symmetrically. Statements from any side —
+  Iranian, U.S., European, Gulf — are positioning until matched by
+  deeds. Hawkish commentary and dovish commentary are both produced by
+  interested parties. Confirmation requires evidence of action, not
+  evidence of intent.
 
-  Noise: routine diplomatic statements, anniversary commentary, op-eds
-  without new information, retail sentiment posts, generic war-fatigue
-  pieces. The synthesis layer should be skeptical of articles that
-  recycle prior framing without new facts. Cross-asset price-action
-  stories are downstream effects tracked separately from price data,
-  not signal for this theme.
-
-  Prior thesis (updated by synthesis cycles): unset at theme creation.
+  Noise: anniversary commentary, op-eds without new factual content,
+  retail sentiment posts, generic war-fatigue or war-hype pieces.
+  Cross-asset price-action stories are downstream effects, not signal
+  for this theme.
 
 keywords:
   primary:
@@ -44,20 +39,29 @@ keywords:
     - "Revolutionary Guard"
     - "Revolutionary Guards"
     - "Khamenei"
+    - "Pezeshkian"
+    - "Araghchi"
     - "Strait of Hormuz"
     - "Houthi"
     - "Hezbollah"
     - "Iranian"
+    - "JCPOA"
+    - "Vienna talks"
+    - "Iran nuclear deal"
+    - "ceasefire"
   secondary:
     - "Persian Gulf"
     - "CENTCOM"
     - "nuclear program"
-    - "JCPOA"
     - "sanctions"
     - "Quds Force"
     - "Iraqi militia"
     - "Iraqi militias"
     - "Yemen"
+    - "sanctions relief"
+    - "Geneva"
+    - "diplomatic channel"
+    - "normalization"
   exclusions:
     - "Iran-Contra"
     - "Iranian cuisine"
@@ -76,8 +80,18 @@ keywords:
 
 tracked_entities:
   tickers:
+    # Defense / drones (held + cascade-direct)
     - LHX
+    - RTX
+    - RNMBY
+    - KTOS
     - MOG.A
+    # Energy (held + Iran-cascade direct)
+    - CVX
+    - COP
+    # Critical materials (held + supply-chain cascade)
+    - MP
+    # Watchlist — fertilizer/commodity cascade (not held, tracked for entry)
     - NTR
     - NEU
     - CTRA
@@ -86,8 +100,19 @@ tracked_entities:
     - CORN
     - WEAT
   companies:
+    # Defense
     - L3Harris Technologies
+    - Raytheon Technologies
+    - RTX Corporation
+    - Rheinmetall
+    - Kratos Defense
     - Moog
+    # Energy
+    - Chevron
+    - ConocoPhillips
+    # Critical materials
+    - MP Materials
+    # Watchlist
     - Nutrien
     - NewMarket Corporation
     - Coterra Energy
@@ -108,9 +133,12 @@ tracked_entities:
     - ammonia
     - potash
     - natural gas
+    - rare earths
+    - neodymium
   people:
     - Ali Khamenei
     - Masoud Pezeshkian
+    - Abbas Araghchi
     - Hossein Salami
     - Mohammed bin Salman
 
