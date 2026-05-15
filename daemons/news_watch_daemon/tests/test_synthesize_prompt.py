@@ -127,6 +127,41 @@ def test_system_prompt_states_six_of_eight_confirm_audit_rule():
     assert "6 or more" in SYSTEM_PROMPT or "6/8" in SYSTEM_PROMPT or "6 of 8" in SYSTEM_PROMPT
 
 
+# ---------- note-direction agreement rule (2026-05-14 audit follow-up) ----
+
+
+def test_system_prompt_states_note_direction_agreement_rule():
+    """Post-discipline live-smoke audit (3 confirm / 5 ambiguous / 0
+    break) traced the persistent confirm-friendly skew to a specific
+    pathology: Sonnet hedges in the `note` field ('though X tempers',
+    'but Y is conditional') while keeping the `direction` tag
+    confirm. The agreement rule enforces note-direction consistency."""
+    assert "Note-direction agreement" in SYSTEM_PROMPT
+    assert "MUST agree" in SYSTEM_PROMPT
+
+
+def test_system_prompt_lists_hedge_markers_to_watch():
+    """The rule names specific linguistic hedge markers Sonnet should
+    recognize as direction-changing signals in its own notes."""
+    for marker in ['"though', '"but', '"however']:
+        assert marker in SYSTEM_PROMPT, (
+            f"missing hedge-marker example {marker!r} — "
+            "agreement rule's self-check guidance won't trigger reliably"
+        )
+
+
+def test_system_prompt_agreement_rule_is_bidirectional():
+    """The rule is symmetric — same discipline applies to 'break' tags
+    whose notes are actually ambiguous. Protects against overcorrection
+    toward break after the cascade-bias fix."""
+    assert "bidirectional" in SYSTEM_PROMPT
+    # The text wraps to multiple lines in the source; normalize
+    # whitespace before checking for the meta-principle.
+    flattened = " ".join(SYSTEM_PROMPT.split())
+    assert "Tag honesty is the property" in flattened
+    assert "cascade-leaning vs cascade-skeptical is not the property" in flattened
+
+
 # ---------- build_system_blocks: caching shape ----------
 
 

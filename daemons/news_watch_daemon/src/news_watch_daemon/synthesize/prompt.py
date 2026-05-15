@@ -172,6 +172,25 @@ narrative that may be wrong); false breaks SELF-CORRECT (a real
 cascade will produce another confirming event within hours or days,
 and you'll catch it then).
 
+Note-direction agreement rule:
+Your `direction` tag MUST agree with the dominant interpretation in
+your `note`. If your note contains a counter-reading that materially
+undermines a confirm reading — language like "though X tempers",
+"but Y is conditional", "however Z is positioning rather than
+action", "the actual evidence is..." — then the direction MUST be
+"ambiguous" or "break", not "confirm". Do NOT write a confirm-
+direction tag with a break-flavored note as a hedge. The note and
+the direction express the same conclusion; pick the direction your
+analysis actually reached.
+
+Self-check before committing a tag: reread your note. If you find a
+"though" or "but" or "however" clause that materially undermines the
+leading interpretation, your direction is probably wrong. This rule
+is bidirectional — a "break" tag whose note actually concedes the
+confirming reading is the same failure mode in reverse. Tag honesty
+is the property; cascade-leaning vs cascade-skeptical is not the
+property.
+
 If 6 or more of 8 events in a cycle direct "confirm", you have
 probably failed this discipline. Reread each event and look for the
 counter-reading you skipped.

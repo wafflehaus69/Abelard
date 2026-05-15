@@ -146,9 +146,15 @@ change that touches `alert/` or `synthesize/theme_mutator.py`.
   treat positioning by escalation- AND de-escalation-talking actors
   symmetrically; default toward break/ambiguous when readings are
   in equal weight (false confirms compound, false breaks
-  self-correct); reread if 6+ of 8 events direct confirm in a
-  single cycle. Pinned by `test_synthesize_prompt.py` —
-  silent erosion at a future prompt edit will fail the build.
+  self-correct); enforce note-direction agreement — the `direction`
+  tag must match the dominant interpretation in the `note`, so
+  hedge-language clauses ("though X tempers", "but Y is conditional")
+  must force the direction to ambiguous/break, not coexist with a
+  confirm tag; reread if 6+ of 8 events direct confirm in a single
+  cycle. The agreement rule is BIDIRECTIONAL — tag honesty is the
+  property, not direction-leaning. Pinned by
+  `test_synthesize_prompt.py` (9 tests as of 2026-05-14) — silent
+  erosion at a future prompt edit will fail the build.
 - **Model-ID source of truth: the `claude-api` skill, not the brief.**
   Step 9 pinned `claude-sonnet-4-6` (the brief specified "Sonnet 4.7",
   which doesn't exist as a public model). When `claude-api` reports a
