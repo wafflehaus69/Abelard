@@ -57,6 +57,48 @@ def test_load_all_themes_picks_up_seed():
     assert "us_iran_escalation" in ids
 
 
+def test_every_bundled_theme_loads_cleanly():
+    """Every YAML in themes/ must pass load_all_themes — Pydantic
+    validation, regex-compile check, filename-matches-theme_id.
+
+    Added 2026-05-17 after the us_iran_escalation manual edit on
+    2026-05-16 silently dropped the `keywords:` block + the
+    `tracked_entities:` parent. The break was caught only when the
+    daemon failed to load — this test catches the same class of break
+    at CI time, before any reload is attempted.
+
+    Pin both: (1) load succeeds for every YAML; (2) the set of
+    theme_ids matches the set of YAML filenames, so a missing
+    filename-stem-mismatch doesn't silently de-register a theme.
+    """
+    themes_dir = REPO_ROOT / "themes"
+    themes = load_all_themes(themes_dir)
+
+    # Every YAML in the dir produced a ThemeConfig.
+    yaml_stems = {p.stem for p in themes_dir.glob("*.yaml")}
+    loaded_ids = {t.theme_id for t in themes}
+    assert yaml_stems == loaded_ids, (
+        f"theme_id set does not match YAML filename set. "
+        f"YAML files: {sorted(yaml_stems)}. "
+        f"Loaded theme_ids: {sorted(loaded_ids)}."
+    )
+
+    # Every loaded theme has at least one primary keyword (model
+    # validator already enforces this; the test pins it as doctrine
+    # since a theme with no primary keywords cannot tag anything).
+    for t in themes:
+        assert t.keywords.primary, (
+            f"theme {t.theme_id!r} has empty primary keywords list — "
+            f"it cannot tag any headline"
+        )
+
+    # Pass D foundation 2026-05-17: political_volatility must be
+    # registered as a source-class theme alongside the six narrative
+    # themes. Pinned so a regression on the YAML or the directory
+    # state surfaces immediately.
+    assert "political_volatility" in loaded_ids
+
+
 # ---------- ThemeConfig direct construction ----------
 
 

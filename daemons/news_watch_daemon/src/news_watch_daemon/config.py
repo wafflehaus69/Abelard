@@ -18,6 +18,12 @@ Anthropic key + theses-doc path:
 - NEWS_WATCH_PROPOSALS_PATH        — optional, default `~/.openclaw/news_watch/proposals/`.
                                       Holds pending.json (active drift proposals) and
                                       resolved.jsonl (append-only audit trail).
+- NEWS_WATCH_CROSS_SOURCE_LOG      — optional, default `~/.openclaw/news_watch/cross_source_log.jsonl`.
+                                      Append-only JSONL of cross-source duplicate
+                                      observations (when the same dedupe_hash arrives
+                                      from two different sources). Pass D foundation
+                                      (2026-05-17) for primary-source decisions on
+                                      mirror channels.
 - NEWS_WATCH_THESES_PATH           — optional; absolute path to Abelard's THESES.md.
                                       Unset → synthesis runs the no-theses prompt
                                       variant and records a WARN in
@@ -129,6 +135,18 @@ def _default_proposals_path() -> Path:
     return Path.home() / ".openclaw" / "news_watch" / "proposals"
 
 
+def _default_cross_source_log_path() -> Path:
+    """Default cross-source duplicate-observation log:
+    `~/.openclaw/news_watch/cross_source_log.jsonl`.
+
+    Pass D foundation (2026-05-17). Append-only, never rotated —
+    drives empirical primary-source decisions on mirror channels
+    (initially the political_volatility theme's dual Trump sources).
+    Override via NEWS_WATCH_CROSS_SOURCE_LOG.
+    """
+    return Path.home() / ".openclaw" / "news_watch" / "cross_source_log.jsonl"
+
+
 @dataclass(frozen=True)
 class Config:
     db_path: Path
@@ -146,6 +164,7 @@ class Config:
     synthesis_config_path: Path = field(default_factory=_default_synthesis_config_path)
     trigger_log_path: Path = field(default_factory=_default_trigger_log_path)
     proposals_path: Path = field(default_factory=_default_proposals_path)
+    cross_source_log_path: Path = field(default_factory=_default_cross_source_log_path)
     theses_path: Path | None = None
 
     def secrets(self) -> tuple[str, ...]:
@@ -316,6 +335,18 @@ class Config:
         else:
             proposals_path = _default_proposals_path()
 
+        # ---- Cross-source observation log (Pass D foundation 2026-05-17) ----
+
+        cross_raw = os.environ.get("NEWS_WATCH_CROSS_SOURCE_LOG", "").strip()
+        if cross_raw:
+            cross_source_log_path = Path(cross_raw).expanduser()
+            if not cross_source_log_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_CROSS_SOURCE_LOG must be an absolute path; got {cross_raw!r}"
+                )
+        else:
+            cross_source_log_path = _default_cross_source_log_path()
+
         # ---- Theses doc path (Pass C Step 9) ----
         # Unset is fine — synthesis runs the no-theses prompt variant and
         # records a WARN in synthesis_metadata.theses_doc_warning.
@@ -346,6 +377,7 @@ class Config:
             synthesis_config_path=synth_path,
             trigger_log_path=trigger_path,
             proposals_path=proposals_path,
+            cross_source_log_path=cross_source_log_path,
             theses_path=theses_path,
         )
 

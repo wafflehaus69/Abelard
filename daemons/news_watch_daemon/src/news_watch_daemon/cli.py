@@ -446,7 +446,11 @@ def _handle_scrape(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
             )
 
         try:
-            result = run_scrape(conn, sources, themes, tracked_tickers=tracked_tickers)
+            result = run_scrape(
+                conn, sources, themes,
+                tracked_tickers=tracked_tickers,
+                cross_source_log_path=cfg.cross_source_log_path,
+            )
             write_heartbeat(
                 conn,
                 status="ok",

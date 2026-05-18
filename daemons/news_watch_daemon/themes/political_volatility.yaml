@@ -1,0 +1,121 @@
+theme_id: political_volatility
+display_name: Political Volatility
+status: active
+created_at: 2026-05-17
+
+brief: |
+  This is a SOURCE-CLASS theme, not a narrative theme. Unlike the
+  other themes (which track how a specific story develops across many
+  sources), political_volatility tracks a who — a high-volatility
+  political actor whose statements have demonstrated market-moving
+  capacity. The question this theme answers is "did the actor say
+  something today, and which other themes did it touch?", not "how is
+  story X developing?"
+
+  Source-class design implications:
+    - This theme is intentionally OVERLAPPING with other themes. A
+      Trump post about Iran should fire BOTH political_volatility AND
+      us_iran_escalation. The intersection is the signal — a Trump
+      post that lands inside an already-active narrative theme is
+      higher-materiality than one that doesn't. Theme-intersection
+      alert logic is deferred to Pass D and may live in Abelard's
+      reasoning layer rather than this daemon.
+    - Most posts will fall through the existing keyword regex
+      untagged. That is the expected steady state for Pass C scope.
+      The goal of standing the theme up now is to build the event log
+      against which a real keyword filter can be designed empirically
+      (Pass D), not to fire alerts in the interim.
+
+  Tracked sources:
+    - @real_DonaldJTrump (hypothesized curated mirror, ~661K subs)
+    - @TrumpTruthSocial_Alert (hypothesized mechanical scraper)
+    Both channels are mirrors of the same upstream actor (Trump's
+    Truth Social account). They are tracked in parallel to support a
+    future primary-source decision: after ~2 weeks of paired
+    observations, the cross_source_log will show which channel
+    arrives first on average and which carries more or fewer
+    duplicates. That decision is Pass D scope.
+
+  Fog of War doctrine applies. Political statements are positioning;
+  posts that announce policy, threaten action, or claim outcomes are
+  ALL produced by interested parties. The presence of a post is data;
+  the truth-value of its framing is not. The synthesis layer's
+  [EPISTEMIC DISCIPLINE] section already encodes this for any post
+  that does tag to this theme.
+
+  Doctrinal alignment: both channels are read-only per the
+  paranoid-grep enforcement on `sources/telegram.py`. The Telegram
+  source plugin is incapable of writing to Telegram by construction.
+  Fail-loud auth-failure policy (no programmatic re-auth) applies.
+
+  Out of scope for this theme at Pass C close:
+    - Keyword filter design (Pass D, against real event log)
+    - Materiality thresholds calibrated for this source class
+    - Theme-intersection alert logic
+    - trumpstruth.org archive source
+    - Per-source latency analysis (raw logging only; analysis Pass D)
+
+  PLACEHOLDER keywords below — the actual filter will be designed
+  against ~2 weeks of empirical post + market-reaction pairs.
+
+keywords:
+  primary:
+    # Placeholder — see brief. Most posts will not match these and
+    # that is fine; the event log is built from the source column,
+    # not from theme tags.
+    - "Trump"
+  secondary:
+    - "Truth Social"
+    - "Mar-a-Lago"
+  exclusions:
+    # Common cross-theme noise that absolutely should not tag here
+    # (and would be wasted Sonnet attention if it did).
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
+
+tracked_entities:
+  # Source-class theme — the entity being tracked IS the source.
+  people:
+    - Donald Trump
+  tickers: []
+  companies: []
+  countries: []
+  commodities: []
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # Velocity baseline is placeholder — Trump's post volume varies
+  # widely; this number will be calibrated against the event log at
+  # Pass D. Spike multiplier kept at 3x to match other themes.
+  velocity_baseline_headlines_per_day: 20.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds: []
+
+telegram_channels:
+  # Cadence is 5 minutes for both — tightest in config, justified by
+  # burst-posting patterns and minute-scale alpha decay. Within
+  # Telethon rate limits. Read-only by construction (see paranoid
+  # grep test on sources/telegram.py).
+  - username: real_DonaldJTrump
+    cadence_minutes: 5
+  - username: TrumpTruthSocial_Alert
+    cadence_minutes: 5

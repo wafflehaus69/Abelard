@@ -28,6 +28,29 @@ the LLM judges — and that judgment, when it runs in the daemon, is
 always under a hard schema (Pydantic `Brief`) and always inside a gate
 (trigger + materiality + dedup).
 
+**Theme types — two distinct design patterns coexist.** Most themes
+are NARRATIVE themes: they track how a specific story develops across
+many sources (`us_iran_escalation`, `russia_ukraine_war`,
+`ai_capex_cycle`, etc.). One theme = one question of the form "how is
+X developing". The keyword filter is the corpus selector for X.
+
+A second pattern, SOURCE-CLASS themes (added 2026-05-17 via
+`political_volatility`), tracks a *who* — a high-volatility actor
+whose statements have demonstrated market-moving capacity. The
+question is "did the actor say something today, and which other
+themes did it touch?" Source-class themes are INTENTIONALLY
+OVERLAPPING with narrative themes — an actor's post about Iran fires
+both `political_volatility` AND `us_iran_escalation`, and the
+intersection is the signal. The keyword filter on a source-class
+theme is mostly placeholder; the source column on `headlines` is
+where the per-actor observability lives. Theme-intersection alert
+logic is Pass D scope and may live in Abelard's reasoning layer
+rather than this daemon.
+
+Future maintainers: when adding a theme, classify it as narrative vs
+source-class first. The brief text shape, the keyword strategy, and
+the expected steady-state tag-rate all differ between the two.
+
 ## What it deliberately does NOT do
 
 - It does not predict prices or recommend trades.
@@ -102,6 +125,16 @@ change that touches `alert/` or `synthesize/theme_mutator.py`.
   rotated. Calibration value compounds.
 - Proposals store at `$NEWS_WATCH_PROPOSALS_PATH`: `pending.json`
   (atomic rewrite) + `resolved.jsonl` (append-only audit).
+- Cross-source observation log at `$NEWS_WATCH_CROSS_SOURCE_LOG`
+  (Pass D foundation 2026-05-17): append-only JSONL, never rotated.
+  Records every cross-source duplicate observation (same
+  `dedupe_hash` arrives from a second source within the dedup
+  window). Headlines are still dedup-skipped for synthesis; only
+  the OBSERVATION metadata persists here. Pure instrumentation —
+  no behavioral effect on downstream pipeline. Drives empirical
+  primary-source decisions for mirror channels (initial case:
+  political_volatility theme's dual Trump sources). Same-source
+  dupes are NOT logged.
 - TelegramBotSink (alternative external sink): same paranoid-grep
   discipline as SignalSink; not currently wired in production.
 

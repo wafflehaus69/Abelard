@@ -38,9 +38,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Iterable
 
+from pathlib import Path
+
 from ..db import record_heartbeat, to_json_column, transaction
 from ..sources.base import FetchedItem, FetchResult, SourcePlugin
 from ..theme_config import ThemeConfig
+from .cross_source_log import write_observation as write_cross_source_observation
 from .dedup import compute_dedupe_hash
 from .ticker_extract import TrackedTickers
 
@@ -213,6 +216,61 @@ def _dedupe_hash_exists(
     return row is not None
 
 
+def _log_cross_source(
+    log_path: Path,
+    *,
+    dedupe_hash: str,
+    first_source: str,
+    first_observed_at_unix: int,
+    second_source: str,
+    second_observed_at_unix: int,
+    headline: str,
+) -> None:
+    """Wrap cross_source_log.write_observation in a try/log-on-failure.
+
+    Cross-source observation logging is best-effort instrumentation —
+    a disk-full or permission error on the log file must NOT abort the
+    scrape. Failures surface as WARN, the rest of the sweep proceeds.
+    """
+    try:
+        write_cross_source_observation(
+            log_path,
+            dedupe_hash=dedupe_hash,
+            first_source=first_source,
+            first_observed_at_unix=first_observed_at_unix,
+            second_source=second_source,
+            second_observed_at_unix=second_observed_at_unix,
+            headline=headline,
+        )
+    except OSError as exc:
+        _LOG.warning(
+            "cross_source_log append failed (%s -> %s, dedupe_hash=%s): %s",
+            first_source, second_source, dedupe_hash, exc,
+        )
+
+
+def _dedupe_hash_first_observation(
+    conn: sqlite3.Connection, dedupe_hash: str, window_start_unix: int,
+) -> tuple[str, int] | None:
+    """Look up the FIRST observation of `dedupe_hash` within the dedup window.
+
+    Pass D foundation (cross-source log): when a window-dup is detected
+    the orchestrator needs to know who observed the headline first so
+    it can emit a cross_source_log entry if the current source differs.
+    Returns (source, fetched_at_unix) or None if not found.
+    """
+    row = conn.execute(
+        "SELECT source, fetched_at_unix FROM headlines "
+        "WHERE dedupe_hash = ? AND fetched_at_unix >= ? "
+        "ORDER BY fetched_at_unix ASC "
+        "LIMIT 1",
+        (dedupe_hash, window_start_unix),
+    ).fetchone()
+    if row is None:
+        return None
+    return (row["source"], int(row["fetched_at_unix"]))
+
+
 def _update_source_health(
     conn: sqlite3.Connection,
     *,
@@ -344,6 +402,7 @@ def run_scrape(
     *,
     now_unix: int | None = None,
     tracked_tickers: TrackedTickers | None = None,
+    cross_source_log_path: Path | None = None,
 ) -> ScrapeResult:
     """Execute one scrape sweep. Caller owns conn lifecycle.
 
@@ -356,6 +415,14 @@ def run_scrape(
     headline's text. Extracted tickers union with any tickers the source
     plugin pre-tagged on the `FetchedItem`. When None, no extraction —
     only source-provided tickers are persisted (Pass A/B behavior).
+
+    `cross_source_log_path`, when provided, enables per-sweep emission
+    of cross-source duplicate observations (Pass D foundation, Pass C
+    Step 11+1 2026-05-17). When a dedupe_hash arrives from a SECOND
+    source within the dedup window — either earlier in this sweep or
+    in the DB from a prior sweep — an entry is appended to the log
+    capturing both observations and the latency. Same-source dupes are
+    NOT logged. When None, behavior matches Pass A/B (silent dedup).
     """
     start_unix, start_iso = _now_pair(now_unix)
     start_perf = time.perf_counter()
@@ -367,7 +434,10 @@ def run_scrape(
     per_source: list[PerSourceResult] = []
     headlines_inserted_total = 0
     theme_tags_inserted_total = 0
-    seen_dedup_hashes: set[str] = set()  # in-memory dedup within sweep
+    # In-memory dedup within sweep. Promoted from set[str] to
+    # dict[str, (source, fetched_at_unix)] so cross-source dups can be
+    # logged with the first observer's identity.
+    seen_dedup_observations: dict[str, tuple[str, int]] = {}
 
     for source in sources:
         # Cadence check: skip if not yet due.
@@ -393,13 +463,59 @@ def run_scrape(
         if fetch_result.status in ("ok", "partial"):
             for item in fetch_result.items:
                 dedupe_hash = compute_dedupe_hash(item.headline)
-                if dedupe_hash in seen_dedup_hashes:
+
+                # In-sweep dedup. If the hash was seen earlier in this
+                # sweep, drop the second observation — but log the
+                # cross-source delta if the original observer was a
+                # different source.
+                first_in_sweep = seen_dedup_observations.get(dedupe_hash)
+                if first_in_sweep is not None:
+                    first_source, first_observed_unix = first_in_sweep
+                    if (
+                        cross_source_log_path is not None
+                        and first_source != source.name
+                    ):
+                        _log_cross_source(
+                            cross_source_log_path,
+                            dedupe_hash=dedupe_hash,
+                            first_source=first_source,
+                            first_observed_at_unix=first_observed_unix,
+                            second_source=source.name,
+                            second_observed_at_unix=start_unix,
+                            headline=item.headline,
+                        )
                     continue
-                if _dedupe_hash_exists(conn, dedupe_hash, dedup_window_start):
-                    seen_dedup_hashes.add(dedupe_hash)
-                    continue
+
+                # Window dedup. If the hash exists in the DB within
+                # the dedup window from a prior sweep, also drop —
+                # and log if the prior observer was a different source.
+                if cross_source_log_path is not None:
+                    prior = _dedupe_hash_first_observation(
+                        conn, dedupe_hash, dedup_window_start,
+                    )
+                    if prior is not None:
+                        prior_source, prior_fetched_unix = prior
+                        if prior_source != source.name:
+                            _log_cross_source(
+                                cross_source_log_path,
+                                dedupe_hash=dedupe_hash,
+                                first_source=prior_source,
+                                first_observed_at_unix=prior_fetched_unix,
+                                second_source=source.name,
+                                second_observed_at_unix=start_unix,
+                                headline=item.headline,
+                            )
+                        seen_dedup_observations[dedupe_hash] = (
+                            prior_source, prior_fetched_unix,
+                        )
+                        continue
+                else:
+                    if _dedupe_hash_exists(conn, dedupe_hash, dedup_window_start):
+                        seen_dedup_observations[dedupe_hash] = (source.name, start_unix)
+                        continue
+
                 items_after_dedup += 1
-                seen_dedup_hashes.add(dedupe_hash)
+                seen_dedup_observations[dedupe_hash] = (source.name, start_unix)
 
                 tag_rows: list[tuple[str, str]] = []
                 for regs in theme_regexes:

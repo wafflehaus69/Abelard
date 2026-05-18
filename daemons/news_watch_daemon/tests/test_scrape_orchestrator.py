@@ -631,3 +631,152 @@ def test_skip_does_not_count_as_failed_or_succeeded(conn):
     assert result.sources_failed == 0
     assert result.sources_skipped == 1
     assert result.sources_attempted == 1
+
+
+# ---------- cross-source observation log (Pass D foundation 2026-05-17) ----
+
+
+def test_cross_source_log_within_sweep_writes_observation(conn, tmp_path):
+    """Two sources sending the same headline in one sweep → second
+    observation lands in cross_source_log; first inserts as headline."""
+    from news_watch_daemon.scrape.cross_source_log import read_observations
+
+    theme = _seed_theme()
+    log_path = tmp_path / "cross.jsonl"
+    same = "Iran tests new ballistic missile"
+    finnhub = _fake_source("finnhub:general", items=[_item(same, source_id="f1")])
+    rss = _fake_source("rss:example", items=[_item(same, source_id="r1")])
+    run_scrape(
+        conn, [finnhub, rss], [theme],
+        now_unix=FIXED_NOW, cross_source_log_path=log_path,
+    )
+    records = read_observations(log_path)
+    assert len(records) == 1
+    rec = records[0]
+    assert rec["first_source"] == "finnhub:general"
+    assert rec["second_source"] == "rss:example"
+    assert rec["dedupe_hash"] == compute_dedupe_hash(same)
+    assert rec["latency_seconds"] == 0   # same-sweep, same fetched_at
+
+
+def test_cross_source_log_window_dup_writes_observation(conn, tmp_path):
+    """Same headline from different source on a LATER sweep within the
+    dedup window → cross_source_log records both observations with
+    correct latency."""
+    from news_watch_daemon.scrape.cross_source_log import read_observations
+
+    theme = _seed_theme()
+    log_path = tmp_path / "cross.jsonl"
+    same = "Iran tests new ballistic missile"
+
+    finnhub = _fake_source("finnhub:general", items=[_item(same, source_id="f1")])
+    run_scrape(
+        conn, [finnhub], [theme], now_unix=FIXED_NOW,
+        cross_source_log_path=log_path,
+    )
+    later = FIXED_NOW + 1800  # 30 minutes later
+    rss = _fake_source("rss:example", items=[_item(same, source_id="r1")])
+    run_scrape(
+        conn, [rss], [theme], now_unix=later,
+        cross_source_log_path=log_path,
+    )
+    records = read_observations(log_path)
+    assert len(records) == 1
+    rec = records[0]
+    assert rec["first_source"] == "finnhub:general"
+    assert rec["second_source"] == "rss:example"
+    assert rec["latency_seconds"] == 1800
+
+
+def test_cross_source_log_same_source_dup_NOT_logged(conn, tmp_path):
+    """Same headline from the SAME source twice (within-sweep or
+    re-fetch) is dedup-skipped but NOT logged — that's noise for the
+    cross-source question."""
+    from news_watch_daemon.scrape.cross_source_log import read_observations
+
+    theme = _seed_theme()
+    log_path = tmp_path / "cross.jsonl"
+    same = "Iran tests new ballistic missile"
+    src = _fake_source("finnhub:general", items=[
+        _item(same, source_id="a"),
+        _item(same, source_id="b"),  # within-sweep same-source dup
+    ])
+    run_scrape(
+        conn, [src], [theme], now_unix=FIXED_NOW,
+        cross_source_log_path=log_path,
+    )
+    # File may not even exist if no cross-source dup ever fired.
+    records = read_observations(log_path)
+    assert records == []
+
+
+def test_cross_source_log_disabled_when_path_is_none(conn, tmp_path):
+    """No log_path → no log file → no behavior change vs Pass A/B.
+    The headline still gets dedup-skipped; the cross-source observation
+    is silently lost (current behavior, preserved for backward compat)."""
+    from news_watch_daemon.scrape.cross_source_log import read_observations
+
+    theme = _seed_theme()
+    log_path = tmp_path / "cross.jsonl"  # will NOT be written
+    same = "Iran tests new ballistic missile"
+    finnhub = _fake_source("finnhub:general", items=[_item(same, source_id="f1")])
+    rss = _fake_source("rss:example", items=[_item(same, source_id="r1")])
+    # No cross_source_log_path arg.
+    run_scrape(conn, [finnhub, rss], [theme], now_unix=FIXED_NOW)
+    assert not log_path.exists()
+    assert read_observations(log_path) == []
+
+
+def test_cross_source_log_three_sources_chain(conn, tmp_path):
+    """A, B, C all observe the same headline. The chain (A->B, A->C)
+    should yield two log entries — second and third observations both
+    paired with the FIRST observer."""
+    from news_watch_daemon.scrape.cross_source_log import read_observations
+
+    theme = _seed_theme()
+    log_path = tmp_path / "cross.jsonl"
+    same = "Iran tests new ballistic missile"
+    a = _fake_source("source:a", items=[_item(same, source_id="1")])
+    b = _fake_source("source:b", items=[_item(same, source_id="2")])
+    c = _fake_source("source:c", items=[_item(same, source_id="3")])
+    run_scrape(
+        conn, [a, b, c], [theme], now_unix=FIXED_NOW,
+        cross_source_log_path=log_path,
+    )
+    records = read_observations(log_path)
+    assert len(records) == 2
+    # Both records pair against source:a as first observer.
+    assert all(r["first_source"] == "source:a" for r in records)
+    second_sources = sorted(r["second_source"] for r in records)
+    assert second_sources == ["source:b", "source:c"]
+
+
+def test_cross_source_log_io_failure_does_not_abort_scrape(conn, tmp_path, caplog):
+    """If the cross_source_log write raises OSError (disk full,
+    permission denied), the scrape continues. The observation is
+    lost but synthesis/alerting pipeline integrity is preserved."""
+    import logging
+    from unittest.mock import patch
+
+    theme = _seed_theme()
+    log_path = tmp_path / "cross.jsonl"
+    same = "Iran tests new ballistic missile"
+    finnhub = _fake_source("finnhub:general", items=[_item(same, source_id="f1")])
+    rss = _fake_source("rss:example", items=[_item(same, source_id="r1")])
+
+    with patch(
+        "news_watch_daemon.scrape.orchestrator.write_cross_source_observation",
+        side_effect=OSError("simulated disk full"),
+    ):
+        with caplog.at_level(logging.WARNING, logger="news_watch_daemon.scrape"):
+            result = run_scrape(
+                conn, [finnhub, rss], [theme],
+                now_unix=FIXED_NOW, cross_source_log_path=log_path,
+            )
+    # Scrape completed.
+    assert result.headlines_inserted_total == 1
+    # And surfaced the I/O failure as a WARN.
+    assert any(
+        "cross_source_log append failed" in record.message
+        for record in caplog.records
+    )
