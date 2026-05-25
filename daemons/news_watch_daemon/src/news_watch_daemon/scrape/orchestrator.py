@@ -45,7 +45,7 @@ from ..sources.base import FetchedItem, FetchResult, SourcePlugin
 from ..theme_config import ThemeConfig
 from .cross_source_log import write_observation as write_cross_source_observation
 from .dedup import compute_dedupe_hash
-from .ticker_extract import TrackedTickers
+from .ticker_extract import TrackedTickers, log_tracked_ticker_match
 
 
 _LOG = logging.getLogger("news_watch_daemon.scrape")
@@ -557,6 +557,18 @@ def run_scrape(
                 if tracked_tickers is not None:
                     extracted = tracked_tickers.extract(item.headline)
                     merged_tickers = sorted(set(item.tickers) | set(extracted))
+                    # Calibration instrumentation: log each tracked-list match
+                    # (excluding cashtags) at DEBUG level for per-channel
+                    # false-positive measurement. See log_tracked_ticker_match
+                    # docstring for the deferred-Option-E rationale.
+                    for ticker, pos in tracked_tickers.find_tracked_matches(item.headline):
+                        log_tracked_ticker_match(
+                            source_channel=source.name,
+                            headline_id=hid,
+                            ticker=ticker,
+                            headline=item.headline,
+                            match_position=pos,
+                        )
                 else:
                     merged_tickers = list(item.tickers)
                 try:

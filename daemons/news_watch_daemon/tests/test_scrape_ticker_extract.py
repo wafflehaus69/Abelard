@@ -11,6 +11,7 @@ from news_watch_daemon.scrape.ticker_extract import (
     TickerExtractError,
     TrackedTickers,
     load_tracked_tickers,
+    log_tracked_ticker_match,
 )
 
 
@@ -194,3 +195,136 @@ def test_seed_config_file_loads_cleanly():
     # Watchlist must include the 10 Mando-supplied tickers
     assert {"NTR", "NEU", "GLD", "MOG.A", "LHX", "CORN", "WEAT",
             "LIN", "CTRA", "GFS"}.issubset(set(tt.watchlist))
+
+
+# ---------- Pass D follow-on: tracked-ticker false-positive instrumentation ----------
+#
+# `NOW` (ServiceNow, held conviction) collides with the channel-prefix word
+# "NOW -" in @chainlinkbreadcrumbs. Removing NOW would lose all natural-
+# language ServiceNow visibility; the daemon has no company-name fallback yet.
+# Decision (2026-05-24): accept the noise, instrument it, scope Option E
+# (entity-aware extraction reading tracked_entities.companies) post-Mac-mini.
+
+
+def test_find_tracked_matches_returns_positions(seed_with_regex):
+    """find_tracked_matches returns (ticker, start_pos) for each tracked-list match,
+    in source order, including duplicates."""
+    matches = seed_with_regex.find_tracked_matches(
+        "MSTR rallied; later META also moved; MSTR closed up"
+    )
+    tickers = [t for t, _ in matches]
+    positions = [p for _, p in matches]
+    assert tickers == ["MSTR", "META", "MSTR"]   # order preserved, duplicates included
+    assert positions == [0, 20, 37]
+    # Position correctness sanity:
+    text = "MSTR rallied; later META also moved; MSTR closed up"
+    for ticker, pos in matches:
+        assert text[pos : pos + len(ticker)] == ticker
+
+
+def test_find_tracked_matches_excludes_cashtags(seed_with_regex):
+    """Cashtag matches ($AAPL) are NOT in find_tracked_matches output —
+    instrumentation should only fire on tracked-list path."""
+    text = "MSTR rallied; trader posts $AAPL idea"
+    matches = seed_with_regex.find_tracked_matches(text)
+    tickers = [t for t, _ in matches]
+    assert tickers == ["MSTR"]   # AAPL is cashtag-only, excluded
+    # But extract() still returns AAPL — it pulls from both paths:
+    assert "AAPL" in seed_with_regex.extract(text)
+
+
+def test_find_tracked_matches_empty_inputs(seed_with_regex):
+    """None / empty text / no tracked tickers configured → empty list."""
+    assert seed_with_regex.find_tracked_matches(None) == []
+    assert seed_with_regex.find_tracked_matches("") == []
+    empty = TrackedTickers(conviction=(), watchlist=(), _regex=None)
+    assert empty.find_tracked_matches("MSTR rallied") == []
+
+
+def test_find_tracked_matches_now_in_breadcrumbs_prefix(seed_with_regex):
+    """Regression: the breadcrumbs 'NOW -' prefix DOES match the tracked NOW.
+    This is the known false-positive that the instrumentation is meant to
+    measure — if this stops matching, the instrumentation is dead. The
+    semantic fix (Option E company-name extraction) is deferred."""
+    text = (
+        "NOW - Blackrock's Larry Fink says he has \"relooked at his assumptions\""
+        " about crypto"
+    )
+    matches = seed_with_regex.find_tracked_matches(text)
+    tickers = [t for t, _ in matches]
+    assert "NOW" in tickers
+
+
+def test_log_tracked_ticker_match_emits_debug_with_context(seed_with_regex, caplog):
+    """Emits DEBUG log with source_channel, headline_id, ticker, position,
+    and surrounding 50-char context."""
+    import logging
+    text = (
+        "NOW - Blackrock's Larry Fink says he has relooked at his assumptions"
+        " about crypto"
+    )
+    # find the NOW match position from the real extractor (consistency)
+    matches = seed_with_regex.find_tracked_matches(text)
+    assert matches, "fixture: NOW must match"
+    ticker, pos = matches[0]
+    with caplog.at_level(logging.DEBUG, logger="news_watch_daemon.scrape.ticker_extract"):
+        log_tracked_ticker_match(
+            source_channel="telegram:chainlinkbreadcrumbs",
+            headline_id="abc123",
+            ticker=ticker,
+            headline=text,
+            match_position=pos,
+        )
+    matched = [
+        r for r in caplog.records
+        if "tracked_ticker_match" in r.getMessage()
+    ]
+    assert len(matched) == 1
+    msg = matched[0].getMessage()
+    assert "channel=telegram:chainlinkbreadcrumbs" in msg
+    assert "headline_id=abc123" in msg
+    assert "ticker=NOW" in msg
+    assert f"match_pos={pos}" in msg
+    # Context should include the channel-prefix "NOW -" giving operators
+    # visible evidence of the false-positive pattern.
+    assert "NOW -" in msg
+
+
+def test_log_tracked_ticker_match_context_truncated_at_text_boundaries(caplog):
+    """When the match is near the start or end of the text, the 50-char
+    context clamps to the available range without raising."""
+    import logging
+    short_text = "NOW"
+    with caplog.at_level(logging.DEBUG, logger="news_watch_daemon.scrape.ticker_extract"):
+        log_tracked_ticker_match(
+            source_channel="test_channel",
+            headline_id="test_id",
+            ticker="NOW",
+            headline=short_text,
+            match_position=0,
+        )
+    matched = [
+        r for r in caplog.records
+        if "tracked_ticker_match" in r.getMessage()
+    ]
+    assert len(matched) == 1
+    msg = matched[0].getMessage()
+    assert "context='NOW'" in msg   # full text is the context, no over-slice
+
+
+def test_log_tracked_ticker_match_debug_silent_at_info_level(caplog):
+    """DEBUG level: at default INFO logging, the message must NOT appear."""
+    import logging
+    with caplog.at_level(logging.INFO, logger="news_watch_daemon.scrape.ticker_extract"):
+        log_tracked_ticker_match(
+            source_channel="test",
+            headline_id="test",
+            ticker="MSTR",
+            headline="MSTR rallied",
+            match_position=0,
+        )
+    matched = [
+        r for r in caplog.records
+        if "tracked_ticker_match" in r.getMessage()
+    ]
+    assert len(matched) == 0  # DEBUG suppressed at INFO threshold

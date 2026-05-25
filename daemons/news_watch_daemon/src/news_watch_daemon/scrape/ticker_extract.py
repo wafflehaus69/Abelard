@@ -23,6 +23,7 @@ Word boundaries are critical: `MOST` should not match in `mostly`,
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,10 +31,20 @@ from pathlib import Path
 import yaml
 
 
+_LOG = logging.getLogger("news_watch_daemon.scrape.ticker_extract")
+
+
 # Cashtag pattern: `$` followed by 1–5 uppercase letters, optional
 # share-class suffix (`.A`, `-B`). Word boundary on the right ensures
 # `$AAPL` matches but `$AAPLfoo` does not.
 _CASHTAG_RE = re.compile(r"\$([A-Z]{1,5}(?:[.\-][A-Z])?)\b")
+
+
+# Surrounding-text window for tracked-ticker false-positive observation logs.
+# 50 chars on each side of the match position gives enough channel-prefix
+# context (e.g. "NOW - " breadcrumbs convention) to distinguish a ticker
+# reference from an English-word collision.
+_TICKER_LOG_CONTEXT_CHARS = 50
 
 
 class TickerExtractError(RuntimeError):
@@ -62,12 +73,24 @@ class TrackedTickers:
         if not text:
             return []
         hits: set[str] = set()
-        if self._regex is not None:
-            for m in self._regex.finditer(text):
-                hits.add(m.group(0))
+        for ticker, _pos in self.find_tracked_matches(text):
+            hits.add(ticker)
         for m in _CASHTAG_RE.finditer(text):
             hits.add(m.group(1))
         return sorted(hits)
+
+    def find_tracked_matches(self, text: str | None) -> list[tuple[str, int]]:
+        """Return (ticker, start_pos) for each tracked-list match in `text`.
+
+        Tracked-list only — cashtag matches are excluded. Returns one entry per
+        occurrence (no dedup), preserving order. Used by the scrape orchestrator
+        for false-positive instrumentation (see `log_tracked_ticker_match`).
+        Returns empty list when `text` is None / empty / no tracked tickers
+        configured.
+        """
+        if not text or self._regex is None:
+            return []
+        return [(m.group(0), m.start()) for m in self._regex.finditer(text)]
 
 
 def _compile_regex(tickers: frozenset[str]) -> re.Pattern[str] | None:
@@ -123,8 +146,53 @@ def _validate_ticker_list(items: list, path: Path, key: str) -> list[str]:
     return out
 
 
+def log_tracked_ticker_match(
+    *,
+    source_channel: str,
+    headline_id: str,
+    ticker: str,
+    headline: str,
+    match_position: int,
+) -> None:
+    """Emit a DEBUG observation for a tracked-list ticker match in a headline.
+
+    Used by the scrape orchestrator for per-channel false-positive measurement.
+    Logs the surrounding 50 chars before and 50 chars after the match position
+    so downstream audit can distinguish a real ticker mention ("ServiceNow NOW
+    reported earnings") from an English-word collision ("NOW - Trump speaks").
+
+    Two-week empirical signal target: per-channel false-positive rates per
+    ticker, to inform when to scope a company-name-aware extraction layer
+    (Option E from the 2026-05-24 calibration review) reading
+    `tracked_entities.companies` across all themes. Until that lands, the
+    `NOW` channel-prefix false positive in chainlinkbreadcrumbs is accepted
+    as known noise — the cost of removing `NOW` from the tracked list would
+    be losing ALL natural-language ServiceNow visibility, which is worse.
+
+    DEBUG level (not INFO): this can fire on every headline tagged with a
+    tracked ticker, which is high-volume. Operators must opt in by lowering
+    LOG_LEVEL to DEBUG when running calibration measurement.
+    """
+    context_start = max(0, match_position - _TICKER_LOG_CONTEXT_CHARS)
+    context_end = min(
+        len(headline),
+        match_position + len(ticker) + _TICKER_LOG_CONTEXT_CHARS,
+    )
+    context = headline[context_start:context_end]
+    _LOG.debug(
+        "tracked_ticker_match channel=%s headline_id=%s ticker=%s "
+        "match_pos=%d context=%r",
+        source_channel,
+        headline_id,
+        ticker,
+        match_position,
+        context,
+    )
+
+
 __all__ = [
     "TickerExtractError",
     "TrackedTickers",
     "load_tracked_tickers",
+    "log_tracked_ticker_match",
 ]
