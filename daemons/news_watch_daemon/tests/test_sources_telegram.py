@@ -27,6 +27,7 @@ from news_watch_daemon.sources.telegram import (
     PLUGIN_PREFIX,
     TelegramSource,
     _extract_headline,
+    _log_truncation_observation,
 )
 
 
@@ -302,11 +303,6 @@ def test_extract_headline_multiline_uses_first_line():
     assert _extract_headline(text) == "Lead line"
 
 
-def test_extract_headline_truncates_to_280():
-    text = "a" * 400
-    assert len(_extract_headline(text)) == 280
-
-
 def test_extract_headline_strips_whitespace():
     assert _extract_headline("   spaced out   ") == "spaced out"
 
@@ -315,6 +311,82 @@ def test_extract_headline_empty_returns_none():
     assert _extract_headline(None) is None
     assert _extract_headline("") is None
     assert _extract_headline("   ") is None
+
+
+# ---------- Fix 1 (Trump truncation): _HEADLINE_MAX_CHARS 280 -> 4096 ----------
+
+
+def test_short_text_unchanged():
+    """100-char text round-trips intact (existing behavior preserved)."""
+    text = "x" * 100
+    assert _extract_headline(text) == text
+
+
+def test_text_under_4096_unchanged():
+    """Bug regression: pre-fix, 280-char ceiling silently truncated long-form
+    posts (notably @real_DonaldJTrump). After fix to 4096, ~800-char input
+    round-trips intact. This single assertion would have caught the original bug."""
+    text = ("word " * 200).strip()  # ~999 chars, no newlines
+    assert len(text) > 280  # confirm input exercises the old bug
+    assert len(text) < 4096  # confirm under new ceiling
+    assert _extract_headline(text) == text
+
+
+def test_text_over_4096_truncated_at_4096():
+    """Sanity cap: input larger than 4096 chars is truncated cleanly at 4096."""
+    text = "x" * 5000
+    result = _extract_headline(text)
+    assert len(result) == 4096
+    assert result == "x" * 4096
+
+
+def test_newline_still_splits_to_first_line():
+    """Existing first-line behavior preserved (the observability log surfaces
+    the case where this drops paragraph content)."""
+    text = "Lead line\nbody paragraph here"
+    assert _extract_headline(text) == "Lead line"
+
+
+def test_empty_and_none_unchanged():
+    """None / empty / whitespace-only all return None (existing behavior preserved)."""
+    assert _extract_headline(None) is None
+    assert _extract_headline("") is None
+    assert _extract_headline("   ") is None
+
+
+def test_log_truncation_observation_fires_on_early_newline(caplog):
+    """Observation log fires when source text has a newline within the first 1000 chars."""
+    text = "First paragraph here.\n\nSecond paragraph with content."
+    headline = "First paragraph here."
+    with caplog.at_level(logging.INFO, logger="news_watch_daemon.sources.telegram"):
+        _log_truncation_observation(
+            text, headline, channel_username="test_channel", message_id=12345,
+        )
+    matched = [
+        r for r in caplog.records
+        if "first_line_truncation_observation" in r.getMessage()
+    ]
+    assert len(matched) == 1
+    msg = matched[0].getMessage()
+    assert "channel=test_channel" in msg
+    assert "msg=12345" in msg
+    assert "had_early_newline=True" in msg
+
+
+def test_log_truncation_observation_silent_on_single_paragraph(caplog):
+    """Observation log does NOT fire when source text is single-paragraph (no newlines
+    within the first 1000 chars)."""
+    text = ("word " * 100).strip()  # ~499 chars, no newlines
+    headline = text
+    with caplog.at_level(logging.INFO, logger="news_watch_daemon.sources.telegram"):
+        _log_truncation_observation(
+            text, headline, channel_username="test_channel", message_id=12345,
+        )
+    matched = [
+        r for r in caplog.records
+        if "first_line_truncation_observation" in r.getMessage()
+    ]
+    assert len(matched) == 0
 
 
 def test_message_with_no_text_dropped():
@@ -336,9 +408,11 @@ def test_message_with_no_text_dropped():
     assert result.items[0].source_item_id == "2"
 
 
-def test_long_single_line_truncated_to_280():
+def test_long_single_line_truncated_to_4096():
+    """Integration version of the per-char ceiling check via full fetch path.
+    Trump-style 800-char post round-trips intact; cap kicks in only above 4096."""
     src = _make_source()
-    long_text = "x" * 400
+    long_text = "x" * 5000
     base = datetime(2026, 5, 12, tzinfo=timezone.utc)
     mock_client = _make_mock_client(messages=[_fake_message(1, base, long_text)])
     with patch(
@@ -346,7 +420,7 @@ def test_long_single_line_truncated_to_280():
         return_value=mock_client,
     ):
         result = src.fetch(since_unix=0)
-    assert len(result.items[0].headline) == 280
+    assert len(result.items[0].headline) == 4096
 
 
 # ---------- since_unix early termination ----------

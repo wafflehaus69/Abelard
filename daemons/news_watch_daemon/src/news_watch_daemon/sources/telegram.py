@@ -18,8 +18,17 @@ must regenerate the session via the one-time
 
 Message-to-headline mapping: Telegram messages don't carry a natural
 "headline" field. The plugin uses the message text up to the first
-newline, truncated to 280 chars, as the headline. Messages with no
-text (photo-only, sticker-only, etc.) are dropped.
+newline, truncated to 4096 chars (Telegram's max single-message
+length), as the headline. Messages with no text (photo-only,
+sticker-only, etc.) are dropped.
+
+The 4096 ceiling replaces the original Twitter-convention 280-char
+limit, which was silently truncating long-form posts (notably
+@real_DonaldJTrump). The first-line restriction is preserved
+unchanged; if a message has paragraph breaks within its first ~1000
+chars we emit an INFO observation log so operators can decide later
+whether the first-line behavior is itself dropping content worth
+keeping. See `_log_truncation_observation`.
 
 `max_messages_per_fetch` is a safety cap of 200 per cycle by default
 (brief Artifact 2 hypothesis #4). For the channels currently tracked
@@ -46,18 +55,20 @@ _LOG = logging.getLogger("news_watch_daemon.sources.telegram")
 _USERNAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{4,31}$")
 _API_HASH_RE = re.compile(r"^[0-9a-f]{32}$")
 
-_HEADLINE_MAX_CHARS = 280
+_HEADLINE_MAX_CHARS = 4096
 _MAX_MAX_MESSAGES_PER_FETCH = 1000
+_OBSERVABILITY_NEWLINE_WINDOW = 1000
 
 PLUGIN_PREFIX = "telegram:"
 
 
 def _extract_headline(text: str | None) -> str | None:
-    """Return the first non-empty line of `text`, truncated to 280 chars.
+    """Return the first non-empty line of `text`, truncated to 4096 chars.
 
     Returns None if `text` is None, empty, or whitespace-only after
     stripping. Truncation has no ellipsis appended (clean cut on
-    character 280).
+    character 4096 — Telegram's max single-message length, so any
+    single MTProto message round-trips intact).
     """
     if text is None:
         return None
@@ -68,6 +79,44 @@ def _extract_headline(text: str | None) -> str | None:
     if not first_line:
         return None
     return first_line[:_HEADLINE_MAX_CHARS]
+
+
+def _log_truncation_observation(
+    text: str,
+    headline: str,
+    *,
+    channel_username: str,
+    message_id: int,
+) -> None:
+    """Emit an INFO observation when first-line restriction may be losing content.
+
+    The plugin's `_extract_headline` keeps only the first newline-delimited
+    line. For long-form channels (e.g. @real_DonaldJTrump) whose posts
+    contain paragraph breaks, this can silently drop tail paragraphs even
+    after the per-character ceiling was raised from 280 to 4096.
+
+    This helper is pure instrumentation — no behavior change. It fires
+    when the ORIGINAL text contains a `\\n` within the first
+    `_OBSERVABILITY_NEWLINE_WINDOW` chars. After two weeks of
+    accumulated observations, the operator can decide whether to drop
+    the first-line restriction, capture a separate `body` field, or
+    keep present behavior.
+
+    Logged at INFO level (not WARN): this is observation, not error.
+    """
+    early_newline_idx = text.find("\n", 0, _OBSERVABILITY_NEWLINE_WINDOW)
+    if early_newline_idx < 0:
+        return
+    _LOG.info(
+        "telegram_first_line_truncation_observation "
+        "channel=%s msg=%d text_len=%d headline_len=%d "
+        "had_early_newline=True newline_idx=%d",
+        channel_username,
+        message_id,
+        len(text),
+        len(headline),
+        early_newline_idx,
+    )
 
 
 class TelegramSource(SourcePlugin):
@@ -287,6 +336,17 @@ class TelegramSource(SourcePlugin):
         msg_id = getattr(message, "id", None)
         if msg_id is None:
             return None
+        # Observability for the first-line truncation case (no behavior change).
+        # Fires when the source text had a newline within the first
+        # _OBSERVABILITY_NEWLINE_WINDOW chars — i.e. the case where
+        # _extract_headline's first-line restriction may have dropped
+        # tail-paragraph content even after the per-char ceiling raise.
+        _log_truncation_observation(
+            text,
+            headline,
+            channel_username=self._channel_username,
+            message_id=int(msg_id),
+        )
         return FetchedItem(
             source_item_id=str(msg_id),
             headline=headline,
