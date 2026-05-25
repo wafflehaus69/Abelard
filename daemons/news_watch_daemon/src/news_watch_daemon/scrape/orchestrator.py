@@ -95,20 +95,49 @@ class _ThemeRegexes:
     exclusion: re.Pattern[str] | None
 
 
-def _join_keywords_wb(keywords: list[str]) -> str:
-    """Build a word-boundary-wrapped alternation regex.
+_CONSECUTIVE_UPPERCASE_RE = re.compile(r"[A-Z]{2}")
 
-    Pass C Step 1: keywords are matched with `\\b...\\b` boundaries so
-    short acronyms (MiCA, QT, BIS, RWA) don't collide with substrings
-    inside unrelated words (chemical, antique, business, drawer).
-    Multi-word keywords ("rate cut", "Federal Reserve") are similarly
-    bounded at the phrase start/end, not within. `re.escape` handles
-    special chars in keywords (hyphens, dots, dollar signs).
+
+def _has_consecutive_uppercase(keyword: str) -> bool:
+    """True iff `keyword` contains 2+ consecutive uppercase letters.
+
+    Drives case-sensitivity classification in `_join_keywords_wb`. The
+    heuristic catches the class of acronyms-that-collide-with-English:
+    SWIFT vs swift, MiCA vs mica, USDC, NATO, FOMC, IRGC, etc.
+    Common-word keywords ("stablecoin", "rate cut", "Federal Reserve",
+    "Circle Internet") have no 2-consecutive-cap run and stay
+    case-insensitive.
+    """
+    return bool(_CONSECUTIVE_UPPERCASE_RE.search(keyword))
+
+
+def _join_keywords_wb(keywords: list[str]) -> str:
+    """Build a word-boundary-wrapped alternation regex with per-keyword case rules.
+
+    Pass C Step 1 added `\\b...\\b` boundaries so short acronyms (MiCA, QT, BIS,
+    RWA) don't substring-match inside unrelated words (chemical, antique,
+    business, drawer). Pass D follow-on (this change) adds per-keyword
+    case-sensitivity: any keyword containing 2+ consecutive uppercase letters
+    gets wrapped in `(?-i:...)` to opt out of the IGNORECASE flag the outer
+    compile applies. This solves the "SWIFT matches swift" class of false
+    positives without a YAML schema change.
+
+    Multi-word keywords ("rate cut", "Federal Reserve") are similarly bounded
+    at the phrase start/end, not within. `re.escape` handles special chars in
+    keywords (hyphens, dots, dollar signs).
 
     Apostrophe edge case verified: `\\bIran\\b` still matches `Iran` in
     `Iran's` because `'` is non-word, providing the right boundary.
     """
-    return "|".join(rf"\b{re.escape(k)}\b" for k in keywords)
+    parts: list[str] = []
+    for k in keywords:
+        escaped = re.escape(k)
+        if _has_consecutive_uppercase(k):
+            # Opt out of the IGNORECASE flag the outer compile applies.
+            parts.append(rf"(?-i:\b{escaped}\b)")
+        else:
+            parts.append(rf"\b{escaped}\b")
+    return "|".join(parts)
 
 
 def _compile_theme_regexes(themes: Iterable[ThemeConfig]) -> list[_ThemeRegexes]:

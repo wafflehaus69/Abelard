@@ -780,3 +780,130 @@ def test_cross_source_log_io_failure_does_not_abort_scrape(conn, tmp_path, caplo
         "cross_source_log append failed" in record.message
         for record in caplog.records
     )
+
+
+# ---------- Pass D follow-on: per-keyword case-sensitivity for acronym keywords ----------
+#
+# Rule: any keyword containing 2+ consecutive uppercase letters compiles
+# case-sensitively via the (?-i:...) inline modifier. Common-word keywords
+# (no 2-cap run) stay case-insensitive. Solves SWIFT-vs-swift, MiCA-vs-mica,
+# etc. without a YAML schema change. Audit (2026-05-24) verified no
+# load-bearing IGNORECASE keyword has 2+ caps.
+
+
+def test_has_consecutive_uppercase():
+    """Pure function: returns True iff keyword contains 2+ consecutive uppercase."""
+    from news_watch_daemon.scrape.orchestrator import _has_consecutive_uppercase
+    # Case-sensitive class (acronyms / acronym-containing phrases)
+    assert _has_consecutive_uppercase("SWIFT") is True
+    assert _has_consecutive_uppercase("USDC") is True
+    assert _has_consecutive_uppercase("MiCA") is True       # "CA" is 2 consecutive
+    assert _has_consecutive_uppercase("GENIUS Act") is True
+    assert _has_consecutive_uppercase("FIT21") is True
+    assert _has_consecutive_uppercase("BTC price") is True
+    # Case-insensitive class (no 2-cap run anywhere)
+    assert _has_consecutive_uppercase("stablecoin") is False
+    assert _has_consecutive_uppercase("tokenized") is False
+    assert _has_consecutive_uppercase("Circle Internet") is False
+    assert _has_consecutive_uppercase("Federal Reserve") is False
+    assert _has_consecutive_uppercase("rate cut") is False
+    assert _has_consecutive_uppercase("Iran") is False     # single cap
+
+
+def _compile_keywords(keywords: list[str]):
+    """Test helper: compile a keyword list via the production code paths."""
+    import re
+    from news_watch_daemon.scrape.orchestrator import _join_keywords_wb
+    return re.compile(_join_keywords_wb(keywords), re.IGNORECASE)
+
+
+def test_swift_case_sensitive_matches_swift_not_swift_lowercase():
+    """SWIFT keyword matches the all-caps financial-system acronym but not
+    the English adverb 'swift' under any case variant."""
+    pat = _compile_keywords(["SWIFT"])
+    assert pat.search("SWIFT messaging system disruption") is not None
+    assert pat.search("the swift and professional action") is None
+    assert pat.search("Swift on-chain settlement pilot") is None  # capitalized differs
+
+
+def test_stablecoin_case_insensitive_preserved():
+    """Common-word keywords keep IGNORECASE behavior (no 2-cap run → no opt-out)."""
+    pat = _compile_keywords(["stablecoin"])
+    assert pat.search("stablecoin float hit a new high") is not None
+    assert pat.search("Stablecoin issuer earnings call") is not None
+    assert pat.search("STABLECOIN ADOPTION GROWS") is not None
+
+
+def test_mica_case_sensitive():
+    """MiCA matches its exact mixed-case form; other capitalizations don't."""
+    pat = _compile_keywords(["MiCA"])
+    assert pat.search("MiCA enforcement action in Europe") is not None
+    assert pat.search("the mica industry uses pegmatite ore") is None
+    assert pat.search("Mica regulation in chemistry contexts") is None
+
+
+def test_swift_real_positive_still_works():
+    """Tokenized-finance theme's secondary keyword set still tags genuine
+    SWIFT mentions after the case-sensitivity rule applies."""
+    from news_watch_daemon.theme_config import load_theme
+    from news_watch_daemon.scrape.orchestrator import _compile_theme_regexes, _tag_for_theme
+    theme = load_theme(REPO_ROOT / "themes" / "tokenized_finance_infrastructure.yaml")
+    [regs] = _compile_theme_regexes([theme])
+    text = "DTCC and SWIFT pilot tokenized treasury settlement on Chainlink CCIP"
+    # Multiple primary + secondary keywords match — assert tagged at all.
+    assert _tag_for_theme(text, regs) is not None
+
+
+def test_gunman_post_no_tokenized_finance_false_fire():
+    """Integration regression: the @real_DonaldJTrump /19285 gunman post must NOT
+    tag tokenized_finance_infrastructure. Pre-fix, 'swift and professional action'
+    fired the SWIFT secondary keyword via IGNORECASE matching."""
+    from news_watch_daemon.theme_config import load_theme
+    from news_watch_daemon.scrape.orchestrator import _compile_theme_regexes, _tag_for_theme
+    theme = load_theme(REPO_ROOT / "themes" / "tokenized_finance_infrastructure.yaml")
+    [regs] = _compile_theme_regexes([theme])
+    gunman_post = (
+        "Thank you to our great Secret Service and Law Enforcement for the swift "
+        "and professional action taken this evening against a gunman near the White "
+        "House, who had a violent history and possible obsession with our Country's "
+        "most cherished structure. The gunman is dead after an exch"
+    )
+    assert _tag_for_theme(gunman_post, regs) is None
+
+
+def test_ai_exclusion_cluster_self_consistency():
+    """Mixed-convention regression-guard for the audit observation.
+
+    The ai_capex_cycle theme has 'AI infrastructure' (secondary) AND
+    'AI bubble' (exclusion) — both containing 2+ caps, both now case-sensitive
+    under the rule. On a synthetic post with 'AI infrastructure' in uppercase
+    + 'ai bubble' in lowercase, and no primary keywords:
+
+      - 'AI infrastructure' matches case-sensitively → secondary tag fires
+      - 'AI bubble' does NOT match 'ai bubble' (lowercase) → exclusion misses
+      - Result: secondary tag wins
+
+    Self-consistency check: same text all-lowercase fires neither secondary
+    nor exclusion (both case-sensitive now). The theme correctly stays silent
+    on casual-source 'ai bubble' content rather than half-tagging.
+
+    If someone later modifies the rule and breaks this self-consistency
+    (e.g. exclusion goes case-insensitive while secondary stays case-sensitive),
+    primary content from professional sources would silently get excluded by
+    matching lowercase noise — this test catches that regression.
+    """
+    from news_watch_daemon.theme_config import load_theme
+    from news_watch_daemon.scrape.orchestrator import _compile_theme_regexes, _tag_for_theme
+    theme = load_theme(REPO_ROOT / "themes" / "ai_capex_cycle.yaml")
+    [regs] = _compile_theme_regexes([theme])
+
+    # Mixed-case post, no primary keywords present (no hyperscaler/capex/datacenter/etc.):
+    mixed_case = (
+        "AI infrastructure scaling continues quietly across many regions; "
+        "ai bubble noise dominates retail blogs"
+    )
+    assert _tag_for_theme(mixed_case, regs) == "secondary"
+
+    # Same text all-lowercase: 'AI infrastructure' case-sensitive secondary doesn't fire,
+    # 'AI bubble' case-sensitive exclusion doesn't fire either — internally consistent.
+    assert _tag_for_theme(mixed_case.lower(), regs) is None
