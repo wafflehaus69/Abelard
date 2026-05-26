@@ -27,7 +27,6 @@ from news_watch_daemon.sources.telegram import (
     PLUGIN_PREFIX,
     TelegramSource,
     _extract_headline,
-    _log_truncation_observation,
 )
 
 
@@ -298,11 +297,6 @@ def test_extract_headline_single_line():
     assert _extract_headline("Hello world") == "Hello world"
 
 
-def test_extract_headline_multiline_uses_first_line():
-    text = "Lead line\n\nbody paragraph here"
-    assert _extract_headline(text) == "Lead line"
-
-
 def test_extract_headline_strips_whitespace():
     assert _extract_headline("   spaced out   ") == "spaced out"
 
@@ -313,22 +307,32 @@ def test_extract_headline_empty_returns_none():
     assert _extract_headline("   ") is None
 
 
-# ---------- Fix 1 (Trump truncation): _HEADLINE_MAX_CHARS 280 -> 4096 ----------
+# ---------- Headline-extraction behavior: strip + cap-at-4096, full text preserved ----------
+#
+# History:
+#   Fix 1 (2026-05-25): raised _HEADLINE_MAX_CHARS from 280 -> 4096 to stop
+#     silent truncation of long-form posts (notably @real_DonaldJTrump).
+#     Kept the first-line restriction unchanged and added observability
+#     to measure how often it dropped tail content.
+#   This pass (2026-05-26): dropped the first-line restriction after empirical
+#     evidence (23 hits in one CIG_telegram scrape, /76087 dropping 4143 of
+#     4227 chars of analytical body) showed channels like CIG and Trump's
+#     are performing upstream synthesis work the daemon should preserve.
+# Function semantics now: strip surrounding whitespace, cap at 4096.
 
 
 def test_short_text_unchanged():
-    """100-char text round-trips intact (existing behavior preserved)."""
+    """100-char text round-trips intact."""
     text = "x" * 100
     assert _extract_headline(text) == text
 
 
 def test_text_under_4096_unchanged():
-    """Bug regression: pre-fix, 280-char ceiling silently truncated long-form
-    posts (notably @real_DonaldJTrump). After fix to 4096, ~800-char input
-    round-trips intact. This single assertion would have caught the original bug."""
-    text = ("word " * 200).strip()  # ~999 chars, no newlines
-    assert len(text) > 280  # confirm input exercises the old bug
-    assert len(text) < 4096  # confirm under new ceiling
+    """~999-char text with no newlines round-trips intact (Fix-1 era regression
+    that single-line long posts aren't silently truncated)."""
+    text = ("word " * 200).strip()
+    assert len(text) > 280
+    assert len(text) < 4096
     assert _extract_headline(text) == text
 
 
@@ -340,53 +344,49 @@ def test_text_over_4096_truncated_at_4096():
     assert result == "x" * 4096
 
 
-def test_newline_still_splits_to_first_line():
-    """Existing first-line behavior preserved (the observability log surfaces
-    the case where this drops paragraph content)."""
-    text = "Lead line\nbody paragraph here"
-    assert _extract_headline(text) == "Lead line"
+def test_extract_headline_no_longer_splits_at_newline():
+    """Bug regression for the Telegram content-preservation fix: multi-paragraph
+    text round-trips intact. The earlier first-line restriction (split('\\n', 1)[0])
+    has been removed. Body paragraphs that previously got silently dropped now
+    flow through to the headline column for synthesis consumption."""
+    text = "Lead line\n\nbody paragraph here\n\nthird paragraph also preserved"
+    assert _extract_headline(text) == text
 
 
-def test_empty_and_none_unchanged():
-    """None / empty / whitespace-only all return None (existing behavior preserved)."""
-    assert _extract_headline(None) is None
-    assert _extract_headline("") is None
-    assert _extract_headline("   ") is None
+# Real text of CIG_telegram /76087, captured 2026-05-26 ~04:37 UTC via ad-hoc
+# Telethon fetch. The original observability log (now removed) recorded:
+#   text_len=4227, headline_len=84, newline_idx=85
+# i.e. 4143 chars of analytical body were being discarded to preserve an
+# 84-char emoji-prefix title. This fixture is the most-severe single example
+# from the empirical evidence that motivated dropping the first-line behavior.
+CIG_76087_FULL_TEXT = '📝 🇺🇸 🇵🇭 **The U.S. tried to re-colonize part of the Philippines.** | Arnaud Bertrand \n\nThey did so under the so-called "Pax Silica" initiative, the brainchild of - surprise, surprise - an ex-Palantir guy named Jacob Helberg who now runs U.S. economic "diplomacy" from the State Department.\n\nIt\'s causing a big outcry in the Philippines, which is quite a feat given this is by far the most US-friendly country in Southeast Asia. \n\nIf you\'re the US and you\'re getting the Marcos administration - of all governments - to push back on sovereignty, you\'ve really overplayed your hand.\n\nWhat is the "Pax Silica" initiative? In a nutshell it\'s about the US getting other countries to commit to restructuring their AI tech infrastructure around a US-led stack. It\'s basically vendor lock-in: you hand over your critical minerals, align your export controls with Washington\'s, regulate AI the way America wants, and in return you get to be a US "trusted partner," whatever that means these days.\n\nIn essence, let\'s not kid ourselves, it\'s all about China: this is the US\'s initiative to "win the AI race" by getting other countries to contractually commit to keeping China out of their tech supply chains. When you can\'t preserve your lead through innovation, you seek to lock countries in contractually.\n\nFor instance as a country, this would mean telling Huawei they can\'t sell you AI chips, and telling Chinese firms they can\'t invest in your data centers - even if they\'re better and cheaper. It\'s not about choosing the best technology, it\'s about choosing the right flag.\n\nBut in this instance, the US went much further still: they literally tried to carve out 4,000 acres of Philippine territory (in New Clark City, 60 miles north of Manila) to be governed under US common law with diplomatic immunity - the first arrangement of its kind anywhere in the modern world.\n\nThis is according to the [WSJ](https://archive.ph/20260417112635/https://www.wsj.com/world/asia/u-s-to-create-high-tech-manufacturing-zone-in-philippines-017c1668) who ran the story last month as if it was a done deal (it wasn\'t).\n\nHeard about the "French concession" or "British concession" in China during the century of humiliation? Same thing: the US basically asked for an "American concession" in the Philippines.\n\nUnsurprisingly, there was quite a bit of backlash in the country with for instance the Peasant Movement of the Philippines (KMP) calling it a “massive sellout” of the country’s land, minerals, and sovereignty \n\nSo much so that the Philippines\' government - namely Joshua Bingcang, president and chief executive of the Bases Conversion and Development Authority (BCDA) - issued a statement saying that the Philippines had rejected US proposals that would place the project beyond local jurisdiction \n\nNote, by the way, this delicious irony: the BCDA is the government agency that was created in 1992 specifically to convert former US military bases at Clark and Subic Bay after the Philippines spent decades negotiating their closure. New Clark City - where the Pax Silica\'s hub would go - is built on the old Clark Air Base. \n\nSo the agency whose entire reason for existing is to turn former American colonial territory (i.e. US military bases) into sovereign Philippine land is the one now being asked to hand part of that very same land back under US jurisdiction (and, apparently, declined).\n\nOf course though, blocking this specific jurisdiction grab doesn\'t change the bigger picture. The Philippines is still a Pax Silica signatory, and Pax Silica itself is structurally neocolonial: you supply the cheap labor and raw materials, align your export controls and regulations with Washington\'s, cut yourself off from the world\'s rising technological powerhouse - and in exchange you get assembly jobs and the privilege of getting a pat on the head and being called a "trusted partner."\n\nThey dropped the most cartoonishly colonial demand - governing Philippine soil under US law - but the underlying architecture is the same: you serve America\'s supply chain, on America\'s terms, and you relinquish your sovereign right to trade with whoever offers the best deal.\n\n📎 [Arnaud Bertrand](https://fxtwitter.com/i/status/2058728222553186490)'
 
 
-def test_log_truncation_observation_fires_on_early_newline(caplog):
-    """Observation log fires when source text has a newline within the first 1000 chars."""
-    text = "First paragraph here.\n\nSecond paragraph with content."
-    headline = "First paragraph here."
-    with caplog.at_level(logging.INFO, logger="news_watch_daemon.sources.telegram"):
-        _log_truncation_observation(
-            text, headline, channel_username="test_channel", message_id=12345,
-        )
-    matched = [
-        r for r in caplog.records
-        if "first_line_truncation_observation" in r.getMessage()
-    ]
-    assert len(matched) == 1
-    msg = matched[0].getMessage()
-    assert "channel=test_channel" in msg
-    assert "msg=12345" in msg
-    assert "had_early_newline=True" in msg
+def test_extract_headline_preserves_cig_76087_full_text():
+    """Real-fixture regression: the most-severe pre-fix truncation case.
 
+    Pre-fix: _extract_headline returned only the 84-char first line
+    ('📝 🇺🇸 🇵🇭 **The U.S. tried...| Arnaud Bertrand'); the 4143-char
+    analytical body (Pax Silica analysis) was silently dropped.
 
-def test_log_truncation_observation_silent_on_single_paragraph(caplog):
-    """Observation log does NOT fire when source text is single-paragraph (no newlines
-    within the first 1000 chars)."""
-    text = ("word " * 100).strip()  # ~499 chars, no newlines
-    headline = text
-    with caplog.at_level(logging.INFO, logger="news_watch_daemon.sources.telegram"):
-        _log_truncation_observation(
-            text, headline, channel_username="test_channel", message_id=12345,
-        )
-    matched = [
-        r for r in caplog.records
-        if "first_line_truncation_observation" in r.getMessage()
-    ]
-    assert len(matched) == 0
+    Post-fix: full text preserved up to the 4096 cap. The first 4096 chars
+    of the 4227-char source round-trip intact, body content from beyond
+    the first line is visible (test asserts substrings unique to body
+    paragraphs are present in the extracted result).
+    """
+    result = _extract_headline(CIG_76087_FULL_TEXT)
+    assert result is not None
+    # Source is 4227 chars and has no leading/trailing whitespace.
+    # Post-strip = 4227 > 4096 cap → result is first 4096 chars.
+    assert len(result) == 4096
+    assert result == CIG_76087_FULL_TEXT[:4096]
+    # Substrings from body paragraphs that pre-fix would have been DROPPED
+    # but post-fix are PRESENT (proves the first-line behavior is gone):
+    assert "Pax Silica" in result        # first body paragraph
+    assert "vendor lock-in" in result    # mid-body paragraph
+    assert "Marcos administration" in result   # mid-body paragraph
+    # Title (first line) is still present too:
+    assert "tried to re-colonize" in result
 
 
 def test_message_with_no_text_dropped():
