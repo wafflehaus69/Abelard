@@ -245,9 +245,23 @@ def test_load_all_themes_empty_dir_returns_empty_list(tmp_path):
 # ---------- rss_feeds extension (Pass A) ----------
 
 
-def test_seed_theme_has_empty_rss_feeds_by_default():
+def test_seed_theme_registers_bloomberg_politics_rss_feed():
+    """The seed theme declares the Bloomberg politics RSS feed.
+
+    History: this test used to assert `rss_feeds == []` (Pass A/B era).
+    Bloomberg politics was added 2026-05-27 (wire-feed restoration after
+    the daemon-level Bloomberg-RSS-deprecation prior turned out to be
+    empirically wrong — the feed returns 200 OK with fresh content).
+    Future RSS additions are allowed; this test pins the
+    bloomberg_politics invariant via `in`-style assertion rather than
+    list equality.
+    """
     theme = load_theme(SEED_THEME)
-    assert theme.rss_feeds == []
+    feed_ids = {f.feed_id for f in theme.rss_feeds}
+    assert "bloomberg_politics" in feed_ids
+    bp = next(f for f in theme.rss_feeds if f.feed_id == "bloomberg_politics")
+    assert str(bp.url) == "https://feeds.bloomberg.com/politics/news.rss"
+    assert bp.enabled is True
 
 
 def test_theme_with_one_rss_feed_loads():
@@ -322,21 +336,26 @@ def test_config_hash_changes_when_rss_feeds_change():
 
 
 def test_seed_theme_registers_core_telegram_channels():
-    """The seed theme always declares the core CIG/bloomberg/trading trio.
+    """The seed theme always declares the core CIG/trading/Ateobreaking trio.
 
-    Channel-list-agnostic beyond that core set — themes evolve, and the
-    formerly-fourth chainlinkbreadcrumbs channel has migrated to the
-    tokenized_finance_infrastructure theme where it fits better.
+    Channel-list-agnostic beyond that core set — themes evolve. History:
+
+      - 2026-05-13 (Pass B): chainlinkbreadcrumbs migrated to
+        tokenized_finance_infrastructure where it fits better.
+      - 2026-05-27 (Task 33): bloomberg channel dropped — confirmed
+        dormant since 2026-03-12 via raw Telethon probe.
+      - 2026-05-27 (Task 36): Ateobreaking added — bilingual Russian
+        wire channel surfaces international-press framing.
     """
     theme = load_theme(SEED_THEME)
     usernames = {c.username for c in theme.telegram_channels}
-    core = {"CIG_telegram", "bloomberg", "trading"}
+    core = {"CIG_telegram", "trading", "Ateobreaking"}
     assert core.issubset(usernames)
     # Cadences for the core trio are stable
     by_username = {c.username: c for c in theme.telegram_channels}
     assert by_username["CIG_telegram"].cadence_minutes == 15
-    assert by_username["bloomberg"].cadence_minutes == 30
     assert by_username["trading"].cadence_minutes == 30
+    assert by_username["Ateobreaking"].cadence_minutes == 15
 
 
 def test_seed_theme_telegram_channels_all_enabled_by_default():
