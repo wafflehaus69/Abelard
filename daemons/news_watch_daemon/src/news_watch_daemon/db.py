@@ -37,6 +37,7 @@ from .theme_config import ThemeConfig
 MIGRATIONS: tuple[tuple[int, str, str | None], ...] = (
     (1, "initial schema", "initial.sql"),
     (2, "headlines dedupe composite index", "v2_dedupe_composite_index.sql"),
+    (3, "headlines language column", "v3_headlines_language_column.sql"),
 )
 
 # Resolves relative to the installed package; the schema dir sits beside

@@ -907,3 +907,49 @@ def test_ai_exclusion_cluster_self_consistency():
     # Same text all-lowercase: 'AI infrastructure' case-sensitive secondary doesn't fire,
     # 'AI bubble' case-sensitive exclusion doesn't fire either — internally consistent.
     assert _tag_for_theme(mixed_case.lower(), regs) is None
+
+
+# ---------- Task 2: language column populated at ingest ----------
+
+
+def test_orchestrator_populates_language_column_at_insertion(conn):
+    """End-to-end: a fetch carrying multilingual items results in headlines
+    rows with non-null `language` populated by the orchestrator-level
+    classifier inside _insert_headline_and_tags.
+
+    Locks the single-call-site invariant: the orchestrator is the ONE
+    place that classifies (not the source plugins). Adding sources in
+    the future automatically inherits classification.
+
+    Note: this test uses three items with distinct dedupe-hash
+    normalizations. Edge cases like emoji-only headlines are covered
+    by the classifier unit tests in test_lang_classifier.py — those
+    inputs normalize to empty under scrape.dedup._DROP_CHARS_RE (ASCII-
+    only) and would collide on dedupe_hash with the Cyrillic-only item
+    here, masking the language assertion. The dedup behavior for non-
+    Latin scripts is its own concern (Pass F follow-up).
+    """
+    theme = _seed_theme()
+    src = _fake_source("telegram:Ateobreaking", items=[
+        _item("Российские военные провели учения", source_id="ru1"),
+        _item("Iran tests new ballistic missile", source_id="en1"),
+        _item(("Р" * 30) + ("a" * 70), source_id="mx1"),  # 0.30 cyr → mixed
+    ])
+    run_scrape(conn, [src], [theme], now_unix=FIXED_NOW)
+
+    # The fixture URL is `https://example.com/<source_id>`; pull source_id
+    # back out as the row key.
+    by_source_id = {
+        r["url"].rsplit("/", 1)[-1]: r["language"]
+        for r in conn.execute("SELECT url, language FROM headlines").fetchall()
+    }
+    assert by_source_id == {
+        "ru1": "ru",
+        "en1": "en",
+        "mx1": "mixed",
+    }
+    # Belt-and-suspenders: no NULL language rows at all post-orchestrator.
+    null_count = conn.execute(
+        "SELECT COUNT(*) FROM headlines WHERE language IS NULL"
+    ).fetchone()[0]
+    assert null_count == 0

@@ -32,9 +32,11 @@ from .db import (
     read_heartbeats,
     read_source_health,
     schema_version,
+    transaction,
     upsert_themes,
 )
 from .envelope import Source, build_error, build_ok, make_warning
+from .lang import classify_language
 from .http_client import HttpClient
 from .scrape.factory import build_sources
 from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, write_heartbeat
@@ -284,6 +286,10 @@ def build_parser() -> argparse.ArgumentParser:
     db_sub = p_db.add_subparsers(dest="db_action", required=True)
     db_sub.add_parser("init", help="Apply the initial schema.")
     db_sub.add_parser("migrate", help="Apply any pending migrations.")
+    db_sub.add_parser(
+        "backfill-language",
+        help="Classify the language of headlines with NULL language (Task 2 / Pass F).",
+    )
 
     return parser
 
@@ -361,6 +367,70 @@ def _handle_db_migrate(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
     # Same code path as init — init_db applies any pending migrations
     # and is idempotent when nothing is pending.
     return _handle_db_init(args, cfg)
+
+
+def _handle_db_backfill_language(
+    args: argparse.Namespace, cfg: Config
+) -> dict[str, Any]:
+    """Classify the language of headlines whose `language` column is NULL.
+
+    Idempotent: re-running after all rows are classified is a no-op
+    (rows_examined == rows_classified == 0). Pre-migration rows land
+    with NULL language; this subcommand fills them in-place. New rows
+    inserted after the v3 migration land with non-null language
+    directly via the orchestrator path; only pre-migration rows need
+    backfill.
+
+    Output: by_language + by_source_language breakdown so Pass F design
+    can see where Russian content actually lives in the corpus.
+    """
+    conn = connect(cfg.db_path)
+    try:
+        # Confirm schema is at v3+ — backfill against a pre-v3 schema
+        # would crash on the UPDATE because the language column doesn't
+        # exist yet. Surface a clear error instead.
+        version = schema_version(conn)
+        if version < 3:
+            return build_error(
+                status="error",
+                source="internal",
+                detail=(
+                    f"schema_version={version} predates the language column (v3). "
+                    "Run `news-watch-daemon db migrate` first."
+                ),
+            )
+        rows = conn.execute(
+            "SELECT headline_id, source, headline FROM headlines "
+            "WHERE language IS NULL"
+        ).fetchall()
+        rows_examined = len(rows)
+        by_language: dict[str, int] = {}
+        by_source_language: dict[str, dict[str, int]] = {}
+        updates: list[tuple[str, str]] = []
+        for r in rows:
+            lang = classify_language(r["headline"])
+            updates.append((lang, r["headline_id"]))
+            by_language[lang] = by_language.get(lang, 0) + 1
+            per_source = by_source_language.setdefault(r["source"], {})
+            per_source[lang] = per_source.get(lang, 0) + 1
+        if updates:
+            with transaction(conn):
+                conn.executemany(
+                    "UPDATE headlines SET language = ? WHERE headline_id = ?",
+                    updates,
+                )
+    finally:
+        conn.close()
+    return build_ok(
+        {
+            "db_path": str(cfg.db_path),
+            "rows_examined": rows_examined,
+            "rows_classified": len(updates),
+            "by_language": by_language,
+            "by_source_language": by_source_language,
+        },
+        source="internal",
+    )
 
 
 def _handle_themes_load(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
@@ -1693,6 +1763,7 @@ Handler = Callable[[argparse.Namespace, Config], dict[str, Any]]
 HANDLERS: dict[str, Handler] = {
     "db init": _handle_db_init,
     "db migrate": _handle_db_migrate,
+    "db backfill-language": _handle_db_backfill_language,
     "themes load": _handle_themes_load,
     "themes list": _handle_themes_list,
     "status": _handle_status,

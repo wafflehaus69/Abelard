@@ -41,6 +41,7 @@ from typing import Iterable
 from pathlib import Path
 
 from ..db import record_heartbeat, to_json_column, transaction
+from ..lang import classify_language
 from ..sources.base import FetchedItem, FetchResult, SourcePlugin
 from ..theme_config import ThemeConfig
 from .cross_source_log import write_observation as write_cross_source_observation
@@ -389,13 +390,23 @@ def _insert_headline_and_tags(
     headline text via TrackedTickers). Lands in the existing
     `headlines.tickers_json` column.
     """
+    # Task 2 (2026-05-27): per-row language classification. Single call
+    # site by design — every headline regardless of source goes through
+    # this insert path, so all rows land with non-null `language`. Pass F
+    # translation gate reads `WHERE language != 'en'` against this column.
+    # The classifier is pure / deterministic / microsecond-cheap; no
+    # per-source overrides today (a future RSS plugin that wants to honor
+    # an XML <language> tag would promote `language` to an optional
+    # FetchedItem field and use it here when present, classifier-fallback
+    # when None).
+    language = classify_language(item.headline)
     with transaction(conn):
         conn.execute(
             "INSERT INTO headlines "
             "(headline_id, source, raw_source, headline, url, "
             " published_at_unix, published_at, fetched_at_unix, fetched_at, "
-            " dedupe_hash, tickers_json, entities_json) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " dedupe_hash, tickers_json, entities_json, language) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 headline_id,
                 source_name,
@@ -409,6 +420,7 @@ def _insert_headline_and_tags(
                 dedupe_hash,
                 to_json_column(tickers),
                 None,
+                language,
             ),
         )
         for theme_id, confidence in tag_rows:

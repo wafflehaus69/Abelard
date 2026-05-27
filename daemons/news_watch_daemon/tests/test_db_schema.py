@@ -93,8 +93,9 @@ def test_init_db_records_all_migrations(initialized):
     assert [(r["version"], r["description"]) for r in rows] == [
         (1, "initial schema"),
         (2, "headlines dedupe composite index"),
+        (3, "headlines language column"),
     ]
-    assert schema_version(initialized) == 2
+    assert schema_version(initialized) == 3
 
 
 def test_init_db_is_idempotent(initialized):
@@ -117,6 +118,27 @@ def test_v2_composite_index_exists(initialized):
     assert len(rows) == 1
 
 
+def test_v3_language_column_exists(initialized):
+    """v3 migration adds a nullable `language` column to headlines for
+    Pass F translation gating. ALTER TABLE ADD COLUMN is metadata-only
+    in SQLite, so existing rows pre-migration get NULL until the
+    `db backfill-language` subcommand classifies them in-place."""
+    rows = initialized.execute("PRAGMA table_info(headlines)").fetchall()
+    cols = {r["name"]: r["type"] for r in rows}
+    assert "language" in cols
+    assert cols["language"].upper() == "TEXT"
+
+
+def test_v3_language_index_exists(initialized):
+    """v3 adds an index on language for the Pass F query
+    `WHERE language != 'en' AND ...`."""
+    rows = initialized.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+        ("idx_headlines_language",),
+    ).fetchall()
+    assert len(rows) == 1
+
+
 def test_v2_keeps_legacy_dedupe_index(initialized):
     rows = initialized.execute(
         "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
@@ -125,8 +147,17 @@ def test_v2_keeps_legacy_dedupe_index(initialized):
     assert len(rows) == 1
 
 
-def test_init_db_upgrades_v1_to_v2(tmp_path, conn):
-    """An older DB at v1 should pick up v2 cleanly on the next init."""
+def test_init_db_upgrades_v1_to_latest(tmp_path, conn):
+    """An older DB at v1 should advance to the latest schema version
+    cleanly on the next init, applying all intermediate migrations.
+
+    Test target version is computed from the MIGRATIONS registry rather
+    than pinned to a literal — future v4, v5, ... migrations don't
+    require touching this test (per the same doctrine the Commit A
+    note memorialized for YAML invariants: stale assertions pinned
+    against config should evolve with the config they describe).
+    """
+    from news_watch_daemon.db import MIGRATIONS
     # Roll the DB back to a pretend v1 state: apply only the initial.sql
     # by hand, stamp schema_version manually.
     schema_path = Path(__file__).resolve().parent.parent / "schema" / "initial.sql"
@@ -137,9 +168,13 @@ def test_init_db_upgrades_v1_to_v2(tmp_path, conn):
         (1, 0, "1970-01-01T00:00:00Z", "initial schema"),
     )
     assert schema_version(conn) == 1
-    # Now call init_db — should apply v2 without re-running v1.
+    # Now call init_db — should apply every migration after v1 without
+    # re-running v1.
     init_db(conn)
-    assert schema_version(conn) == 2
+    target = MIGRATIONS[-1][0]
+    assert schema_version(conn) == target
+    # Spot-check that an intermediate migration (v2's index) ran, not
+    # just the head.
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
         ("idx_headlines_dedupe_fetched",),
