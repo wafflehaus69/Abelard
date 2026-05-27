@@ -196,6 +196,12 @@ class Brief(BaseModel):
 
     brief_id: str
     generated_at: str
+    # brief_type discriminator — Pass E (2026-05-26) introduces a parallel
+    # AttentionBrief that shares the archive tree and AlertSink dispatch
+    # surface. Pass C Briefs default to "theme_event" so existing archived
+    # JSON (which doesn't have this field) round-trips via model_validate
+    # without breakage. AttentionBrief carries brief_type="attention".
+    brief_type: Literal["theme_event"] = "theme_event"
     trigger: Trigger
     themes_covered: list[str]
     events: list[Event] = Field(default_factory=list)

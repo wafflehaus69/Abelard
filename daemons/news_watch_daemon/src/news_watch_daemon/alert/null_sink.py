@@ -20,7 +20,7 @@ import time
 from dataclasses import dataclass, field
 
 from ..synthesize.brief import Brief
-from .sink import DispatchResult
+from .sink import DispatchableBrief, DispatchResult
 
 
 CHANNEL_NAME = "null"
@@ -40,13 +40,13 @@ class NullSink:
 
     fail_next: bool = False
     fail_error: str = "simulated failure"
-    dispatched: list[Brief] = field(default_factory=list)
+    dispatched: list[DispatchableBrief] = field(default_factory=list)
 
     @property
     def channel_name(self) -> str:
         return CHANNEL_NAME
 
-    def dispatch(self, brief: Brief) -> DispatchResult:
+    def dispatch(self, brief: DispatchableBrief) -> DispatchResult:
         if self.fail_next:
             self.fail_next = False  # one-shot
             return DispatchResult(

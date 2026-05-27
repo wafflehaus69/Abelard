@@ -227,3 +227,126 @@ def test_list_ignores_hidden_tmp_files(tmp_path):
     (partition / f".{bid}.xyz.tmp").write_text("partial", encoding="utf-8")
     listed = list_brief_ids(archive)
     assert listed == [bid]
+
+
+# ---------- Pass E: dual-format partitioner + AttentionBrief round-trip ----------
+#
+# Lock the contract that _month_partition handles both `nwd-YYYY-MM-...` (Pass C)
+# and `nwd-attn-YYYY-MM-...` (Pass E AttentionBrief) without divergent code paths.
+# If a future brief type introduces a new infix, this section is the regression-
+# guard for the partitioner's switch behavior.
+
+
+def _make_attention_brief(brief_id: str = "nwd-attn-2026-05-26T22-50-43Z-9b3cfa83"):
+    from news_watch_daemon.attention.brief_schema import AttentionBrief
+    from news_watch_daemon.synthesize.brief import Dispatch, SynthesisMetadata
+    return AttentionBrief(
+        brief_id=brief_id,
+        generated_at="2026-05-26T22:50:43Z",
+        triggering_term="hormuz",
+        term_frequency_window=14,
+        term_frequency_prior=1,
+        cluster_size=14,
+        narrative="Sample attention narrative.",
+        source_mix={"telegram:CIG_telegram": 10, "finnhub:general": 4},
+        entities_observed=["CENTCOM", "Strait of Hormuz"],
+        attention_shape="multi_source_convergence",
+        dispatch=Dispatch(alerted=False),
+        synthesis_metadata=SynthesisMetadata(
+            model_used="claude-sonnet-4-6",
+            theses_doc_available=False,
+        ),
+    )
+
+
+def test_month_partition_extracts_yyyy_mm_for_attention_brief_id():
+    """Pass E format `nwd-attn-YYYY-MM-...` routes to the same YYYY-MM partition
+    as Pass C Briefs from the same month."""
+    assert _month_partition("nwd-attn-2026-05-26T22-50-43Z-9b3cfa83") == "2026-05"
+    assert _month_partition("nwd-attn-2099-12-31T23-59-59Z-deadbeef") == "2099-12"
+
+
+def test_month_partition_dual_format_same_month_yields_same_partition():
+    """The whole point of routing both formats through the same partitioner:
+    Pass C and Pass E briefs from the same month share a YYYY-MM directory."""
+    pass_c = _month_partition("nwd-2026-05-13T14-32-08Z-a1b2c3d4")
+    pass_e = _month_partition("nwd-attn-2026-05-26T22-50-43Z-9b3cfa83")
+    assert pass_c == pass_e == "2026-05"
+
+
+def test_month_partition_rejects_unknown_infix():
+    """Unknown infix at parts[1] (not 4-digit year, not in known set) → ArchiveError.
+    Prevents silently mis-partitioning a future format that no one wired up yet."""
+    with pytest.raises(ArchiveError, match="bad year"):
+        _month_partition("nwd-foo-2026-05-13T14-32-08Z-abc")
+
+
+def test_month_partition_rejects_attention_id_with_too_few_parts():
+    """`nwd-attn-...` ID that's too short to contain year/month → ArchiveError."""
+    with pytest.raises(ArchiveError):
+        _month_partition("nwd-attn-2026")
+
+
+def test_write_and_read_attention_brief_round_trip(tmp_path):
+    """AttentionBrief round-trips through write_brief / read_brief."""
+    archive = tmp_path / "archive"
+    brief = _make_attention_brief()
+    path = write_brief(archive, brief)
+    assert path.exists()
+    assert path.name == "nwd-attn-2026-05-26T22-50-43Z-9b3cfa83.json"
+    assert path.parent.name == "2026-05"   # routed to correct partition
+    loaded = read_brief(archive, brief.brief_id)
+    from news_watch_daemon.attention.brief_schema import AttentionBrief
+    assert isinstance(loaded, AttentionBrief)
+    assert loaded.triggering_term == "hormuz"
+    assert loaded.attention_shape == "multi_source_convergence"
+    assert loaded.source_mix == {"telegram:CIG_telegram": 10, "finnhub:general": 4}
+
+
+def test_read_brief_discriminates_brief_vs_attention_by_id(tmp_path):
+    """Two briefs from the same month, different types, both load to the right
+    Pydantic model based on id-format discrimination at read time."""
+    from news_watch_daemon.attention.brief_schema import AttentionBrief
+    archive = tmp_path / "archive"
+    theme_brief = _make_brief(brief_id="nwd-2026-05-26T10-00-00Z-aaaaaaaa")
+    attn_brief = _make_attention_brief(brief_id="nwd-attn-2026-05-26T11-00-00Z-bbbbbbbb")
+    write_brief(archive, theme_brief)
+    write_brief(archive, attn_brief)
+    loaded_theme = read_brief(archive, theme_brief.brief_id)
+    loaded_attn = read_brief(archive, attn_brief.brief_id)
+    assert isinstance(loaded_theme, Brief)
+    assert isinstance(loaded_attn, AttentionBrief)
+    # Both live in the same YYYY-MM partition:
+    assert (archive / "2026-05" / f"{theme_brief.brief_id}.json").exists()
+    assert (archive / "2026-05" / f"{attn_brief.brief_id}.json").exists()
+
+
+def test_list_brief_ids_includes_both_formats(tmp_path):
+    """list_brief_ids returns both Pass C and Pass E IDs from a shared partition.
+    Caller can filter by id-format-prefix if it wants type-specific subsets."""
+    archive = tmp_path / "archive"
+    theme_brief = _make_brief(brief_id="nwd-2026-05-26T10-00-00Z-aaaaaaaa")
+    attn_brief = _make_attention_brief(brief_id="nwd-attn-2026-05-26T11-00-00Z-bbbbbbbb")
+    write_brief(archive, theme_brief)
+    write_brief(archive, attn_brief)
+    listed = list_brief_ids(archive)
+    assert set(listed) == {theme_brief.brief_id, attn_brief.brief_id}
+
+
+def test_brief_brief_type_field_defaults_to_theme_event():
+    """Pass C Brief gets brief_type='theme_event' by default — backwards compat
+    so existing archived briefs (without the field) round-trip via model_validate."""
+    b = _make_brief()
+    assert b.brief_type == "theme_event"
+    # And: validating a dict that LACKS brief_type still works (default kicks in)
+    payload = b.model_dump(mode="json")
+    del payload["brief_type"]
+    reloaded = Brief.model_validate(payload)
+    assert reloaded.brief_type == "theme_event"
+
+
+def test_attention_brief_brief_type_is_attention():
+    """AttentionBrief is constructed with brief_type='attention' by default."""
+    from news_watch_daemon.attention.brief_schema import AttentionBrief
+    b = _make_attention_brief()
+    assert b.brief_type == "attention"

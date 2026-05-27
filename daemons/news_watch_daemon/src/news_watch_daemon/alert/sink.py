@@ -26,9 +26,17 @@ Channel-name discipline:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, Union, runtime_checkable
 
+from ..attention.brief_schema import AttentionBrief
 from ..synthesize.brief import Brief
+
+
+# Type alias for "anything an AlertSink can deliver". Pass E (2026-05-26)
+# widened from Brief-only to Brief|AttentionBrief at the dispatch boundary.
+# Sinks branch on isinstance to pick the right formatter; transport layer
+# is shared (signal-cli / Bot API call mechanics).
+DispatchableBrief = Union[Brief, AttentionBrief]
 
 
 @dataclass(frozen=True)
@@ -56,6 +64,10 @@ class AlertSink(Protocol):
     `dispatch(brief)` (delivery). Implementations MUST NOT raise from
     dispatch; transport-level errors return as
     `DispatchResult(success=False, error=...)`.
+
+    `dispatch` accepts either a Pass C Brief or a Pass E AttentionBrief
+    (DispatchableBrief Union). Concrete sinks branch on isinstance to
+    pick the right message formatter while sharing transport mechanics.
     """
 
     @property
@@ -63,9 +75,9 @@ class AlertSink(Protocol):
         """Stable channel identifier for this sink instance."""
         ...
 
-    def dispatch(self, brief: Brief) -> DispatchResult:
+    def dispatch(self, brief: DispatchableBrief) -> DispatchResult:
         """Deliver the brief. Never raises."""
         ...
 
 
-__all__ = ["AlertSink", "DispatchResult"]
+__all__ = ["AlertSink", "DispatchableBrief", "DispatchResult"]

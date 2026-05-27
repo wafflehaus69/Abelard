@@ -37,8 +37,9 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..attention.brief_schema import AttentionBrief
 from ..synthesize.brief import Brief
-from .sink import DispatchResult
+from .sink import DispatchableBrief, DispatchResult
 
 
 CHANNEL_NAME = "telegram_bot"   # matches Brief.dispatch.channel literal exactly
@@ -92,6 +93,37 @@ def _format_message_body(brief: Brief) -> str:
     return narrative + trailer
 
 
+def _format_attention_message_body(brief: AttentionBrief) -> str:
+    """Render an AttentionBrief into a Bot API message with [ATTENTION] prefix.
+
+    Symmetric to SignalSink's attention formatter — header surfaces the
+    triggering term and frequency stats; narrative is the substance; source
+    mix and entities tail for traceability. 4000-char cap with truncation
+    indicator if the narrative exceeds room after trailer.
+    """
+    header = (
+        f"[ATTENTION] {brief.triggering_term}  "
+        f"(window: {brief.term_frequency_window}, "
+        f"prior: {brief.term_frequency_prior}, "
+        f"shape: {brief.attention_shape})"
+    )
+    trailer_lines = []
+    if brief.source_mix:
+        items = sorted(brief.source_mix.items(), key=lambda kv: (-kv[1], kv[0]))
+        trailer_lines.append("sources: " + ", ".join(f"{s}({n})" for s, n in items))
+    if brief.entities_observed:
+        trailer_lines.append("entities: " + ", ".join(brief.entities_observed))
+    trailer_lines.append(f"[brief_id: {brief.brief_id}]")
+    trailer = "\n\n" + "\n".join(trailer_lines)
+    narrative = brief.narrative.strip()
+    # Reserve room for header + trailer; truncate narrative if needed.
+    overhead = len(header) + len("\n\n") + len(trailer)
+    max_narrative = MAX_MESSAGE_CHARS - overhead
+    if len(narrative) > max_narrative:
+        narrative = narrative[:max_narrative - len("\n[truncated]")] + "\n[truncated]"
+    return header + "\n\n" + narrative + trailer
+
+
 @dataclass
 class TelegramBotSink:
     """Bot API alert transport. Fail-loud, no retry storm, sink-symmetric."""
@@ -110,11 +142,17 @@ class TelegramBotSink:
     def channel_name(self) -> str:
         return CHANNEL_NAME
 
-    def dispatch(self, brief: Brief) -> DispatchResult:
+    def dispatch(self, brief: DispatchableBrief) -> DispatchResult:
         """Never raises. Returns DispatchResult.channel == 'telegram_bot'
-        on successful delivery, matching the Brief.dispatch.channel literal.
+        on successful delivery, matching Brief.dispatch.channel literal.
+
+        Accepts either Pass C Brief or Pass E AttentionBrief; formatter
+        branches on type, transport (Bot API POST) is shared.
         """
-        body = _format_message_body(brief)
+        if isinstance(brief, AttentionBrief):
+            body = _format_attention_message_body(brief)
+        else:
+            body = _format_message_body(brief)
         outcome = self._invoke(body)
         if outcome.success:
             return outcome

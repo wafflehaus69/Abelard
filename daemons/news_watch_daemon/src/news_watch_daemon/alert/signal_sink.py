@@ -44,8 +44,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..attention.brief_schema import AttentionBrief
 from ..synthesize.brief import Brief
-from .sink import DispatchResult
+from .sink import DispatchableBrief, DispatchResult
 
 
 CHANNEL_NAME = "signal"   # matches Brief.dispatch.channel literal exactly
@@ -83,7 +84,7 @@ def _assert_destination_allowed(configured: str) -> None:
 
 
 def _format_message_body(brief: Brief) -> str:
-    """Render a brief into a Signal-friendly text body.
+    """Render a Pass C Brief into a Signal-friendly text body.
 
     Optimized for reading on a phone Signal client. Narrative first
     (the substance Mando reads); brief_id and themes appended as a
@@ -94,6 +95,34 @@ def _format_message_body(brief: Brief) -> str:
     lines.append(f"[brief_id: {brief.brief_id}]")
     if brief.themes_covered:
         lines.append(f"[themes: {', '.join(brief.themes_covered)}]")
+    return "\n".join(lines)
+
+
+def _format_attention_message_body(brief: AttentionBrief) -> str:
+    """Render a Pass E AttentionBrief into a Signal-friendly text body.
+
+    Prefixed with [ATTENTION] so Mando can visually distinguish ATTENTION
+    briefs from theme-event briefs in his Signal inbox. Header line
+    surfaces the triggering term, frequency stats, and shape. Narrative
+    follows; source mix and observed entities trail for traceability.
+    """
+    header = (
+        f"[ATTENTION] {brief.triggering_term}  "
+        f"(window: {brief.term_frequency_window}, "
+        f"prior: {brief.term_frequency_prior}, "
+        f"shape: {brief.attention_shape})"
+    )
+    lines = [header, "", brief.narrative.strip()]
+    if brief.source_mix:
+        # Compact "source(N)" form, sorted by count desc for readability.
+        items = sorted(brief.source_mix.items(), key=lambda kv: (-kv[1], kv[0]))
+        rendered = ", ".join(f"{src}({n})" for src, n in items)
+        lines.append("")
+        lines.append(f"sources: {rendered}")
+    if brief.entities_observed:
+        lines.append(f"entities: {', '.join(brief.entities_observed)}")
+    lines.append("")
+    lines.append(f"[brief_id: {brief.brief_id}]")
     return "\n".join(lines)
 
 
@@ -110,9 +139,12 @@ class SignalSink:
     def channel_name(self) -> str:
         return CHANNEL_NAME
 
-    def dispatch(self, brief: Brief) -> DispatchResult:
+    def dispatch(self, brief: DispatchableBrief) -> DispatchResult:
         """Never raises. Returns DispatchResult.channel == 'signal' on
-        successful delivery, matching the Brief.dispatch.channel literal.
+        successful delivery, matching Brief.dispatch.channel literal.
+
+        Accepts either Pass C Brief or Pass E AttentionBrief; formatter
+        branches on type, transport (signal-cli subprocess) is shared.
         """
         # 1. Destination validation gate — refuses any non-allowed value.
         try:
@@ -143,7 +175,10 @@ class SignalSink:
             )
 
         # 3. Build argv and invoke. Single retry on transient failure.
-        body = _format_message_body(brief)
+        if isinstance(brief, AttentionBrief):
+            body = _format_attention_message_body(brief)
+        else:
+            body = _format_message_body(brief)
         argv = [self.cli_path, "send", "--note-to-self", "-m", body]
         outcome = self._invoke(argv)
         if outcome.success:
