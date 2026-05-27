@@ -73,6 +73,7 @@ def test_parser_has_all_top_level_commands():
         "scrape", "synthesize", "alert-check", "status",
         "themes", "theme", "headlines", "alerts", "db",
         "proposals", "briefs", "alert-sink", "trigger-log",
+        "attention",
     }
 
 

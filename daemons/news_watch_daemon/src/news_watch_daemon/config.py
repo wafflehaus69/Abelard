@@ -147,6 +147,17 @@ def _default_cross_source_log_path() -> Path:
     return Path.home() / ".openclaw" / "news_watch" / "cross_source_log.jsonl"
 
 
+def _default_stopwords_path() -> Path:
+    """Resolve `<repo_root>/config/stopwords.yaml`.
+
+    Pass E (2026-05-26). Stopword list for the ATTENTION-counter's frequency
+    filter. Mac mini deploy target reads from a workspace-local copy via
+    NEWS_WATCH_STOPWORDS_PATH; bundled file is the daemon default + source-
+    of-truth for new installs.
+    """
+    return Path(__file__).resolve().parent.parent.parent / "config" / "stopwords.yaml"
+
+
 @dataclass(frozen=True)
 class Config:
     db_path: Path
@@ -166,6 +177,7 @@ class Config:
     proposals_path: Path = field(default_factory=_default_proposals_path)
     cross_source_log_path: Path = field(default_factory=_default_cross_source_log_path)
     theses_path: Path | None = None
+    stopwords_path: Path = field(default_factory=_default_stopwords_path)
 
     def secrets(self) -> tuple[str, ...]:
         """Values that must be scrubbed from log output.
@@ -361,6 +373,17 @@ class Config:
         else:
             theses_path = None
 
+        # ---- Stopwords path (Pass E 2026-05-26) ----
+        stopwords_raw = os.environ.get("NEWS_WATCH_STOPWORDS_PATH", "").strip()
+        if stopwords_raw:
+            stopwords_path = Path(stopwords_raw).expanduser()
+            if not stopwords_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_STOPWORDS_PATH must be an absolute path; got {stopwords_raw!r}"
+                )
+        else:
+            stopwords_path = _default_stopwords_path()
+
         return cls(
             db_path=db_path,
             log_level=log_level,
@@ -379,6 +402,7 @@ class Config:
             proposals_path=proposals_path,
             cross_source_log_path=cross_source_log_path,
             theses_path=theses_path,
+            stopwords_path=stopwords_path,
         )
 
 

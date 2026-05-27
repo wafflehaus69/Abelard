@@ -1,0 +1,200 @@
+# Stopword list for attention/counter.py — filtered before frequency counting.
+#
+# Matching is case-insensitive: stopwords stored lowercase; tokens
+# lowercased before comparison (Pass E build Q1 decision, 2026-05-26).
+#
+# KNOWN STRUCTURAL BLIND SPOTS (acknowledged trade, not bugs):
+#
+#   1. Short acronyms that share spelling with English stopwords
+#      (US/us, IT/it, IS/is, OR/or) are filtered as stopwords. The
+#      attention counter cannot surface these as high-frequency terms.
+#      Mitigation: themes and tickers cover the major cases (US-as-
+#      country surfaces via us_iran_escalation, china_us_decoupling,
+#      political_volatility; IT is not a tracked entity).
+#
+#   2. Punctuated terms (U.S., U.K.) do not tokenize at all under the
+#      counter's `\b[a-zA-Z]{2,}\b` regex. Same mitigation.
+#
+#   3. Numbers (2026, H100) tokenize as digits-only and are dropped by
+#      the alphabetic-only regex. AI capex tickers like H100, B200,
+#      GB200 are covered by ai_capex_cycle theme keywords.
+#
+# Add/remove entries by editing this file; orchestrator reloads at
+# daemon init. No restart needed beyond the next attention run.
+
+english:
+  # Articles, common verbs, basic prepositions
+  - a
+  - an
+  - the
+  - is
+  - of
+  - for
+  - in
+  - "on"          # quoted: YAML 1.1 parses bare `on` as boolean true
+  - at
+  - to
+  - by
+  - with
+  - from
+  - as
+  - was
+  - were
+  - be
+  - been
+  - being
+  - have
+  - has
+  - had
+  - do
+  - does
+  - did
+  - will
+  - would
+  - could
+  - should
+  - may
+  - might
+  - must
+  - shall
+  - can
+  # Determiners and pronouns
+  - this
+  - that
+  - these
+  - those
+  - i
+  - you
+  - he
+  - she
+  - it
+  - we
+  - they
+  - me
+  - him
+  - her
+  - us
+  - them
+  - my
+  - your
+  - his
+  - hers
+  - its
+  - our
+  - their
+  - mine
+  - yours
+  - ours
+  - theirs
+  # Wh-words
+  - what
+  - which
+  - who
+  - whom
+  - whose
+  - where
+  - when
+  - why
+  - how
+  # Quantifiers and qualifiers
+  - all
+  - any
+  - each
+  - every
+  - both
+  - few
+  - more
+  - most
+  - other
+  - some
+  - such
+  - "no"          # quoted: YAML 1.1 parses bare `no` as boolean false
+  - not
+  - only
+  - own
+  - same
+  - so
+  - than
+  - too
+  - very
+  - just
+  # Conjunctions and connectives
+  - but
+  - or
+  - and
+  - if
+  - because
+  - until
+  - while
+  # Prepositions (positional/relational)
+  - against
+  - between
+  - into
+  - through
+  - during
+  - before
+  - after
+  - above
+  - below
+  - up
+  - down
+  - out
+  - "off"         # quoted: YAML 1.1 parses bare `off` as boolean false
+  - over
+  - under
+  - again
+  - further
+  - then
+  - once
+  - here
+  - there
+
+news_domain:
+  # Attribution verbs
+  - said
+  - says
+  - say
+  - saying
+  - reported
+  - reports
+  - report
+  - reporting
+  - told
+  - stated
+  - states
+  - announced
+  - announces
+  - according
+  - claims
+  - claim
+  - claimed
+  # Source-attribution nouns
+  - source
+  - sources
+  - news
+  - statement
+  - statements
+  # Temporal fillers
+  - today
+  - yesterday
+  - week
+  - day
+  - year
+  - time
+  - first
+  - last
+  - next
+  # Connective filler common in news prose
+  - also
+  - however
+  - although
+  - despite
+  - including
+  - includes
+  - included
+  - per
+  - via
+  - amid
+  - following
+  # Borderline editorial filler
+  - top
