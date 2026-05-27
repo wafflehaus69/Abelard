@@ -135,3 +135,25 @@ telegram_channels:
   # market-moving statements.
   - username: Ateobreaking
     cadence_minutes: 15
+    # Sponsor / promo / affiliate substrings. Case-insensitive substring match.
+    # Drop-on-hit; every drop is logged INFO + appended to the noise-filter
+    # audit JSONL (see config.filtered_log_path). Approved 2026-05-27 against
+    # a 90-headline empirical sample that surfaced 7 sponsor posts; this list
+    # caught 6 of the 7 (the 7th, /170757 Freedom Checker, was knowingly
+    # accepted as a false negative to avoid filtering /170656 — a genuine
+    # news headline that cites Freedom Checker as the source). Must stay in
+    # sync with us_iran_escalation.yaml — the factory unions both lists,
+    # but drift would confuse audit-trail readers.
+    noise_filter:
+      - "ateo.digital"          # Ateo's own publisher domain
+      - "gnuvpn"                # affiliate VPN brand
+      - "Ateo_help_bot"         # Ateo's own help bot
+      - "durevpnbot"            # DureVPN affiliate
+      - "?start=ateobreakinga"  # Ateo affiliate referral query string
+                                #   (Chatty AI bots, etc.; the start= parameter
+                                #   is unique to Ateo's affiliate links)
+      - "#Реклама"              # Russian legal "Advertisement" disclaimer —
+                                #   equivalent to "#ad" / "Sponsored content"
+                                #   in EN regulatory disclosure. Forward-
+                                #   covers paid promo from any future
+                                #   advertiser beyond Ateo's current affiliates.

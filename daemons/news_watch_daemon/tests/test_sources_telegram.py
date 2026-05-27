@@ -13,8 +13,10 @@ quite cover the generator case Telethon uses.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Iterable
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -59,6 +61,8 @@ def _make_source(
     channel_username: str = "test_channel",
     cadence_minutes: int = 15,
     max_messages_per_fetch: int = 200,
+    noise_filter: list[str] | None = None,
+    filtered_log_path: Path | None = None,
 ) -> TelegramSource:
     """Construct a TelegramSource for tests. StringSession decode is bypassed
     by patching it during construction below — but for tests that need a
@@ -70,6 +74,8 @@ def _make_source(
         session_string=VALID_SESSION,
         cadence_minutes=cadence_minutes,
         max_messages_per_fetch=max_messages_per_fetch,
+        noise_filter=noise_filter,
+        filtered_log_path=filtered_log_path,
     )
 
 
@@ -609,3 +615,252 @@ def test_message_with_bad_date_dropped():
         result = src.fetch(since_unix=0)
     assert result.status == "ok"
     assert [i.source_item_id for i in result.items] == ["2"]
+
+
+# ---------- Task 1: sponsor-noise filter ----------
+#
+# Added 2026-05-27. Per-channel literal substring filter (case-insensitive)
+# applied inside _message_to_item. Drops sponsor / promo / affiliate posts
+# before they reach the headlines table. Each drop: INFO log + append to
+# noise-filter audit JSONL (see config.filtered_log_path).
+#
+# Empirical motivation: 90-headline Ateobreaking sample (2026-05-27) showed
+# 7 sponsor posts mixed with editorial content. The approved filter list
+# catches 6 of those 7; the 7th (Freedom Checker citation in real DeepSeek
+# news /170656) was knowingly left out to preserve a genuine news item.
+
+
+def test_noise_filter_drops_matching_headline():
+    """Pattern matches → item not in result. Approved Tier A: ateo.digital."""
+    src = _make_source(noise_filter=["ateo.digital"])
+    base = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    messages = [
+        _fake_message(170762, base.replace(hour=15, minute=25), (
+            "**На нашем сайте публикуются материалы о цифровой безопасности**\n\n"
+            "Рекомендуем ознакомиться: https://ateo.digital/blog/"
+        )),
+        _fake_message(170763, base.replace(hour=15, minute=30), (
+            "Американские военные сейчас не сопровождают коммерческие суда "
+            "через Ормузский пролив"  # real news, no sponsor markers
+        )),
+    ]
+    mock_client = _make_mock_client(messages=messages)
+    with patch(
+        "news_watch_daemon.sources.telegram.TelegramClient",
+        return_value=mock_client,
+    ):
+        result = src.fetch(since_unix=0)
+    assert result.status == "ok"
+    # Sponsor (/170762) filtered, news (/170763) passes through.
+    assert [i.source_item_id for i in result.items] == ["170763"]
+
+
+def test_noise_filter_case_insensitive():
+    """Pattern `gnuvpn` (lower) matches source text containing `GnuVPN` (mixed)."""
+    src = _make_source(noise_filter=["gnuvpn"])
+    base = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    messages = [
+        _fake_message(170758, base, (
+            "🦄 Стабильное соединение, когда это действительно важно 🦄\n\n"
+            "С GnuVPN не нужно гадать, какой протокол выбрать"  # mixed case
+        )),
+    ]
+    mock_client = _make_mock_client(messages=messages)
+    with patch(
+        "news_watch_daemon.sources.telegram.TelegramClient",
+        return_value=mock_client,
+    ):
+        result = src.fetch(since_unix=0)
+    assert result.status == "ok"
+    assert result.items == []  # filtered
+
+
+def test_noise_filter_empty_list_passes_through():
+    """Backwards-compat: no noise_filter configured → sponsor-text passes through.
+    Channels without filter config behave identically to pre-Task-1 baseline."""
+    src = _make_source(noise_filter=None)  # explicit None — also default
+    base = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    messages = [
+        _fake_message(170758, base, "С GnuVPN не нужно гадать"),  # would match
+                                                                  # if filter set
+    ]
+    mock_client = _make_mock_client(messages=messages)
+    with patch(
+        "news_watch_daemon.sources.telegram.TelegramClient",
+        return_value=mock_client,
+    ):
+        result = src.fetch(since_unix=0)
+    assert result.status == "ok"
+    assert len(result.items) == 1
+    assert result.items[0].source_item_id == "170758"
+
+
+def test_noise_filter_multi_pattern_first_match_wins(caplog):
+    """Three patterns configured; headline matches the 2nd. INFO log + audit
+    record the 2nd pattern (the one that actually matched), not the 1st."""
+    src = _make_source(noise_filter=["ateo.digital", "gnuvpn", "#Реклама"])
+    base = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    # Headline contains "gnuvpn" but not "ateo.digital" (and contains #Реклама,
+    # which is later in the list). Iteration order matters: ateo.digital is
+    # checked first (no match), then gnuvpn (match — stop and report).
+    messages = [
+        _fake_message(170758, base, "С GnuVPN всё работает.\n\n#Реклама"),
+    ]
+    mock_client = _make_mock_client(messages=messages)
+    with caplog.at_level(logging.INFO, logger="news_watch_daemon.sources.telegram"):
+        with patch(
+            "news_watch_daemon.sources.telegram.TelegramClient",
+            return_value=mock_client,
+        ):
+            result = src.fetch(since_unix=0)
+    assert result.items == []
+    # The log should mention pattern='gnuvpn' (the FIRST one that matched in
+    # iteration order), not '#Реклама' (which also matches but comes later).
+    info_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    filter_msgs = [m for m in info_messages if "sponsor-noise filtered" in m]
+    assert len(filter_msgs) == 1
+    assert "pattern='gnuvpn'" in filter_msgs[0]
+    assert "#Реклама" not in filter_msgs[0]
+
+
+def test_noise_filter_logs_info_on_drop(caplog):
+    """Filter hit → exactly one INFO log line with channel, msg_id, and
+    matched pattern. Operator visibility into per-cycle filter activity
+    without needing to parse the JSONL audit log."""
+    src = _make_source(
+        channel_username="Ateobreaking",
+        noise_filter=["?start=ateobreakinga"],
+    )
+    base = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    messages = [
+        _fake_message(170642, base, (
+            "Нейросети уже заменяют носителей языка.\n\n"
+            "🇬🇧 Английский: ChattyEnglishBot?start=ateobreakinga"
+        )),
+    ]
+    mock_client = _make_mock_client(messages=messages)
+    with caplog.at_level(logging.INFO, logger="news_watch_daemon.sources.telegram"):
+        with patch(
+            "news_watch_daemon.sources.telegram.TelegramClient",
+            return_value=mock_client,
+        ):
+            result = src.fetch(since_unix=0)
+    assert result.items == []
+    info_messages = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    filter_msgs = [m for m in info_messages if "sponsor-noise filtered" in m]
+    assert len(filter_msgs) == 1
+    msg = filter_msgs[0]
+    assert "channel=@Ateobreaking" in msg
+    assert "msg_id=170642" in msg
+    assert "?start=ateobreakinga" in msg
+
+
+def test_noise_filter_non_matching_passes_through():
+    """Real-fixture regression for the /170656 borderline case.
+
+    Pattern `freedomchecker` was knowingly LEFT OUT of the approved filter
+    list because /170656 is a real news headline about DeepSeek being
+    blocked in Russia where Freedom Checker is cited as the source. This
+    test fixes that decision in code: with the approved 6-pattern list, a
+    headline containing 'Freedom Checker' but none of the approved
+    patterns must pass through.
+    """
+    approved_filters = [
+        "ateo.digital",
+        "gnuvpn",
+        "Ateo_help_bot",
+        "durevpnbot",
+        "?start=ateobreakinga",
+        "#Реклама",
+    ]
+    src = _make_source(noise_filter=approved_filters)
+    base = datetime(2026, 5, 24, tzinfo=timezone.utc)
+    # Real-shape /170656 text (DeepSeek news with FC citation, no Ateo URL).
+    # The (https://freedomchecker.ateo.digital/) URL in the ACTUAL post WOULD
+    # match the `ateo.digital` pattern — that's a known false positive for
+    # this specific headline. Test uses a slightly redacted variant to
+    # confirm the OTHER patterns don't false-fire on news content.
+    deepseek_news = (
+        "**Китайская нейросеть DeepSeek может быть заблокирован в России**\n\n"
+        "Пользователи жалуются, что сайт не загружается без VPN — Freedom Checker."
+    )
+    messages = [_fake_message(170656, base, deepseek_news)]
+    mock_client = _make_mock_client(messages=messages)
+    with patch(
+        "news_watch_daemon.sources.telegram.TelegramClient",
+        return_value=mock_client,
+    ):
+        result = src.fetch(since_unix=0)
+    assert result.status == "ok"
+    assert len(result.items) == 1
+    assert result.items[0].source_item_id == "170656"
+
+
+def test_noise_filter_audit_log_jsonl_shape(tmp_path):
+    """Filter hit with filtered_log_path set → one JSONL line on disk with
+    the full schema: filtered_at_unix, filtered_at, channel, msg_id,
+    matched_pattern, full_text (untruncated)."""
+    audit_path = tmp_path / "filtered.jsonl"
+    full_sponsor_text = (
+        "🦄 С**табильное соединение, когда это действительно важно** 🦄\n\n"
+        "С GnuVPN не нужно гадать, какой протокол выбрать. " * 5  # ~600 chars
+        + "\n\n#Реклама"
+    )
+    src = _make_source(
+        channel_username="Ateobreaking",
+        noise_filter=["gnuvpn"],
+        filtered_log_path=audit_path,
+    )
+    base = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    messages = [_fake_message(170758, base, full_sponsor_text)]
+    mock_client = _make_mock_client(messages=messages)
+    with patch(
+        "news_watch_daemon.sources.telegram.TelegramClient",
+        return_value=mock_client,
+    ):
+        result = src.fetch(since_unix=0)
+    assert result.items == []
+
+    # Audit file should exist with exactly one line of valid JSON.
+    assert audit_path.is_file()
+    lines = audit_path.read_text(encoding="utf-8").strip().split("\n")
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    # Required schema fields, all present and well-typed.
+    assert set(entry.keys()) == {
+        "filtered_at_unix", "filtered_at", "channel",
+        "msg_id", "matched_pattern", "full_text",
+    }
+    assert isinstance(entry["filtered_at_unix"], int)
+    assert isinstance(entry["filtered_at"], str)
+    assert entry["filtered_at"].endswith("Z")  # UTC ISO-8601
+    assert entry["channel"] == "Ateobreaking"
+    assert entry["msg_id"] == "170758"
+    assert entry["matched_pattern"] == "gnuvpn"
+    # full_text is untruncated — the 600+ char sponsor body is preserved.
+    assert entry["full_text"] == full_sponsor_text
+
+
+def test_noise_filter_unicode_case_insensitivity_cyrillic():
+    """Pattern `#Реклама` must match Cyrillic in any case. Python str.lower()
+    handles Cyrillic correctly, but lock the behavior with a test —
+    future advertisers will use mixed/lower case, and the invariant matters
+    for ongoing forward-coverage of the Russian advertising disclosure."""
+    src = _make_source(noise_filter=["#Реклама"])
+    base = datetime(2026, 5, 26, tzinfo=timezone.utc)
+    messages = [
+        # Three variants: uppercase initial cap (canonical legal form),
+        # all-lowercase, all-uppercase.
+        _fake_message(1, base.replace(hour=10), "Купите наш VPN!\n\n#Реклама"),
+        _fake_message(2, base.replace(hour=11), "Купите наш VPN!\n\n#реклама"),
+        _fake_message(3, base.replace(hour=12), "Купите наш VPN!\n\n#РЕКЛАМА"),
+        _fake_message(4, base.replace(hour=13), "Обычная новость без рекламы"),
+    ]
+    mock_client = _make_mock_client(messages=messages)
+    with patch(
+        "news_watch_daemon.sources.telegram.TelegramClient",
+        return_value=mock_client,
+    ):
+        result = src.fetch(since_unix=0)
+    # All three case variants filtered; the news item passes through.
+    assert [i.source_item_id for i in result.items] == ["4"]

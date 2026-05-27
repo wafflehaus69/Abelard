@@ -13,10 +13,13 @@ Rules:
     themes' `telegram_channels`. Same channel referenced by multiple
     themes → built once, using the *lowest* cadence across all
     referencing themes (so a high-priority theme can override a
-    low-priority one's polite cadence). Entries with `enabled=False`
-    are skipped. Built only when all three Telegram credentials are
-    present in config; otherwise a WARN is logged once and no Telegram
-    sources are built (the daemon runs Finnhub + RSS as in Pass A).
+    low-priority one's polite cadence). Per-channel `noise_filter`
+    lists are UNIONed across themes (deduplicated, order-preserving):
+    a theme that adds a sponsor pattern cannot have it removed by a
+    co-referencing theme. Entries with `enabled=False` are skipped.
+    Built only when all three Telegram credentials are present in
+    config; otherwise a WARN is logged once and no Telegram sources
+    are built (the daemon runs Finnhub + RSS as in Pass A).
   - Order: Finnhub first, then RSS sources sorted by name, then
     Telegram sources sorted by name. Within a tier, sort is
     deterministic.
@@ -56,6 +59,10 @@ def build_sources(
     rss_by_id: dict[str, RssSource] = {}
     # Per-username minimum cadence across all active themes that reference it.
     tg_min_cadence: dict[str, int] = {}
+    # Per-username noise_filter union (order-preserving, deduplicated) across
+    # all active themes that reference the channel. A theme that adds a pattern
+    # cannot have it removed by a co-referencing theme.
+    tg_noise_filters: dict[str, list[str]] = {}
     tg_referenced = False
 
     for theme in themes:
@@ -83,6 +90,12 @@ def build_sources(
             current = tg_min_cadence.get(ch.username)
             if current is None or ch.cadence_minutes < current:
                 tg_min_cadence[ch.username] = ch.cadence_minutes
+            # Union noise_filter list. Order preserved by first-mention; later
+            # themes only contribute patterns not already present.
+            existing_filters = tg_noise_filters.setdefault(ch.username, [])
+            for pat in ch.noise_filter:
+                if pat not in existing_filters:
+                    existing_filters.append(pat)
 
     sources.extend(sorted(rss_by_id.values(), key=lambda s: s.name))
 
@@ -100,6 +113,7 @@ def build_sources(
         assert cfg.telegram_api_hash is not None
         assert cfg.telegram_session_string is not None
         for username, cadence in tg_min_cadence.items():
+            channel_filters = tg_noise_filters.get(username) or None
             try:
                 tg_sources.append(TelegramSource(
                     channel_username=username,
@@ -107,6 +121,8 @@ def build_sources(
                     api_hash=cfg.telegram_api_hash,
                     session_string=cfg.telegram_session_string,
                     cadence_minutes=cadence,
+                    noise_filter=channel_filters,
+                    filtered_log_path=cfg.filtered_log_path,
                 ))
             except Exception as exc:  # noqa: BLE001 — log and skip per-channel
                 _LOG.warning(

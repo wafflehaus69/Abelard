@@ -24,6 +24,14 @@ Anthropic key + theses-doc path:
                                       from two different sources). Pass D foundation
                                       (2026-05-17) for primary-source decisions on
                                       mirror channels.
+- NEWS_WATCH_FILTERED_LOG          — optional, default `~/.openclaw/news_watch/filtered.jsonl`.
+                                      Append-only JSONL audit trail of messages
+                                      dropped by a source's noise_filter (per-channel
+                                      sponsor/promo substring filter). Per-entry:
+                                      timestamp, channel, msg_id, matched_pattern,
+                                      full_text. Six months from now, "did the filter
+                                      eat that post?" must be answerable by inspecting
+                                      this file. Added Task 1 (2026-05-27).
 - NEWS_WATCH_THESES_PATH           — optional; absolute path to Abelard's THESES.md.
                                       Unset → synthesis runs the no-theses prompt
                                       variant and records a WARN in
@@ -147,6 +155,18 @@ def _default_cross_source_log_path() -> Path:
     return Path.home() / ".openclaw" / "news_watch" / "cross_source_log.jsonl"
 
 
+def _default_filtered_log_path() -> Path:
+    """Default per-source noise-filter audit log: `~/.openclaw/news_watch/filtered.jsonl`.
+
+    Task 1 (2026-05-27). Append-only JSONL: every message dropped by a
+    source plugin's `noise_filter` produces one line here so the drop is
+    reconstructible months later ("did the filter eat that post?"). Best-
+    effort writes — disk-full / permission errors WARN but never abort
+    the scrape. Override via NEWS_WATCH_FILTERED_LOG.
+    """
+    return Path.home() / ".openclaw" / "news_watch" / "filtered.jsonl"
+
+
 def _default_stopwords_path() -> Path:
     """Resolve `<repo_root>/config/stopwords.yaml`.
 
@@ -176,6 +196,7 @@ class Config:
     trigger_log_path: Path = field(default_factory=_default_trigger_log_path)
     proposals_path: Path = field(default_factory=_default_proposals_path)
     cross_source_log_path: Path = field(default_factory=_default_cross_source_log_path)
+    filtered_log_path: Path = field(default_factory=_default_filtered_log_path)
     theses_path: Path | None = None
     stopwords_path: Path = field(default_factory=_default_stopwords_path)
 
@@ -359,6 +380,18 @@ class Config:
         else:
             cross_source_log_path = _default_cross_source_log_path()
 
+        # ---- Filtered-message audit log (Task 1, 2026-05-27) ----
+
+        filtered_raw = os.environ.get("NEWS_WATCH_FILTERED_LOG", "").strip()
+        if filtered_raw:
+            filtered_log_path = Path(filtered_raw).expanduser()
+            if not filtered_log_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_FILTERED_LOG must be an absolute path; got {filtered_raw!r}"
+                )
+        else:
+            filtered_log_path = _default_filtered_log_path()
+
         # ---- Theses doc path (Pass C Step 9) ----
         # Unset is fine — synthesis runs the no-theses prompt variant and
         # records a WARN in synthesis_metadata.theses_doc_warning.
@@ -401,6 +434,7 @@ class Config:
             trigger_log_path=trigger_path,
             proposals_path=proposals_path,
             cross_source_log_path=cross_source_log_path,
+            filtered_log_path=filtered_log_path,
             theses_path=theses_path,
             stopwords_path=stopwords_path,
         )

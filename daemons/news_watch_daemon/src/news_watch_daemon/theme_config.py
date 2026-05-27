@@ -137,6 +137,18 @@ class TelegramChannelConfig(BaseModel):
     factory deduplicates and uses the lowest cadence across all
     referencing themes (so a high-priority theme can override a
     low-priority one's polite cadence).
+
+    `noise_filter` is a per-channel list of literal substrings (case-
+    insensitive substring match) that cause a fetched message to be
+    dropped before insertion into the headlines table. Used for
+    sponsor / promo / affiliate noise on channels that mix editorial
+    and commercial content. Drops are recorded INFO-level + appended
+    to the noise-filter audit JSONL (see config.filtered_log_path).
+    Cross-theme conflict resolution: scrape factory unions the lists
+    across themes referencing the same channel (theme that adds a
+    pattern cannot have it removed by a co-referencing theme).
+    Default empty list — every existing config remains valid without
+    modification.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -144,6 +156,7 @@ class TelegramChannelConfig(BaseModel):
     username: str
     cadence_minutes: int = Field(default=15, gt=0)
     enabled: bool = True
+    noise_filter: list[str] = Field(default_factory=list)
 
     @field_validator("username")
     @classmethod
@@ -154,6 +167,16 @@ class TelegramChannelConfig(BaseModel):
                 f"(Telegram's 5–32 char username constraint); got {v!r}"
             )
         return v
+
+    @field_validator("noise_filter")
+    @classmethod
+    def _noise_filter_patterns_non_empty(cls, patterns: list[str]) -> list[str]:
+        for p in patterns:
+            if not isinstance(p, str) or not p.strip():
+                raise ValueError(
+                    "noise_filter pattern must be a non-empty string"
+                )
+        return patterns
 
 
 class Alerts(BaseModel):

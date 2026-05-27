@@ -47,12 +47,14 @@ import asyncio
 import logging
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 from telethon import TelegramClient, errors
 from telethon.sessions import StringSession
 
 from .base import FetchedItem, FetchResult, SourcePlugin
+from .noise_filter_log import write_filter_entry
 
 
 _LOG = logging.getLogger("news_watch_daemon.sources.telegram")
@@ -99,6 +101,8 @@ class TelegramSource(SourcePlugin):
         session_string: str,
         cadence_minutes: int = 15,
         max_messages_per_fetch: int = 200,
+        noise_filter: list[str] | None = None,
+        filtered_log_path: Path | None = None,
     ) -> None:
         if not isinstance(channel_username, str) or not _USERNAME_RE.match(channel_username):
             raise ValueError(
@@ -125,6 +129,16 @@ class TelegramSource(SourcePlugin):
                 f"max_messages_per_fetch must be a positive int ≤ {_MAX_MAX_MESSAGES_PER_FETCH}; "
                 f"got {max_messages_per_fetch!r}"
             )
+        if noise_filter is not None:
+            if not isinstance(noise_filter, list):
+                raise ValueError(
+                    f"noise_filter must be a list of strings or None; got {type(noise_filter).__name__}"
+                )
+            for pat in noise_filter:
+                if not isinstance(pat, str) or not pat.strip():
+                    raise ValueError(
+                        f"noise_filter entries must be non-empty strings; got {pat!r}"
+                    )
 
         # Eagerly validate session string format (hypothesis #2: fail loud at startup,
         # not 15 minutes later in the middle of a sweep).
@@ -139,6 +153,13 @@ class TelegramSource(SourcePlugin):
         self._session_string = session_string
         self._cadence_minutes = cadence_minutes
         self._max_messages_per_fetch = max_messages_per_fetch
+        # Store noise_filter as a list of (original, lowered) tuples so the
+        # per-message match path doesn't redo .lower() on each pattern every
+        # call. Original is preserved for INFO log + audit-trail clarity.
+        self._noise_filter: list[tuple[str, str]] = (
+            [(p, p.lower()) for p in noise_filter] if noise_filter else []
+        )
+        self._filtered_log_path = filtered_log_path
 
     @property
     def name(self) -> str:
@@ -304,6 +325,18 @@ class TelegramSource(SourcePlugin):
         msg_id = getattr(message, "id", None)
         if msg_id is None:
             return None
+        # Sponsor-noise filter (Task 1, 2026-05-27). Per-channel literal
+        # substring filter — drops sponsor / promo / affiliate messages
+        # before they reach the headlines table. Match is against the
+        # extracted headline (post _extract_headline) — currently the
+        # full verbatim message text capped at 4096 chars, so the six
+        # current patterns (all short, all appear early in sponsor
+        # posts) match reliably. A future body-only pattern proposal
+        # confusingly missing would point back to this comment.
+        matched = self._match_noise_pattern(headline)
+        if matched is not None:
+            self._on_filtered(headline=headline, msg_id=msg_id, pattern=matched)
+            return None
         return FetchedItem(
             source_item_id=str(msg_id),
             headline=headline,
@@ -313,6 +346,57 @@ class TelegramSource(SourcePlugin):
             tickers=[],
             raw_body=None,
         )
+
+    def _match_noise_pattern(self, headline: str) -> str | None:
+        """First noise_filter pattern that matches the headline (case-
+        insensitive substring) wins. Returns the original pattern string,
+        not the lowered comparison form, for audit clarity.
+
+        Match is performed against the headline text already extracted by
+        `_extract_headline` (i.e. stripped, truncated to 4096 chars) —
+        NOT against the raw Telethon Message body. For Ateobreaking's
+        current six patterns this is fine: every sponsor marker appears
+        well within the first paragraph. If a future pattern targets
+        content past the 4096-char cap, this comment is the breadcrumb.
+        """
+        if not self._noise_filter:
+            return None
+        lowered_headline = headline.lower()
+        for original, lowered in self._noise_filter:
+            if lowered in lowered_headline:
+                return original
+        return None
+
+    def _on_filtered(self, *, headline: str, msg_id: int, pattern: str) -> None:
+        """Handle a filter hit: INFO log + best-effort audit-log append.
+
+        INFO log: surfaces to the operator console / log aggregation so
+        per-cycle filter activity is visible without parsing JSONL.
+
+        Audit JSONL: forensic trail — six months from now, "did the
+        filter eat post X?" must be answerable. The audit append is
+        best-effort; disk-full / permission errors WARN but never
+        abort the scrape (matches `_log_cross_source` discipline).
+        """
+        _LOG.info(
+            "sponsor-noise filtered: channel=@%s msg_id=%s pattern=%r",
+            self._channel_username, msg_id, pattern,
+        )
+        if self._filtered_log_path is None:
+            return
+        try:
+            write_filter_entry(
+                self._filtered_log_path,
+                channel=self._channel_username,
+                msg_id=str(msg_id),
+                matched_pattern=pattern,
+                full_text=headline,
+            )
+        except OSError as exc:
+            _LOG.warning(
+                "filtered audit log append failed (channel=@%s msg_id=%s): %s",
+                self._channel_username, msg_id, exc,
+            )
 
     @staticmethod
     def _message_unix(message: Any) -> int | None:

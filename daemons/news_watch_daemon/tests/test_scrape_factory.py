@@ -166,6 +166,48 @@ def test_two_themes_same_username_built_once_with_min_cadence(tmp_path, http):
     assert tg[0].cadence_minutes == 15  # min of (30, 15)
 
 
+def test_two_themes_same_username_noise_filter_unioned(tmp_path, http):
+    """Cross-theme noise_filter semantic: when two themes reference the same
+    Telegram channel with DIFFERENT filter lists, the factory unions them
+    (deduplicated, order-preserving). A theme that adds a sponsor pattern
+    cannot have it removed by a co-referencing theme.
+
+    Lock the semantic with a test even though the current production config
+    (Ateobreaking in us_iran_escalation + political_volatility) carries
+    identical six-pattern lists in both themes, so the union is trivial in
+    practice. The moment a future commit asymmetrically adds a pattern to
+    one theme, this invariant becomes load-bearing — and a refactor of the
+    factory dedup logic could silently change union → intersection /
+    first-wins / last-wins with nothing else catching it.
+    """
+    from news_watch_daemon.sources.telegram import TelegramSource
+    # Theme A contributes patterns {"alpha", "shared"}.
+    # Theme B contributes patterns {"shared", "beta"}.
+    # Expected union (order-preserving by first mention across themes,
+    # iterating theme-A first since it's earlier in the themes= list):
+    #   ["alpha", "shared", "beta"]
+    theme_a = _theme({"theme_id": "a", "telegram_channels": [
+        {
+            "username": "shared_chan",
+            "cadence_minutes": 30,
+            "noise_filter": ["alpha", "shared"],
+        },
+    ]})
+    theme_b = _theme({"theme_id": "b", "telegram_channels": [
+        {
+            "username": "shared_chan",
+            "cadence_minutes": 15,
+            "noise_filter": ["shared", "beta"],
+        },
+    ]})
+    sources = build_sources(_tg_cfg(tmp_path), themes=[theme_a, theme_b], http_client=http)
+    tg = [s for s in sources if isinstance(s, TelegramSource)]
+    assert len(tg) == 1
+    # Peek at the stored filter: list of (original, lowered) tuples.
+    stored_patterns = [original for original, _lowered in tg[0]._noise_filter]
+    assert stored_patterns == ["alpha", "shared", "beta"]
+
+
 def test_disabled_telegram_channel_not_built(tmp_path, http, caplog):
     from news_watch_daemon.sources.telegram import TelegramSource
     theme = _theme({"telegram_channels": [
