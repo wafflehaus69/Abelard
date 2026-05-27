@@ -197,8 +197,8 @@ rss_feeds: []
 telegram_channels:
   - username: CIG_telegram
     cadence_minutes: 15
-  - username: bloomberg
-    cadence_minutes: 30
+  # bloomberg removed 2026-05-27 — confirmed dormant since 2026-03-12
+  # via raw Telethon (50 most-recent messages dated 2025-09 to 2026-03).
   - username: trading
     cadence_minutes: 30
   - username: chainlinkbreadcrumbs

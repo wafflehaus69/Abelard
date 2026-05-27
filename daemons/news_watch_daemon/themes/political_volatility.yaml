@@ -28,7 +28,12 @@ brief: |
 
   Tracked sources:
     - @real_DonaldJTrump (hypothesized curated mirror, ~661K subs)
-    - @TrumpTruthSocial_Alert (hypothesized mechanical scraper)
+    - @TrumpTruthSocial_Alert (hypothesized mechanical scraper) —
+      EMPIRICAL UPDATE 2026-05-27: confirmed dormant since 2025-08-21
+      via raw Telethon verification (50 most-recent messages all dated
+      Aug 2025); dropped from telegram_channels config same day. The
+      dual-mirror design pattern below is preserved as architecture-of-
+      record for when a viable mechanical mirror emerges.
     Both channels are mirrors of the same upstream actor (Trump's
     Truth Social account). They are tracked in parallel to support a
     future primary-source decision: after ~2 weeks of paired
@@ -111,11 +116,10 @@ alerts:
 rss_feeds: []
 
 telegram_channels:
-  # Cadence is 5 minutes for both — tightest in config, justified by
-  # burst-posting patterns and minute-scale alpha decay. Within
-  # Telethon rate limits. Read-only by construction (see paranoid
-  # grep test on sources/telegram.py).
+  # Cadence is 5 minutes — tightest in config, justified by burst-posting
+  # patterns and minute-scale alpha decay. Within Telethon rate limits.
+  # Read-only by construction (see paranoid grep test on sources/telegram.py).
   - username: real_DonaldJTrump
     cadence_minutes: 5
-  - username: TrumpTruthSocial_Alert
-    cadence_minutes: 5
+  # TrumpTruthSocial_Alert removed 2026-05-27 — confirmed dormant since
+  # 2025-08-21 via raw Telethon (see brief above).
