@@ -182,15 +182,27 @@ telegram_channels:
     cadence_minutes: 15
     # Sponsor / promo / affiliate substrings. Case-insensitive substring match.
     # Drop-on-hit; every drop is logged INFO + appended to the noise-filter
-    # audit JSONL (see config.filtered_log_path). Approved 2026-05-27 against
-    # a 90-headline empirical sample that surfaced 7 sponsor posts; this list
-    # caught 6 of the 7 (the 7th, /170757 Freedom Checker, was knowingly
-    # accepted as a false negative to avoid filtering /170656 — a genuine
-    # news headline that cites Freedom Checker as the source).
+    # audit JSONL (see config.filtered_log_path).
+    #
+    # History:
+    #   - 2026-05-27 (Task 1): 6-pattern filter approved against a 90-headline
+    #     empirical sample. Caught 7/7 known sponsor posts.
+    #   - 2026-05-27 (Follow-up #2): reduced to 4 patterns after live-scrape
+    #     evidence showed 67% false-positive rate in production (2 of 3 hits
+    #     filtered real Russia-internet-censorship news instead of sponsors).
+    #     Root cause: Ateo's editorial style includes self-attributions to
+    #     their own VPN-monitoring products (Freedom Checker at
+    #     freedomchecker.ateo.digital, @Ateo_help_bot) as legitimate source
+    #     citations on real censorship-topic news. The ateo.digital and
+    #     Ateo_help_bot patterns collided with that pattern.
+    #     Trade-off: lose 2 pure-sponsor catches (/170762 blog promo,
+    #     /170731 bot promo) and 2 borderline catches (/170757, /170656 —
+    #     real Russia VPN news incidentally citing Freedom Checker) to
+    #     eliminate the false-positive class. Asymmetric in the right
+    #     direction: gain 2+ real-news posts per recurring pattern, lose
+    #     2 zero-signal sponsor posts.
     noise_filter:
-      - "ateo.digital"          # Ateo's own publisher domain
       - "gnuvpn"                # affiliate VPN brand
-      - "Ateo_help_bot"         # Ateo's own help bot
       - "durevpnbot"            # DureVPN affiliate
       - "?start=ateobreakinga"  # Ateo affiliate referral query string
                                 #   (Chatty AI bots, etc.; the start= parameter
