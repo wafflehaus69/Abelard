@@ -149,7 +149,14 @@ alerts:
     - telegram
     - abelard_queue
 
-rss_feeds: []
+rss_feeds:
+  # Bloomberg direct RSS — restored 2026-05-27 (Task 34 wire-feed
+  # investigation). Economics feed for FOMC/PCE/CPI/QT primary coverage;
+  # markets feed for the rate-reaction context.
+  - url: https://feeds.bloomberg.com/economics/news.rss
+    feed_id: bloomberg_economics
+  - url: https://feeds.bloomberg.com/markets/news.rss
+    feed_id: bloomberg_markets
 
 telegram_channels:
   - username: CIG_telegram

@@ -113,7 +113,12 @@ alerts:
     - telegram
     - abelard_queue
 
-rss_feeds: []
+rss_feeds:
+  # Bloomberg direct RSS — restored 2026-05-27 (Task 34 wire-feed
+  # investigation). Politics feed for wire-shape coverage of the
+  # source-class actor's domestic political surface area.
+  - url: https://feeds.bloomberg.com/politics/news.rss
+    feed_id: bloomberg_politics
 
 telegram_channels:
   # Cadence is 5 minutes — tightest in config, justified by burst-posting

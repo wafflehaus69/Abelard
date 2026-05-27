@@ -194,7 +194,12 @@ alerts:
     - telegram
     - abelard_queue
 
-rss_feeds: []
+rss_feeds:
+  # Bloomberg direct RSS — restored 2026-05-27 (Task 34 wire-feed
+  # investigation). Markets feed for hyperscaler/semis/datacenter
+  # coverage with wire-shape framing.
+  - url: https://feeds.bloomberg.com/markets/news.rss
+    feed_id: bloomberg_markets
 
 telegram_channels:
   - username: CIG_telegram
