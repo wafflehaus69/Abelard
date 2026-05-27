@@ -171,3 +171,12 @@ telegram_channels:
   # via raw Telethon (50 most-recent messages dated 2025-09 to 2026-03).
   - username: trading
     cadence_minutes: 30
+  # Ateobreaking added 2026-05-27 — bilingual Russian/English wire channel.
+  # Mando reviewed 36h of content; verdict: substantial signal, Russian-
+  # perspective coverage that current sources don't provide. 15-min cadence
+  # justified by volume comparable to CIG_telegram. Cyrillic-only posts
+  # will NOT tokenize for Pass E ATTENTION (regex is Latin-only); English
+  # posts and English-translated content tokenize normally. Pass C theme
+  # tagging works on English content from this channel.
+  - username: Ateobreaking
+    cadence_minutes: 15

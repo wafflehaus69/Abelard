@@ -128,3 +128,10 @@ telegram_channels:
     cadence_minutes: 5
   # TrumpTruthSocial_Alert removed 2026-05-27 — confirmed dormant since
   # 2025-08-21 via raw Telethon (see brief above).
+  # Ateobreaking added 2026-05-27 — bilingual Russian/English wire channel
+  # (see us_iran_escalation.yaml for full rationale + Cyrillic-tokenization
+  # caveat). Surfaces international-press framing of US political events
+  # the actor drives — secondary perspective on the source-class actor's
+  # market-moving statements.
+  - username: Ateobreaking
+    cadence_minutes: 15

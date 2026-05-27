@@ -161,3 +161,10 @@ telegram_channels:
   # via raw Telethon (50 most-recent messages dated 2025-09 to 2026-03).
   - username: trading
     cadence_minutes: 30
+  # Ateobreaking added 2026-05-27 — bilingual Russian/English wire channel
+  # (see us_iran_escalation.yaml for full rationale + Cyrillic-tokenization
+  # caveat). Particularly relevant for this theme: Russian-source framing
+  # of the conflict, BelTA / Russian state media coverage, and Russian-
+  # language signal that the existing English-only channels miss.
+  - username: Ateobreaking
+    cadence_minutes: 15

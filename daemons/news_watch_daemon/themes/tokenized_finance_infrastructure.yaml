@@ -210,3 +210,9 @@ telegram_channels:
     cadence_minutes: 30
   - username: chainlinkbreadcrumbs
     cadence_minutes: 60
+  # Ateobreaking added 2026-05-27 — bilingual Russian/English wire channel
+  # (see us_iran_escalation.yaml for full rationale + Cyrillic-tokenization
+  # caveat). Often surfaces international wires (Bloomberg, Reuters, FT)
+  # that touch stablecoin / sanctions / SWIFT / CBDC stories.
+  - username: Ateobreaking
+    cadence_minutes: 15
