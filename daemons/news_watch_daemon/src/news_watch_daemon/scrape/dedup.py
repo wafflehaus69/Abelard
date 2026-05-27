@@ -18,7 +18,45 @@ import re
 
 
 _WHITESPACE_RE = re.compile(r"\s+")
-_DROP_CHARS_RE = re.compile(r"[^a-z0-9 ]")
+
+# Drop characters outside the union of:
+#   - Original ASCII allow-set: lowercase letters, digits, space
+#   - Major non-Latin script blocks that appear (or are likely to appear)
+#     in tracked-source headlines.
+#
+# Added Task 2.5 (2026-05-27) — defensive fix for the latent bug that a
+# hypothetical Cyrillic-only headline lacking any ASCII content (no t.me
+# self-reference URL, no msg_id, no brand name) would normalize to "" and
+# collide on dedupe_hash with every other such headline within the 72h
+# window. Empirical probe against the persistent DB's 90 Ateobreaking rows
+# showed all 90 have distinct hashes today because real posts contain
+# enough ASCII leakage (t.me URLs, dates, numbers) to differentiate, but
+# the invariant should be Unicode-aware regardless of accidental content
+# shape. Future-proofs against Russian-government press releases or any
+# tracked source that posts pure-script content without Latin fragments.
+#
+# Script-block selection covers major Asian, Middle Eastern, and European
+# scripts. Future expansion (Tamil, Thai, Devanagari, etc.) requires an
+# explicit additive change here PLUS a regression test confirming the
+# existing English-content hashes stay invariant.
+#
+# Latin Extended (á, ü, ğ, é, etc.) is INTENTIONALLY NOT included: those
+# diacritical variants are dropped pre AND post fix, preserving the
+# pre-existing behavior on accented European names (Flávio, Türkiye,
+# Erdoğan). Adding Latin Extended would be a quality improvement but
+# requires its own scoped task with corpus re-inspection.
+_DROP_CHARS_RE = re.compile(
+    r"[^"
+    r"a-z0-9 "                             # ASCII letters, digits, space
+    r"Ѐ-ӿ"                       # Cyrillic
+    r"一-鿿"                       # CJK Unified Ideographs
+    r"぀-ゟ゠-ヿ"          # Hiragana + Katakana
+    r"가-힯"                       # Hangul Syllables
+    r"؀-ۿ"                       # Arabic
+    r"֐-׿"                       # Hebrew
+    r"Ͱ-Ͽ"                       # Greek
+    r"]"
+)
 
 
 def normalize_headline(headline: str) -> str:
