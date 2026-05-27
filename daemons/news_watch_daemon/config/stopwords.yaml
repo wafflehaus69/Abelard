@@ -198,3 +198,17 @@ news_domain:
   - following
   # Borderline editorial filler
   - top
+  # URL-syntax tokens — added 2026-05-26 in response to the Pass E live-smoke
+  # calibration finding: 3 of 3 threshold-crossing terms in the first dry-run
+  # were `https`, `com`, `status` (extracted by the alphabetic tokenizer from
+  # URL fragments in headline text — particularly chainlinkbreadcrumbs bare
+  # URLs, Google News tracker URLs from Reuters, and Telegram-embedded link
+  # markdown). Surgical fix; proper architectural fix (URL-stripping pre-pass
+  # in counter.tokenize) is queued for a separate scoped pass.
+  - https
+  - http
+  - com
+  - org
+  - net
+  - www
+  - status
