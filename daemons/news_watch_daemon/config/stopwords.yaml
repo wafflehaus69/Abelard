@@ -127,6 +127,12 @@ english:
   - until
   - while
   # Prepositions (positional/relational)
+  # `about` added 2026-05-27 after the live-scrape ATTENTION cycle
+  # surfaced it as a threshold-crosser; Sonnet correctly classified
+  # the cluster as cross_topic_recurrence (ordinary grammatical
+  # connective tissue, not signal). Generic English filler should
+  # never reach the LLM.
+  - about
   - against
   - between
   - into
