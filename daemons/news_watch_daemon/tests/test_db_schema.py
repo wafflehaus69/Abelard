@@ -94,8 +94,9 @@ def test_init_db_records_all_migrations(initialized):
         (1, "initial schema"),
         (2, "headlines dedupe composite index"),
         (3, "headlines language column"),
+        (4, "headlines translation column"),
     ]
-    assert schema_version(initialized) == 3
+    assert schema_version(initialized) == 4
 
 
 def test_init_db_is_idempotent(initialized):
@@ -135,6 +136,29 @@ def test_v3_language_index_exists(initialized):
     rows = initialized.execute(
         "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
         ("idx_headlines_language",),
+    ).fetchall()
+    assert len(rows) == 1
+
+
+def test_v4_translation_column_exists(initialized):
+    """v4 migration adds a nullable `headline_en` column to headlines
+    for Pass F translation output. Downstream consumers (theme tagger,
+    Pass E counter) read with COALESCE(headline_en, headline) fallback —
+    English-content rows naturally pass through with NULL headline_en
+    using the original headline."""
+    rows = initialized.execute("PRAGMA table_info(headlines)").fetchall()
+    cols = {r["name"]: r["type"] for r in rows}
+    assert "headline_en" in cols
+    assert cols["headline_en"].upper() == "TEXT"
+
+
+def test_v4_translation_index_exists(initialized):
+    """v4 adds a composite index on (language, headline_en) for the
+    Pass F gate query: WHERE language != 'en' AND headline_en IS NULL.
+    The composite covers both predicates in one seek."""
+    rows = initialized.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+        ("idx_headlines_translation_pending",),
     ).fetchall()
     assert len(rows) == 1
 
