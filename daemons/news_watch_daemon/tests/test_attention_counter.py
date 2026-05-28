@@ -63,11 +63,19 @@ def test_tokenize_word_boundary_matches_inside_punctuation():
 
 
 def _make_conn() -> sqlite3.Connection:
-    """Minimal in-memory DB with just enough schema for the counter."""
+    """Minimal in-memory DB with just enough schema for the counter.
+
+    Pass F (2026-05-28): includes headline_en column so the counter's
+    COALESCE(headline_en, headline) read works against this fixture
+    schema. Existing tests insert with headline_en defaulting to NULL,
+    so the COALESCE returns the original `headline` value — behavior
+    is bit-identical to the pre-Pass-F counter semantics on these
+    fixtures.
+    """
     conn = sqlite3.connect(":memory:")
     conn.execute(
         "CREATE TABLE headlines (headline_id TEXT PRIMARY KEY, headline TEXT, "
-        "published_at_unix INTEGER)"
+        "headline_en TEXT, published_at_unix INTEGER)"
     )
     return conn
 

@@ -26,12 +26,25 @@ from pathlib import Path
 import pytest
 
 
-PLUGIN_PATH = Path(__file__).resolve().parent.parent / "src" / "news_watch_daemon" / "sources" / "telegram.py"
+_SRC_ROOT = Path(__file__).resolve().parent.parent / "src" / "news_watch_daemon"
+
+# Paranoid-grep coverage — every file that imports from telethon AND
+# uses the burner session must be in this list. Extended Pass F Commit
+# 2 (2026-05-28) to include the translation module: it ALSO uses the
+# Telethon client + burner session for messages.translateText calls
+# (read-only by Telegram's API contract — the request returns translated
+# text without modifying source messages), so the same architectural
+# read-only invariant must hold.
+PROTECTED_FILES: tuple[Path, ...] = (
+    _SRC_ROOT / "sources" / "telegram.py",
+    _SRC_ROOT / "translation" / "telegram_native.py",
+    _SRC_ROOT / "translation" / "runner.py",
+)
 
 
 # Method names that would constitute Telegram write capability. The
-# test asserts NONE of these strings appear anywhere in the plugin
-# file's text. This list comes directly from the Pass B brief.
+# test asserts NONE of these strings appear in any protected file. This
+# list comes directly from the Pass B brief.
 FORBIDDEN_METHOD_NAMES: tuple[str, ...] = (
     "send_message",
     "forward_messages",
@@ -48,29 +61,33 @@ FORBIDDEN_METHOD_NAMES: tuple[str, ...] = (
 )
 
 
-# The plugin is allowed to import these names (and only these) from
-# `telethon.*`. New entries require a deliberate test update so the
-# architectural change is visible at review.
+# Allowed imports from `telethon.*` (union across all protected files).
+# New entries require a deliberate test update so the architectural
+# change is visible at review.
 ALLOWED_TELETHON_IMPORTS: frozenset[str] = frozenset({
     "TelegramClient",
     "errors",
     "StringSession",
+    # Pass F translation module — read-only RPC against existing
+    # Telegram messages, no write surface. Translates server-side and
+    # returns text; does not mutate the source channel.
+    "TranslateTextRequest",
 })
 
 
-@pytest.fixture(scope="module")
-def plugin_source() -> str:
-    return PLUGIN_PATH.read_text(encoding="utf-8")
+@pytest.fixture(scope="module", params=PROTECTED_FILES, ids=lambda p: p.name)
+def plugin_source(request) -> str:
+    return request.param.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize("forbidden", FORBIDDEN_METHOD_NAMES)
 def test_forbidden_method_name_does_not_appear(plugin_source: str, forbidden: str):
     assert forbidden not in plugin_source, (
         f"Forbidden Telegram write method name {forbidden!r} appears in "
-        f"sources/telegram.py. The Pass B brief prohibits write capability "
-        f"in this module — even in comments or docstrings. If this is a "
-        f"legitimate architectural change, update FORBIDDEN_METHOD_NAMES "
-        f"with an explicit justification."
+        f"a protected file. The architectural read-only invariant "
+        f"prohibits write capability — even in comments or docstrings. "
+        f"If this is a legitimate architectural change, update "
+        f"FORBIDDEN_METHOD_NAMES with an explicit justification."
     )
 
 
@@ -89,7 +106,7 @@ def test_telethon_imports_are_restricted(plugin_source: str):
                 found_imports.add(name)
     unexpected = found_imports - ALLOWED_TELETHON_IMPORTS
     assert not unexpected, (
-        f"Unexpected telethon imports in sources/telegram.py: {sorted(unexpected)}. "
+        f"Unexpected telethon imports in protected file: {sorted(unexpected)}. "
         f"Allowed: {sorted(ALLOWED_TELETHON_IMPORTS)}. New imports must be added "
         f"to ALLOWED_TELETHON_IMPORTS with explicit justification."
     )

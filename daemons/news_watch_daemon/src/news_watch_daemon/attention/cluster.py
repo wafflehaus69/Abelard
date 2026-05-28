@@ -60,12 +60,17 @@ def cluster_for_term(
     # Two-stage filter: SQL LIKE pre-narrows (cheap on indexable substrings)
     # and word-boundary regex post-verifies (correct semantic, ~free at the
     # cluster's small N).
+    # Pass F (2026-05-28): match against COALESCE(headline_en, headline) so
+    # Russian content surfaces via its translated text. The token regex
+    # is Latin-only and won't match Cyrillic anyway, but the LIKE pre-
+    # narrow must look at the translated text to find candidate rows.
     like_pattern = f"%{term}%"
     rows = conn.execute(
-        "SELECT headline_id, source, headline, url, raw_source, published_at_unix "
+        "SELECT headline_id, source, COALESCE(headline_en, headline) AS headline, "
+        "       url, raw_source, published_at_unix "
         "FROM headlines "
         "WHERE published_at_unix >= ? AND published_at_unix <= ? "
-        "AND headline LIKE ? "
+        "AND COALESCE(headline_en, headline) LIKE ? "
         "ORDER BY published_at_unix DESC",
         (window_since_unix, window_until_unix, like_pattern),
     ).fetchall()

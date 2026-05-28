@@ -24,6 +24,15 @@ Per the Pass F doctrine (commit 284a340):
     detect Premium-gating without parsing error_detail strings
 """
 
+from .config import (
+    DeepLConfig,
+    TranslationConfig,
+    TranslationConfigError,
+    TranslationSource,
+    load_translation_config,
+)
+from .deepl_stub import translate_deepl
+from .runner import run_translation_pass
 from .telegram_native import (
     DEFAULT_BATCH_SIZE,
     MAX_FLOOD_WAIT_S,
@@ -34,10 +43,17 @@ from .types import TRANSLATION_STATUSES, TranslationResult, TranslationStatus
 
 __all__ = [
     "DEFAULT_BATCH_SIZE",
+    "DeepLConfig",
     "MAX_FLOOD_WAIT_S",
     "MAX_RETRIES",
     "TRANSLATION_STATUSES",
+    "TranslationConfig",
+    "TranslationConfigError",
     "TranslationResult",
+    "TranslationSource",
     "TranslationStatus",
+    "load_translation_config",
+    "run_translation_pass",
+    "translate_deepl",
     "translate_telegram_messages",
 ]

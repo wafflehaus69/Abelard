@@ -95,13 +95,18 @@ def count_terms(
     prior_since = now_unix - 2 * WINDOW_SECONDS
     prior_until = window_since
 
+    # Pass F (2026-05-28): tokenize translated text when available,
+    # fall back to original headline. Russian content with non-NULL
+    # headline_en surfaces to the ATTENTION tokenizer via the translated
+    # text; English content (headline_en IS NULL by design) falls
+    # through unchanged via COALESCE.
     window_rows = conn.execute(
-        "SELECT headline FROM headlines "
+        "SELECT COALESCE(headline_en, headline) AS headline FROM headlines "
         "WHERE published_at_unix >= ? AND published_at_unix <= ?",
         (window_since, window_until),
     ).fetchall()
     prior_rows = conn.execute(
-        "SELECT headline FROM headlines "
+        "SELECT COALESCE(headline_en, headline) AS headline FROM headlines "
         "WHERE published_at_unix >= ? AND published_at_unix < ?",
         (prior_since, prior_until),
     ).fetchall()

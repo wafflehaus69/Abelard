@@ -36,14 +36,16 @@ import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Iterable
+from typing import Any, Iterable
 
 from pathlib import Path
 
 from ..db import record_heartbeat, to_json_column, transaction
 from ..lang import classify_language
 from ..sources.base import FetchedItem, FetchResult, SourcePlugin
+from ..sources.telegram import PLUGIN_PREFIX as TELEGRAM_PLUGIN_PREFIX
 from ..theme_config import ThemeConfig
+from ..translation import TranslationResult, run_translation_pass
 from .cross_source_log import write_observation as write_cross_source_observation
 from .dedup import compute_dedupe_hash
 from .ticker_extract import TrackedTickers, log_tracked_ticker_match
@@ -382,6 +384,8 @@ def _insert_headline_and_tags(
     fetched_at_unix: int,
     fetched_at_iso: str,
     tag_rows: list[tuple[str, str]],  # (theme_id, confidence)
+    language: str | None = None,
+    headline_en: str | None = None,
 ) -> int:
     """Insert one headline + N theme tags atomically. Returns tag count inserted.
 
@@ -389,24 +393,31 @@ def _insert_headline_and_tags(
     tickers from FetchedItem.tickers) ∪ (extracted tickers from the
     headline text via TrackedTickers). Lands in the existing
     `headlines.tickers_json` column.
+
+    `language`: classified language label. If None, computed in-line via
+    classify_language(). Pass F orchestrator passes pre-computed value
+    to avoid double-classification.
+
+    `headline_en`: translated English text (Pass F). None when row needs
+    no translation (`language == 'en'`) OR when translation failed and
+    row sits in pending queue for next-cycle retry. Downstream consumers
+    read COALESCE(headline_en, headline).
     """
     # Task 2 (2026-05-27): per-row language classification. Single call
-    # site by design — every headline regardless of source goes through
+    # site by default — every headline regardless of source goes through
     # this insert path, so all rows land with non-null `language`. Pass F
-    # translation gate reads `WHERE language != 'en'` against this column.
-    # The classifier is pure / deterministic / microsecond-cheap; no
-    # per-source overrides today (a future RSS plugin that wants to honor
-    # an XML <language> tag would promote `language` to an optional
-    # FetchedItem field and use it here when present, classifier-fallback
-    # when None).
-    language = classify_language(item.headline)
+    # (2026-05-28) added the `language` kwarg so the orchestrator can
+    # pre-classify and pass through to avoid double-computation; if
+    # caller doesn't supply, we still classify here.
+    if language is None:
+        language = classify_language(item.headline)
     with transaction(conn):
         conn.execute(
             "INSERT INTO headlines "
             "(headline_id, source, raw_source, headline, url, "
             " published_at_unix, published_at, fetched_at_unix, fetched_at, "
-            " dedupe_hash, tickers_json, entities_json, language) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " dedupe_hash, tickers_json, entities_json, language, headline_en) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 headline_id,
                 source_name,
@@ -421,6 +432,7 @@ def _insert_headline_and_tags(
                 to_json_column(tickers),
                 None,
                 language,
+                headline_en,
             ),
         )
         for theme_id, confidence in tag_rows:
@@ -431,6 +443,136 @@ def _insert_headline_and_tags(
                 (headline_id, theme_id, confidence, fetched_at_unix),
             )
     return len(tag_rows)
+
+
+# ---------- Pass F translation helpers ----------
+
+
+def _parse_telegram_msg_id(url: str | None) -> int | None:
+    """Parse the integer msg_id from a Telegram URL like
+    `https://t.me/<channel>/<msg_id>`.
+
+    Returns None if the URL doesn't match the expected shape — translation
+    deferral falls back to in-line insert with headline_en=NULL.
+    """
+    if not url:
+        return None
+    if "t.me/" not in url:
+        return None
+    try:
+        tail = url.rstrip("/").rsplit("/", 1)[-1]
+        return int(tail)
+    except (ValueError, IndexError):
+        return None
+
+
+def _apply_pending_translations(
+    conn: sqlite3.Connection,
+    *,
+    source: SourcePlugin,
+    channel_username: str,
+    pending: list[dict[str, Any]],
+    translation_credentials: tuple[int, str, str],
+    translation_source: str,
+    translation_batch_size: int,
+    theme_regexes: Iterable[Any],
+    start_unix: int,
+    start_iso: str,
+) -> tuple[int, int]:
+    """Translate this source's pending ru/mixed rows, then tag+insert.
+
+    Returns (items_inserted_count, theme_tags_inserted_count) — both
+    accumulated into the per-source loop's accounting.
+
+    Failure isolation: per-row translation failures (rate_limited,
+    network_error, message_deleted, premium_required, translation_error)
+    insert with headline_en=NULL; the row sits in the pending queue
+    (WHERE language != 'en' AND headline_en IS NULL) for next-cycle
+    retry. See translation/runner.py docstring for the re-queue contract.
+
+    Translation outage at the channel level (entire batch fails with
+    network_error) inserts ALL pending rows with headline_en=NULL.
+    The daemon does NOT abort the cycle; downstream consumers fall back
+    to original (Russian) headline via COALESCE(headline_en, headline)
+    and English theme keywords produce zero tags on that path —
+    acceptable degradation until next-cycle translation succeeds.
+    """
+    api_id, api_hash, session_string = translation_credentials
+    msg_ids = [p["msg_id"] for p in pending]
+    originals = {p["msg_id"]: p["item"].headline for p in pending}
+
+    try:
+        translations = run_translation_pass(
+            api_id=api_id,
+            api_hash=api_hash,
+            session_string=session_string,
+            pending_by_channel={channel_username: list(zip(msg_ids, [originals[m] for m in msg_ids]))},
+            batch_size=translation_batch_size,
+            translation_source=translation_source,
+        )
+    except NotImplementedError as exc:
+        # DeepL stub raised — translation_source was flipped to 'deepl'
+        # in config but DeepL implementation isn't ready. Insert all
+        # pending rows with headline_en=NULL.
+        _LOG.critical(
+            "translation_source='deepl' but stub raised NotImplementedError "
+            "(channel=%s pending=%d): %s. Inserting with headline_en=NULL; "
+            "rows sit in pending queue.",
+            channel_username, len(pending), exc,
+        )
+        translations = {}
+    except Exception as exc:  # noqa: BLE001 — translation must never abort scrape
+        _LOG.warning(
+            "translation pass raised unexpected exception (channel=%s pending=%d): "
+            "%s: %s. Inserting with headline_en=NULL.",
+            channel_username, len(pending), type(exc).__name__, exc,
+        )
+        translations = {}
+
+    items_inserted = 0
+    theme_tags_inserted = 0
+    for p in pending:
+        msg_id = p["msg_id"]
+        result = translations.get((channel_username, msg_id))
+        # Determine the text used for theme tagging.
+        # Per Mando's α/γ contract: tag against COALESCE(headline_en,
+        # headline) so translated rows tag correctly; failed-translation
+        # rows fall back to the original (Russian) text and tag zero
+        # English keywords (acceptable degradation).
+        translated_text: str | None = None
+        if result is not None and result.status == "ok" and result.translated_text:
+            translated_text = result.translated_text
+        tagging_text = translated_text or p["item"].headline
+
+        tag_rows: list[tuple[str, str]] = []
+        for regs in theme_regexes:
+            confidence = _tag_for_theme(tagging_text, regs)
+            if confidence is not None:
+                tag_rows.append((regs.theme_id, confidence))
+
+        try:
+            tags_inserted = _insert_headline_and_tags(
+                conn,
+                headline_id=p["hid"],
+                source_name=source.name,
+                item=p["item"],
+                tickers=p["merged_tickers"],
+                dedupe_hash=p["dedupe_hash"],
+                fetched_at_unix=start_unix,
+                fetched_at_iso=start_iso,
+                tag_rows=tag_rows,
+                language=p["language"],
+                headline_en=translated_text,
+            )
+        except sqlite3.IntegrityError as exc:
+            _LOG.warning(
+                "skipping duplicate headline insert post-translation (source=%s): %s",
+                source.name, exc,
+            )
+            continue
+        items_inserted += 1
+        theme_tags_inserted += tags_inserted
+    return items_inserted, theme_tags_inserted
 
 
 # ---------- main entry point ----------
@@ -444,6 +586,9 @@ def run_scrape(
     now_unix: int | None = None,
     tracked_tickers: TrackedTickers | None = None,
     cross_source_log_path: Path | None = None,
+    translation_credentials: tuple[int, str, str] | None = None,
+    translation_source: str = "telegram_native",
+    translation_batch_size: int = 10,
 ) -> ScrapeResult:
     """Execute one scrape sweep. Caller owns conn lifecycle.
 
@@ -500,6 +645,21 @@ def run_scrape(
         items_fetched = len(fetch_result.items)
         items_after_dedup = 0
         items_inserted = 0
+
+        # Pass F (2026-05-28): defer ru/mixed Telegram rows so translation
+        # can run as a single batched call per source. en rows still
+        # insert in-line (no translation needed). Each deferred entry
+        # carries everything _insert_headline_and_tags needs PLUS the
+        # original-text + language for the post-translation tag step.
+        #
+        # See translation/runner.py's run_translation_pass() docstring
+        # for the rate-limited re-queue semantics: translation failures
+        # leave headline_en=NULL; the row inserts and sits in the
+        # pending queue (WHERE language != 'en' AND headline_en IS NULL)
+        # for the NEXT scrape cycle or db backfill-translation CLI run.
+        # Failures DO NOT block insertion of other rows.
+        is_telegram_source = source.name.startswith(TELEGRAM_PLUGIN_PREFIX)
+        pending_translation: list[dict[str, Any]] = []
 
         if fetch_result.status in ("ok", "partial"):
             for item in fetch_result.items:
@@ -558,12 +718,6 @@ def run_scrape(
                 items_after_dedup += 1
                 seen_dedup_observations[dedupe_hash] = (source.name, start_unix)
 
-                tag_rows: list[tuple[str, str]] = []
-                for regs in theme_regexes:
-                    confidence = _tag_for_theme(item.headline, regs)
-                    if confidence is not None:
-                        tag_rows.append((regs.theme_id, confidence))
-
                 hid = _headline_id(item.headline, source.name)
                 # Merge source-provided tickers with extracted ones (Step 0).
                 if tracked_tickers is not None:
@@ -583,6 +737,43 @@ def run_scrape(
                         )
                 else:
                     merged_tickers = list(item.tickers)
+
+                # Classify language up-front so we can branch on it for
+                # translation deferral. Was previously computed inside
+                # _insert_headline_and_tags (Task 2 wire-up); the call
+                # is still cheap (microseconds) and avoiding double-
+                # classification keeps things tidy.
+                language = classify_language(item.headline)
+
+                should_defer = (
+                    is_telegram_source
+                    and language != "en"
+                    and translation_credentials is not None
+                    and _parse_telegram_msg_id(item.url) is not None
+                )
+                if should_defer:
+                    pending_translation.append({
+                        "item": item,
+                        "dedupe_hash": dedupe_hash,
+                        "hid": hid,
+                        "merged_tickers": merged_tickers,
+                        "language": language,
+                        "msg_id": _parse_telegram_msg_id(item.url),
+                    })
+                    continue
+
+                # In-line tag + insert (en path, OR ru/mixed when no
+                # translation credentials available → degrades to
+                # inserting with headline_en=NULL + Russian-content
+                # tagging which produces zero tags against English
+                # keywords; row sits in pending queue, db backfill-
+                # translation can rescue it later).
+                tag_rows: list[tuple[str, str]] = []
+                for regs in theme_regexes:
+                    confidence = _tag_for_theme(item.headline, regs)
+                    if confidence is not None:
+                        tag_rows.append((regs.theme_id, confidence))
+
                 try:
                     tags_inserted = _insert_headline_and_tags(
                         conn,
@@ -594,6 +785,8 @@ def run_scrape(
                         fetched_at_unix=start_unix,
                         fetched_at_iso=start_iso,
                         tag_rows=tag_rows,
+                        language=language,
+                        headline_en=None,
                     )
                 except sqlite3.IntegrityError as exc:
                     # PK collision (same source emits identical headline)
@@ -607,6 +800,31 @@ def run_scrape(
                 items_inserted += 1
                 theme_tags_inserted_total += tags_inserted
                 headlines_inserted_total += 1
+
+        # ---- Pass F per-source batched translation ----
+        # All ru/mixed Telegram items from this source were deferred
+        # above. Run ONE batched translation call against this source's
+        # channel, then tag+insert each deferred row with its translated
+        # text (or NULL if translation failed — row sits in pending
+        # queue for next-cycle retry; see translation/runner.py
+        # docstring for the re-queue contract).
+        if pending_translation and translation_credentials is not None:
+            channel = source.name[len(TELEGRAM_PLUGIN_PREFIX):]
+            tx_inserts, tx_tags = _apply_pending_translations(
+                conn,
+                source=source,
+                channel_username=channel,
+                pending=pending_translation,
+                translation_credentials=translation_credentials,
+                translation_source=translation_source,
+                translation_batch_size=translation_batch_size,
+                theme_regexes=theme_regexes,
+                start_unix=start_unix,
+                start_iso=start_iso,
+            )
+            items_inserted += tx_inserts
+            theme_tags_inserted_total += tx_tags
+            headlines_inserted_total += tx_inserts
 
         _update_source_health(
             conn,

@@ -11,10 +11,13 @@ from news_watch_daemon.attention.cluster import cluster_for_term
 def _make_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.execute(
+        # headline_en added Pass F (2026-05-28); existing inserts leave
+        # it NULL, COALESCE(headline_en, headline) returns headline.
         "CREATE TABLE headlines ("
         "headline_id TEXT PRIMARY KEY, "
         "source TEXT, "
         "headline TEXT, "
+        "headline_en TEXT, "
         "url TEXT, "
         "raw_source TEXT, "
         "published_at_unix INTEGER)"

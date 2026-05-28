@@ -32,6 +32,12 @@ Anthropic key + theses-doc path:
                                       full_text. Six months from now, "did the filter
                                       eat that post?" must be answerable by inspecting
                                       this file. Added Task 1 (2026-05-27).
+- NEWS_WATCH_TRANSLATION_PATH      — optional, path to `translation.yaml`
+                                      (default: `config/translation.yaml` adjacent to
+                                      the package). Pass F translation config:
+                                      translation_source flag (telegram_native | deepl),
+                                      telegram_native_batch_size, deepl fallback stub
+                                      fields. Added Pass F Commit 2 (2026-05-28).
 - NEWS_WATCH_THESES_PATH           — optional; absolute path to Abelard's THESES.md.
                                       Unset → synthesis runs the no-theses prompt
                                       variant and records a WARN in
@@ -167,6 +173,18 @@ def _default_filtered_log_path() -> Path:
     return Path.home() / ".openclaw" / "news_watch" / "filtered.jsonl"
 
 
+def _default_translation_config_path() -> Path:
+    """Resolve `<repo_root>/config/translation.yaml`.
+
+    Pass F Commit 2 (2026-05-28). YAML config for the translation pass:
+    translation_source flag, telegram_native_batch_size tunable, deepl
+    fallback stub fields. Mac mini deploy target reads from a
+    workspace-local copy via NEWS_WATCH_TRANSLATION_PATH; bundled file
+    is the daemon default + source-of-truth for new installs.
+    """
+    return Path(__file__).resolve().parent.parent.parent / "config" / "translation.yaml"
+
+
 def _default_stopwords_path() -> Path:
     """Resolve `<repo_root>/config/stopwords.yaml`.
 
@@ -199,6 +217,7 @@ class Config:
     filtered_log_path: Path = field(default_factory=_default_filtered_log_path)
     theses_path: Path | None = None
     stopwords_path: Path = field(default_factory=_default_stopwords_path)
+    translation_config_path: Path = field(default_factory=_default_translation_config_path)
 
     def secrets(self) -> tuple[str, ...]:
         """Values that must be scrubbed from log output.
@@ -417,6 +436,17 @@ class Config:
         else:
             stopwords_path = _default_stopwords_path()
 
+        # ---- Translation config path (Pass F Commit 2, 2026-05-28) ----
+        translation_raw = os.environ.get("NEWS_WATCH_TRANSLATION_PATH", "").strip()
+        if translation_raw:
+            translation_config_path = Path(translation_raw).expanduser()
+            if not translation_config_path.is_absolute():
+                raise ConfigError(
+                    f"NEWS_WATCH_TRANSLATION_PATH must be an absolute path; got {translation_raw!r}"
+                )
+        else:
+            translation_config_path = _default_translation_config_path()
+
         return cls(
             db_path=db_path,
             log_level=log_level,
@@ -437,6 +467,7 @@ class Config:
             filtered_log_path=filtered_log_path,
             theses_path=theses_path,
             stopwords_path=stopwords_path,
+            translation_config_path=translation_config_path,
         )
 
 

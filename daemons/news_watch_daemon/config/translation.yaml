@@ -1,0 +1,37 @@
+# Translation pass configuration (Pass F, 2026-05-28).
+#
+# Loaded by news_watch_daemon.translation.config at daemon init.
+# Override the file location via NEWS_WATCH_TRANSLATION_PATH; bundled
+# file is the daemon default + source-of-truth for new installs.
+#
+# Architecture-of-record: Telegram-native is the primary translation
+# source per the 2026-05-27 doctrine note (Task 0 probe outcome).
+# DeepL remains a documented fallback for the explicit failure modes
+# the Pass F doctrine anticipates (Premium re-gating, sustained
+# FloodWait, quality degradation). The fallback is YAML-config-
+# flippable so the future flip is config-only, not a code commit —
+# but the deepl path itself is stubbed (raises NotImplementedError)
+# until empirically needed.
+
+# Active translation source. Valid values: "telegram_native", "deepl".
+# Flip to "deepl" if the orchestrator surfaces premium_required
+# status from translate_telegram_messages() (the documented failure
+# mode) or sustained rate-limited / quality-degradation conditions.
+translation_source: telegram_native
+
+# Telegram-native tunable: per-call batch size for messages.translateText.
+# Default 10 (conservative pending empirical rate-limit calibration —
+# Task 0 probed 3-message batch at 233ms; 10-message batch estimated
+# ~500ms based on linear amortization). Bounds [1, 100] enforced in
+# the loader. Raise after empirical validation.
+telegram_native_batch_size: 10
+
+# DeepL fallback configuration (stub).
+# When translation_source is flipped to "deepl", the daemon reads
+# these fields. Currently the deepl_stub module raises
+# NotImplementedError on any call; populating these fields here lets
+# the future DeepL implementation read its config without a YAML
+# schema change.
+deepl:
+  api_key_env: DEEPL_API_KEY        # env var name to read the key from
+  free_tier: true                   # api-free.deepl.com vs api.deepl.com

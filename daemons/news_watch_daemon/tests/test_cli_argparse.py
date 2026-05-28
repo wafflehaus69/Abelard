@@ -74,6 +74,9 @@ def test_parser_has_all_top_level_commands():
         "themes", "theme", "headlines", "alerts", "db",
         "proposals", "briefs", "alert-sink", "trigger-log",
         "attention",
+        # Pass F (2026-05-28): manual translation subcommand. The
+        # backfill-translation variant lives under `db` subparser.
+        "translate",
     }
 
 

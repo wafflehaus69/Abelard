@@ -43,6 +43,11 @@ from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, writ
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
 from .alert.factory import AlertSinkFactoryError, build_alert_sink
 from .attention.brief_schema import AttentionBrief
+from .translation import (
+    TranslationConfigError,
+    load_translation_config,
+    run_translation_pass,
+)
 from .synthesize.archive import ArchiveError, list_brief_ids, read_brief, write_brief
 from .synthesize.brief import (
     Brief,
@@ -291,6 +296,48 @@ def build_parser() -> argparse.ArgumentParser:
         "backfill-language",
         help="Classify the language of headlines with NULL language (Task 2 / Pass F).",
     )
+    p_backfill_tx = db_sub.add_parser(
+        "backfill-translation",
+        help=(
+            "Translate headlines with non-English language and NULL headline_en "
+            "(Pass F). Re-tags rows against translated text. Idempotent: re-runs "
+            "naturally process zero pending rows."
+        ),
+    )
+    p_backfill_tx.add_argument(
+        "--dry-run", action="store_true",
+        help=(
+            "Preview the queue without making translation API calls. Returns the "
+            "by-source breakdown of pending rows so the operator can validate the "
+            "queue before committing to the cost/rate-limit envelope."
+        ),
+    )
+
+    # ---- translate (Pass F manual one-shot) ----
+
+    p_translate = top.add_parser(
+        "translate",
+        help=(
+            "Manual translation pass against existing pending rows (Pass F). "
+            "Equivalent to `db backfill-translation` but with optional source "
+            "filter + limit for narrow re-runs after rate-limit recovery."
+        ),
+    )
+    p_translate.add_argument(
+        "--source",
+        help=(
+            "Restrict to a single source name (e.g. telegram:Ateobreaking). "
+            "Default: all sources with pending rows."
+        ),
+    )
+    p_translate.add_argument(
+        "--limit", type=int, default=200,
+        help="Maximum pending rows to process this invocation. Default 200.",
+    )
+    p_translate.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview without API calls; same shape as `db backfill-translation --dry-run`.",
+    )
 
     return parser
 
@@ -434,6 +481,293 @@ def _handle_db_backfill_language(
     )
 
 
+# ---------- Pass F translation handlers (Commit 2) ----------
+
+
+def _run_translation_subcommand(
+    *,
+    cfg: Config,
+    source_filter: str | None,
+    limit: int | None,
+    dry_run: bool,
+) -> dict[str, Any]:
+    """Shared core for `translate` and `db backfill-translation` subcommands.
+
+    See translation/runner.py docstring for the load-bearing re-queue
+    semantics: rate-limited / failed translations leave rows with
+    headline_en=NULL; future invocations of this subcommand naturally
+    retry them (the `WHERE headline_en IS NULL` filter is the queue).
+
+    Idempotency: re-running on a corpus with zero pending rows returns
+    rows_examined=0; no API calls made, no DB writes. The `headline_en
+    IS NULL` filter makes successfully-translated rows untouchable by
+    subsequent runs.
+
+    Re-tag idempotency: after translation succeeds, the row's existing
+    theme tags are DELETEd before fresh tag_rows are INSERTed against
+    the translated text. So if a row had zero tags (Russian content +
+    English keywords = no matches) and translation gives English text
+    that DOES match a keyword, the new tag lands. Re-running on the
+    same row (now headline_en NOT NULL) finds zero pending rows.
+    """
+    conn = connect(cfg.db_path)
+    try:
+        version = schema_version(conn)
+        if version < 4:
+            return build_error(
+                status="error",
+                source="internal",
+                detail=(
+                    f"schema_version={version} predates the headline_en column (v4). "
+                    "Run `news-watch-daemon db migrate` first."
+                ),
+            )
+
+        # Load translation config
+        try:
+            tx_cfg = load_translation_config(cfg.translation_config_path)
+        except TranslationConfigError as exc:
+            return build_error(
+                status="error",
+                source="internal",
+                detail=f"translation config load failed: {exc}",
+            )
+
+        # Verify Telegram credentials (Telegram-native path requires them).
+        if tx_cfg.translation_source == "telegram_native":
+            if not cfg.telegram_creds_complete:
+                return build_error(
+                    status="error",
+                    source="internal",
+                    detail=(
+                        "translation_source=telegram_native but Telegram credentials are not "
+                        "configured. Set TELEGRAM_API_ID, TELEGRAM_API_HASH, and "
+                        "TELEGRAM_SESSION_STRING."
+                    ),
+                )
+
+        # Query pending rows.
+        sql = (
+            "SELECT headline_id, source, headline, url, fetched_at_unix, language "
+            "FROM headlines "
+            "WHERE language != 'en' AND headline_en IS NULL"
+        )
+        params: list[Any] = []
+        if source_filter:
+            sql += " AND source = ?"
+            params.append(source_filter)
+        sql += " ORDER BY fetched_at_unix DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = conn.execute(sql, params).fetchall()
+
+        if not rows:
+            return build_ok(
+                {
+                    "db_path": str(cfg.db_path),
+                    "translation_source": tx_cfg.translation_source,
+                    "dry_run": dry_run,
+                    "rows_examined": 0,
+                    "rows_translated": 0,
+                    "by_status": {},
+                    "by_source": {},
+                },
+                source="internal",
+            )
+
+        # Group by channel (only Telegram rows can be translated via the
+        # telegram_native path; other-source rows skip silently).
+        by_source: dict[str, list[Any]] = {}
+        for r in rows:
+            by_source.setdefault(r["source"], []).append(r)
+
+        if dry_run:
+            # Preview-only — no API calls, no DB writes.
+            preview = {
+                src: {"count": len(srcrows)} for src, srcrows in by_source.items()
+            }
+            return build_ok(
+                {
+                    "db_path": str(cfg.db_path),
+                    "translation_source": tx_cfg.translation_source,
+                    "dry_run": True,
+                    "rows_examined": len(rows),
+                    "rows_would_translate": len(rows),
+                    "by_source_preview": preview,
+                },
+                source="internal",
+            )
+
+        # Build per-channel pending lists for translation
+        pending_by_channel: dict[str, list[tuple[int, str]]] = {}
+        row_index: dict[tuple[str, int], Any] = {}  # (channel, msg_id) -> row
+        for src, srcrows in by_source.items():
+            if not src.startswith("telegram:"):
+                # Non-Telegram sources can't use telegram_native path
+                continue
+            channel = src[len("telegram:"):]
+            entries: list[tuple[int, str]] = []
+            for r in srcrows:
+                msg_id = _parse_msg_id_from_url(r["url"])
+                if msg_id is None:
+                    continue
+                entries.append((msg_id, r["headline"]))
+                row_index[(channel, msg_id)] = r
+            if entries:
+                pending_by_channel[channel] = entries
+
+        if not pending_by_channel:
+            return build_ok(
+                {
+                    "db_path": str(cfg.db_path),
+                    "translation_source": tx_cfg.translation_source,
+                    "dry_run": False,
+                    "rows_examined": len(rows),
+                    "rows_translated": 0,
+                    "by_status": {},
+                    "by_source": {},
+                    "note": "no eligible Telegram-source rows in pending queue",
+                },
+                source="internal",
+            )
+
+        # Run the translation pass
+        try:
+            translations = run_translation_pass(
+                api_id=cfg.telegram_api_id,
+                api_hash=cfg.telegram_api_hash,
+                session_string=cfg.telegram_session_string,
+                pending_by_channel=pending_by_channel,
+                batch_size=tx_cfg.telegram_native_batch_size,
+                translation_source=tx_cfg.translation_source,
+            )
+        except NotImplementedError as exc:
+            return build_error(
+                status="error",
+                source="internal",
+                detail=f"translation_source stub raised NotImplementedError: {exc}",
+            )
+
+        # Apply translations: UPDATE headline_en + re-tag.
+        by_status: dict[str, int] = {}
+        rows_translated = 0
+        # Load themes for re-tagging
+        try:
+            all_themes = load_all_themes(cfg.themes_dir)
+        except ThemeLoadError as exc:
+            return build_error(
+                status="error",
+                source="internal",
+                detail=f"theme load failed during re-tag: {exc}",
+            )
+        registered = list_themes(conn)
+        active_ids = {e.theme_id for e in registered if e.status == "active"}
+        active_themes = [t for t in all_themes if t.theme_id in active_ids and t.status == "active"]
+        from .scrape.orchestrator import _compile_theme_regexes, _tag_for_theme
+        theme_regexes = _compile_theme_regexes(active_themes)
+
+        now_unix = int(time.time())
+        with transaction(conn):
+            for (channel, msg_id), result in translations.items():
+                by_status[result.status] = by_status.get(result.status, 0) + 1
+                row = row_index.get((channel, msg_id))
+                if row is None:
+                    continue
+                if result.status != "ok" or not result.translated_text:
+                    # Failed or empty translation — leave row with
+                    # headline_en=NULL, sit in queue for next retry.
+                    continue
+                # Successful translation: update headline_en
+                conn.execute(
+                    "UPDATE headlines SET headline_en = ? WHERE headline_id = ?",
+                    (result.translated_text, row["headline_id"]),
+                )
+                # Re-tag against translated text (DELETE existing then
+                # INSERT fresh — idempotent).
+                conn.execute(
+                    "DELETE FROM headline_theme_tags WHERE headline_id = ?",
+                    (row["headline_id"],),
+                )
+                tagging_text = result.translated_text
+                for regs in theme_regexes:
+                    confidence = _tag_for_theme(tagging_text, regs)
+                    if confidence is not None:
+                        conn.execute(
+                            "INSERT INTO headline_theme_tags "
+                            "(headline_id, theme_id, confidence, tagged_at_unix) "
+                            "VALUES (?, ?, ?, ?)",
+                            (row["headline_id"], regs.theme_id, confidence, now_unix),
+                        )
+                rows_translated += 1
+
+        # Per-source rollup
+        per_source_rollup: dict[str, dict[str, int]] = {}
+        for (channel, msg_id), result in translations.items():
+            src = f"telegram:{channel}"
+            per_source_rollup.setdefault(src, {})
+            per_source_rollup[src][result.status] = (
+                per_source_rollup[src].get(result.status, 0) + 1
+            )
+
+        return build_ok(
+            {
+                "db_path": str(cfg.db_path),
+                "translation_source": tx_cfg.translation_source,
+                "dry_run": False,
+                "rows_examined": len(rows),
+                "rows_translated": rows_translated,
+                "by_status": by_status,
+                "by_source": per_source_rollup,
+            },
+            source="internal",
+        )
+    finally:
+        conn.close()
+
+
+def _parse_msg_id_from_url(url: str | None) -> int | None:
+    """Parse the integer msg_id from a Telegram URL like
+    `https://t.me/<channel>/<msg_id>`. Returns None if shape doesn't match."""
+    if not url or "t.me/" not in url:
+        return None
+    try:
+        tail = url.rstrip("/").rsplit("/", 1)[-1]
+        return int(tail)
+    except (ValueError, IndexError):
+        return None
+
+
+def _handle_db_backfill_translation(
+    args: argparse.Namespace, cfg: Config
+) -> dict[str, Any]:
+    """Backfill subcommand: translate all pending rows + re-tag.
+
+    Idempotent via the `WHERE headline_en IS NULL` filter — re-runs find
+    zero pending rows once all are translated. See
+    _run_translation_subcommand docstring for the load-bearing
+    re-queue / idempotency semantics.
+    """
+    return _run_translation_subcommand(
+        cfg=cfg,
+        source_filter=None,
+        limit=None,
+        dry_run=args.dry_run,
+    )
+
+
+def _handle_translate(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Translate subcommand: same as backfill-translation with optional
+    --source filter + --limit. Use for narrow re-runs after rate-limit
+    recovery on a specific channel."""
+    return _run_translation_subcommand(
+        cfg=cfg,
+        source_filter=args.source,
+        limit=args.limit,
+        dry_run=args.dry_run,
+    )
+
+
 def _handle_themes_load(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
     try:
         themes = load_all_themes(cfg.themes_dir)
@@ -546,11 +880,37 @@ def _handle_scrape(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
                 detail=f"tracked_tickers load failed: {exc}",
             )
 
+        # Pass F (2026-05-28): load translation config; thread Telegram
+        # credentials into run_scrape so the orchestrator's per-source
+        # batched translation pass has what it needs.
+        translation_credentials: tuple[int, str, str] | None = None
+        translation_source = "telegram_native"
+        translation_batch_size = 10
+        try:
+            tx_cfg = load_translation_config(cfg.translation_config_path)
+            translation_source = tx_cfg.translation_source
+            translation_batch_size = tx_cfg.telegram_native_batch_size
+        except TranslationConfigError as exc:
+            _log = logging.getLogger("news_watch_daemon.cli")
+            _log.warning(
+                "translation config load failed: %s. Scrape continues with translation disabled "
+                "(non-en rows will insert with headline_en=NULL).", exc,
+            )
+        if cfg.telegram_creds_complete and translation_source == "telegram_native":
+            translation_credentials = (
+                cfg.telegram_api_id,
+                cfg.telegram_api_hash,
+                cfg.telegram_session_string,
+            )
+
         try:
             result = run_scrape(
                 conn, sources, themes,
                 tracked_tickers=tracked_tickers,
                 cross_source_log_path=cfg.cross_source_log_path,
+                translation_credentials=translation_credentials,
+                translation_source=translation_source,
+                translation_batch_size=translation_batch_size,
             )
             write_heartbeat(
                 conn,
@@ -1797,6 +2157,8 @@ HANDLERS: dict[str, Handler] = {
     "db init": _handle_db_init,
     "db migrate": _handle_db_migrate,
     "db backfill-language": _handle_db_backfill_language,
+    "db backfill-translation": _handle_db_backfill_translation,
+    "translate": _handle_translate,
     "themes load": _handle_themes_load,
     "themes list": _handle_themes_list,
     "status": _handle_status,
