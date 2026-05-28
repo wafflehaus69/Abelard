@@ -76,7 +76,8 @@ final section.
 4. [Latent dedup bug fix history (Task 2.5)](#4-latent-dedup-bug-fix-history-task-25)
 5. [Fog of war in operational application — tonight's Iran corpus](#5-fog-of-war-in-operational-application--tonights-iran-corpus)
 6. [Future themes (proposed, not yet scoped)](#future-themes-proposed-not-yet-scoped)
-7. [Operating principles](#operating-principles)
+7. [Theme set undersized for corpus density — surfaced 2026-05-27](#theme-set-undersized-for-corpus-density--surfaced-2026-05-27)
+8. [Operating principles](#operating-principles)
 
 ---
 
@@ -755,6 +756,173 @@ pre-existing WIP on `ai_capex_cycle.yaml` is also preserved.
 
 ---
 
+## Theme set undersized for corpus density — surfaced 2026-05-27
+
+The daemon currently runs 7 active themes (`us_iran_escalation`,
+`political_volatility`, `russia_ukraine_war`, `fed_policy_path`,
+`china_us_decoupling`, `ai_capex_cycle`, `tokenized_finance_infrastructure`).
+Tonight's 226-headline scrape contained at least 11 thematic clusters
+by frequency analysis; 6 of the 7 themes fired (the 7th —
+`tokenized_finance_infrastructure` — was inactive in tonight's window).
+Net coverage gap: ~5 themes' worth of signal flowing into the corpus
+either entirely untagged or catch-all-tagged under broader buckets.
+
+This is not a synthesis-tier problem (Abelard tier, per-theme synthesis,
+or corpus survey are downstream of theme definitions), and it is not a
+keyword-tuning problem (per-theme keyword expansion fights the
+catch-all symptom but doesn't address the underlying structural gap).
+The upstream problem is the theme set itself is incomplete relative to
+the daemon's actual corpus density.
+
+### Empirical anchor — tonight's word-frequency analysis
+
+Corpus: all 226 headlines + visible English-source message bodies.
+Russian Ateobreaking content excluded (Pass F translation queue).
+3,938 raw tokens → 2,320 substantive after stopwords → 1,514 unique
+terms. `US`, `UK`, `EU`, `UN` treated as stopwords (article-filler in
+50+ headlines, crowded out actual signal).
+
+Top thematic clusters by weighted mention count:
+
+| Rank | Cluster | Weighted mentions | Current theme coverage |
+|---:|---|---:|---|
+| 1 | Iran / Hormuz | 113 | `us_iran_escalation` (catch-all, see below) |
+| 2 | Trump / political volatility | 65 | `political_volatility` (much Iran-flavored) |
+| 3 | Markets / equities / earnings | 60 | partial (`fed_policy_path` for macro) |
+| 4 | Defense / military / commodities | 47 | partial (under `us_iran_escalation`) |
+| 5 | Fed / rates / inflation | 32 | `fed_policy_path` |
+| 6 | Israel / Lebanon / Hezbollah | 29 | **buried in `us_iran_escalation`** |
+| 7 | Ukraine / Russia | 26 | `russia_ukraine_war` |
+| 8 | Migration / remigration | 25 | **zero coverage** |
+| 9 | AI / tech / data centers | 22 | `ai_capex_cycle` |
+| 10 | China / decoupling | 15 | `china_us_decoupling` |
+| 11 | Domestic US / ICE / SOUTHCOM | 13 | **zero coverage** |
+
+Iran-cluster dominance (113) is single-issue today; the next four
+clusters all inherit from the Iran spine (military strikes, oil
+cascade, peace-deal volatility, regional theater). That single-issue
+concentration is itself a signal — and it's exactly the condition
+under which catch-all themes become structurally problematic, because
+a single broad theme absorbs the whole spine and obscures the
+separable arcs within it.
+
+### Five candidate themes — surfaced for scoped review
+
+Each is a proposal, not a build-tonight item. Mando reviews
+scope/keywords/tracked_entities/overlap-resolution in a separate
+scoped theme-expansion session.
+
+#### `levant_proxy_war`
+
+**Empirical motivation**: Israel-Hezbollah-Lebanon is operating
+independently of US-Iran negotiation status — Tyre airstrikes
+continued tonight during the purported ceasefire, with Hezbollah video
+of 5th Iron Dome launcher destruction, 50+ killed across south Lebanon
+and western Bekaa in 36 hours. 29 weighted mentions tonight, currently
+buried in `us_iran_escalation`. The arc has its own cause-effect
+chain, its own principals (Netanyahu, Nasrallah successor, Lebanese
+factions), and its own market surface (defense contractors, regional
+shipping/insurance). A separate theme preserves the tonal and causal
+separability.
+
+#### `european_migration_policy`
+
+**Empirical motivation**: 25 weighted mentions tonight from CIG-heavy
+coverage with real positioning implications — UK Labour £100M asylum
+housing scheme (40% of new homes potentially going to migrants under
+OBR projection), Romania regularization ordinance, Germany state-
+media regulator algorithmic-trust rules, Belgian anti-racism law
+asymmetry, AfD's ESN faction facing EU ban over "remigration"
+positioning, Remigration Summit '26 promotion. Zero current theme
+coverage. The arc carries first-derivative signal on European
+electoral cycles, EU institutional cohesion, and the operating envelope
+for far-right and centrist parties — all tracked-entity-rich.
+
+#### `defense_industrial_complex`
+
+**Empirical motivation**: 47 weighted mentions tonight, partially
+captured under `us_iran_escalation`. The pattern is Western defense
+logistics fragmentation: Czech ammunition initiative for Ukraine
+collapsed (18 → 9 contributing countries, €1.4B of €5B projection),
+Zelensky urgent letter on Patriot PAC-3 shortage, Britain/France/Spain/
+Italy/Canada blocking NATO 0.25% GDP plan, US-Israel MOU shifting from
+FMF grants to Pentagon procurement (less Congressional oversight),
+Germany-Canada LNG pivot, UAE airlift to RSF resuming after UAE-Iran
+ceasefire, Burundian army deployment in eastern DRC. This is a
+distinct narrative — Western defense supply chains and ally-network
+realignment — that catch-all'd under `us_iran_escalation` loses its
+own causal coherence.
+
+#### `us_domestic_security_state`
+
+**Empirical motivation**: 13 weighted mentions tonight, zero current
+theme coverage. ICE detention center incidents (Newark NJ NJ senator
+pepper-sprayed, Mullin defends migrant jail, anti-ICE protesters
+arrested for chemical-spray assault), SOUTHCOM lethal kinetic strike
+on alleged narco vessel (one survivor, two killed, Eastern Pacific),
+NASA Freedom 250 National Mall fair, Trump DOJ "Anti-Weaponization
+Fund" mechanics. Smaller cluster tonight but tonally distinct from
+both `political_volatility` (which is Trump-the-actor) and
+`us_iran_escalation` (which is foreign-policy-doctrine). The arc is
+domestic-security-state institutional behavior — DHS / ICE / SOUTHCOM
+/ DOJ as operational actors, separable from the political principal
+driving them.
+
+#### `mega_cap_index_dynamics` (relisted for completeness)
+
+Already proposed in [Future themes](#future-themes-proposed-not-yet-scoped).
+Surfaces here as the 5th of 5 theme-gap candidates. See that section
+for full scope sketch, empirical motivation, and keyword curation
+challenges.
+
+### The catch-all problem on `us_iran_escalation`
+
+Tonight's tagging swallowed Israel-Lebanon (`levant_proxy_war`
+candidate), Sudan/RSF/UAE airlift (`defense_industrial_complex`
+candidate), and the broader oil cascade — all under
+`us_iran_escalation`. This is the symptom of theme-set undersizedness:
+a theme that started with a focused scope (US-Iran specifically) has
+been doing double-duty as the "Middle East geopolitics writ large"
+bucket because nothing else exists to absorb the adjacent arcs.
+
+The recommended remediation is split-or-sharpen:
+
+- **Split**: stand up `levant_proxy_war` and `defense_industrial_complex`
+  as separate themes to absorb the adjacent arcs; let
+  `us_iran_escalation` remain focused on US-Iran-specific kinetic /
+  diplomatic / sanctions events.
+- **Sharpen**: tighten `us_iran_escalation`'s keyword and exclusion
+  lists once the absorbing themes exist, so it stops tagging Israel-
+  Lebanon and Sudan/RSF content that's no longer in scope.
+
+Both moves are downstream of the theme-expansion session.
+
+### Status
+
+**Queued as a scoped theme-expansion session — not tonight's work.**
+
+Shape of that session:
+1. Corpus-wide empirical proposal pass against 800+ accumulated rows
+   (today: 831 in the DB; ongoing scrapes grow the sample).
+2. Theme proposals per candidate: scope / keywords (primary +
+   secondary + exclusions) / tracked_entities (people + companies +
+   countries + commodities + tickers) / overlap-resolution against
+   existing themes.
+3. Mando accepts / rejects / modifies each proposal individually.
+4. One commit per accepted theme (each theme is its own logical unit;
+   no bundling).
+5. Post-acceptance: re-tagging pass across the persistent DB so the
+   empirical motivation in the doctrine note can be verified against
+   real backfilled tag counts.
+6. Sharpen `us_iran_escalation` (and any other catch-all themes
+   surfaced) in a final commit once the absorbing themes exist.
+
+Approximate scope: a 2-3 hour focused session if the empirical pass
+goes cleanly; longer if the candidate list grows or overlap-resolution
+is complex.
+
+---
+
 ## Operating principles
 
 Six principles emerged from concrete decisions this session. Each
@@ -947,6 +1115,23 @@ and if so what does the theme look like." Default to logging a theme
 proposal in doctrine when the answer is yes-and-uncertain; default to
 explicit "this is noise, not signal" when the answer is no. Avoid the
 silent-untagged middle ground.
+
+**The other failure mode (corollary):** Taxonomy-vs-signal failure
+also fires when existing themes become too broad — when a theme starts
+firing on content that's tonally or causally separable from its core
+scope, it has become a catch-all bucket. The discipline: when a theme
+tag matches an event that doesn't share the theme's primary causal /
+tonal scope, that's evidence the theme is too broad. Split or sharpen
+rather than letting it become a catch-all. Empirical anchor: tonight's
+`us_iran_escalation` swallowed Israel-Lebanon (tonally separable —
+Israel is conducting its own arc against Hezbollah independent of
+US-Iran negotiation status), Sudan/RSF/UAE airlift logistics (causally
+separable — UAE-Iran ceasefire enabled the airlift resumption, but
+the RSF arc is its own story), and broader Middle East proxy-war
+content. See
+[Theme set undersized for corpus density](#theme-set-undersized-for-corpus-density--surfaced-2026-05-27)
+for the full empirical case and the five candidate themes the
+catch-all symptom surfaced.
 
 **Why Abelard specifically must watch for this:** As the judgment-layer
 agent, Abelard is responsible for architectural taxonomy. The
