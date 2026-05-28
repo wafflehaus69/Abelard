@@ -433,3 +433,124 @@ def test_headlines_recent_orders_newest_first(env, capsys):
     payload = _read_envelope(capsys)
     ids = [h["headline_id"] for h in payload["data"]["headlines"]]
     assert ids == ["newer", "older"]
+
+
+# ---------- Follow-up #5 (2026-05-27): briefs list discriminated-union ----------
+#
+# Regression for the same bug class as materiality's archive walk:
+# `briefs list` walked the archive and called _brief_summary(brief),
+# which crashed on AttentionBrief (no .events, no .themes_covered).
+# The fix discriminates on isinstance and projects both shapes
+# correctly.
+
+
+def _make_attention_brief(
+    brief_id: str,
+    *,
+    generated_at: str,
+    triggering_term: str = "about",
+):
+    from news_watch_daemon.attention.brief_schema import AttentionBrief
+    return AttentionBrief(
+        brief_id=brief_id,
+        generated_at=generated_at,
+        triggering_term=triggering_term,
+        term_frequency_window=12,
+        term_frequency_prior=2,
+        cluster_size=12,
+        narrative="Generic preposition; cross_topic_recurrence.",
+        source_mix={"telegram:CIG_telegram": 10},
+        entities_observed=["Trump"],
+        attention_shape="cross_topic_recurrence",
+        dispatch=Dispatch(alerted=False),
+        synthesis_metadata=SynthesisMetadata(
+            model_used="claude-sonnet-4-6", theses_doc_available=False,
+        ),
+    )
+
+
+def test_briefs_list_handles_mixed_archive_without_crash(env, capsys):
+    """Archive contains both a Pass C Brief and an AttentionBrief in the
+    same partition. `briefs list` must project both correctly (different
+    summary shapes per brief_type) without AttributeError on the
+    attention brief's missing .events / .themes_covered.
+
+    Pre-fix: 'AttentionBrief' object has no attribute 'events' inside
+    _brief_summary. This test pins the discriminated-union projection."""
+    _, archive_path = env
+    pass_c = _make_brief(
+        "nwd-2026-05-27T22-50-43Z-9b3cfa83",
+        generated_at="2026-05-27T22:50:43Z",
+        themes=["us_iran_escalation"],
+        events_scores=[0.7, 0.85],
+    )
+    attn = _make_attention_brief(
+        "nwd-attn-2026-05-27T23-06-06Z-1158cc38",
+        generated_at="2026-05-27T23:06:06Z",
+    )
+    write_brief(archive_path, pass_c)
+    write_brief(archive_path, attn)
+
+    rc = main(["briefs", "list"])
+    payload = _read_envelope(capsys)
+    assert rc == 0
+    assert payload["status"] == "ok"
+    briefs = payload["data"]["briefs"]
+    assert len(briefs) == 2
+
+    # Newest-first ordering: attention brief generated later
+    by_type = {b["brief_type"]: b for b in briefs}
+    assert "attention" in by_type
+    assert "theme_event" in by_type
+
+    # Attention brief projection: triggering_term / attention_shape /
+    # cluster_size present; no Pass C-only fields.
+    attn_summary = by_type["attention"]
+    assert attn_summary["triggering_term"] == "about"
+    assert attn_summary["attention_shape"] == "cross_topic_recurrence"
+    assert attn_summary["cluster_size"] == 12
+    assert "events_count" not in attn_summary
+    assert "themes_covered" not in attn_summary
+
+    # Pass C projection: themes_covered / events_count / max_materiality_score
+    # present; no attention-only fields.
+    pass_c_summary = by_type["theme_event"]
+    assert pass_c_summary["themes_covered"] == ["us_iran_escalation"]
+    assert pass_c_summary["events_count"] == 2
+    assert pass_c_summary["max_materiality_score"] == 0.85
+    assert "triggering_term" not in pass_c_summary
+
+
+def test_briefs_list_theme_filter_skips_attention_briefs(env, capsys):
+    """`briefs list --theme X` filters Pass C briefs by themes_covered.
+    AttentionBriefs have no themes_covered — must be silently skipped
+    when --theme is set, not crash."""
+    _, archive_path = env
+    pass_c_match = _make_brief(
+        "nwd-2026-05-27T22-00-00Z-aaaaaaaa",
+        generated_at="2026-05-27T22:00:00Z",
+        themes=["us_iran_escalation"],
+    )
+    pass_c_nomatch = _make_brief(
+        "nwd-2026-05-27T22-30-00Z-bbbbbbbb",
+        generated_at="2026-05-27T22:30:00Z",
+        themes=["fed_policy_path"],
+    )
+    attn = _make_attention_brief(
+        "nwd-attn-2026-05-27T23-00-00Z-cccccccc",
+        generated_at="2026-05-27T23:00:00Z",
+    )
+    write_brief(archive_path, pass_c_match)
+    write_brief(archive_path, pass_c_nomatch)
+    write_brief(archive_path, attn)
+
+    rc = main(["briefs", "list", "--theme", "us_iran_escalation"])
+    payload = _read_envelope(capsys)
+    assert rc == 0
+    assert payload["status"] == "ok"
+    briefs = payload["data"]["briefs"]
+    # Only the Pass C brief matching the theme survives; the other
+    # Pass C brief is filtered by themes_covered, the attention brief
+    # is filtered because it has no themes_covered to match.
+    assert len(briefs) == 1
+    assert briefs[0]["brief_id"] == pass_c_match.brief_id

@@ -122,6 +122,16 @@ def _collect_recent_fingerprints(
             continue
         if gen_unix < since_unix:
             break  # newest-first; everything after is older
+        # Skip non-Brief variants of the discriminated union.
+        # AttentionBrief (Pass E) has no `.events` and is not in the
+        # Pass C event-dedup namespace — its fingerprint domain is
+        # distinct (term-frequency clusters, not theme events). Walking
+        # past it without this check crashes with AttributeError; see
+        # the 2026-05-27 23:51Z `synthesize` run that lost a 6-event
+        # Iran-cluster brief to this exact path. Tests in
+        # tests/test_synthesize_materiality.py lock the invariant.
+        if not isinstance(brief, Brief):
+            continue
         for event in brief.events:
             fingerprints.add(fingerprint_event(event.headline_summary))
         brief_ids.append(bid)

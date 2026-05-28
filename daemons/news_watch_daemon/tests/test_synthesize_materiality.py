@@ -285,3 +285,111 @@ def test_decision_carries_above_threshold_count(tmp_path):
     )
     assert d.above_threshold_count == 2
     assert d.new_events_count == 2
+
+
+# ---------- Follow-up #5 (2026-05-27): discriminated-union archive walk ----------
+#
+# Regression for the bug discovered live: the archive walk in
+# _collect_recent_fingerprints crashed with AttributeError on
+# AttentionBrief (.events doesn't exist). Cost: one Pass C brief with
+# 6 events on tonight's Iran cluster, lost to the crash. The fix skips
+# non-Brief variants of the discriminated union.
+
+
+def _attention_brief(
+    *,
+    brief_id: str = "nwd-attn-2026-05-27T22-00-00Z-abcdef12",
+    generated_at: str = "2026-05-27T22:00:00Z",
+    triggering_term: str = "about",
+):
+    from news_watch_daemon.attention.brief_schema import AttentionBrief
+    from news_watch_daemon.synthesize.brief import Dispatch, SynthesisMetadata
+    return AttentionBrief(
+        brief_id=brief_id,
+        generated_at=generated_at,
+        triggering_term=triggering_term,
+        term_frequency_window=12,
+        term_frequency_prior=2,
+        cluster_size=12,
+        narrative="Generic preposition; cross_topic_recurrence.",
+        source_mix={"telegram:CIG_telegram": 10},
+        entities_observed=["Trump"],
+        attention_shape="cross_topic_recurrence",
+        dispatch=Dispatch(alerted=False),
+        synthesis_metadata=SynthesisMetadata(
+            model_used="claude-sonnet-4-6", theses_doc_available=False,
+        ),
+    )
+
+
+def test_collect_recent_fingerprints_skips_attention_brief(tmp_path):
+    """An AttentionBrief in the archive must not crash the dedup-window walk.
+
+    Pre-fix: AttributeError: 'AttentionBrief' object has no attribute
+    'events'. Locked-behavior regression — if this test fails, the
+    fingerprint-collection loop has lost its isinstance discrimination.
+    """
+    from news_watch_daemon.synthesize.materiality import _collect_recent_fingerprints
+    archive_root = tmp_path / "archive"
+    # Seed: ONE attention brief in the same archive partition as a Pass C
+    # synthesis would land. The collection walk must skip it cleanly.
+    attn = _attention_brief()
+    write_brief(archive_root, attn)
+    # Now call _collect_recent_fingerprints — this used to crash.
+    since_unix = 0  # accept all
+    fingerprints, brief_ids = _collect_recent_fingerprints(archive_root, since_unix)
+    assert fingerprints == set()
+    assert brief_ids == []  # attention brief is not counted
+
+
+def test_collect_recent_fingerprints_still_collects_pass_c_briefs(tmp_path):
+    """A Pass C Brief in the archive must continue to contribute fingerprints.
+
+    Confirms the isinstance discrimination doesn't accidentally swallow
+    Pass C briefs (the bucket the dedup logic actually cares about).
+    """
+    from news_watch_daemon.synthesize.materiality import (
+        _collect_recent_fingerprints,
+        fingerprint_event,
+    )
+    archive_root = tmp_path / "archive"
+    pass_c = _brief(events=[
+        _event(0.7, summary="Iran tested new ballistic missile system", event_id="e1"),
+        _event(0.8, summary="China announced new chip export controls",  event_id="e2"),
+    ])
+    write_brief(archive_root, pass_c)
+    fingerprints, brief_ids = _collect_recent_fingerprints(archive_root, 0)
+    assert len(fingerprints) == 2
+    assert fingerprint_event("Iran tested new ballistic missile system") in fingerprints
+    assert fingerprint_event("China announced new chip export controls") in fingerprints
+    assert pass_c.brief_id in brief_ids
+
+
+def test_collect_recent_fingerprints_mixed_archive_correct_subset(tmp_path):
+    """Mixed archive: Pass C brief AND attention brief in same partition.
+
+    Reproduces tonight's failure shape exactly. The fix's invariant:
+    Pass C fingerprints are collected; attention briefs are skipped
+    silently; no crash.
+    """
+    from news_watch_daemon.synthesize.materiality import (
+        _collect_recent_fingerprints,
+        fingerprint_event,
+    )
+    archive_root = tmp_path / "archive"
+    # Both briefs in the same YYYY-MM partition (2026-05).
+    pass_c = _brief(
+        events=[_event(0.7, summary="Iran missile test", event_id="e1")],
+        generated_at="2026-05-27T22:50:43Z",
+        brief_id="nwd-2026-05-27T22-50-43Z-9b3cfa83",
+    )
+    attn = _attention_brief(
+        generated_at="2026-05-27T23:06:06Z",
+        brief_id="nwd-attn-2026-05-27T23-06-06Z-1158cc38",
+    )
+    write_brief(archive_root, pass_c)
+    write_brief(archive_root, attn)
+    fingerprints, brief_ids = _collect_recent_fingerprints(archive_root, 0)
+    # Only the Pass C brief's event contributes:
+    assert fingerprints == {fingerprint_event("Iran missile test")}
+    assert brief_ids == [pass_c.brief_id]

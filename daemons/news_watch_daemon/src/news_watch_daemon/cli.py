@@ -42,6 +42,7 @@ from .scrape.factory import build_sources
 from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, write_heartbeat
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
 from .alert.factory import AlertSinkFactoryError, build_alert_sink
+from .attention.brief_schema import AttentionBrief
 from .synthesize.archive import ArchiveError, list_brief_ids, read_brief, write_brief
 from .synthesize.brief import (
     Brief,
@@ -1340,21 +1341,46 @@ def _handle_trigger_log_tail(args: argparse.Namespace, cfg: Config) -> dict[str,
 
 
 def _brief_summary(brief: Any) -> dict[str, Any]:
-    """Project a Brief into the compact summary shape used by `briefs list`.
+    """Project a Brief or AttentionBrief into the compact summary shape
+    used by `briefs list`.
 
     Full Brief JSONs can run 1-10 KB; `briefs list` returns up to 500
-    summaries so the envelope stays inspectable.
+    summaries so the envelope stays inspectable. Discriminates on the
+    `brief_type` field so both Pass C theme-event briefs and Pass E
+    attention briefs project correctly — Pass C-only fields are
+    populated only for Pass C briefs; attention-only fields populated
+    only for attention briefs. Common fields (brief_id, generated_at,
+    brief_type, dispatch.*) always present.
+
+    Before this discrimination was added (2026-05-27 Follow-up #5),
+    walking an archive containing both brief types would crash on the
+    first AttentionBrief encountered (no `.events` / `.themes_covered`
+    attributes). Same defect class as materiality.py's archive walk.
     """
-    max_mat = max((e.materiality_score for e in brief.events), default=0.0)
-    return {
+    common = {
         "brief_id": brief.brief_id,
+        "brief_type": brief.brief_type,
         "generated_at": brief.generated_at,
-        "themes_covered": list(brief.themes_covered),
-        "events_count": len(brief.events),
-        "max_materiality_score": round(max_mat, 3),
         "alerted": brief.dispatch.alerted,
         "channel": brief.dispatch.channel,
         "suppressed_reason": brief.dispatch.suppressed_reason,
+    }
+    if isinstance(brief, AttentionBrief):
+        return {
+            **common,
+            "triggering_term": brief.triggering_term,
+            "term_frequency_window": brief.term_frequency_window,
+            "term_frequency_prior": brief.term_frequency_prior,
+            "cluster_size": brief.cluster_size,
+            "attention_shape": brief.attention_shape,
+        }
+    # Pass C Brief
+    max_mat = max((e.materiality_score for e in brief.events), default=0.0)
+    return {
+        **common,
+        "themes_covered": list(brief.themes_covered),
+        "events_count": len(brief.events),
+        "max_materiality_score": round(max_mat, 3),
     }
 
 
@@ -1380,8 +1406,15 @@ def _handle_briefs_list(args: argparse.Namespace, cfg: Config) -> dict[str, Any]
                 detail=f"brief {brief_id!r} unreadable: {exc}",
             ))
             continue
-        if args.theme and args.theme not in brief.themes_covered:
-            continue
+        # Theme filter applies to Pass C theme-event briefs only.
+        # AttentionBriefs don't have themes_covered and would crash
+        # on `in` — skip them when --theme is set (they're not in the
+        # theme-event namespace anyway).
+        if args.theme:
+            if isinstance(brief, AttentionBrief):
+                continue
+            if args.theme not in brief.themes_covered:
+                continue
         summaries.append(_brief_summary(brief))
         seen += 1
         if seen >= limit:
