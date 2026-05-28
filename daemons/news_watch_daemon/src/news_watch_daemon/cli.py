@@ -1244,8 +1244,28 @@ def _query_window_headlines(
     inputs are derived from the same rows so the trigger gate and the
     clustering pass agree on what's in scope.
     """
+    # Pass F (Follow-up #8, 2026-05-28): COALESCE(headline_en, headline)
+    # so the Pass C trigger gate (phrase match) and the clustering pass
+    # (Jaccard token overlap) both see TRANSLATED content for non-English
+    # rows. English-content rows have headline_en IS NULL by design and
+    # fall through to the original headline via COALESCE — bit-identical
+    # to pre-Pass-F behavior for those rows.
+    #
+    # Without this COALESCE: Russian-source rows (e.g. telegram:Ateobreaking)
+    # would tag correctly (theme aggregation runs against translated text
+    # at re-tag time) but cluster-match against original Russian text,
+    # producing isolated single-row clusters that fall below materiality
+    # thresholds — Ateo content would be silently excluded from morning
+    # briefs despite being correctly tagged. This is the defect Step 8
+    # of the Pass F validation arc exposed.
+    #
+    # See the FROM-headlines audit (Follow-up #8 commit message) for the
+    # complete classification of which reader sites use COALESCE vs
+    # intentionally read raw `headline` (e.g., the language classifier and
+    # the translation backfill query both deliberately read original text).
     rows = conn.execute(
-        "SELECT headline_id, headline, raw_source, url, "
+        "SELECT headline_id, COALESCE(headline_en, headline) AS headline, "
+        "       raw_source, url, "
         "       published_at_unix, fetched_at_unix "
         "FROM headlines "
         "WHERE published_at_unix >= ? AND published_at_unix <= ? "

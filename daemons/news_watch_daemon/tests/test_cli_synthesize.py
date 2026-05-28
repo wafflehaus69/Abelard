@@ -507,3 +507,170 @@ def test_synthesize_pull_mode_does_not_log_trigger(env, capsys, monkeypatch):
     assert rc == 0
     # No log file created for pull-mode.
     assert not log_path.exists()
+
+
+# ---------- Follow-up #8 (2026-05-28): Pass F COALESCE in synthesize-path ----------
+#
+# Regression for the bug Step 8 of the Pass F validation arc exposed:
+# _query_window_headlines used to SELECT raw `headline`, which fed the
+# Pass C trigger gate and the cluster expansion the ORIGINAL text for
+# non-English rows. After translation populated `headline_en`, the row's
+# theme tags were correct but its cluster input still carried Russian,
+# preventing Jaccard-based cluster merging with English wire content
+# and feeding raw Russian to Sonnet in the brief prompt.
+#
+# Fix: SELECT COALESCE(headline_en, headline) AS headline in the same
+# query (line 1247). TriggerHeadline + ClusterInput consumers unchanged
+# — they read `r["headline"]` which now returns the COALESCE'd value.
+#
+# These tests call the private helper _query_window_headlines directly
+# (not through the full synthesize handler) to pin the invariant at
+# the precise boundary the bug was at.
+
+
+def _insert_with_translation(
+    db_path: Path,
+    *,
+    headline_id: str,
+    headline: str,
+    headline_en: str | None,
+    language: str,
+    published_at_unix: int,
+) -> None:
+    """Insert a headlines row with explicit `language` and `headline_en`.
+    Sister to the existing _insert_tagged_headline helper but with the
+    Pass F columns populated."""
+    conn = sqlite3.connect(str(db_path))
+    try:
+        ts = datetime.fromtimestamp(published_at_unix, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn.execute(
+            "INSERT INTO headlines (headline_id, source, raw_source, headline, url, "
+            "published_at_unix, published_at, fetched_at_unix, fetched_at, dedupe_hash, "
+            "tickers_json, entities_json, language, headline_en) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                headline_id, "telegram:Ateobreaking", None, headline,
+                f"https://t.me/Ateobreaking/{headline_id}",
+                published_at_unix, ts, published_at_unix, ts, headline_id,
+                json.dumps([]), json.dumps({}), language, headline_en,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_query_window_headlines_uses_translated_text_when_present(env):
+    """Russian row with non-NULL headline_en yields TriggerHeadline AND
+    ClusterInput carrying the ENGLISH (translated) text — not the
+    original Russian.
+
+    Pre-fix this assertion failed: both TriggerHeadline.headline and
+    ClusterInput.headline contained the Russian original because the
+    SELECT read raw `headline`."""
+    from news_watch_daemon.db import connect
+    from news_watch_daemon.cli import _query_window_headlines
+
+    db_path = env["db_path"]
+    now = int(time.time())
+    russian_original = "Россия наступает на Украину"
+    english_translation = "Russia advances on Ukraine"
+    _insert_with_translation(
+        db_path,
+        headline_id="ru-translated",
+        headline=russian_original,
+        headline_en=english_translation,
+        language="ru",
+        published_at_unix=now - 100,
+    )
+
+    conn = connect(db_path)
+    try:
+        trigger_inputs, cluster_inputs = _query_window_headlines(
+            conn,
+            window_since_unix=now - 3600,
+            window_until_unix=now,
+        )
+    finally:
+        conn.close()
+
+    # The Russian row had no tags so it doesn't appear in trigger_inputs
+    # (trigger gate is tag-gated). It DOES appear in cluster_inputs
+    # because clustering operates on all headlines.
+    assert len(cluster_inputs) == 1
+    ci = cluster_inputs[0]
+    assert ci.headline_id == "ru-translated"
+    assert ci.headline == english_translation, (
+        f"Cluster input should carry translated text, got {ci.headline!r}. "
+        f"Pre-fix this would be the Russian original."
+    )
+    assert ci.headline != russian_original
+
+    # Also seed a tagged row so trigger_inputs covers the translated path
+    _insert_tagged_headline(
+        db_path, headline_id="ru-translated-tagged",
+        headline="Иран запустил ракеты по Кувейту",
+        publisher=None, published_at_unix=now - 50,
+        theme_ids=["us_iran_escalation"],
+    )
+    # Manually patch the tagged row with translation
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "UPDATE headlines SET headline_en = ?, language = ? "
+            "WHERE headline_id = ?",
+            ("Iran launched missiles at Kuwait", "ru", "ru-translated-tagged"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    conn = connect(db_path)
+    try:
+        trigger_inputs2, cluster_inputs2 = _query_window_headlines(
+            conn,
+            window_since_unix=now - 3600,
+            window_until_unix=now,
+        )
+    finally:
+        conn.close()
+    tagged_th = [t for t in trigger_inputs2 if t.headline_id == "ru-translated-tagged"]
+    assert len(tagged_th) == 1
+    assert tagged_th[0].headline == "Iran launched missiles at Kuwait", (
+        f"TriggerHeadline should carry translated text, got {tagged_th[0].headline!r}"
+    )
+
+
+def test_query_window_headlines_falls_back_to_headline_when_no_translation(env):
+    """English row with NULL headline_en (the dominant Pass F case)
+    falls through to the original `headline` via COALESCE — bit-
+    identical to pre-Pass-F behavior for the en-only corpus."""
+    from news_watch_daemon.db import connect
+    from news_watch_daemon.cli import _query_window_headlines
+
+    db_path = env["db_path"]
+    now = int(time.time())
+    english_text = "Iran missile strike near Kuwait, Reuters reports"
+    _insert_with_translation(
+        db_path,
+        headline_id="en-pure",
+        headline=english_text,
+        headline_en=None,  # English row — no translation
+        language="en",
+        published_at_unix=now - 100,
+    )
+
+    conn = connect(db_path)
+    try:
+        _, cluster_inputs = _query_window_headlines(
+            conn,
+            window_since_unix=now - 3600,
+            window_until_unix=now,
+        )
+    finally:
+        conn.close()
+
+    assert len(cluster_inputs) == 1
+    ci = cluster_inputs[0]
+    # COALESCE returns headline because headline_en IS NULL
+    assert ci.headline == english_text
