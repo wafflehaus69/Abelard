@@ -74,7 +74,9 @@ final section.
 2. [Decision to keep Ateo in config pending Pass F](#2-decision-to-keep-ateo-in-config-pending-pass-f)
 3. [Pass F translation architecture — Telegram-native locked, DeepL fallback documented](#3-pass-f-translation-architecture--telegram-native-locked-deepl-fallback-documented)
 4. [Latent dedup bug fix history (Task 2.5)](#4-latent-dedup-bug-fix-history-task-25)
-5. [Operating principles](#operating-principles)
+5. [Fog of war in operational application — tonight's Iran corpus](#5-fog-of-war-in-operational-application--tonights-iran-corpus)
+6. [Future themes (proposed, not yet scoped)](#future-themes-proposed-not-yet-scoped)
+7. [Operating principles](#operating-principles)
 
 ---
 
@@ -621,9 +623,141 @@ no longer collide.
 
 ---
 
+## 5. Fog of war in operational application — tonight's Iran corpus
+
+The 2026-05-27 scrape contained 49+ `us_iran_escalation`-tagged
+headlines presenting contradictory accounts of the same underlying
+negotiation from multiple interested parties:
+
+- **Iran state TV (IRIB)**: draft MOU leaked mid-morning — Hormuz
+  reopens in 30 days, US naval withdrawal, blockade lifts
+- **White House denial within 2 hours**: "no deal reached, memorandum
+  report is false"
+- **Trump on the record three times same day**: "not satisfied yet,"
+  "Iran negotiating on fumes," "nobody will control Hormuz but US
+  will watch over it"
+- **Iran demand stack via Fars + IRIB**: permanent ceasefire, full
+  US withdrawal, $24B frozen asset release, $300B reconstruction
+  compensation, control of Hormuz maritime traffic
+- **Single-source Bandar Abbas kinetic claim** from Faytuks Network
+  during purported ceasefire
+
+The daemon's two synthesis layers handled this differently and
+both successfully.
+
+### Pass C synthesis (recovered post-`c07d3d2`)
+
+Produced a Fog-of-War-disciplined event brief that held single-source
+claims to their sourcing standard, flagged the Bandar Abbas kinetic
+claim for verification ("single-source claim flagged"), and
+characterized the "deal" framing as positioning rather than reporting.
+5 events generated, 4 above the materiality threshold. The brief's
+narrative paragraph closed with:
+
+> "Across all events, the dominant signal is unresolved ambiguity:
+> neither a deal nor a confirmed kinetic escalation is established,
+> and markets are pricing exactly that uncertainty."
+
+That sentence is what Fog-of-War-disciplined synthesis looks like when
+it works. The architect did not collapse the contradictions into a
+false-converging "deal narrative" or a false-escalating "war
+narrative"; it reported the contradictions as the signal.
+
+### Strategic read (Abelard tier)
+
+Explicitly named the pattern as "two sides signaling to their own
+domestic audiences in opposite directions while the diplomatic
+substrate works (or doesn't) underneath" and identified the gap
+between Iran's demand stack and what Trump can politically tolerate
+as the signal-bearing observation.
+
+Both readings cited `METHODOLOGY.md`'s Fog of War doctrine as the
+interpretive frame.
+
+### Architectural lesson
+
+The daemon's Pass C synthesis prompt embedding Fog of War language is
+doing real work at the architecture level — tonight's recovered Iran
+brief is the empirical proof. The strategic-read tier benefits when
+Abelard reads `METHODOLOGY.md` alongside the daemon's output. This is
+the two-tier separation (daemon mechanical, Abelard judgment)
+functioning as designed, with shared epistemic discipline anchored in
+`METHODOLOGY.md`.
+
+---
+
+## Future themes (proposed, not yet scoped)
+
+Surfaced this session but deliberately not built. Each entry needs its
+own scoped session: scope discipline, keyword curation against
+empirical sample, tracked-entities decisions, overlap-resolution with
+existing themes. Logged here so the proposal doesn't evaporate.
+
+### mega_cap_index_dynamics (working name)
+
+**Scope sketch:** SpaceX IPO mechanics and timeline (June 12, $2T
+target, NASDAQ); late-stage private mega-cap pipeline (Stripe,
+Databricks, OpenAI structural changes); S&P inclusion mechanics and
+rule changes (SEC "Gun-Jumping" rule changes article surfaced this
+session); passive-flow / index-rebalancing dynamics; founder-controlled
+mega-cap governance structures; sector-classification ambiguity for
+newly-public mega-caps.
+
+**Why this matters:** SpaceX at ~$2T would be the largest market-cap
+addition to a US index in history. Cascade effects — index-fund
+rebalancing flows, float-squeeze dynamics on the inclusion mechanic,
+displacement of existing S&P components, signal for the
+private-mega-cap → public-mega-cap pipeline applying to Stripe /
+Databricks / OpenAI / etc. — are first-derivative trading signals
+across multiple active themes that don't have a home in current config.
+
+**Empirical motivation: 7 untagged headlines from the 2026-05-27 scrape**
+
+| Source | Headline |
+|---|---|
+| rss:bloomberg_markets | "The SpaceX IPO Is the Perfect Embodiment of Markets" |
+| rss:bloomberg_markets | "SpaceX IPO Gets Another Greenlight Toward Faster Index Inclusion" |
+| rss:bloomberg_markets | "Rocket, Satellite Stocks Surge as SpaceX IPO Fuels Euphoria" |
+| rss:bloomberg_markets | "SEC Chairman Eyes 'Gun-Jumping' Rule Changes to Spur More IPOs" |
+| rss:bloomberg_markets | "Kardigan Files for IPO to Fund Cardiovascular Disease Treatment" (disambiguation example for keyword curation — must NOT tag here) |
+| telegram:trading | "US space sector stocks have surged... SpaceX IPO effect... June 12 NASDAQ... $2T valuation" |
+| telegram:Ateobreaking (ru) | "Илон Маск в пять раз повысил цену на услуги Starlink для Пентагона" (Pass F translation problem, not keyword problem) |
+
+**Why this isn't `ai_capex_cycle`:** hyperscaler-led AI capex
+(Microsoft / Google / Amazon / Meta data center buildouts, GPU
+procurement, foundry contracts, power infrastructure) is a different
+beast from public-listing mechanics. Conflating them would dilute both
+themes' precision. SpaceX-the-company is also not a hyperscaler;
+Starlink-the-product is compute-adjacent but the IPO story is
+markets-structural, not infra-build.
+
+**Keyword curation challenges (the reason this isn't a 5-minute fix):**
+
+- `IPO` alone over-fires (Kardigan pharma IPO example tonight — same
+  scrape, completely unrelated to mega-cap index dynamics)
+- Needs proximity discipline with mega-cap names — e.g. only fire when
+  `IPO` co-occurs with `SpaceX`/`Stripe`/`Databricks`/`OpenAI` in the
+  same headline, or when `SpaceX` co-occurs with `index`/`NASDAQ`/`S&P`
+- Founder / governance / control terms (`founder-controlled`,
+  `dual-class shares`, etc.) need careful scoping — they're shared
+  surface area with corporate-governance content that may belong
+  elsewhere
+- Some candidate entities (`SpaceX`, `Stripe`, `Databricks`, `OpenAI`)
+  are already candidates for or present in other themes'
+  `tracked_entities` — overlap-resolution discipline needed before
+  committing keywords
+
+**Status:** Queued as a scoped session, not a follow-up commit.
+`ai_capex_cycle.yaml` is NOT being modified for this — the new theme
+lives in its own future YAML (`themes/mega_cap_index_dynamics.yaml` or
+final name), so existing themes' precision is preserved. Mando's
+pre-existing WIP on `ai_capex_cycle.yaml` is also preserved.
+
+---
+
 ## Operating principles
 
-Four principles emerged from concrete decisions this session. Each
+Six principles emerged from concrete decisions this session. Each
 captures a discipline worth importing into future work. Grep-friendly
 short titles, one-paragraph definitions, origin pointers to the
 commits and narrative sections where the principle surfaced.
@@ -778,6 +912,93 @@ is the probe's, not the code-read's. Mark inferences explicitly
 actions. Run a probe whose outcome can falsify the inference;
 let the probe outcome — not the prior — drive the action.
 
+### Principle 5: Theme taxonomy serves signal capture, not the reverse
+
+When emergent signal doesn't fit existing themes, the architectural
+response is to build the theme that captures it — not to leave the
+signal untagged. Tidy taxonomy that omits material signal is failed
+taxonomy. The failure mode is recurring: every time the daemon's
+themes feel "complete," there's a temptation to leave new signals
+untagged rather than admit the theme set is incomplete. The pattern
+to follow: empirical evidence surfaces gap → doctrine note logs theme
+proposal with scope + empirical motivation + curation challenges →
+scoped session resolves gap. The threshold for "build the theme" is
+whether the signal carries first-derivative trading or
+narrative-tracking value, not whether the signal fits cleanly into
+an existing bucket.
+
+**Origin / example:** The 2026-05-27 SpaceX IPO follow-up. Seven
+untagged SpaceX-OR-IPO headlines surfaced in the post-scrape diagnostic.
+The architect's (Abelard's) initial recommendation was "no action —
+SpaceX/IPO doesn't belong in `ai_capex_cycle`, leave untagged or build
+narrow keywords against existing theme." Mando correctly pushed back:
+SpaceX at $2T entering a US index is the largest market-cap addition
+in history, with cascade effects across multiple existing themes. The
+right response was to log the theme proposal (`mega_cap_index_dynamics`)
+with scope + empirical motivation + curation challenges, then defer
+the build to a scoped session — not no-action. See
+[Future themes](#future-themes-proposed-not-yet-scoped) for the
+proposal itself.
+
+**The discipline:** When a corpus-wide diagnostic surfaces a cluster
+of untagged headlines, the question is not "which existing theme
+should I shoehorn these into" — it's "is this signal worth capturing,
+and if so what does the theme look like." Default to logging a theme
+proposal in doctrine when the answer is yes-and-uncertain; default to
+explicit "this is noise, not signal" when the answer is no. Avoid the
+silent-untagged middle ground.
+
+**Why Abelard specifically must watch for this:** As the judgment-layer
+agent, Abelard is responsible for architectural taxonomy. The
+temptation toward tidy schemes is structural to that role — clean
+theme boundaries make Abelard's reads cleaner. But Mando is the
+operator with primary signal-quality stakes; when Mando flags an
+untagged signal as material and Abelard's response is "no action
+because taxonomy," the failure mode has fired. Abelard should treat
+user-flagged-untagged-signal as canonical evidence of a theme gap,
+not as a request to be persuaded otherwise.
+
+### Principle 6: In contested-narrative regimes, position-of-source is signal
+
+When tracking events where multiple interested parties are producing
+contradictory accounts of the same underlying situation (negotiations
+during war, election outcomes during contested cycles, central bank
+guidance during inflection moments), the position-of-source for each
+claim is itself signal — separately from the claim's content.
+Tracking "Iran state TV says X" vs "White House denies X" as
+positions of interested parties rather than as competing factual
+claims preserves the analytical surface that fog-of-war discipline
+depends on.
+
+**The discipline:** When ingesting headlines into a contested
+narrative, separate the factual content of the claim from the
+source's position relative to the outcome. A single-source kinetic
+claim (e.g. "US carried out defense operation in Bandar Abbas per
+Faytuks Network") is a hypothesis at confidence-level-of-source until
+corroborated; treating it as fact because it's published is the
+failure mode.
+
+**Origin / example:** The 2026-05-27 Iran corpus contained
+contradictory accounts of the same negotiation from Iran state TV
+(draft MOU, Hormuz reopening) and the White House ("memorandum report
+is false"). Plus Trump statements in three separate registers
+(negotiating on fumes / not satisfied / nobody controls Hormuz). Plus
+a single-source Bandar Abbas strike claim during a purported
+ceasefire. The Pass C synthesis brief (recovered post-`c07d3d2`)
+correctly characterized the negotiation as "strategic ambiguity"
+rather than "deal converging," flagged the Bandar Abbas claim for
+verification, and identified the Trump statements as positioning
+across audiences. The strategic-read tier explicitly named the gap
+between Iran's demand stack and Trump's political tolerance as the
+signal-bearing observation. See
+[Section 5 — Fog of war in operational application](#5-fog-of-war-in-operational-application--tonights-iran-corpus)
+for the full empirical anchor.
+
+**Reference:** This principle is the operational expansion of
+`METHODOLOGY.md`'s Fog of War doctrine. The daemon's Pass C synthesis
+prompt embeds Fog of War language directly; the strategic-read tier
+benefits when `METHODOLOGY.md` is loaded alongside daemon output.
+
 ---
 
 ## Cross-reference summary
@@ -791,5 +1012,8 @@ let the probe outcome — not the prior — drive the action.
 | `1bc6f19` | per-channel noise_filter at Telegram source plugin (Task 1) | [Section 2 — sponsor-filter prerequisite](#sponsor-filter-prerequisite-task-1-commit-1bc6f19) |
 | `84a0007` | per-row language detection at ingest (Task 2 — Pass F foundation) | [Section 1 — empirical post-Task-2 backfill data](#empirical-post-task-2-backfill-data) |
 | `a96630d` | Unicode-aware dedup normalization (Task 2.5) | [Section 4](#4-latent-dedup-bug-fix-history-task-25), [Principle 4 — dedup example](#principle-4-reads-suggest-probes-confirm) |
+| `2c32ee6` | attention(stopwords): add 'about' to English stopword list (Follow-up #1) | [Principle 4 — empirical instances](#principle-4-reads-suggest-probes-confirm) |
+| `6d28d60` | themes(ateobreaking): reduce noise_filter to 4 high-signal patterns (Follow-up #2) | [Section 2 — sponsor-filter prerequisite](#sponsor-filter-prerequisite-task-1-commit-1bc6f19) |
+| `c07d3d2` | discriminated-union archive walk — materiality + briefs list (Follow-up #5) | Pass C synthesis recovered end-to-end against tonight's Iran cluster after this fix; see synthesize re-run log post-commit. |
 
 End of session notes.
