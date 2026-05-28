@@ -75,9 +75,10 @@ final section.
 3. [Pass F translation architecture — Telegram-native locked, DeepL fallback documented](#3-pass-f-translation-architecture--telegram-native-locked-deepl-fallback-documented)
 4. [Latent dedup bug fix history (Task 2.5)](#4-latent-dedup-bug-fix-history-task-25)
 5. [Fog of war in operational application — tonight's Iran corpus](#5-fog-of-war-in-operational-application--tonights-iran-corpus)
-6. [Future themes (proposed, not yet scoped)](#future-themes-proposed-not-yet-scoped)
-7. [Theme set undersized for corpus density — surfaced 2026-05-27](#theme-set-undersized-for-corpus-density--surfaced-2026-05-27)
-8. [Operating principles](#operating-principles)
+6. [Queued follow-ups (proposed, not yet shipped)](#queued-follow-ups-proposed-not-yet-shipped)
+7. [Future themes (proposed, not yet scoped)](#future-themes-proposed-not-yet-scoped)
+8. [Theme set undersized for corpus density — surfaced 2026-05-27](#theme-set-undersized-for-corpus-density--surfaced-2026-05-27)
+9. [Operating principles](#operating-principles)
 
 ---
 
@@ -687,6 +688,51 @@ functioning as designed, with shared epistemic discipline anchored in
 
 ---
 
+## Queued follow-ups (proposed, not yet shipped)
+
+Surfaced during the Pass F validation arc but deliberately not shipped
+as Follow-up #6 / Follow-up #7 commits. Each carries an asymmetric
+false-positive cost that earns it a queue slot, not a same-session
+edit. Logged here so the proposals don't evaporate and the empirical
+context survives for whoever picks them up.
+
+### Follow-up #6 — `#Промо` Russian sponsor-disclaimer pattern
+
+Russian-language parallel to `#Реклама` (already in the Ateobreaking
+`noise_filter` list, commit `1bc6f19`). Surfaced in the Pass F post-
+backfill sample as a recurring sponsor disclaimer on Russian-language
+affiliate footers — typically VPN-product promotions appended to or
+embedded within otherwise editorial posts.
+
+**Status: queued, do NOT ship without false-positive analysis.** Same
+false-positive risk shape as Follow-up #2 (`6d28d60`, which reduced
+the Ateo noise filter from 6 patterns to 4 high-signal patterns after
+empirical FP review). The specific risk: Russia-internet-censorship
+news incidentally carrying a `#Промо`-tagged VPN affiliate footer
+would get filtered, dropping a real editorial story for a sponsor
+sub-disclaimer. The Follow-up #2 discipline applies here: run an
+empirical FP analysis against a representative sample of `#Промо`-
+tagged Ateo rows, distinguish editorial-with-promo-footer from
+pure-promo, decide whether the gain on pure-promo rejection
+outweighs the loss on editorial-with-footer suppression. Until that
+analysis runs, the pattern stays in the queue.
+
+### Follow-up #7 — `eu` stopword
+
+Surfaced from the Step 7 ATTENTION output during the Pass F
+validation arc — `eu` registered cross-topic recurrence on generic
+filler usage (article-stem, "the EU said," "in EU markets") the same
+way `about` did before commit `2c32ee6` added it to the stopword
+list. Small one-line edit to `attention/stopwords.yaml` when
+convenient. No false-positive concern — `EU` as a tracked-entity
+acronym remains capture-able via theme `tracked_entities` lists,
+which don't intersect with the attention/cross-topic-recurrence path.
+
+**Status: queued for a convenience commit.** No analysis required;
+the pattern is identical to Follow-up #1 (`2c32ee6`).
+
+---
+
 ## Future themes (proposed, not yet scoped)
 
 Surfaced this session but deliberately not built. Each entry needs its
@@ -806,7 +852,7 @@ under which catch-all themes become structurally problematic, because
 a single broad theme absorbs the whole spine and obscures the
 separable arcs within it.
 
-### Five candidate themes — surfaced for scoped review
+### Six candidate themes — surfaced for scoped review
 
 Each is a proposal, not a build-tonight item. Mando reviews
 scope/keywords/tracked_entities/overlap-resolution in a separate
@@ -868,10 +914,38 @@ domestic-security-state institutional behavior — DHS / ICE / SOUTHCOM
 / DOJ as operational actors, separable from the political principal
 driving them.
 
+#### `russia_domestic_politics`
+
+**Empirical motivation:** Surfaced *by* Pass F itself, not in spite
+of it. With Russian Ateobreaking content now translated (Pass F
+Commit 2, `4cb4b42`) and re-tagged, `russia_ukraine_war` is firing
+on content that is not about the war — Patrushev's verbal slip,
+Shlosberg's detention by Russian authorities, oligarch-celebrity
+legal proceedings, ROC clerical scandals, Kremlin-internal
+succession positioning. The arc is Russian domestic politics:
+Kremlin-internal personnel and faction dynamics, political-prisoner
+cases, celebrity-legal proceedings against Russian principals, ROC
+institutional behavior. Distinct from the war arc (front-line /
+negotiation / weapons-supply / Western-ally-positioning content)
+and distinct from `political_volatility` (US-domestic centered).
+
+**Meta-observation worth preserving:** This candidate was made
+visible BY the new Pass F capability, not despite it. Pre-Pass-F,
+Russian Ateobreaking content was untagged (the 2.2% Ateo tag rate
+baseline), which meant `russia_ukraine_war`'s catch-all behavior
+against Russia-domestic content was invisible — there was no Russian
+content reaching the tagger. Adding the translation capability
+illuminated a latent calibration issue in an adjacent system (theme
+breadth). The general pattern worth flagging: capability additions
+that change *what content reaches* a downstream layer often expose
+calibration issues in that downstream layer that the prior
+no-content state masked. The capability is doing real work; the
+exposure is a feature of the architecture working as intended.
+
 #### `mega_cap_index_dynamics` (relisted for completeness)
 
 Already proposed in [Future themes](#future-themes-proposed-not-yet-scoped).
-Surfaces here as the 5th of 5 theme-gap candidates. See that section
+Surfaces here as the 6th of 6 theme-gap candidates. See that section
 for full scope sketch, empirical motivation, and keyword curation
 challenges.
 
@@ -896,6 +970,32 @@ The recommended remediation is split-or-sharpen:
   Lebanon and Sudan/RSF content that's no longer in scope.
 
 Both moves are downstream of the theme-expansion session.
+
+### The catch-all problem on `russia_ukraine_war` (surfaced by Pass F)
+
+Pass F made visible a second instance of the same catch-all pattern.
+With Russian Ateobreaking content translated and re-tagged (Pass F
+Commit 2, `4cb4b42`), `russia_ukraine_war` is firing on content
+that's Russia-domestic rather than war-specific — Patrushev verbal
+slip, Shlosberg detention, oligarch celebrity-legal cases, ROC
+clerical scandals, Kremlin-internal succession positioning. The
+remediation pattern matches the `us_iran_escalation` case:
+
+- **Split**: stand up `russia_domestic_politics` as a separate theme
+  to absorb the Kremlin-internal / political-prisoner / celebrity-
+  legal / clerical-scandal arcs (proposal above).
+- **Sharpen**: tighten `russia_ukraine_war` keyword and exclusion
+  lists once the absorbing theme exists, so it stops tagging Russia-
+  domestic content that's no longer in scope.
+
+Same downstream-of-the-theme-expansion-session status as the
+`us_iran_escalation` catch-all. The structural point worth naming:
+both catch-alls share the same generative mechanism — a theme that
+started with focused scope (US-Iran-specifically, Russia-Ukraine-war-
+specifically) was the only available bucket for adjacent content as
+the corpus grew, so it absorbed the adjacent arcs by default. The
+remediation is not theme-by-theme keyword tuning; it's surfacing the
+absorbing theme that should have existed and standing it up.
 
 ### Status
 
@@ -925,7 +1025,7 @@ is complex.
 
 ## Operating principles
 
-Six principles emerged from concrete decisions this session. Each
+Seven principles emerged from concrete decisions this session. Each
 captures a discipline worth importing into future work. Grep-friendly
 short titles, one-paragraph definitions, origin pointers to the
 commits and narrative sections where the principle surfaced.
@@ -1184,6 +1284,120 @@ for the full empirical anchor.
 prompt embeds Fog of War language directly; the strategic-read tier
 benefits when `METHODOLOGY.md` is loaded alongside daemon output.
 
+### Principle 7: Audit every consumer before claiming propagation complete
+
+When a change introduces a new variant of a shared data structure —
+a new field, a new column, a new type, a new brief variant, a new
+discriminator value — every consumer of that structure has to be
+explicitly handled: either updated to recognize the new variant, or
+documented as intentionally treating it as one of the existing
+variants. "I updated the readers" is inference about completeness;
+"I grepped every consumer and confirmed each site's state, in
+writing" is verification. The bug class hiding under the inference
+is the unmigrated consumer that doesn't fail until the new variant
+co-occurs with it in production — which can be days or weeks after
+the change ships, by which point the connection to the introducing
+commit is no longer obvious from the failure.
+
+**Origin / example:** Twice this session, both caught by probe rather
+than by code review during the introducing commits.
+
+- **Follow-up #5 (`c07d3d2`)**: Pass E added the `AttentionBrief`
+  discriminated-union variant alongside the existing `Brief`. The
+  archive walker's `materiality.py` and two `cli.py` brief readers
+  were unmigrated — they assumed brief shape was always the original
+  variant. The bug didn't fire during the Pass E commits because Pass
+  E's tests exercised the writer path with the new variant but not
+  the cross-variant reader path. It fired in production several
+  scrape cycles later, when the first attention brief landed in an
+  archive directory that the materiality check subsequently walked.
+- **Follow-up #8 (`4a0b02c`)**: Pass F added the `headline_en` and
+  `language` columns to the headlines table. The attention counter,
+  attention cluster, theme aggregator, and brief renderer were all
+  migrated to `COALESCE(headline_en, headline)`. The synthesize-path
+  query in `cli.py` was missed. The bug didn't fire during Pass F
+  Commit 2's hermetic tests because the test fixtures didn't include
+  translated rows in the synthesize window; it fired in production
+  the first time a translated Russian row should have clustered
+  against English wire content.
+
+**The discipline — produce the audit table as an artifact:** The
+standing requirement is not just "audit your consumers" in the
+abstract; it's "produce an explicit consumer audit, in writing,
+table-form, with every site enumerated and its state classified."
+The Follow-up #8 FROM-headlines audit (2026-05-28) is the model
+deliverable — re-runnable, reviewable, and persisted with the
+doctrine record. Line numbers below are a snapshot as of commit
+`4a0b02c`; the function names are the stable identifiers and remain
+the canonical anchor when re-running this audit later:
+
+| Site | Reader type | State |
+|---|---|---|
+| `cli.py:_query_window_headlines` (line 1267) | reads text for synthesize trigger + cluster | **fixed in `4a0b02c`** |
+| `cli.py:_handle_headlines_recent` (line 1849) | reads text for `headlines recent` user CLI | **intentional-raw** — user-facing inspection surface; explicit judgment to keep raw for forensic debugging of stored text. Add `headline_en` additively if a downstream consumer of this CLI needs the translated text later. |
+| `cli.py:_handle_backfill_language` (line 451) | reads text for `classify_language()` | **intentional-raw** — classifier needs original script to distinguish Cyrillic from Latin |
+| `cli.py:_handle_backfill_translation` (lines 551, 615) | reads text for translation input | **intentional-raw** — translator needs original; `WHERE headline_en IS NULL` filter inherently scopes to non-translated rows |
+| `cli.py:_handle_synthesize` dry-run COUNT (line 1098) | COUNT-only | n/a — no text read |
+| `attention/counter.py` (lines 104, 109) | reads text for token-frequency | **already-migrated** COALESCE |
+| `attention/cluster.py` (lines 70-74) | reads text + LIKE-match for Jaccard merge | **already-migrated** COALESCE |
+| `attention/orchestrator.py` (line 326) | COUNT-only | n/a — no text read |
+| `scrape/orchestrator.py` (lines 243, 295) | dedupe_hash lookup | n/a — no text read |
+
+Each row carries a judgment, not just a presence. Three legal states
+plus n/a: `needs-fix` / `already-migrated` / `intentional-raw` (the
+latter with a one-line reason that distinguishes functional
+requirement — classifier needs original script, translator needs
+original text — from UX/design judgment — user-facing CLI chosen to
+show raw for forensic debugging of stored text).
+
+The audit produces two output categories that resolve differently:
+
+1. **Propagation misses** — sites where migration is a correctness
+   question and the unmigrated site is objectively wrong. These get
+   fixed in the same commit as the audit. The synthesize-path query
+   (`cli.py:1267`) was this category in the Follow-up #8 audit.
+2. **Judgment sites** — sites where migration is a UX/design call,
+   not a correctness question. The `_handle_headlines_recent` user
+   CLI is this category: raw text serves forensic debugging of what's
+   actually stored; COALESCE'd text would serve readability of
+   translated rows; neither is "wrong," it depends on what the human
+   inspecting the CLI is trying to learn. These get surfaced for
+   explicit human decision and documented as `intentional-raw` with
+   the reasoning preserved on the record. The decision may revisit
+   later (e.g. add `headline_en` as an additive column rather than
+   replacing the raw text), but the surfaced-and-documented state is
+   the audit's deliverable, not the migration itself.
+
+The principle isn't "every raw read is a bug." It's "every consumer
+gets enumerated and explicitly classified, so nothing is unexamined
+and every disposition is on the record." The audit table is the
+deliverable; the principle is the standing requirement to produce
+one whenever a shared data structure grows a new variant.
+
+**Why this matters specifically:** Pass E and Pass F are both
+"surface-area expansions" — new variants of shared structures
+(`AttentionBrief` alongside `Brief`; `headline_en` alongside
+`headline`). The failure mode they exposed is structural to that
+class of change: the writer-side updates are visible and tested;
+the reader-side updates are easy to miss because each individual
+reader is small and not obviously connected to the writer's commit.
+The audit table externalizes the connection and forces every reader
+to be visited explicitly, even when nothing about the reader changes.
+The same audit also forces the judgment-site sub-cases into the
+open — sites that are intentionally not migrated get an explicit
+documented reason on the record, rather than a silent leave-it-alone
+that future cold readers (or future-you) would have to reconstruct
+the rationale for.
+
+**Reference:** Principle 7 is the operational generalization of
+[Principle 4](#principle-4-reads-suggest-probes-confirm) (reads
+suggest, probes confirm). Principle 4 says "verify behavior
+empirically before acting on a claim"; Principle 7 says "verify
+completeness of cross-file propagation explicitly before claiming a
+change is done." Both share the underlying mode: code reads are
+inference about completeness, explicit verification is the
+discipline. The grep-and-table pattern is the verification form.
+
 ---
 
 ## Cross-reference summary
@@ -1199,6 +1413,9 @@ benefits when `METHODOLOGY.md` is loaded alongside daemon output.
 | `a96630d` | Unicode-aware dedup normalization (Task 2.5) | [Section 4](#4-latent-dedup-bug-fix-history-task-25), [Principle 4 — dedup example](#principle-4-reads-suggest-probes-confirm) |
 | `2c32ee6` | attention(stopwords): add 'about' to English stopword list (Follow-up #1) | [Principle 4 — empirical instances](#principle-4-reads-suggest-probes-confirm) |
 | `6d28d60` | themes(ateobreaking): reduce noise_filter to 4 high-signal patterns (Follow-up #2) | [Section 2 — sponsor-filter prerequisite](#sponsor-filter-prerequisite-task-1-commit-1bc6f19) |
-| `c07d3d2` | discriminated-union archive walk — materiality + briefs list (Follow-up #5) | Pass C synthesis recovered end-to-end against tonight's Iran cluster after this fix; see synthesize re-run log post-commit. |
+| `c07d3d2` | discriminated-union archive walk — materiality + briefs list (Follow-up #5) | Pass C synthesis recovered end-to-end against tonight's Iran cluster after this fix; see synthesize re-run log post-commit. [Principle 7 — empirical origin](#principle-7-audit-every-consumer-before-claiming-propagation-complete) |
+| `635c9da` | translation module + schema v4 — Telegram-native (Pass F Commit 1) | [Section 3 — Pass F architecture](#3-pass-f-translation-architecture--telegram-native-locked-deepl-fallback-documented), [Principle 2 — probe-native-before-third-party](#principle-2-probe-native-before-third-party) |
+| `4cb4b42` | wire Pass F translation into scrape lifecycle + CLI subcommands (Pass F Commit 2) | [Section 3 — Pass F architecture](#3-pass-f-translation-architecture--telegram-native-locked-deepl-fallback-documented); empirical anchor for the `russia_domestic_politics` candidate ([Theme set undersized](#theme-set-undersized-for-corpus-density--surfaced-2026-05-27)) and the `russia_ukraine_war` catch-all observation |
+| `4a0b02c` | COALESCE(headline_en, headline) in synthesize-path query (Follow-up #8) | [Principle 7 — empirical origin](#principle-7-audit-every-consumer-before-claiming-propagation-complete); FROM-headlines audit table is the model deliverable referenced from the principle |
 
 End of session notes.
