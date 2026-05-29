@@ -218,3 +218,20 @@ news_domain:
   - net
   - www
   - status
+  # Publisher-name attribution tokens — added 2026-05-29 (Full Brief Commit B)
+  # in response to cross-cycle ATTENTION near-miss evidence:
+  #   - Cycle 1 (2026-05-28): `reuters` at 20/21 in the near-miss table
+  #   - Cycle 2 (2026-05-29): `reuters` at 26/24, same shape
+  # Pure attribution noise — `reuters` is appearing because Google News
+  # RSS items append " - Reuters" to every headline, not because Reuters'
+  # editorial choices are themselves a story. Same dynamic applies to the
+  # other major wire/aggregator names. These tokens drown out genuine
+  # near-miss signal (drone, country, russian) on heavy-news days.
+  #
+  # Scope per Abelard's spec resolution (2026-05-29): minimum viable
+  # publisher-name expansion. Auto-stopword-proposal infrastructure
+  # remains deferred to a separate session.
+  - reuters
+  - bloomberg
+  - cnbc
+  - ft

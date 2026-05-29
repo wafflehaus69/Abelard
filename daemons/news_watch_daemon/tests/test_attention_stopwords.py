@@ -92,7 +92,11 @@ def test_load_unknown_section_ignored(tmp_path):
 
 def test_load_bundled_seed_file_loads_cleanly():
     """The shipped config/stopwords.yaml must load without error and contain
-    a sensible number of entries (~145 per Pass E build greenlight)."""
+    a sensible number of entries (~149 post-Full-Brief-Commit-B, 2026-05-29).
+    Range is intentionally loose — exact count is fragile in face of small
+    targeted additions like Follow-up #7 (`eu`); the [100, 250] envelope
+    catches the failure modes that matter (file truncation vs accidental
+    bulk-add)."""
     path = Path(__file__).resolve().parent.parent / "config" / "stopwords.yaml"
     sw = load_stopwords(path)
     # Sanity range: enough to be useful, not so many that we're filtering signal
@@ -100,5 +104,10 @@ def test_load_bundled_seed_file_loads_cleanly():
     # A handful of expected entries from each category
     assert {"the", "a", "an", "is", "of"}.issubset(sw)            # english
     assert {"said", "reported", "today", "first"}.issubset(sw)    # news_domain
+    # Publisher-name attribution tokens added Full Brief Commit B (2026-05-29).
+    # Pin against silent regression — if any of these get deleted, the
+    # near-miss table will surface them as 20+ hits per cycle of pure
+    # attribution noise.
+    assert {"reuters", "bloomberg", "cnbc", "ft"}.issubset(sw)
     # And NOT "new" — Mando removed it from the approved draft
     assert "new" not in sw
