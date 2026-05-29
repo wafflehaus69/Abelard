@@ -293,6 +293,7 @@ def run_attention(
     sink: AlertSink | None,
     when: datetime | None = None,
     top_candidates_limit: int = 5,
+    window_hours: int = 24,
 ) -> AttentionRunResult:
     """End-to-end ATTENTION cycle. Returns the run result; never raises.
 
@@ -310,6 +311,11 @@ def run_attention(
       when: datetime override for brief_id minting (tests).
       top_candidates_limit: how many near-miss candidates to surface
             when zero terms cross (default 5 per Pass E spec).
+      window_hours: live + prior window length in hours (each). Default
+            24. Bounded [1, 168] inside `count_terms`. Threshold constants
+            (`COLD_START_WINDOW_MIN=10`, `COLD_START_PRIOR_MAX=3`) do NOT
+            scale with this kwarg — see `count_terms` docstring for the
+            Full Brief Commit A Q4 design discussion.
 
     Per-term outcomes are recorded in PerTermOutcome — failures don't
     abort the cycle; remaining terms still process.
@@ -321,7 +327,12 @@ def run_attention(
     else:
         when = when.astimezone(timezone.utc)
 
-    counts: TermCounts = count_terms(conn, now_unix=now_unix, stopwords=stopwords)
+    counts: TermCounts = count_terms(
+        conn,
+        now_unix=now_unix,
+        stopwords=stopwords,
+        window_hours=window_hours,
+    )
     headlines_in_window = conn.execute(
         "SELECT COUNT(*) FROM headlines WHERE published_at_unix >= ? AND published_at_unix <= ?",
         (counts.window_since_unix, counts.window_until_unix),

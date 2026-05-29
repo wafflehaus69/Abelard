@@ -28,9 +28,19 @@ from dataclasses import dataclass
 # tokens. Matches Fix 2's word-boundary discipline.
 _TOKEN_RE = re.compile(r"\b[a-zA-Z]{2,}\b")
 
-# Window definitions are in seconds, anchored to a now_unix the caller
-# passes in. Per Pass E spec, both windows are 24h.
+# Default window length: 24 hours. Both live and prior windows are the same
+# length (configurable per-call via `window_hours` kwarg to `count_terms`).
+# WINDOW_SECONDS is preserved as a module-level export for backwards
+# compatibility with code that imported the constant directly (and as the
+# numeric default for `window_hours=24` invocations).
 WINDOW_SECONDS = 24 * 3600
+
+# Bounds for the `window_hours` kwarg. Matches the synthesize CLI's [1, 168]
+# range. Lower bound is 1h (the smallest meaningful window for headline
+# frequency analysis); upper bound is 168h = 7 days (anything longer makes
+# "novel" framing meaningless).
+WINDOW_HOURS_MIN = 1
+WINDOW_HOURS_MAX = 168
 
 
 @dataclass(frozen=True)
@@ -80,19 +90,42 @@ def count_terms(
     *,
     now_unix: int,
     stopwords: frozenset[str],
+    window_hours: int = 24,
 ) -> TermCounts:
     """Build the two-window count dicts for one attention cycle.
 
-    Live window:  `[now - 24h, now]`
-    Prior window: `[now - 48h, now - 24h]`
+    Live window:  `[now - window_hours*3600, now]`
+    Prior window: `[now - 2*window_hours*3600, now - window_hours*3600]`
 
     Both windows filter by `published_at_unix` (matches Pass C trigger
     semantics — content is "in window" by when it was published, not
     when it was fetched).
+
+    The default `window_hours=24` makes this function bit-identical to
+    its pre-2026-05-29 behavior — Pass E's auto-attention inside scrape
+    and the standalone `attention` CLI both continue to use 24h windows
+    without code change. Full Brief (Commit A foundation, 2026-05-29)
+    plumbs custom windows through for spec test T11 and downstream
+    Full Brief composition.
+
+    Note on threshold tuning: the cold-start constants
+    `COLD_START_WINDOW_MIN=10` and `COLD_START_PRIOR_MAX=3` (defined in
+    `attention/threshold.py`) are absolute and tuned for 24h windows.
+    They do NOT scale automatically with `window_hours`. Non-24h windows
+    may produce fewer crossings (sub-24h: 10 hits is a high bar) or more
+    crossings (>24h: 10 hits is a low bar). This is a deliberate v1
+    choice; threshold scaling is a separate design pass once empirical
+    crossings-per-cycle data exists at non-24h windows.
     """
-    window_since = now_unix - WINDOW_SECONDS
+    if not WINDOW_HOURS_MIN <= window_hours <= WINDOW_HOURS_MAX:
+        raise ValueError(
+            f"window_hours must be in [{WINDOW_HOURS_MIN}, {WINDOW_HOURS_MAX}]; "
+            f"got {window_hours}"
+        )
+    window_seconds = window_hours * 3600
+    window_since = now_unix - window_seconds
     window_until = now_unix
-    prior_since = now_unix - 2 * WINDOW_SECONDS
+    prior_since = now_unix - 2 * window_seconds
     prior_until = window_since
 
     # Pass F (2026-05-28): tokenize translated text when available,
@@ -131,4 +164,11 @@ def count_terms(
     )
 
 
-__all__ = ["TermCounts", "WINDOW_SECONDS", "count_terms", "tokenize"]
+__all__ = [
+    "TermCounts",
+    "WINDOW_HOURS_MAX",
+    "WINDOW_HOURS_MIN",
+    "WINDOW_SECONDS",
+    "count_terms",
+    "tokenize",
+]

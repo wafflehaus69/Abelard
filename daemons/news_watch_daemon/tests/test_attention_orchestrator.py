@@ -285,3 +285,80 @@ def test_parse_rejects_wrong_type_for_source_mix():
     })
     with pytest.raises(AttentionLLMError, match="source_mix"):
         _parse_attention_response(text)
+
+
+# ---------- window_hours plumb-through (Full Brief Commit A foundation, 2026-05-29) ----------
+#
+# Q4 resolution: run_attention accepts `window_hours` kwarg and passes to
+# count_terms. Tests pin the plumb-through, not the underlying window math
+# (which lives in counter and is tested there).
+
+
+def test_run_attention_window_hours_default_24_backwards_compat(tmp_path):
+    """Without `window_hours` kwarg → 24h window. Pins existing call sites
+    (scrape's auto-attention, standalone `attention` CLI) against any
+    accidental signature change in Full Brief downstream."""
+    conn = _make_conn()
+    _seed_crossing_term(conn, term="hormuz", count=12)
+    client = _FakeClient(_VALID_LLM_RESPONSE)
+    result = run_attention(
+        conn=conn, now_unix=NOW, stopwords=frozenset(),
+        anthropic_client=client, model="claude-sonnet-4-6", max_tokens=2048,
+        archive_root=tmp_path / "archive", sink=None,
+    )
+    assert result.window_since_unix == NOW - 24 * 3600
+    assert result.prior_since_unix == NOW - 48 * 3600
+
+
+def test_run_attention_window_hours_6_plumbs_through(tmp_path):
+    """`window_hours=6` → run result reports 6h window; the kwarg reaches
+    count_terms which sizes the live + prior windows accordingly."""
+    conn = _make_conn()
+    # All seeded headlines within the last few hundred seconds, well inside 6h
+    _seed_crossing_term(conn, term="hormuz", count=12)
+    client = _FakeClient(_VALID_LLM_RESPONSE)
+    result = run_attention(
+        conn=conn, now_unix=NOW, stopwords=frozenset(),
+        anthropic_client=client, model="claude-sonnet-4-6", max_tokens=2048,
+        archive_root=tmp_path / "archive", sink=None,
+        window_hours=6,
+    )
+    assert result.window_since_unix == NOW - 6 * 3600
+    assert result.window_until_unix == NOW
+    assert result.prior_since_unix == NOW - 12 * 3600
+    assert result.prior_until_unix == NOW - 6 * 3600
+    # Crossing still fires: all 12 headlines are within the 6h window,
+    # so 'hormuz' hits ≥10 threshold (which stays absolute per Q4 Option A).
+    assert result.crossings_evaluated == 1
+    assert result.per_term[0].term == "hormuz"
+
+
+def test_run_attention_window_hours_48_plumbs_through(tmp_path):
+    """`window_hours=48` → run result reports 48h windows. Validates the
+    parameterization works in the >24h direction too."""
+    conn = _make_conn()
+    _seed_crossing_term(conn, term="hormuz", count=12)
+    client = _FakeClient(_VALID_LLM_RESPONSE)
+    result = run_attention(
+        conn=conn, now_unix=NOW, stopwords=frozenset(),
+        anthropic_client=client, model="claude-sonnet-4-6", max_tokens=2048,
+        archive_root=tmp_path / "archive", sink=None,
+        window_hours=48,
+    )
+    assert result.window_since_unix == NOW - 48 * 3600
+    assert result.prior_since_unix == NOW - 96 * 3600
+
+
+def test_run_attention_window_hours_invalid_raises_from_counter(tmp_path):
+    """Bounds validation lives in count_terms; run_attention surfaces the
+    ValueError unchanged. Pin against any defensive swallow at the
+    orchestrator layer."""
+    conn = _make_conn()
+    client = _FakeClient(_VALID_LLM_RESPONSE)
+    with pytest.raises(ValueError, match="window_hours"):
+        run_attention(
+            conn=conn, now_unix=NOW, stopwords=frozenset(),
+            anthropic_client=client, model="m", max_tokens=2048,
+            archive_root=tmp_path / "archive", sink=None,
+            window_hours=0,
+        )

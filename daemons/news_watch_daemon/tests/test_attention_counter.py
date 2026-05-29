@@ -7,6 +7,8 @@ import sqlite3
 import pytest
 
 from news_watch_daemon.attention.counter import (
+    WINDOW_HOURS_MAX,
+    WINDOW_HOURS_MIN,
     WINDOW_SECONDS,
     count_terms,
     tokenize,
@@ -147,3 +149,97 @@ def test_count_terms_records_window_timestamps():
     assert counts.window_until_unix == NOW
     assert counts.prior_since_unix == NOW - 2 * WINDOW_SECONDS
     assert counts.prior_until_unix == NOW - WINDOW_SECONDS
+
+
+# ---------- window_hours parameterization (Full Brief Commit A foundation, 2026-05-29) ----------
+#
+# Q4 resolution: `window_hours` kwarg makes the live + prior window length
+# configurable. Both scale together (prior immediately precedes live, same
+# length). Threshold constants in attention/threshold.py are NOT scaled —
+# deliberate v1 choice per Option A. See count_terms docstring.
+
+
+def test_count_terms_window_hours_default_24_is_bit_identical():
+    """Omitting `window_hours` kwarg → identical behavior to explicit 24h.
+    Backwards-compat guarantee for existing call sites (Pass E auto-attention
+    inside scrape, standalone `attention` CLI). Pin against future regression."""
+    conn = _make_conn()
+    _insert(conn, "h1", "iran nuclear", NOW - 1)
+    _insert(conn, "h_prior", "iran sanctions", NOW - WINDOW_SECONDS - 1000)
+    counts_default = count_terms(conn, now_unix=NOW, stopwords=frozenset())
+    counts_explicit_24 = count_terms(conn, now_unix=NOW, stopwords=frozenset(),
+                                     window_hours=24)
+    assert counts_default.window_since_unix == counts_explicit_24.window_since_unix
+    assert counts_default.window_until_unix == counts_explicit_24.window_until_unix
+    assert counts_default.prior_since_unix == counts_explicit_24.prior_since_unix
+    assert counts_default.prior_until_unix == counts_explicit_24.prior_until_unix
+    assert counts_default.window_counts == counts_explicit_24.window_counts
+    assert counts_default.prior_counts == counts_explicit_24.prior_counts
+
+
+def test_count_terms_window_hours_6_uses_6h_window():
+    """`window_hours=6` → live window is [NOW-6h, NOW], prior is [NOW-12h, NOW-6h]."""
+    conn = _make_conn()
+    counts = count_terms(conn, now_unix=NOW, stopwords=frozenset(), window_hours=6)
+    assert counts.window_since_unix == NOW - 6 * 3600
+    assert counts.window_until_unix == NOW
+    assert counts.prior_since_unix == NOW - 12 * 3600
+    assert counts.prior_until_unix == NOW - 6 * 3600
+
+
+def test_count_terms_window_hours_48_uses_48h_window():
+    """`window_hours=48` → live window is [NOW-48h, NOW], prior is [NOW-96h, NOW-48h]."""
+    conn = _make_conn()
+    counts = count_terms(conn, now_unix=NOW, stopwords=frozenset(), window_hours=48)
+    assert counts.window_since_unix == NOW - 48 * 3600
+    assert counts.window_until_unix == NOW
+    assert counts.prior_since_unix == NOW - 96 * 3600
+    assert counts.prior_until_unix == NOW - 48 * 3600
+
+
+def test_count_terms_window_hours_6_filters_at_custom_boundary():
+    """A headline 10h old is in the 24h window but the 6h-prior window;
+    same headline correctly excluded from 6h live + included in 6h prior."""
+    conn = _make_conn()
+    _insert(conn, "in_6h", "iran missile", NOW - 3 * 3600)         # 3h ago
+    _insert(conn, "in_24h_not_6h", "iran sanctions", NOW - 10 * 3600)  # 10h ago
+
+    counts_24h = count_terms(conn, now_unix=NOW, stopwords=frozenset())
+    assert counts_24h.window_counts["iran"] == 2   # both in 24h live window
+    assert counts_24h.window_counts.get("missile", 0) == 1
+    assert counts_24h.window_counts.get("sanctions", 0) == 1
+
+    counts_6h = count_terms(conn, now_unix=NOW, stopwords=frozenset(), window_hours=6)
+    assert counts_6h.window_counts["iran"] == 1    # only `in_6h` in live
+    assert counts_6h.window_counts.get("missile", 0) == 1
+    assert counts_6h.prior_counts["iran"] == 1     # `in_24h_not_6h` in 6h-prior [-12h, -6h]
+    assert counts_6h.prior_counts.get("sanctions", 0) == 1
+
+
+def test_count_terms_window_hours_below_min_raises():
+    """`window_hours < WINDOW_HOURS_MIN` → ValueError."""
+    conn = _make_conn()
+    with pytest.raises(ValueError, match="window_hours"):
+        count_terms(conn, now_unix=NOW, stopwords=frozenset(), window_hours=0)
+    with pytest.raises(ValueError, match="window_hours"):
+        count_terms(conn, now_unix=NOW, stopwords=frozenset(), window_hours=-1)
+
+
+def test_count_terms_window_hours_above_max_raises():
+    """`window_hours > WINDOW_HOURS_MAX` → ValueError."""
+    conn = _make_conn()
+    with pytest.raises(ValueError, match="window_hours"):
+        count_terms(conn, now_unix=NOW, stopwords=frozenset(),
+                    window_hours=WINDOW_HOURS_MAX + 1)
+
+
+def test_count_terms_window_hours_bounds_inclusive():
+    """Min (1) and max (168) are inclusive — pinned against an off-by-one."""
+    conn = _make_conn()
+    # Both should succeed without raising
+    counts_min = count_terms(conn, now_unix=NOW, stopwords=frozenset(),
+                              window_hours=WINDOW_HOURS_MIN)
+    counts_max = count_terms(conn, now_unix=NOW, stopwords=frozenset(),
+                              window_hours=WINDOW_HOURS_MAX)
+    assert counts_min.window_since_unix == NOW - WINDOW_HOURS_MIN * 3600
+    assert counts_max.window_since_unix == NOW - WINDOW_HOURS_MAX * 3600
