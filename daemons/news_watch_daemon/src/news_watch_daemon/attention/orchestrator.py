@@ -42,13 +42,18 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from ..alert.factory import AlertSinkFactoryError, build_alert_sink
 from ..alert.sink import AlertSink
+from ..config import Config
 from ..synthesize.archive import write_brief
 from ..synthesize.brief import Dispatch, SynthesisMetadata
+from ..synthesize.config import SynthesisConfigError, load_synthesis_config
+from ..synthesize.synthesize import SynthesisError, build_anthropic_client
 from .brief_schema import AttentionBrief, AttentionShape
 from .cluster import ClusterHeadline, cluster_for_term
 from .counter import TermCounts, count_terms
 from .prompt import build_messages_payload
+from .stopwords import StopwordsError, load_stopwords
 from .threshold import CandidateTerm, CrossingTerm, evaluate_threshold, top_candidates
 
 
@@ -551,10 +556,198 @@ def _process_one_term(
     )
 
 
+# ---------------------------------------------------------------------------
+# Full Brief Stage 2a-ii-A (2026-05-29): cycle wrapper hoisted from cli.py.
+#
+# run_attention_cycle and attention_outcome_to_dict were previously
+# CLI-private helpers in cli.py. Hoisted here so the Full Brief
+# orchestrator at fullbrief/orchestrator.py can use the same plumbing
+# (load stopwords -> config -> client -> sink -> run_attention) without
+# importing from cli.py — which would create a circular dependency once
+# cli.py registers the `full-brief` subcommand in Stage 2b.
+#
+# Composition glue per Q8: wrapper that ties configuration to
+# run_attention, no inner synthesis logic.
+# ---------------------------------------------------------------------------
+
+
+# Per-call output cap for the ATTENTION LLM. Sonnet output is smaller than
+# Pass C briefs (one narrative + source_mix + entities — no events list),
+# so the per-call cap is set lower. Operator can tune via the env var
+# NEWS_WATCH_ATTENTION_MAX_TOKENS if a cycle hits the cap.
+DEFAULT_ATTENTION_MAX_TOKENS = 2048
+
+
+def attention_outcome_to_dict(result: AttentionRunResult) -> dict[str, Any]:
+    """Render AttentionRunResult as a JSON-friendly dict.
+
+    Same shape whether the ATTENTION cycle is called via the standalone
+    `news-watch-daemon attention` subcommand, chained as a follow-on
+    inside the scrape handler, or invoked by the Full Brief orchestrator.
+    """
+    return {
+        "now_unix": result.now_unix,
+        "window_since_unix": result.window_since_unix,
+        "window_until_unix": result.window_until_unix,
+        "prior_since_unix": result.prior_since_unix,
+        "prior_until_unix": result.prior_until_unix,
+        "headlines_in_window": result.headlines_in_window,
+        "distinct_tokens_in_window": result.distinct_tokens_in_window,
+        "crossings_evaluated": result.crossings_evaluated,
+        "per_term": [
+            {
+                "term": o.term,
+                "success": o.success,
+                "brief_id": o.brief_id,
+                "archive_path": o.archive_path,
+                "dispatch_success": o.dispatch_success,
+                "dispatch_error": o.dispatch_error,
+                "error": o.error,
+                "input_tokens": o.input_tokens,
+                "output_tokens": o.output_tokens,
+                "cache_creation_input_tokens": o.cache_creation_input_tokens,
+                "cache_read_input_tokens": o.cache_read_input_tokens,
+            }
+            for o in result.per_term
+        ],
+        "top_candidates": [
+            {
+                "term": c.term,
+                "window_count": c.window_count,
+                "prior_count": c.prior_count,
+                "reason": c.reason,
+            }
+            for c in result.candidates
+        ],
+    }
+
+
+def run_attention_cycle(
+    *,
+    cfg: Config,
+    conn: sqlite3.Connection,
+    dry_run: bool = False,
+    top_candidates_limit: int = 5,
+) -> dict[str, Any]:
+    """Shared attention-run path used by the standalone CLI subcommand,
+    the scrape follow-on, and the Full Brief orchestrator.
+
+    Returns a JSON-friendly outcome dict. Skip-not-fail discipline: if
+    stopwords file is missing or the Anthropic key is unset, returns a
+    `{"status": "skipped", "reason": ...}` dict rather than raising.
+    Lets the caller's main result envelope stay healthy when ATTENTION
+    is unconfigured — the caller's work (scrape, full-brief) succeeded;
+    ATTENTION just didn't run.
+
+    Stage 2a-ii-B will add a `window_hours: int = 24` kwarg that plumbs
+    through `run_attention` -> `count_terms` per the Commit A
+    parameterization. Default 24 preserves backwards compat with the
+    standalone CLI subcommand and the scrape follow-on; only the Full
+    Brief orchestrator passes a non-default value.
+    """
+    _log = logging.getLogger("news_watch_daemon.attention.orchestrator")
+
+    # 1. Stopwords — bail with status=skipped if file is unreadable.
+    try:
+        stopwords = load_stopwords(cfg.stopwords_path)
+    except StopwordsError as exc:
+        _log.warning("attention skipped: stopwords load failed: %s", exc)
+        return {
+            "status": "skipped",
+            "reason": f"stopwords_load_failed: {exc}",
+            "stopwords_path": str(cfg.stopwords_path),
+        }
+
+    # 2. Dry-run short-circuits before any LLM construction.
+    if dry_run:
+        now_unix_dry = int(__import__("time").time())
+        counts = count_terms(conn, now_unix=now_unix_dry, stopwords=stopwords)
+        crossings = evaluate_threshold(counts)
+        headlines_in_window = conn.execute(
+            "SELECT COUNT(*) FROM headlines WHERE published_at_unix >= ? AND published_at_unix <= ?",
+            (counts.window_since_unix, counts.window_until_unix),
+        ).fetchone()[0]
+        return {
+            "status": "ok",
+            "dry_run": True,
+            "now_unix": now_unix_dry,
+            "window_since_unix": counts.window_since_unix,
+            "window_until_unix": counts.window_until_unix,
+            "headlines_in_window": headlines_in_window,
+            "distinct_tokens_in_window": len(counts.window_counts),
+            "crossings_evaluated": len(crossings),
+            "crossings": [
+                {"term": c.term, "window_count": c.window_count, "prior_count": c.prior_count}
+                for c in crossings
+            ],
+            "top_candidates": [
+                {"term": c.term, "window_count": c.window_count,
+                 "prior_count": c.prior_count, "reason": c.reason}
+                for c in top_candidates(counts, limit=top_candidates_limit)
+            ],
+        }
+
+    # 3. Anthropic key required for the live path.
+    if not cfg.anthropic_api_key:
+        _log.warning("attention skipped: ANTHROPIC_API_KEY not set")
+        return {
+            "status": "skipped",
+            "reason": "ANTHROPIC_API_KEY not set",
+        }
+
+    # 4. Load synthesis config to borrow model name; max_tokens is the
+    #    attention-specific default constant above.
+    try:
+        synth_cfg = load_synthesis_config(cfg.synthesis_config_path)
+    except SynthesisConfigError as exc:
+        _log.warning("attention skipped: synthesis_config load failed: %s", exc)
+        return {
+            "status": "skipped",
+            "reason": f"synthesis_config_load_failed: {exc}",
+        }
+
+    # 5. Build Anthropic client + sink. Sink errors are not fatal —
+    #    archive write still happens, dispatch outcome surfaces as
+    #    per_term.dispatch_error.
+    try:
+        client = build_anthropic_client(cfg.anthropic_api_key)
+    except SynthesisError as exc:
+        _log.warning("attention skipped: client construction failed: %s", exc)
+        return {
+            "status": "skipped",
+            "reason": f"client_construction_failed: {exc}",
+        }
+
+    try:
+        sink = build_alert_sink(synth_cfg.alert_sink)
+    except AlertSinkFactoryError as exc:
+        _log.warning("attention dispatch sink construction failed: %s", exc)
+        sink = None  # archives will still write; dispatch silently skips
+
+    now_unix = int(__import__("time").time())
+    result = run_attention(
+        conn=conn,
+        now_unix=now_unix,
+        stopwords=stopwords,
+        anthropic_client=client,
+        model=synth_cfg.synthesis.default_model,
+        max_tokens=DEFAULT_ATTENTION_MAX_TOKENS,
+        archive_root=cfg.brief_archive_path,
+        sink=sink,
+        top_candidates_limit=top_candidates_limit,
+    )
+    outcome = attention_outcome_to_dict(result)
+    outcome["status"] = "ok"
+    return outcome
+
+
 __all__ = [
     "AttentionError",
     "AttentionLLMError",
     "AttentionRunResult",
+    "DEFAULT_ATTENTION_MAX_TOKENS",
     "PerTermOutcome",
+    "attention_outcome_to_dict",
     "run_attention",
+    "run_attention_cycle",
 ]
