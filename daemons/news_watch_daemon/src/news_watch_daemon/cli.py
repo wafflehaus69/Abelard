@@ -39,7 +39,14 @@ from .envelope import Source, build_error, build_ok, make_warning
 from .lang import classify_language
 from .http_client import HttpClient
 from .scrape.factory import build_sources
-from .scrape.orchestrator import PerSourceResult, ScrapeResult, run_scrape, write_heartbeat
+from .scrape.orchestrator import (
+    PerSourceResult,
+    ScrapeCycleResult,
+    ScrapeResult,
+    run_scrape,
+    scrape_cycle,
+    write_heartbeat,
+)
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
 from .alert.factory import AlertSinkFactoryError, build_alert_sink
 from .attention.brief_schema import AttentionBrief
@@ -73,8 +80,10 @@ from .synthesize.cluster import ClusterInput, cluster_headlines
 from .synthesize.materiality import evaluate_materiality
 from .synthesize.synthesize import (
     SynthesisError,
+    SynthesizeResult,
     build_anthropic_client,
     synthesize_brief,
+    synthesize_window,
 )
 from .synthesize.llm_client import SynthesisLLMError
 from .synthesize.trigger import TriggerHeadline, evaluate_gate
@@ -903,47 +912,42 @@ def _handle_scrape(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
                 cfg.telegram_session_string,
             )
 
-        try:
-            result = run_scrape(
-                conn, sources, themes,
-                tracked_tickers=tracked_tickers,
-                cross_source_log_path=cfg.cross_source_log_path,
-                translation_credentials=translation_credentials,
-                translation_source=translation_source,
-                translation_batch_size=translation_batch_size,
+        # Auto-attention callback: closes over cfg + conn so scrape_cycle
+        # doesn't need to know about Config. Per Stage 2a-i sub-step B
+        # forward-guidance: pure callable receives a callback, doesn't
+        # import CLI types.
+        def _attention_followon() -> dict[str, Any]:
+            return _run_attention_cycle(cfg=cfg, conn=conn, dry_run=False)
+
+        cycle_result = scrape_cycle(
+            conn=conn,
+            sources=sources,
+            themes=themes,
+            tracked_tickers=tracked_tickers,
+            cross_source_log_path=cfg.cross_source_log_path,
+            translation_credentials=translation_credentials,
+            translation_source=translation_source,
+            translation_batch_size=translation_batch_size,
+            attention_callback=_attention_followon,
+        )
+
+        if cycle_result.status == "scrape_failed":
+            # Surface as an internal error envelope; heartbeat already
+            # written inside scrape_cycle's exception path.
+            return build_error(
+                status="error",
+                source="internal",
+                detail=f"scrape orchestration failed: {cycle_result.reason}",
             )
-            write_heartbeat(
-                conn,
-                status="ok",
-                duration_ms=result.duration_ms,
-                error_detail=None,
-            )
-            envelope = _scrape_result_to_envelope(result)
-            # Pass E (2026-05-26): chain ATTENTION as a follow-on within
-            # the same invocation. Single envelope preserves the daemon's
-            # invocation contract; attention outcome nests under data.
-            # Sink + LLM construction errors degrade attention_outcome to
-            # status=skipped but do NOT fail the scrape envelope (per the
-            # skip-not-fail discipline in _run_attention_cycle).
-            try:
-                attention_outcome = _run_attention_cycle(
-                    cfg=cfg, conn=conn, dry_run=False,
-                )
-            except Exception as exc:  # noqa: BLE001 — never let attention kill scrape
-                log = logging.getLogger("news_watch_daemon.cli")
-                log.warning("attention follow-on raised: %s: %s", type(exc).__name__, exc)
-                attention_outcome = {
-                    "status": "error",
-                    "reason": f"unhandled_exception: {type(exc).__name__}: {exc}",
-                }
-            envelope["data"]["attention_outcome"] = attention_outcome
-            return envelope
-        except Exception as exc:  # noqa: BLE001 — never let a scrape exception kill the CLI
-            try:
-                write_heartbeat(conn, status="error", duration_ms=0, error_detail=str(exc))
-            except Exception:  # noqa: BLE001 — heartbeat itself can fail on DB unreachable
-                pass
-            raise
+
+        # status == "ok"
+        assert cycle_result.scrape_result is not None
+        envelope = _scrape_result_to_envelope(cycle_result.scrape_result)
+        # Pass E (2026-05-26): attention_outcome nests under data per the
+        # single-envelope contract. scrape_cycle handles the exception
+        # capture internally.
+        envelope["data"]["attention_outcome"] = cycle_result.attention_outcome
+        return envelope
     finally:
         conn.close()
 
@@ -1228,120 +1232,27 @@ _DEFAULT_SYNTHESIS_WINDOW_HOURS = 4
 # Routing through config makes per-deploy tuning the standard knob.
 
 
-def _iso_from_unix(ts: int) -> str:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _query_window_headlines(
-    conn: sqlite3.Connection,
-    *,
-    window_since_unix: int,
-    window_until_unix: int,
-) -> tuple[list[TriggerHeadline], list[ClusterInput]]:
-    """Read headlines in the synthesis window. Returns (trigger_input, cluster_input).
-
-    One round trip to headlines + one to headline_theme_tags. Both
-    inputs are derived from the same rows so the trigger gate and the
-    clustering pass agree on what's in scope.
-    """
-    # Pass F (Follow-up #8, 2026-05-28): COALESCE(headline_en, headline)
-    # so the Pass C trigger gate (phrase match) and the clustering pass
-    # (Jaccard token overlap) both see TRANSLATED content for non-English
-    # rows. English-content rows have headline_en IS NULL by design and
-    # fall through to the original headline via COALESCE — bit-identical
-    # to pre-Pass-F behavior for those rows.
-    #
-    # Without this COALESCE: Russian-source rows (e.g. telegram:Ateobreaking)
-    # would tag correctly (theme aggregation runs against translated text
-    # at re-tag time) but cluster-match against original Russian text,
-    # producing isolated single-row clusters that fall below materiality
-    # thresholds — Ateo content would be silently excluded from morning
-    # briefs despite being correctly tagged. This is the defect Step 8
-    # of the Pass F validation arc exposed.
-    #
-    # See the FROM-headlines audit (Follow-up #8 commit message) for the
-    # complete classification of which reader sites use COALESCE vs
-    # intentionally read raw `headline` (e.g., the language classifier and
-    # the translation backfill query both deliberately read original text).
-    rows = conn.execute(
-        "SELECT headline_id, COALESCE(headline_en, headline) AS headline, "
-        "       raw_source, url, "
-        "       published_at_unix, fetched_at_unix "
-        "FROM headlines "
-        "WHERE published_at_unix >= ? AND published_at_unix <= ? "
-        "ORDER BY published_at_unix DESC",
-        (window_since_unix, window_until_unix),
-    ).fetchall()
-    if not rows:
-        return [], []
-
-    ids = [r["headline_id"] for r in rows]
-    placeholders = ",".join("?" * len(ids))
-    tag_rows = conn.execute(
-        f"SELECT headline_id, theme_id FROM headline_theme_tags "
-        f"WHERE headline_id IN ({placeholders})",
-        ids,
-    ).fetchall()
-    tags_by_id: dict[str, list[str]] = {hid: [] for hid in ids}
-    for tr in tag_rows:
-        tags_by_id[tr["headline_id"]].append(tr["theme_id"])
-
-    trigger_inputs: list[TriggerHeadline] = []
-    cluster_inputs: list[ClusterInput] = []
-    for r in rows:
-        themes_for_row = tuple(tags_by_id.get(r["headline_id"], []))
-        # Trigger gate is keyed on tagged headlines only.
-        if themes_for_row:
-            trigger_inputs.append(TriggerHeadline(
-                headline_id=r["headline_id"],
-                headline=r["headline"],
-                themes=themes_for_row,
-                fetched_at_unix=r["fetched_at_unix"],
-            ))
-        # Clustering operates on all headlines (the headline can be
-        # untagged and still cluster with a tagged sibling); the
-        # orchestrator later filters clusters to the in-scope themes.
-        cluster_inputs.append(ClusterInput(
-            headline_id=r["headline_id"],
-            headline=r["headline"],
-            url=r["url"],
-            publisher=r["raw_source"],
-            published_at_unix=r["published_at_unix"],
-        ))
-    return trigger_inputs, cluster_inputs
-
-
-def _filter_clusters_to_scope(
-    clusters,  # list[Cluster]
-    *,
-    in_scope_headline_ids: set[str],
-):
-    """Keep clusters whose leader (or any member) tagged to a scoped theme.
-
-    Cheap defensive filter — Sonnet only sees clusters relevant to the
-    themes in scope. A cluster of fully-untagged headlines is dropped.
-    """
-    if not in_scope_headline_ids:
-        return []
-    kept = []
-    for c in clusters:
-        if any(m.headline_id in in_scope_headline_ids for m in c.members):
-            kept.append(c)
-    return kept
+# Synthesize helpers (_iso_from_unix, _query_window_headlines,
+# _filter_clusters_to_scope) hoisted to synthesize/synthesize.py per
+# Full Brief Commit C Stage 2a-i sub-step B (2026-05-29). They are
+# module-private to synthesize/synthesize.py — only synthesize_window
+# calls them. Tests that previously imported them from cli should
+# update to:
+#   from news_watch_daemon.synthesize.synthesize import _query_window_headlines
 
 
 def _handle_synthesize(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
-    """Run one synthesis cycle end-to-end.
+    """Thin argparse wrapper around synthesize_window (Stage 2a-i sub-step B).
 
-    Pipeline: cluster recent headlines → evaluate trigger gate (or
-    skip to pull-mode if --theme is set) → call Sonnet → run
-    materiality gate → write Brief to archive → dispatch via AlertSink
-    if material → append to trigger_log → return envelope.
+    Resolves config + DB + client dependencies from args + cfg, delegates
+    to the pure callable in synthesize/synthesize.py, formats the CLI
+    envelope from the structured SynthesizeResult.
 
-    --dry-run short-circuits before the Sonnet call and returns the
-    gate decision + cluster count. No real API call, no archive write,
-    no dispatch.
+    Per Stage 2a-i forward-guidance: exit codes are a CLI concern, not a
+    synthesis concern — the structured result's `status` field
+    discriminates outcomes; this wrapper maps them to build_ok / build_error.
     """
+    # CLI pre-flight: API key required for non-dry-run.
     if not args.dry_run and not cfg.anthropic_api_key:
         return build_error(
             status="error",
@@ -1379,9 +1290,6 @@ def _handle_synthesize(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
         )
 
     window_hours = max(1, min(168, args.window_hours))
-    now_unix = int(time.time())
-    window_since = now_unix - window_hours * 3600
-    window_until = now_unix
 
     conn = connect(cfg.db_path)
     try:
@@ -1391,204 +1299,112 @@ def _handle_synthesize(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
                 detail="database has no schema applied. Run `news-watch-daemon db init` first.",
             )
 
-        trigger_inputs, cluster_inputs = _query_window_headlines(
-            conn,
-            window_since_unix=window_since,
-            window_until_unix=window_until,
+        # Build anthropic client (skip in dry-run).
+        anthropic_client: Any = None
+        if not args.dry_run:
+            try:
+                anthropic_client = build_anthropic_client(cfg.anthropic_api_key)
+            except SynthesisError as exc:
+                return build_error(
+                    status="error", source="internal",
+                    detail=f"Anthropic client construction failed: {exc}",
+                )
+
+        # Sink factory (lazy — only invoked when materiality says dispatch).
+        sink_factory = (
+            (lambda: build_alert_sink(synth_cfg.alert_sink))
+            if not args.dry_run else None
+        )
+
+        result = synthesize_window(
+            conn=conn,
+            active_themes=active_themes,
+            brief_archive_path=cfg.brief_archive_path,
+            trigger_log_path=cfg.trigger_log_path,
+            theses_path=cfg.theses_path,
+            synth_cfg=synth_cfg,
+            anthropic_client=anthropic_client,
+            sink_factory=sink_factory,
+            window_hours=window_hours,
+            pull_theme=args.theme,
+            dry_run=args.dry_run,
         )
     finally:
         conn.close()
 
-    # Determine themes_in_scope + trigger object.
-    if pull_mode:
-        themes_in_scope = [args.theme]
-        trigger_obj = Trigger(
-            type="pull",
-            reason=f"pull-trigger for {args.theme}",
-            window=TriggerWindow(
-                since=_iso_from_unix(window_since),
-                until=_iso_from_unix(window_until),
-            ),
-        )
-        trigger_decision = None
-    else:
-        trigger_decision = evaluate_gate(
-            trigger_inputs,
-            config=synth_cfg.trigger_gate,
-            window_since_unix=window_since,
-            window_until_unix=window_until,
-        )
-        # Always log the gate decision, fire or suppress.
-        try:
-            write_trigger_log_entry(cfg.trigger_log_path, trigger_decision)
-        except OSError as exc:
-            # Don't fail synthesis on log-write error; surface as a warning.
-            log = logging.getLogger("news_watch_daemon.cli")
-            log.warning("trigger_log append failed: %s", exc)
-        if not trigger_decision.fire:
-            return build_ok(
-                {
-                    "trigger_decision": {
-                        "fire": False,
-                        "reason": trigger_decision.reason,
-                        "window_since_unix": window_since,
-                        "window_until_unix": window_until,
-                    },
-                    "synthesis_run": False,
-                },
-                source="internal",
-            )
-        themes_in_scope = list(trigger_decision.themes_in_scope)
-        trigger_obj = Trigger(
-            type="event",
-            reason=trigger_decision.reason,
-            window=TriggerWindow(
-                since=_iso_from_unix(window_since),
-                until=_iso_from_unix(window_until),
-            ),
+    return _synthesize_result_to_envelope(result)
+
+
+def _synthesize_result_to_envelope(result: "SynthesizeResult") -> dict[str, Any]:
+    """Convert SynthesizeResult to the existing CLI envelope contract.
+
+    Preserves backwards-compatible envelope keys (synthesis_run, brief_id,
+    archive_path, themes_covered, trigger, materiality_decision,
+    dispatch_result, telemetry, events_count, trigger_decision) — tests
+    and downstream tooling rely on these.
+    """
+    if result.status == "synthesis_failed":
+        return build_error(
+            status="error", source="internal",
+            detail=result.reason or "synthesis failed",
         )
 
-    # Build clusters + filter to in-scope headlines.
-    clusters = cluster_headlines(cluster_inputs)
-    in_scope_ids = {h.headline_id for h in trigger_inputs if any(
-        t in themes_in_scope for t in h.themes
-    )}
-    if pull_mode:
-        # In pull-mode the trigger gate didn't run; include every
-        # tagged headline whose theme matches the pull target.
-        in_scope_ids = {
-            h.headline_id for h in trigger_inputs if args.theme in h.themes
-        }
-    scoped_clusters = _filter_clusters_to_scope(
-        clusters, in_scope_headline_ids=in_scope_ids,
-    )
+    if result.status == "archive_failed":
+        return build_error(
+            status="error", source="internal",
+            detail=result.reason or "archive write failed",
+        )
 
-    if args.dry_run:
+    if result.status == "no_trigger":
         return build_ok(
             {
-                "dry_run": True,
-                "themes_in_scope": themes_in_scope,
-                "trigger_type": trigger_obj.type,
-                "trigger_reason": trigger_obj.reason,
-                "headlines_in_window": len(cluster_inputs),
-                "tagged_headlines_in_window": len(trigger_inputs),
-                "cluster_count": len(scoped_clusters),
+                "trigger_decision": {
+                    "fire": False,
+                    "reason": result.trigger_decision_reason,
+                    "window_since_unix": result.window_since_unix,
+                    "window_until_unix": result.window_until_unix,
+                },
                 "synthesis_run": False,
             },
             source="internal",
         )
 
-    # Build theme briefs from active themes in scope.
-    theme_briefs: dict[str, str] = {
-        t.theme_id: t.brief for t in active_themes if t.theme_id in themes_in_scope
-    }
-
-    # Call Sonnet.
-    try:
-        client = build_anthropic_client(cfg.anthropic_api_key)
-    except SynthesisError as exc:
-        return build_error(
-            status="error", source="internal",
-            detail=f"Anthropic client construction failed: {exc}",
+    if result.status == "dry_run":
+        return build_ok(
+            {
+                "dry_run": True,
+                "themes_in_scope": result.themes_in_scope,
+                "trigger_type": (
+                    result.trigger_obj.type if result.trigger_obj else None
+                ),
+                "trigger_reason": (
+                    result.trigger_obj.reason if result.trigger_obj else None
+                ),
+                "headlines_in_window": result.headlines_in_window,
+                "tagged_headlines_in_window": result.tagged_headlines_in_window,
+                "cluster_count": result.cluster_count,
+                "synthesis_run": False,
+            },
+            source="internal",
         )
 
-    try:
-        brief = synthesize_brief(
-            client=client,
-            model=synth_cfg.synthesis.default_model,
-            max_tokens=synth_cfg.synthesis.default_max_tokens,
-            trigger=trigger_obj,
-            themes_in_scope=themes_in_scope,
-            theme_briefs=theme_briefs,
-            clusters=scoped_clusters,
-            max_events_per_brief=synth_cfg.synthesis.max_events_per_brief,
-            theses_path=cfg.theses_path,
-        )
-    except (SynthesisError, SynthesisLLMError) as exc:
-        return build_error(
-            status="error", source="internal",
-            detail=f"synthesis call failed: {exc}",
-        )
+    # status == "synthesized"
+    assert result.brief is not None
+    assert result.metadata is not None
+    assert result.brief_path is not None
 
-    # Materiality gate.
-    decision = evaluate_materiality(
-        brief,
-        threshold=synth_cfg.synthesis.materiality_threshold,
-        dedup_window_hours=synth_cfg.synthesis.dedup_window_hours,
-        archive_root=cfg.brief_archive_path,
-    )
-
-    # Patch brief.dispatch from the gate's verdict.
-    if decision.dispatch:
-        brief = brief.model_copy(update={"dispatch": Dispatch(alerted=True)})
-    else:
-        brief = brief.model_copy(update={"dispatch": Dispatch(
-            alerted=False, suppressed_reason=decision.reason,
-        )})
-
-    # Write to archive (always — gate suppression doesn't prevent
-    # archival; we want the audit trail).
-    try:
-        archive_path = write_brief(cfg.brief_archive_path, brief)
-    except (ArchiveError, OSError) as exc:
-        return build_error(
-            status="error", source="internal",
-            detail=f"brief archive write failed: {exc}",
-        )
-
-    # Dispatch via configured sink, if material.
-    dispatch_result_payload: dict[str, Any] | None = None
-    if decision.dispatch:
-        try:
-            sink = build_alert_sink(synth_cfg.alert_sink)
-        except AlertSinkFactoryError as exc:
-            # Sink construction failed; surface but do NOT raise — the
-            # archive write succeeded. Operator can fix sink config and
-            # re-dispatch.
-            dispatch_result_payload = {
-                "success": False,
-                "channel": None,
-                "error": f"sink construction failed: {exc}",
-            }
-        else:
-            result = sink.dispatch(brief)
-            dispatch_result_payload = {
-                "success": result.success,
-                "channel": result.channel,
-                "error": result.error,
-                "dispatched_at_unix": result.dispatched_at_unix,
-            }
-            # Re-write brief with channel + actual alerted state.
-            brief = brief.model_copy(update={"dispatch": Dispatch(
-                alerted=result.success,
-                channel=result.channel if result.success and result.channel in ("signal", "telegram_bot") else None,
-                suppressed_reason=None if result.success else f"dispatch_failed:{result.error}",
-            )})
-            try:
-                write_brief(cfg.brief_archive_path, brief)
-            except (ArchiveError, OSError):
-                # Keep the success envelope; the original brief is
-                # already on disk. Just don't crash on a second write.
-                pass
-
-    md = brief.synthesis_metadata
+    md = result.metadata
     payload: dict[str, Any] = {
         "synthesis_run": True,
-        "brief_id": brief.brief_id,
-        "archive_path": str(archive_path),
-        "themes_covered": list(brief.themes_covered),
+        "brief_id": result.brief.brief_id,
+        "archive_path": str(result.brief_path),
+        "themes_covered": list(result.brief.themes_covered),
         "trigger": {
-            "type": trigger_obj.type,
-            "reason": trigger_obj.reason,
+            "type": result.brief.trigger.type,
+            "reason": result.brief.trigger.reason,
         },
-        "materiality_decision": {
-            "dispatch": decision.dispatch,
-            "reason": decision.reason,
-            "above_threshold_count": decision.above_threshold_count,
-            "new_events_count": decision.new_events_count,
-            "deduped_against_brief_ids": list(decision.deduped_against_brief_ids),
-        },
-        "dispatch_result": dispatch_result_payload,
+        "materiality_decision": result.materiality_decision_payload,
+        "dispatch_result": result.dispatch_result_payload,
         "telemetry": {
             "model_used": md.model_used,
             "input_tokens": md.input_tokens,
@@ -1596,12 +1412,12 @@ def _handle_synthesize(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
             "cache_creation_input_tokens": md.cache_creation_input_tokens,
             "cache_read_input_tokens": md.cache_read_input_tokens,
         },
-        "events_count": len(brief.events),
+        "events_count": len(result.brief.events),
     }
-    if trigger_decision is not None:
+    if result.trigger_decision_fire is not None:
         payload["trigger_decision"] = {
-            "fire": trigger_decision.fire,
-            "reason": trigger_decision.reason,
+            "fire": result.trigger_decision_fire,
+            "reason": result.trigger_decision_reason,
         }
     return build_ok(payload, source="internal")
 

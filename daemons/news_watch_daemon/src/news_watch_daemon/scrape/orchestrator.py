@@ -36,7 +36,7 @@ import sqlite3
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Literal
 
 from pathlib import Path
 
@@ -883,11 +883,157 @@ def write_heartbeat(
     )
 
 
+# ---------------------------------------------------------------------------
+# Full Brief Stage 2a-i sub-step B (2026-05-29): scrape_cycle()
+#
+# Pure-callable cycle wrapper mirroring SynthesizeResult discipline. The
+# CLI handler (`_handle_scrape`) and the Full Brief orchestrator at
+# Stage 2a-ii are both callers; both want a structured result rather
+# than a CLI envelope dict.
+#
+# The existing `run_scrape` stays as the lower-level "execute one sweep"
+# primitive. `scrape_cycle` composes it with heartbeat write + optional
+# auto-attention callback into a structured result.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ScrapeCycleResult:
+    """Structured return from `scrape_cycle` — mirrors SynthesizeResult shape.
+
+    Status discriminator:
+      - "ok": run_scrape completed (per-source partial failures don't
+        propagate to status; they live in `scrape_result.per_source` and
+        the CLI envelope's data_completeness field).
+      - "scrape_failed": run_scrape raised an orchestration-level error
+        (e.g., DB connection broken mid-sweep). Heartbeat record written
+        with error_detail.
+
+    `attention_outcome` is populated when status="ok" AND an
+    attention_callback was provided. The callback's exceptions are
+    captured into an error-shaped dict here rather than propagating,
+    matching the existing _handle_scrape attention-never-kills-scrape
+    discipline.
+    """
+
+    status: Literal["ok", "scrape_failed"]
+    started_at_unix: int
+
+    # Populated when status="ok":
+    scrape_result: ScrapeResult | None = None
+    attention_outcome: dict[str, Any] | None = None
+
+    # Populated when status="scrape_failed":
+    reason: str | None = None
+
+
+def scrape_cycle(
+    *,
+    conn: sqlite3.Connection,
+    sources: list[SourcePlugin],
+    themes: list[ThemeConfig],
+    tracked_tickers: Any | None = None,
+    cross_source_log_path: Path | None = None,
+    translation_credentials: tuple[int, str, str] | None = None,
+    translation_source: str = "telegram_native",
+    translation_batch_size: int = 10,
+    attention_callback: Callable[[], dict[str, Any]] | None = None,
+) -> ScrapeCycleResult:
+    """Run one scrape sweep + heartbeat + optional auto-attention follow-on.
+
+    Pure callable hoisted from cli._handle_scrape composition logic. The
+    CLI handler at cli.py becomes a thin argparse wrapper that:
+
+      1. Resolves config + themes + DB + sources + tracked_tickers +
+         translation config from args + cfg
+      2. Calls scrape_cycle with explicit kwargs
+      3. Formats the CLI envelope from the structured result
+
+    The Full Brief orchestrator at Stage 2a-ii is the second caller — it
+    composes scrape_cycle output with synthesize_window output without
+    going through the CLI argparse path.
+
+    Args:
+        conn: SQLite connection. Caller owns lifecycle.
+        sources: pre-built list of SourcePlugin instances.
+        themes: pre-loaded ThemeConfig list (already filtered to active).
+        tracked_tickers: optional TrackedTickers for ticker extraction.
+        cross_source_log_path: optional path for cross-source dedup log.
+        translation_credentials: Telegram API tuple for translation, or
+            None to disable.
+        translation_source: translation backend identifier.
+        translation_batch_size: batch size for per-source translation.
+        attention_callback: zero-arg callable returning the attention
+            outcome dict. None disables the auto-attention follow-on.
+            Exceptions from the callback are captured into an
+            error-shaped attention_outcome dict; they do NOT propagate.
+
+    Returns:
+        ScrapeCycleResult with status discriminator. Never raises for
+        normal scrape failures — orchestration errors during run_scrape
+        surface as status="scrape_failed" with reason populated.
+    """
+    started_at_unix = int(time.time())
+
+    try:
+        result = run_scrape(
+            conn, sources, themes,
+            tracked_tickers=tracked_tickers,
+            cross_source_log_path=cross_source_log_path,
+            translation_credentials=translation_credentials,
+            translation_source=translation_source,
+            translation_batch_size=translation_batch_size,
+        )
+    except Exception as exc:  # noqa: BLE001 — capture all orchestration errors
+        try:
+            write_heartbeat(conn, status="error", duration_ms=0, error_detail=str(exc))
+        except Exception:  # noqa: BLE001 — heartbeat itself can fail on DB issue
+            pass
+        return ScrapeCycleResult(
+            status="scrape_failed",
+            started_at_unix=started_at_unix,
+            reason=f"{type(exc).__name__}: {exc}",
+        )
+
+    # Heartbeat: scrape completed (independent of per-source outcomes).
+    try:
+        write_heartbeat(
+            conn, status="ok",
+            duration_ms=result.duration_ms, error_detail=None,
+        )
+    except Exception:  # noqa: BLE001 — heartbeat failure is non-fatal
+        pass
+
+    # Optional auto-attention follow-on (Pass E chain inside scrape).
+    attention_outcome: dict[str, Any] | None = None
+    if attention_callback is not None:
+        try:
+            attention_outcome = attention_callback()
+        except Exception as exc:  # noqa: BLE001 — never let attention kill scrape
+            _log = logging.getLogger("news_watch_daemon.scrape.orchestrator")
+            _log.warning(
+                "attention follow-on raised: %s: %s", type(exc).__name__, exc,
+            )
+            attention_outcome = {
+                "status": "error",
+                "reason": f"unhandled_exception: {type(exc).__name__}: {exc}",
+            }
+
+    return ScrapeCycleResult(
+        status="ok",
+        started_at_unix=started_at_unix,
+        scrape_result=result,
+        attention_outcome=attention_outcome,
+    )
+
+
 __all__ = [
     "DEDUP_WINDOW_S",
     "DEFAULT_SINCE_LOOKBACK_S",
     "PerSourceResult",
+    "ScrapeCycleResult",
     "ScrapeResult",
     "run_scrape",
+    "scrape_cycle",
     "write_heartbeat",
 ]

@@ -569,7 +569,7 @@ def test_query_window_headlines_uses_translated_text_when_present(env):
     ClusterInput.headline contained the Russian original because the
     SELECT read raw `headline`."""
     from news_watch_daemon.db import connect
-    from news_watch_daemon.cli import _query_window_headlines
+    from news_watch_daemon.synthesize.synthesize import _query_window_headlines
 
     db_path = env["db_path"]
     now = int(time.time())
@@ -646,7 +646,7 @@ def test_query_window_headlines_falls_back_to_headline_when_no_translation(env):
     falls through to the original `headline` via COALESCE — bit-
     identical to pre-Pass-F behavior for the en-only corpus."""
     from news_watch_daemon.db import connect
-    from news_watch_daemon.cli import _query_window_headlines
+    from news_watch_daemon.synthesize.synthesize import _query_window_headlines
 
     db_path = env["db_path"]
     now = int(time.time())
