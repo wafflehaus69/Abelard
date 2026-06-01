@@ -350,3 +350,161 @@ def test_attention_brief_brief_type_is_attention():
     from news_watch_daemon.attention.brief_schema import AttentionBrief
     b = _make_attention_brief()
     assert b.brief_type == "attention"
+
+
+# ---------- Full Brief: triple-format partitioner + FullBriefEnvelope round-trip ----------
+#
+# Stage 2a-i (2026-05-29): extends the dual-format pattern (Pass C Brief +
+# Pass E AttentionBrief) to a third type (Full Brief Envelope). Lock the
+# contract that _month_partition handles `nwd-fullbrief-YYYY-MM-...`
+# alongside the two existing infixes, that read_brief discriminates
+# correctly, and that the YYYY-MM partition is shared.
+
+
+def _make_full_brief(
+    brief_id: str = "nwd-fullbrief-2026-05-29T14-32-47Z-abcd1234",
+):
+    from news_watch_daemon.fullbrief.brief import (
+        AttentionSynthesisSection,
+        CostEnvelope,
+        ExecutiveSummary,
+        FrequencyDiagnosticSection,
+        FullBriefEnvelope,
+        FullBriefEnvelopeHealth,
+        PassFFootprint,
+        StepHealth,
+        ThemeSynthesisSection,
+        WindowSection,
+    )
+    return FullBriefEnvelope(
+        brief_id=brief_id,
+        generated_at="2026-05-29T14:32:47Z",
+        window=WindowSection(
+            since="2026-05-28T14:32:47Z",
+            until="2026-05-29T14:32:47Z",
+            duration_hours=24,
+        ),
+        executive_summary=ExecutiveSummary(
+            narrative="Test narrative for archive routing.",
+            dominant_themes=["us_iran_escalation"],
+            material_event_count=0,
+            attention_crossings_count=0,
+            orphan_crossings_count=0,
+        ),
+        theme_synthesis=ThemeSynthesisSection(status="no_trigger"),
+        attention_synthesis=AttentionSynthesisSection(status="ok"),
+        frequency_diagnostic=FrequencyDiagnosticSection(
+            diagnostic_note="Empty cycle for archive routing test."
+        ),
+        pass_f_footprint=PassFFootprint(
+            translated_rows_in_window=0,
+            cross_language_event_merges=0,
+        ),
+        envelope_health=FullBriefEnvelopeHealth(
+            scrape=StepHealth(status="ok"),
+            pass_c=StepHealth(status="ok"),
+            pass_e=StepHealth(status="ok"),
+            convergence_analysis=StepHealth(status="ok"),
+            frequency_diagnostic=StepHealth(status="ok"),
+        ),
+        cost=CostEnvelope(
+            pass_c=None, pass_e_briefs=[],
+            pass_e_total_usd=0.0, total_usd=0.0,
+            model="claude-sonnet-4-6", rates_as_of="2026-05-28",
+        ),
+    )
+
+
+def test_month_partition_extracts_yyyy_mm_for_full_brief_id():
+    """Full Brief format `nwd-fullbrief-YYYY-MM-...` routes to the same
+    YYYY-MM partition as Pass C and Pass E briefs from the same month."""
+    assert _month_partition("nwd-fullbrief-2026-05-29T14-32-47Z-abcd1234") == "2026-05"
+    assert _month_partition("nwd-fullbrief-2099-12-31T23-59-59Z-deadbeef") == "2099-12"
+
+
+def test_month_partition_triple_format_same_month_yields_same_partition():
+    """All three brief types from the same month share a YYYY-MM partition.
+    Whole point of the triple-format partitioner."""
+    pass_c = _month_partition("nwd-2026-05-13T14-32-08Z-a1b2c3d4")
+    pass_e = _month_partition("nwd-attn-2026-05-26T22-50-43Z-9b3cfa83")
+    full_brief = _month_partition("nwd-fullbrief-2026-05-29T14-32-47Z-abcd1234")
+    assert pass_c == pass_e == full_brief == "2026-05"
+
+
+def test_month_partition_rejects_full_brief_id_with_too_few_parts():
+    """Truncated nwd-fullbrief id (no year/month) raises ArchiveError."""
+    with pytest.raises(ArchiveError):
+        _month_partition("nwd-fullbrief-2026")
+
+
+def test_write_and_read_full_brief_round_trip(tmp_path):
+    """FullBriefEnvelope round-trips through write_brief / read_brief."""
+    archive = tmp_path / "archive"
+    brief = _make_full_brief()
+    path = write_brief(archive, brief)
+    assert path.exists()
+    assert path.name == "nwd-fullbrief-2026-05-29T14-32-47Z-abcd1234.json"
+    assert path.parent.name == "2026-05"
+    loaded = read_brief(archive, brief.brief_id)
+    from news_watch_daemon.fullbrief.brief import FullBriefEnvelope
+    assert isinstance(loaded, FullBriefEnvelope)
+    assert loaded.brief_type == "full_brief"
+    assert loaded.theme_synthesis.status == "no_trigger"
+    assert loaded.cost.model == "claude-sonnet-4-6"
+
+
+def test_read_brief_discriminates_all_three_types_by_id(tmp_path):
+    """Three briefs from the same month, three types, each loads to the
+    right Pydantic model based on id-format discrimination at read time."""
+    from news_watch_daemon.attention.brief_schema import AttentionBrief
+    from news_watch_daemon.fullbrief.brief import FullBriefEnvelope
+
+    archive = tmp_path / "archive"
+    theme_brief = _make_brief(brief_id="nwd-2026-05-29T10-00-00Z-aaaaaaaa")
+    attn_brief = _make_attention_brief(brief_id="nwd-attn-2026-05-29T11-00-00Z-bbbbbbbb")
+    full_brief = _make_full_brief(brief_id="nwd-fullbrief-2026-05-29T12-00-00Z-cccccccc")
+    write_brief(archive, theme_brief)
+    write_brief(archive, attn_brief)
+    write_brief(archive, full_brief)
+
+    loaded_theme = read_brief(archive, theme_brief.brief_id)
+    loaded_attn = read_brief(archive, attn_brief.brief_id)
+    loaded_full = read_brief(archive, full_brief.brief_id)
+    assert isinstance(loaded_theme, Brief)
+    assert isinstance(loaded_attn, AttentionBrief)
+    assert isinstance(loaded_full, FullBriefEnvelope)
+    # All three live in the same YYYY-MM partition:
+    for b in (theme_brief, attn_brief, full_brief):
+        assert (archive / "2026-05" / f"{b.brief_id}.json").exists()
+
+
+def test_list_brief_ids_includes_all_three_formats(tmp_path):
+    """list_brief_ids returns all three brief types from a shared partition.
+    Caller can filter by id-format-prefix if it wants type-specific subsets."""
+    archive = tmp_path / "archive"
+    theme_brief = _make_brief(brief_id="nwd-2026-05-29T10-00-00Z-aaaaaaaa")
+    attn_brief = _make_attention_brief(brief_id="nwd-attn-2026-05-29T11-00-00Z-bbbbbbbb")
+    full_brief = _make_full_brief(brief_id="nwd-fullbrief-2026-05-29T12-00-00Z-cccccccc")
+    write_brief(archive, theme_brief)
+    write_brief(archive, attn_brief)
+    write_brief(archive, full_brief)
+    listed = list_brief_ids(archive)
+    assert set(listed) == {
+        theme_brief.brief_id, attn_brief.brief_id, full_brief.brief_id,
+    }
+
+
+def test_full_brief_brief_type_is_full_brief():
+    """FullBriefEnvelope carries brief_type='full_brief' by Literal default."""
+    fb = _make_full_brief()
+    assert fb.brief_type == "full_brief"
+
+
+def test_full_brief_envelope_archive_routing_uses_fullbrief_infix():
+    """Sanity: brief_id parts[1] == 'fullbrief' is the discriminator key in
+    _BRIEF_TYPE_INFIXES. Pins the contract that the new infix routes
+    through the same mechanism as 'attn'."""
+    from news_watch_daemon.synthesize.archive import _BRIEF_TYPE_INFIXES
+    assert "fullbrief" in _BRIEF_TYPE_INFIXES
+    # (year_idx, month_idx) for nwd-fullbrief-YYYY-MM-... is (2, 3)
+    assert _BRIEF_TYPE_INFIXES["fullbrief"] == (2, 3)

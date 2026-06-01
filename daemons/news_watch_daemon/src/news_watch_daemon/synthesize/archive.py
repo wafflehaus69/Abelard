@@ -37,14 +37,19 @@ from pathlib import Path
 from typing import Union
 
 from ..attention.brief_schema import AttentionBrief
+from ..fullbrief.brief import FullBriefEnvelope
 from .brief import Brief
 
 
-# Type alias for "any brief that can be archived". Two concrete shapes
-# today (Pass C Brief, Pass E AttentionBrief); add to the Union when a
-# third type emerges (per Pass E build Q2 decision, defer Protocol
-# extraction until a real third type exists).
-ArchivableBrief = Union[Brief, AttentionBrief]
+# Type alias for "any brief that can be archived". Three concrete shapes:
+#   Pass C Brief (theme_event)
+#   Pass E AttentionBrief (attention)
+#   Full Brief Envelope (full_brief) — added 2026-05-29, Stage 2a-i
+# When a fourth type emerges, add to the Union and extend
+# _BRIEF_TYPE_INFIXES + read_brief's discriminator chain.
+# (Per Pass E build Q2 decision, Protocol extraction stays deferred
+# until either a fourth type lands or duck-typing breaks.)
+ArchivableBrief = Union[Brief, AttentionBrief, FullBriefEnvelope]
 
 
 class ArchiveError(RuntimeError):
@@ -55,7 +60,8 @@ class ArchiveError(RuntimeError):
 # Each maps to its (year_index, month_index) inside the dash-split list.
 # When parts[1] is a 4-digit year, no infix is present (Pass C Brief).
 _BRIEF_TYPE_INFIXES: dict[str, tuple[int, int]] = {
-    "attn": (2, 3),    # Pass E AttentionBrief: nwd-attn-YYYY-MM-...
+    "attn": (2, 3),        # Pass E AttentionBrief: nwd-attn-YYYY-MM-...
+    "fullbrief": (2, 3),   # Full Brief Envelope: nwd-fullbrief-YYYY-MM-...
 }
 
 
@@ -136,10 +142,14 @@ def write_brief(archive_root: Path, brief: ArchivableBrief) -> Path:
 
 
 def read_brief(archive_root: Path, brief_id: str) -> ArchivableBrief:
-    """Load a Brief or AttentionBrief by id. Discriminates on brief_id format
-    (Pass E `nwd-attn-...` → AttentionBrief; everything else → Brief).
+    """Load a Brief, AttentionBrief, or FullBriefEnvelope by id.
 
-    Raises ArchiveError on missing or corrupt file.
+    Discriminates on brief_id format (parts[1] of dash-split id):
+      - `nwd-attn-...` → AttentionBrief (Pass E)
+      - `nwd-fullbrief-...` → FullBriefEnvelope (Full Brief, Stage 2a-i)
+      - `nwd-{4-digit-year}-...` → Brief (Pass C, default)
+
+    Raises ArchiveError on missing or corrupt file, schema mismatch.
     """
     path = _partition_dir(archive_root, brief_id) / f"{brief_id}.json"
     if not path.is_file():
@@ -148,12 +158,14 @@ def read_brief(archive_root: Path, brief_id: str) -> ArchivableBrief:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ArchiveError(f"corrupt brief at {path}: {exc}") from exc
-    # Discriminate by id-format infix (parts[1] == "attn" → AttentionBrief).
+    # Discriminate by id-format infix (parts[1] value).
     parts = brief_id.split("-")
-    is_attention = len(parts) >= 2 and parts[1] == "attn"
+    brief_type_marker = parts[1] if len(parts) >= 2 else None
     try:
-        if is_attention:
+        if brief_type_marker == "attn":
             return AttentionBrief.model_validate(raw)
+        if brief_type_marker == "fullbrief":
+            return FullBriefEnvelope.model_validate(raw)
         return Brief.model_validate(raw)
     except Exception as exc:  # noqa: BLE001 — pydantic validation surface
         raise ArchiveError(f"schema mismatch for brief at {path}: {exc}") from exc
