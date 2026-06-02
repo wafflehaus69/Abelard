@@ -1961,6 +1961,18 @@ def _handle_full_brief(args: argparse.Namespace, cfg: Config) -> int:
           write failed BEYOND the orchestrator's internal handling
       2 — Brief assembled with a primary-path failure (per spec Section 3)
     """
+    # Stage 2b-ii live smoke discovery (2026-06-01): Windows stdout defaults
+    # to cp1252 which doesn't support the Unicode characters the render
+    # layer uses (→ U+2192, Δ U+0394, ✓ etc.). Force UTF-8 for consistent
+    # cross-platform rendering — no-op on POSIX systems where stdout is
+    # already UTF-8. errors='replace' converts any unencodable char to '?'
+    # rather than crashing if a future render addition introduces a char
+    # outside the BMP.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
     raw_window_hours = args.window_hours
     window_hours = max(1, min(168, raw_window_hours))
     if window_hours != raw_window_hours:
