@@ -254,6 +254,15 @@ class PassFFootprint(BaseModel):
     crossings that would not have fired without translation
     contributing tokens. Empirically `["putin"]` in cycle 1, `[]` in
     cycle 2.
+
+    `url_match_warnings`: defensive audit signal added in Stage 2a-ii-B
+    (2026-05-29). When the orchestrator batch-queries headlines by URL
+    to look up language for `cross_language_event_merges`, this field
+    surfaces the count of source_headline URLs that didn't match any
+    DB row. Null when all URLs matched (the expected case — Sonnet
+    reproduces URLs verbatim from cluster inputs). Non-null indicates
+    URL drift (prompt change, model update, edge content) that would
+    silently under-report the metric without this audit signal.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -261,6 +270,7 @@ class PassFFootprint(BaseModel):
     translated_rows_in_window: int = Field(ge=0)
     cross_language_event_merges: int = Field(ge=0)
     attention_crossings_enabled_by_pass_f: list[str] = Field(default_factory=list)
+    url_match_warnings: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------

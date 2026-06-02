@@ -576,6 +576,421 @@ def test_archive_failed_theme_synthesis_status_ok_brief_id_null(tmp_path):
 # ---------- 4-case discrimination: no_trigger ----------
 
 
+# ============================================================================
+# Stage 2a-ii-B tests (2026-05-29):
+#   - T11: window_hours plumbing through Pass C, count_terms, cluster
+#   - T11b: threshold_note populated when window_hours != 24
+#   - T11c: threshold_note null when window_hours == 24
+#   - T16: theses-blind warning surfaces in theme_synthesis
+#   - pass_f_footprint helpers — direct unit tests
+#   - Empirical pin: cycle 1 (cross_language_event_merges=1,
+#     attention_crossings_enabled_by_pass_f=["putin"])
+#   - Empirical pin: cycle 2 (cross_language_event_merges=0,
+#     attention_crossings_enabled_by_pass_f=[])
+#   - url_match_warnings audit signal
+# ============================================================================
+
+
+# ---------- helpers for 2a-ii-B tests ----------
+
+
+def _make_cfg_with_seeded_db(tmp_path: Path, rows: list[tuple]) -> Config:
+    """Like _make_cfg but pre-seeds headlines table with given rows.
+
+    Each row is (headline_id, source, raw_source, headline, headline_en,
+    url, language, published_at_unix, fetched_at_unix).
+    """
+    cfg = _make_cfg(tmp_path)
+    conn = sqlite3.connect(str(cfg.db_path))
+    for row in rows:
+        conn.execute(
+            "INSERT INTO headlines (headline_id, source, raw_source, headline, "
+            "headline_en, url, language, published_at_unix, fetched_at_unix) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            row,
+        )
+    conn.commit()
+    conn.close()
+    return cfg
+
+
+def test_pass_f_translated_rows_in_window_counts_correctly(tmp_path):
+    """_compute_translated_rows_in_window: SELECT COUNT for language != 'en'
+    AND headline_en IS NOT NULL within the window."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        _compute_translated_rows_in_window,
+    )
+    cfg = _make_cfg_with_seeded_db(tmp_path, [
+        ("h1", "telegram:Ateobreaking", None, "Russian text 1", "English 1",
+         "https://t.me/Ateobreaking/1", "ru", 1500, 1500),
+        ("h2", "telegram:Ateobreaking", None, "Russian text 2", "English 2",
+         "https://t.me/Ateobreaking/2", "ru", 1600, 1600),
+        ("h3", "rss:bloomberg_politics", None, "Bloomberg headline", None,
+         "https://bloomberg.com/x", "en", 1700, 1700),
+        ("h_old", "telegram:Ateobreaking", None, "Outside window", "English",
+         "https://t.me/Ateobreaking/old", "ru", 500, 500),
+    ])
+    conn = sqlite3.connect(str(cfg.db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        # Window: 1000-2000 covers h1, h2, h3; excludes h_old
+        count = _compute_translated_rows_in_window(
+            conn, window_since_unix=1000, window_until_unix=2000,
+        )
+        # Only h1 + h2 are translated AND in window. h3 is en-only. h_old is outside.
+        assert count == 2
+    finally:
+        conn.close()
+
+
+def test_pass_f_cross_language_event_merges_with_mixed_event(tmp_path):
+    """_compute_cross_language_event_merges: event with both 'en' and 'ru'
+    source_headlines counts as 1 merge. url_match_warnings null on full match."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        _compute_cross_language_event_merges,
+    )
+    cfg = _make_cfg_with_seeded_db(tmp_path, [
+        ("h_en", "rss:bloomberg_economics", None, "Bloomberg", None,
+         "https://bloomberg.com/a", "en", 1500, 1500),
+        ("h_ru1", "telegram:Ateobreaking", None, "Russian", "English1",
+         "https://t.me/Ateobreaking/170839", "ru", 1500, 1500),
+        ("h_ru2", "telegram:Ateobreaking", None, "Russian2", "English2",
+         "https://t.me/Ateobreaking/170838", "ru", 1500, 1500),
+    ])
+    conn = sqlite3.connect(str(cfg.db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        # Build a Pass C brief with evt-5 (Russia-Kazakhstan) shape from cycle 1
+        brief = Brief(
+            brief_id="nwd-2026-05-28T12-55-17Z-aaaaaaaa",
+            generated_at="2026-05-28T12:55:17Z",
+            trigger=Trigger(
+                type="event", reason="r",
+                window=TriggerWindow(since="x", until="y"),
+            ),
+            themes_covered=["russia_ukraine_war"],
+            events=[Event(
+                event_id="evt-5",
+                headline_summary="Russia-Kazakhstan deals",
+                themes=["russia_ukraine_war"],
+                source_headlines=[
+                    SourceHeadline(publisher="Bloomberg Economics",
+                                   headline="Russia-Kazakhstan FX swap",
+                                   url="https://bloomberg.com/a",
+                                   published_at="2026-05-28T11:36:54Z"),
+                    SourceHeadline(publisher=None,
+                                   headline="Putin nuclear plant",
+                                   url="https://t.me/Ateobreaking/170839",
+                                   published_at="2026-05-28T09:07:12Z"),
+                    SourceHeadline(publisher=None,
+                                   headline="Tokayev statement",
+                                   url="https://t.me/Ateobreaking/170838",
+                                   published_at="2026-05-28T09:05:28Z"),
+                ],
+                materiality_score=0.55,
+                thesis_links=[],
+            )],
+            narrative="x",
+            dispatch=Dispatch(alerted=False),
+            synthesis_metadata=SynthesisMetadata(
+                model_used="x", theses_doc_available=False,
+            ),
+        )
+        merges, warnings = _compute_cross_language_event_merges(
+            conn, pass_c_brief=brief,
+        )
+        # evt-5 has Bloomberg (en) + 2 Ateo (ru) → 1 cross-language merge
+        assert merges == 1
+        assert warnings is None   # all URLs matched
+    finally:
+        conn.close()
+
+
+def test_pass_f_cross_language_event_merges_no_mixed_event(tmp_path):
+    """Cycle 2 shape: events have en-only source_headlines → 0 merges."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        _compute_cross_language_event_merges,
+    )
+    cfg = _make_cfg_with_seeded_db(tmp_path, [
+        ("h1", "rss:bloomberg_economics", None, "Bloomberg A", None,
+         "https://bloomberg.com/a", "en", 1500, 1500),
+        ("h2", "rss:bloomberg_markets", None, "Bloomberg B", None,
+         "https://bloomberg.com/b", "en", 1500, 1500),
+    ])
+    conn = sqlite3.connect(str(cfg.db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        brief = _make_brief(event_headlines=["Iran ceasefire"])
+        # Override the source_headline URLs to match seeded DB rows
+        brief = brief.model_copy(update={"events": [
+            brief.events[0].model_copy(update={
+                "source_headlines": [
+                    SourceHeadline(publisher="Bloomberg", headline="a",
+                                   url="https://bloomberg.com/a",
+                                   published_at="2026-05-29T13:00:00Z"),
+                    SourceHeadline(publisher="Bloomberg", headline="b",
+                                   url="https://bloomberg.com/b",
+                                   published_at="2026-05-29T13:01:00Z"),
+                ],
+            }),
+        ]})
+        merges, warnings = _compute_cross_language_event_merges(
+            conn, pass_c_brief=brief,
+        )
+        assert merges == 0   # all en
+        assert warnings is None
+    finally:
+        conn.close()
+
+
+def test_pass_f_cross_language_url_match_warnings_populated_on_missing(tmp_path):
+    """Defensive audit signal: when a source_headline URL doesn't match any
+    DB row, url_match_warnings carries the count. Mando's Stage 2a-ii-B
+    refinement — preserves visibility when Sonnet's URL reproduction
+    discipline fails."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        _compute_cross_language_event_merges,
+    )
+    cfg = _make_cfg_with_seeded_db(tmp_path, [
+        ("h1", "rss:bloomberg", None, "x", None,
+         "https://bloomberg.com/exists", "en", 1500, 1500),
+    ])
+    conn = sqlite3.connect(str(cfg.db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        brief = _make_brief()
+        brief = brief.model_copy(update={"events": [
+            brief.events[0].model_copy(update={
+                "source_headlines": [
+                    SourceHeadline(publisher="Bloomberg", headline="a",
+                                   url="https://bloomberg.com/exists",
+                                   published_at="2026-05-29T13:00:00Z"),
+                    SourceHeadline(publisher="Bloomberg", headline="b",
+                                   url="https://bloomberg.com/MISSING",
+                                   published_at="2026-05-29T13:01:00Z"),
+                    SourceHeadline(publisher="Other", headline="c",
+                                   url="https://example.com/also-missing",
+                                   published_at="2026-05-29T13:02:00Z"),
+                ],
+            }),
+        ]})
+        merges, warnings = _compute_cross_language_event_merges(
+            conn, pass_c_brief=brief,
+        )
+        # 2 of 3 URLs don't match
+        assert warnings == 2
+        # Only 1 matched URL, language='en' — no cross-language merge possible
+        assert merges == 0
+    finally:
+        conn.close()
+
+
+def test_pass_f_crossings_enabled_cycle1_putin_majority_translated(tmp_path):
+    """Cycle 1 empirical pin: putin crossing with 7/10 cluster rows
+    translated returns ["putin"]. Mirrors cycle 1 (2026-05-28) actual data:
+    Ateobreaking dominated the putin cluster."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        _compute_attention_crossings_enabled_by_pass_f,
+    )
+    rows = []
+    # 7 Russian translated rows mentioning putin
+    for i in range(7):
+        rows.append((
+            f"h_ru_{i}", "telegram:Ateobreaking", None,
+            f"Путин делает что-то {i}",
+            f"Putin does something {i}",
+            f"https://t.me/Ateobreaking/{170839 + i}",
+            "ru", 1500 + i, 1500 + i,
+        ))
+    # 3 English rows mentioning putin
+    for i in range(3):
+        rows.append((
+            f"h_en_{i}", "rss:bloomberg_politics", None,
+            f"Putin meets Tokayev {i}", None,
+            f"https://bloomberg.com/putin-{i}",
+            "en", 1500 + 100 + i, 1500 + 100 + i,
+        ))
+    cfg = _make_cfg_with_seeded_db(tmp_path, rows)
+    conn = sqlite3.connect(str(cfg.db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        attention_briefs = [_make_attention_brief(triggering_term="putin")]
+        enabled = _compute_attention_crossings_enabled_by_pass_f(
+            conn,
+            attention_briefs=attention_briefs,
+            canonical_now_unix=2000,
+            window_hours=24,
+        )
+        # 7/10 = 0.70 > 0.50 → enabled
+        assert enabled == ["putin"]
+    finally:
+        conn.close()
+
+
+def test_pass_f_crossings_enabled_cycle2_secretary_majority_english(tmp_path):
+    """Cycle 2 empirical pin: secretary crossing dominated by English (CIG)
+    returns []. Mirrors cycle 2 (2026-05-29) actual: 8/11 from CIG_telegram
+    (English), only 3/11 from Ateo. 3/11 = 0.27 < 0.50."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        _compute_attention_crossings_enabled_by_pass_f,
+    )
+    rows = []
+    # 8 English rows mentioning secretary (from CIG)
+    for i in range(8):
+        rows.append((
+            f"h_en_{i}", "telegram:CIG_telegram", None,
+            f"Treasury Secretary Bessent meets {i}", None,
+            f"https://t.me/CIG_telegram/{100 + i}",
+            "en", 1500 + i, 1500 + i,
+        ))
+    # 3 Russian translated rows mentioning secretary
+    for i in range(3):
+        rows.append((
+            f"h_ru_{i}", "telegram:Ateobreaking", None,
+            f"Секретарь России {i}",
+            f"Russian Secretary {i}",
+            f"https://t.me/Ateobreaking/{200 + i}",
+            "ru", 1500 + 50 + i, 1500 + 50 + i,
+        ))
+    cfg = _make_cfg_with_seeded_db(tmp_path, rows)
+    conn = sqlite3.connect(str(cfg.db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        attention_briefs = [_make_attention_brief(
+            brief_id="nwd-attn-2026-05-29T14-31-21Z-ee1bc8e0",
+            triggering_term="secretary",
+        )]
+        enabled = _compute_attention_crossings_enabled_by_pass_f(
+            conn,
+            attention_briefs=attention_briefs,
+            canonical_now_unix=2000,
+            window_hours=24,
+        )
+        # 3/11 = 0.27 < 0.50 → not enabled
+        assert enabled == []
+    finally:
+        conn.close()
+
+
+def test_pass_f_crossings_enabled_iteration_order_preserved(tmp_path):
+    """Ordering pin: when multiple crossings are enabled, the output list
+    preserves the input AttentionBrief order (same iteration-order discipline
+    as convergence)."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        _compute_attention_crossings_enabled_by_pass_f,
+    )
+    rows = []
+    # 6 Russian rows for "putin" (majority)
+    for i in range(6):
+        rows.append((
+            f"hp_{i}", "telegram:Ateobreaking", None,
+            f"Путин что-то {i}",
+            f"Putin something {i}",
+            f"https://t.me/Ateobreaking/p{i}",
+            "ru", 1500 + i, 1500 + i,
+        ))
+    # 4 Russian rows for "iranian" (majority)
+    for i in range(4):
+        rows.append((
+            f"hi_{i}", "telegram:Ateobreaking", None,
+            f"Иранский что-то {i}",
+            f"Iranian something {i}",
+            f"https://t.me/Ateobreaking/i{i}",
+            "ru", 1500 + 10 + i, 1500 + 10 + i,
+        ))
+    cfg = _make_cfg_with_seeded_db(tmp_path, rows)
+    conn = sqlite3.connect(str(cfg.db_path))
+    conn.row_factory = sqlite3.Row
+    try:
+        # Input order: iranian first, then putin — verify output preserves it
+        briefs = [
+            _make_attention_brief(brief_id="nwd-attn-x-1", triggering_term="iranian"),
+            _make_attention_brief(brief_id="nwd-attn-x-2", triggering_term="putin"),
+        ]
+        enabled = _compute_attention_crossings_enabled_by_pass_f(
+            conn, attention_briefs=briefs,
+            canonical_now_unix=2000, window_hours=24,
+        )
+        assert enabled == ["iranian", "putin"]
+    finally:
+        conn.close()
+
+
+def test_t11b_threshold_note_populated_at_non_24h_window(tmp_path):
+    """T11b: threshold_note populates with the Adjustment 2 text when
+    window_hours != 24."""
+    cfg = _make_cfg(tmp_path)
+    brief = _make_brief()
+    with _Patches() as p:
+        p.synthesize_window_mock.return_value = _make_synthesize_result(
+            status="synthesized", brief=brief,
+            brief_path=tmp_path / "briefs" / "fake.json",
+        )
+        envelope = assemble_full_brief(
+            cfg=cfg, no_scrape=True, window_hours=6,
+            now=datetime(2026, 5, 29, 14, 32, 47, tzinfo=timezone.utc),
+        )
+    assert envelope.frequency_diagnostic.threshold_note is not None
+    assert "tuned for 24h" in envelope.frequency_diagnostic.threshold_note
+    assert "6h" in envelope.frequency_diagnostic.threshold_note
+
+
+def test_t11c_threshold_note_null_at_default_24h_window(tmp_path):
+    """T11c: threshold_note stays null at the default 24h window."""
+    cfg = _make_cfg(tmp_path)
+    brief = _make_brief()
+    with _Patches() as p:
+        p.synthesize_window_mock.return_value = _make_synthesize_result(
+            status="synthesized", brief=brief,
+            brief_path=tmp_path / "briefs" / "fake.json",
+        )
+        envelope = assemble_full_brief(
+            cfg=cfg, no_scrape=True, window_hours=24,
+            now=datetime(2026, 5, 29, 14, 32, 47, tzinfo=timezone.utc),
+        )
+    assert envelope.frequency_diagnostic.threshold_note is None
+
+
+def test_t11_window_hours_threaded_to_synthesize_window(tmp_path):
+    """T11: window_hours flows from assemble_full_brief through to
+    synthesize_window via the kwarg, preserving the Q-2a-ii-2 plumb-through."""
+    cfg = _make_cfg(tmp_path)
+    brief = _make_brief()
+    with _Patches() as p:
+        p.synthesize_window_mock.return_value = _make_synthesize_result(
+            status="synthesized", brief=brief,
+            brief_path=tmp_path / "briefs" / "fake.json",
+        )
+        assemble_full_brief(
+            cfg=cfg, no_scrape=True, window_hours=6,
+            now=datetime(2026, 5, 29, 14, 32, 47, tzinfo=timezone.utc),
+        )
+        called_kwargs = p.synthesize_window_mock.call_args.kwargs
+        assert called_kwargs["window_hours"] == 6
+
+
+def test_t16_theses_blind_warning_surfaces_in_theme_synthesis(tmp_path):
+    """T16: when NEWS_WATCH_THESES_PATH is unset (the synthesis_metadata
+    carries the warning text), the orchestrator surfaces it in
+    theme_synthesis.theses_doc_warning at the top of that section."""
+    cfg = _make_cfg(tmp_path)
+    # Brief comes with theses_doc_available=False + theses_doc_warning set
+    brief = _make_brief()
+    assert brief.synthesis_metadata.theses_doc_warning  # sanity: warning set
+    with _Patches() as p:
+        p.synthesize_window_mock.return_value = _make_synthesize_result(
+            status="synthesized", brief=brief,
+            brief_path=tmp_path / "briefs" / "fake.json",
+        )
+        envelope = assemble_full_brief(
+            cfg=cfg, no_scrape=True,
+            now=datetime(2026, 5, 29, 14, 32, 47, tzinfo=timezone.utc),
+        )
+    assert envelope.theme_synthesis.theses_doc_warning is not None
+    assert "NEWS_WATCH_THESES_PATH" in envelope.theme_synthesis.theses_doc_warning
+    assert envelope.theme_synthesis.theses_doc_available is False
+
+
 def test_count_terms_re_run_uses_scrape_attention_window_when_available(tmp_path):
     """Check 3 alignment pin: when scrape's auto-attention succeeded, the
     orchestrator's count_terms re-run for the near-miss table MUST use

@@ -44,6 +44,7 @@ from typing import Any, Callable
 
 from ..alert.sink import AlertSink
 from ..attention.brief_schema import AttentionBrief
+from ..attention.cluster import cluster_for_term
 from ..attention.counter import count_terms
 from ..attention.orchestrator import run_attention_cycle
 from ..attention.stopwords import StopwordsError, load_stopwords
@@ -99,6 +100,32 @@ _FREQ_DIAGNOSTIC_NOTE = (
     "Near-miss table surfaces dominant-but-non-novel terms. High "
     "delta_ratio with elevated prior may indicate sustained-attention "
     "signal (term has been dominant across multiple cycles)."
+)
+# Adjustment 2 (2026-05-29): threshold_note populated when window_hours != 24
+# so programmatic consumers know Pass E thresholds (absolute counts tuned for
+# 24h) may produce different crossing densities at non-default windows. Stage
+# 2a-ii-B plumb-through.
+_THRESHOLD_NOTE_TEMPLATE = (
+    "Pass E thresholds are tuned for 24h windows; non-24h windows may "
+    "produce fewer or more crossings than expected. Window for this brief: "
+    "{window_hours}h. Review the near-miss table for signal."
+)
+
+# Cross-language Pass F threshold per Adjustment 5: a crossing is "enabled
+# by Pass F" when STRICTLY MORE THAN this fraction of its cluster rows are
+# translated (language != 'en'). 0.50 = "majority translated".
+_PASS_F_ENABLED_THRESHOLD = 0.50
+
+# Used ONLY in the orchestrator's exception-handler fallback path when
+# _build_pass_f_footprint raises mid-query (DB connection failure, etc.).
+# Real metric computation always returns from _build_pass_f_footprint directly.
+# This constant exists to make the fallback semantically distinct from a
+# successful zero-result (e.g., a quiet window with zero translated rows
+# legitimately producing zeros — distinguishable by pass_failures entry).
+_PASS_F_FOOTPRINT_UNAVAILABLE = PassFFootprint(
+    translated_rows_in_window=0,
+    cross_language_event_merges=0,
+    attention_crossings_enabled_by_pass_f=[],
 )
 
 
@@ -608,13 +635,22 @@ def _build_frequency_diagnostic(
     threshold_note is stubbed to None in Stage 2a-ii-A; Stage 2a-ii-B
     populates it when window_hours != 24 per Adjustment 2.
     """
+    # Adjustment 2 (Stage 2a-ii-B): threshold_note populated when window_hours
+    # != 24 so programmatic consumers know Pass E's absolute thresholds are
+    # tuned for 24h. Null at default window keeps the field absent from
+    # render output in the dominant case.
+    threshold_note: str | None = (
+        None if window_hours == 24
+        else _THRESHOLD_NOTE_TEMPLATE.format(window_hours=window_hours)
+    )
+
     try:
         stopwords = load_stopwords(cfg.stopwords_path)
     except StopwordsError as exc:
         return (
             StepHealth(status="failed", reason=f"stopwords load failed: {exc}"),
             FrequencyDiagnosticSection(
-                threshold_note=None,
+                threshold_note=threshold_note,
                 crossings=[],
                 near_misses=[],
                 diagnostic_note=_FREQ_DIAGNOSTIC_NOTE,
@@ -632,7 +668,7 @@ def _build_frequency_diagnostic(
         return (
             StepHealth(status="failed", reason=f"count_terms failed: {exc}"),
             FrequencyDiagnosticSection(
-                threshold_note=None,
+                threshold_note=threshold_note,
                 crossings=[],
                 near_misses=[],
                 diagnostic_note=_FREQ_DIAGNOSTIC_NOTE,
@@ -673,7 +709,7 @@ def _build_frequency_diagnostic(
     return (
         StepHealth(status="ok"),
         FrequencyDiagnosticSection(
-            threshold_note=None,  # Stage 2a-ii-B populates per Adjustment 2
+            threshold_note=threshold_note,
             crossings=crossings_rows,
             near_misses=near_misses_rows,
             diagnostic_note=_FREQ_DIAGNOSTIC_NOTE,
@@ -684,6 +720,201 @@ def _build_frequency_diagnostic(
 # ---------------------------------------------------------------------------
 # Step 7 helper — executive summary
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Pass F footprint computation (Stage 2a-ii-B, 2026-05-29)
+#
+# All three metrics are DB-queried per Mando's Q-2a-ii-1 resolution: re-query
+# at orchestrator time, leaves stay pure-logic, DB access lives at the
+# orchestrator. Heuristic-by-source-name approach was rejected because the
+# metric's value lives in matching its definition, not in shortcuts that
+# silently under-report when the source registry grows.
+#
+# WINDOW-ALIGNMENT DISCIPLINE (per Check 3 doctrine, 2026-05-29):
+# All three helpers receive `canonical_now_unix` from the orchestrator's
+# Step 6 alignment computation. They never compute their own now_unix.
+# This guarantees the orchestrator's pass_f_footprint sees the SAME row-set
+# Step 6's count_terms saw — preventing the subtle drift-across-windows
+# bug Check 3 surfaced.
+# ---------------------------------------------------------------------------
+
+
+def _compute_translated_rows_in_window(
+    conn: sqlite3.Connection,
+    *,
+    window_since_unix: int,
+    window_until_unix: int,
+) -> int:
+    """Single COUNT query — translated_rows_in_window metric."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM headlines "
+        "WHERE published_at_unix >= ? AND published_at_unix <= ? "
+        "AND language != 'en' AND headline_en IS NOT NULL",
+        (window_since_unix, window_until_unix),
+    ).fetchone()[0]
+
+
+def _compute_cross_language_event_merges(
+    conn: sqlite3.Connection,
+    *,
+    pass_c_brief: Any | None,
+) -> tuple[int, int | None]:
+    """Cross-language event merge count + url_match_warnings audit signal.
+
+    For each Pass C event, batch-query the language of its source_headlines
+    URLs. An event is "cross-language merged" iff its URLs include at least
+    one row with language='en' AND at least one with language!='en'.
+
+    Returns (event_merge_count, url_match_warnings):
+      - event_merge_count: number of qualifying events
+      - url_match_warnings: count of source_headline URLs that didn't match
+        any DB row. None when all URLs matched (the expected case per
+        Mando's Q-2a-ii-B-2 reasoning); non-null indicates URL drift
+        (prompt change, model update, edge content). Defensive audit
+        signal per Mando's Stage 2a-ii-B refinement — preserves visibility
+        when Sonnet's URL reproduction discipline fails.
+    """
+    if pass_c_brief is None or not pass_c_brief.events:
+        return (0, None)
+
+    # Collect every (event_idx, url) pair from source_headlines.
+    event_urls: list[tuple[int, str]] = []
+    for evt_idx, evt in enumerate(pass_c_brief.events):
+        for sh in evt.source_headlines:
+            if sh.url:
+                event_urls.append((evt_idx, sh.url))
+
+    if not event_urls:
+        return (0, None)
+
+    # Batch-query language for all URLs at once.
+    distinct_urls = sorted({u for _, u in event_urls})
+    placeholders = ",".join("?" * len(distinct_urls))
+    rows = conn.execute(
+        f"SELECT url, language FROM headlines WHERE url IN ({placeholders})",
+        distinct_urls,
+    ).fetchall()
+    language_by_url: dict[str, str] = {r[0]: r[1] for r in rows}
+
+    # url_match_warnings: how many input URLs are NOT in the DB?
+    unmatched_count = sum(
+        1 for u in distinct_urls if u not in language_by_url
+    )
+    warnings: int | None = unmatched_count if unmatched_count > 0 else None
+
+    # For each event, classify its URLs' languages.
+    events_in_scope: dict[int, dict[str, bool]] = {}
+    for evt_idx, url in event_urls:
+        lang = language_by_url.get(url)
+        if lang is None:
+            continue   # URL didn't match a DB row — counted in warnings already
+        flags = events_in_scope.setdefault(evt_idx, {"has_en": False, "has_non_en": False})
+        if lang == "en":
+            flags["has_en"] = True
+        else:
+            flags["has_non_en"] = True
+
+    merge_count = sum(
+        1 for flags in events_in_scope.values()
+        if flags["has_en"] and flags["has_non_en"]
+    )
+    return (merge_count, warnings)
+
+
+def _compute_attention_crossings_enabled_by_pass_f(
+    conn: sqlite3.Connection,
+    *,
+    attention_briefs: list[AttentionBrief],
+    canonical_now_unix: int,
+    window_hours: int,
+) -> list[str]:
+    """List of crossing terms where >50% of the cluster rows are translated.
+
+    Re-derives the cluster via attention.cluster.cluster_for_term() — same
+    Stage 1 helper the original attention pass used. Window-alignment
+    discipline: uses canonical_now_unix (NOT time.time()) so the cluster
+    re-derivation sees the same row-set the original cluster saw.
+
+    For each crossing's cluster, batch-query language for the cluster's
+    headline_ids. Count rows with language != 'en'. If translated/total
+    > _PASS_F_ENABLED_THRESHOLD (0.50), the crossing is enabled-by-Pass-F.
+
+    Returns the enabled terms in the SAME ORDER as attention_briefs (input
+    order preserved for deterministic envelope output — same iteration-order
+    discipline as convergence).
+    """
+    if not attention_briefs:
+        return []
+
+    window_since_unix = canonical_now_unix - window_hours * 3600
+    enabled: list[str] = []
+
+    for ab in attention_briefs:
+        cluster = cluster_for_term(
+            conn,
+            term=ab.triggering_term,
+            window_since_unix=window_since_unix,
+            window_until_unix=canonical_now_unix,
+        )
+        if not cluster:
+            continue
+
+        ids = [c.headline_id for c in cluster]
+        placeholders = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"SELECT headline_id, language FROM headlines "
+            f"WHERE headline_id IN ({placeholders})",
+            ids,
+        ).fetchall()
+        language_by_id: dict[str, str] = {r[0]: r[1] for r in rows}
+
+        translated_count = sum(
+            1 for ch in cluster
+            if language_by_id.get(ch.headline_id, "en") != "en"
+        )
+        if translated_count / len(cluster) > _PASS_F_ENABLED_THRESHOLD:
+            enabled.append(ab.triggering_term)
+
+    return enabled
+
+
+def _build_pass_f_footprint(
+    conn: sqlite3.Connection,
+    *,
+    pass_c_brief: Any | None,
+    attention_briefs: list[AttentionBrief],
+    canonical_now_unix: int,
+    window_hours: int,
+) -> PassFFootprint:
+    """Compose the three metrics + url_match_warnings into PassFFootprint.
+
+    All three sub-computations use canonical_now_unix per the
+    window-alignment discipline (Check 3 doctrine).
+    """
+    window_since_unix = canonical_now_unix - window_hours * 3600
+
+    translated = _compute_translated_rows_in_window(
+        conn,
+        window_since_unix=window_since_unix,
+        window_until_unix=canonical_now_unix,
+    )
+    merges, url_warnings = _compute_cross_language_event_merges(
+        conn, pass_c_brief=pass_c_brief,
+    )
+    enabled = _compute_attention_crossings_enabled_by_pass_f(
+        conn,
+        attention_briefs=attention_briefs,
+        canonical_now_unix=canonical_now_unix,
+        window_hours=window_hours,
+    )
+
+    return PassFFootprint(
+        translated_rows_in_window=translated,
+        cross_language_event_merges=merges,
+        attention_crossings_enabled_by_pass_f=enabled,
+        url_match_warnings=url_warnings,
+    )
 
 
 def _build_executive_summary(
@@ -844,34 +1075,43 @@ def assemble_full_brief(
         )
         convergence_health = StepHealth(status="ok")
 
-        # Step 6: Frequency diagnostic.
+        # Canonical timestamp for Steps 6 + 7's DB-queried metrics
+        # (Window-alignment discipline, Check 3 doctrine).
         #
-        # Window-alignment discipline (Check 3 finding, 2026-05-29):
         # scrape's auto-attention computed its own now_unix when its
         # callback fired (T0+Δ where Δ = scrape duration). count_terms
-        # there used window [T0+Δ-24h, T0+Δ]. If the orchestrator's
-        # count_terms re-run used the orchestrator's own now_unix (T0),
-        # the two windows would drift by Δ — and a term with exactly
-        # COLD_START_WINDOW_MIN mentions at one boundary but one fewer
-        # at the other would cross in scrape's view but appear in the
-        # orchestrator's near-miss table, contradicting itself.
+        # there used window [T0+Δ-24h, T0+Δ]. If the orchestrator used
+        # its own now_unix (T0) for the count_terms re-run AND for the
+        # pass_f_footprint DB queries, the two windows would drift by Δ
+        # — and a term with exactly COLD_START_WINDOW_MIN mentions at
+        # one boundary but one fewer at the other would cross in scrape's
+        # view but appear in the orchestrator's near-miss table,
+        # contradicting itself. Same drift applies to cluster
+        # re-derivation in pass_f_footprint.
         #
-        # Fix: align the orchestrator's count_terms re-run to scrape's
-        # attention window when scrape ran successfully. The attention
-        # outcome dict carries window_until_unix from scrape's count_terms;
-        # reuse it so the orchestrator sees the SAME row-set scrape did.
-        # When scrape didn't run (no_scrape=True or scrape_failed), fall
-        # back to the orchestrator's now_unix.
+        # Fix: compute canonical_now_unix ONCE and thread it to ALL
+        # downstream DB queries. When scrape ran successfully, use
+        # attention's window_until_unix. When scrape didn't run
+        # (no_scrape or scrape_failed), fall back to orchestrator's
+        # now_unix.
+        #
+        # Stage 2a-ii-B note: this canonical value flows to BOTH
+        # _build_frequency_diagnostic (Step 6 count_terms) AND
+        # _build_pass_f_footprint (Step 7 cluster_for_term + headline
+        # language lookups). All four DB queries that depend on a
+        # window route through the same timestamp — uniform alignment.
         if (
             attention_outcome is not None
             and attention_outcome.get("status") == "ok"
             and "window_until_unix" in attention_outcome
         ):
-            diagnostic_now_unix = int(attention_outcome["window_until_unix"])
+            canonical_now_unix = int(attention_outcome["window_until_unix"])
         else:
-            diagnostic_now_unix = now_unix
+            canonical_now_unix = now_unix
+
+        # Step 6: Frequency diagnostic.
         freq_health, freq_diagnostic = _build_frequency_diagnostic(
-            conn, diagnostic_now_unix, window_hours, cfg,
+            conn, canonical_now_unix, window_hours, cfg,
             attention_briefs, crossings,
         )
         if freq_health.status == "failed":
@@ -882,12 +1122,27 @@ def assemble_full_brief(
             ))
 
         # Step 7: Envelope assembly.
-        # pass_f_footprint stubbed for Stage 2a-ii-A; 2a-ii-B populates.
-        pass_f_footprint = PassFFootprint(
-            translated_rows_in_window=0,
-            cross_language_event_merges=0,
-            attention_crossings_enabled_by_pass_f=[],
-        )
+        # Stage 2a-ii-B: pass_f_footprint populated via DB queries with
+        # window-alignment discipline (same canonical_now_unix as Step 6).
+        try:
+            pass_f_footprint = _build_pass_f_footprint(
+                conn,
+                pass_c_brief=pass_c_brief,
+                attention_briefs=attention_briefs,
+                canonical_now_unix=canonical_now_unix,
+                window_hours=window_hours,
+            )
+        except Exception as exc:  # noqa: BLE001 — DB query failure surfaces here
+            _LOG.warning("pass_f_footprint computation failed: %s", exc)
+            pass_failures.append(PassFailure(
+                step="pass_f_footprint",
+                reason=f"DB query failure: {exc}",
+                recovered=True,
+            ))
+            # _PASS_F_FOOTPRINT_UNAVAILABLE makes the degraded-path nature
+            # semantically distinct from a legitimate-zero result. Consumers
+            # checking pass_failures can discriminate the two.
+            pass_f_footprint = _PASS_F_FOOTPRINT_UNAVAILABLE
 
         # Cost envelope — uses metadata even on archive_failed (Stage 1
         # closing flag discipline).
