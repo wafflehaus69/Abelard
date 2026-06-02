@@ -85,6 +85,10 @@ from .synthesize.synthesize import (
     synthesize_brief,
     synthesize_window,
 )
+# Full Brief Stage 2b-ii: orchestrator + render for the full-brief subcommand.
+from .fullbrief.brief import FullBriefEnvelope
+from .fullbrief.orchestrator import assemble_full_brief
+from .fullbrief.render import render_full_brief
 from .synthesize.llm_client import SynthesisLLMError
 from .synthesize.trigger import TriggerHeadline, evaluate_gate
 from .synthesize.trigger_log import read_last_n as read_trigger_log_last_n
@@ -162,6 +166,51 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "When zero terms cross threshold, surface this many near-miss "
             "candidates with their counts. Default 5."
+        ),
+    )
+
+    # ---- full-brief (Stage 2b, Full Brief composition) ----
+
+    p_fb = top.add_parser(
+        "full-brief",
+        help=(
+            "Assemble a Full Brief composing Pass C theme-event synthesis + "
+            "Pass E ATTENTION sweep + convergence + frequency diagnostic + "
+            "Pass F footprint + cost telemetry. Writes artifact to disk; "
+            "renders human-readable to stdout by default."
+        ),
+    )
+    p_fb.add_argument(
+        "--window-hours", type=int, default=24,
+        help=(
+            "Hours back to scan for Pass C + Pass E (1..168). Default 24. "
+            "At non-24 values the FREQUENCY DIAGNOSTIC section surfaces a "
+            "threshold-tuning warning per Adjustment 2."
+        ),
+    )
+    p_fb.add_argument(
+        "--no-scrape", action="store_true",
+        help=(
+            "Skip the scrape step; run Pass C + Pass E against existing DB "
+            "state. Default: scrape first. Useful for testing + re-running "
+            "analysis on the same window."
+        ),
+    )
+    # --quiet and --json-only are mutually exclusive per Q7 resolution.
+    _fb_output_group = p_fb.add_mutually_exclusive_group()
+    _fb_output_group.add_argument(
+        "--quiet", action="store_true",
+        help=(
+            "Suppress human-readable stdout rendering; only write the JSON "
+            "artifact to disk. Mutually exclusive with --json-only."
+        ),
+    )
+    _fb_output_group.add_argument(
+        "--json-only", action="store_true",
+        help=(
+            "Print the JSON artifact to stdout instead of human-readable "
+            "rendering. For downstream tooling consumption. Mutually "
+            "exclusive with --quiet."
         ),
     )
 
@@ -1853,6 +1902,108 @@ HANDLERS: dict[str, Handler] = {
 }
 
 
+# ---------- full-brief subcommand (Stage 2b-ii, 2026-05-29) -----------
+#
+# full-brief has different output semantics than other handlers:
+#   - Default: render human-readable text to stdout
+#   - --json-only: print JSON envelope to stdout
+#   - --quiet: no stdout output (artifact write is the only side effect)
+# Plus a third exit code (2) for primary-path failures per spec Section 3.
+#
+# Because of these unique semantics, full-brief bypasses the standard
+# dispatch -> _emit_envelope -> 0/1-exit pipeline. main() special-cases it
+# below.
+
+
+def _compute_full_brief_exit_code(envelope: "FullBriefEnvelope") -> int:
+    """Map FullBriefEnvelope state to exit code per spec Section 3.
+
+    Per Mando's Stage 2b-ii forward-guidance:
+      0 - Full Brief assembled successfully. pass_failures may be non-empty
+          but only for SECONDARY metric failures (pass_f_footprint,
+          frequency_diagnostic). The brief is healthy enough for normal
+          consumption.
+      2 - Brief assembled but a PRIMARY analytical path failed
+          (scrape, Pass C, or Pass E). Scripted consumers should notice;
+          downstream automation may want to skip the brief or alert.
+
+    Exit 1 is reserved for infrastructure errors (config invalid, DB
+    unreachable, can't construct envelope at all) and handled separately
+    in the caller — never reached from this function.
+
+    Convergence + frequency_diagnostic step failures don't trigger exit 2:
+    convergence is total-over-valid-inputs per Stage 1 doctrine, and
+    frequency_diagnostic failure means "Pass F footprint metric
+    unavailable" which is a secondary concern — operator sees the
+    pass_failures footnote.
+    """
+    health = envelope.envelope_health
+    if health.scrape.status == "failed":
+        return 2
+    if health.pass_c.status == "failed":
+        return 2
+    if health.pass_e.status == "failed":
+        return 2
+    return 0
+
+
+def _handle_full_brief(args: argparse.Namespace, cfg: Config) -> int:
+    """Handle the `full-brief` subcommand. Returns exit code directly.
+
+    Writes output to stdout per flag combinations:
+      Default (no flags): render_full_brief(envelope) -> stdout
+      --json-only: envelope.model_dump_json(indent=2) -> stdout
+      --quiet: no stdout output
+
+    Returns:
+      0 — Full Brief assembled successfully (per _compute_full_brief_exit_code)
+      1 — Unrecoverable error: assemble_full_brief raised, or the artifact
+          write failed BEYOND the orchestrator's internal handling
+      2 — Brief assembled with a primary-path failure (per spec Section 3)
+    """
+    raw_window_hours = args.window_hours
+    window_hours = max(1, min(168, raw_window_hours))
+    if window_hours != raw_window_hours:
+        sys.stderr.write(
+            f"window_hours clamped to {window_hours} (was {raw_window_hours}, "
+            "bounds [1, 168])\n"
+        )
+        sys.stderr.flush()
+    try:
+        envelope = assemble_full_brief(
+            cfg=cfg,
+            window_hours=window_hours,
+            no_scrape=args.no_scrape,
+            sink_factory=None,   # spec § 13: Full Brief doesn't dispatch in v1
+        )
+    except Exception as exc:  # noqa: BLE001 — CLI boundary, last-resort catch
+        _log = logging.getLogger("news_watch_daemon.cli")
+        _log.exception("full-brief assembly raised an unrecoverable error")
+        sys.stderr.write(f"ERROR: Full Brief assembly failed: {exc}\n")
+        sys.stderr.flush()
+        return 1
+
+    # Output per flag combinations.
+    if args.json_only:
+        json.dump(
+            envelope.model_dump(mode="json"),
+            sys.stdout, indent=2, ensure_ascii=False, default=str,
+        )
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    elif args.quiet:
+        # No stdout output. Artifact write inside assemble_full_brief is
+        # the only side effect.
+        pass
+    else:
+        # Default: human-readable rendering to stdout.
+        sys.stdout.write(render_full_brief(envelope))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    return _compute_full_brief_exit_code(envelope)
+
+
 def dispatch(args: argparse.Namespace, *, cfg: Config) -> dict[str, Any]:
     leaf = command_path(args)
     handler = HANDLERS.get(leaf)
@@ -1898,6 +2049,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         _emit_envelope(envelope)
         return 1
+
+    # full-brief subcommand has unique output semantics (rendered text vs
+    # JSON vs silent) and a third exit code (2) per spec Section 3. Bypass
+    # the standard dispatch -> _emit_envelope -> 0/1 flow.
+    if command_path(args) == "full-brief":
+        try:
+            return _handle_full_brief(args, cfg)
+        except Exception as exc:  # noqa: BLE001 — CLI boundary
+            log.exception("unhandled error in full-brief")
+            sys.stderr.write(f"ERROR: unhandled exception in full-brief: {exc}\n")
+            sys.stderr.flush()
+            return 1
 
     try:
         envelope = dispatch(args, cfg=cfg)

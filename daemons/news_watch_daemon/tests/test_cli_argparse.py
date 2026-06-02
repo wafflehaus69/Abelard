@@ -77,6 +77,9 @@ def test_parser_has_all_top_level_commands():
         # Pass F (2026-05-28): manual translation subcommand. The
         # backfill-translation variant lives under `db` subparser.
         "translate",
+        # Full Brief Stage 2b-ii (2026-05-29): on-demand composite
+        # artifact subcommand.
+        "full-brief",
     }
 
 
