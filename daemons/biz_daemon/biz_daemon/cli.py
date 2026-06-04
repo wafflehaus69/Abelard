@@ -22,6 +22,7 @@ from typing import Any
 from . import __version__, blacklist
 from .config import Config, ConfigError, configure_logging, resolve_blacklist_path
 from .orchestrator import run_scrape
+from .tableview import render_table
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version", action="version", version=f"biz-daemon {__version__}"
     )
+
+    # Output format for the scrape path. JSON (the data contract) is the
+    # default; --table renders the SAME object as a human-readable table.
+    out_group = parser.add_mutually_exclusive_group()
+    out_group.add_argument(
+        "--json", action="store_const", dest="output", const="json",
+        help="emit the JSON output contract (default)",
+    )
+    out_group.add_argument(
+        "--table", action="store_const", dest="output", const="table",
+        help="render the same output object as a human-readable table",
+    )
+    parser.set_defaults(output="json")
 
     sub = parser.add_subparsers(dest="command")
     bl = sub.add_parser(
@@ -95,12 +109,30 @@ def _emit(payload: dict[str, Any]) -> None:
     sys.stdout.flush()
 
 
+def _output(payload: dict[str, Any], mode: str) -> None:
+    """Render the scrape payload as JSON (the contract) or a text table."""
+    if mode == "table":
+        sys.stdout.write(render_table(payload))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    else:
+        _emit(payload)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
     log = logging.getLogger("biz_daemon.cli")
+
+    # The table view uses a couple of non-ASCII glyphs; keep stdout from
+    # crashing on a legacy code page (e.g. Windows cp1252).
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
 
     # Denylist maintenance is pure file editing — no config, no key, no scrape.
     if args.command == "blacklist":
@@ -116,14 +148,15 @@ def main(argv: list[str] | None = None) -> int:
         configure_logging(cfg)
     except ConfigError as exc:
         log.error("configuration error: %s", exc)
-        _emit(
+        _output(
             {
                 "scrape_ts": None,
                 "threads": [],
                 "tickers": [],
                 "cost": {"haiku_calls": 0, "input_tokens": 0, "output_tokens": 0},
                 "errors": [f"config: {exc}"],
-            }
+            },
+            args.output,
         )
         return 1
 
@@ -131,18 +164,19 @@ def main(argv: list[str] | None = None) -> int:
         payload = run_scrape(cfg)
     except Exception as exc:  # never crash without structured output
         log.exception("unhandled error during scrape")
-        _emit(
+        _output(
             {
                 "scrape_ts": None,
                 "threads": [],
                 "tickers": [],
                 "cost": {"haiku_calls": 0, "input_tokens": 0, "output_tokens": 0},
                 "errors": [f"unhandled: {exc}"],
-            }
+            },
+            args.output,
         )
         return 1
 
-    _emit(payload)
+    _output(payload, args.output)
     return 0 if not payload.get("errors") else 1
 
 
