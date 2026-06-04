@@ -1,0 +1,90 @@
+# /biz/ slang blacklist — the Pass-E-stopword analog.
+#
+# Tokens here are rejected as BARE-token ticker candidates because they
+# collide with real US symbols but, on /biz/, almost always mean the slang.
+# An explicit $CASHTAG bypasses this list (a user writing $ALL means
+# Allstate, not "all").
+#
+# This list is meant to grow after live scrapes — add observed false
+# positives below. One token per line, uppercase. Blank lines and #comments
+# are ignored.
+
+# --- sentiment / hype slang ---
+FUD
+FOMO
+YOLO
+REKT
+WAGMI
+NGMI
+HODL
+PND
+PND
+DCA
+
+# --- due-diligence / analysis shorthand ---
+DD
+DYOR
+NFA
+ATH
+ATL
+ITM
+OTM
+EPS
+
+# --- market / instrument shorthand ---
+IPO
+ETF
+QE
+QT
+
+# --- corporate / regulator acronyms ---
+CEO
+CFO
+SEC
+FED
+FOMC
+
+# --- macro prints ---
+CPI
+PPI
+GDP
+
+# --- chat / forum filler ---
+IMO
+IMHO
+OP
+TLDR
+GM
+GN
+FYI
+AH
+PR
+EOD
+
+# --- geos / currencies ---
+USA
+USD
+EU
+UK
+
+# --- generic English / two-letter noise ---
+AI
+IT
+ON
+ALL
+GO
+OR
+BE
+AM
+PM
+
+# --- added via CLI ---
+WTF
+ROPE
+NASA
+ELSE
+AKA
+DOW
+BEAT
+FLAG
+HAIL
