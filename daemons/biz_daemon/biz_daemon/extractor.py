@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Iterable
 
 # Capture keeps class-share symbols (MOG.A) intact; the tokenizer does not
@@ -51,6 +52,62 @@ class TickerHits:
         return len(self.post_ids)
 
 
+@dataclass(frozen=True)
+class NameResolver:
+    """Resolves S&P 500 company names in prose to tickers (whole-word, ci).
+
+    A name only resolves if its ticker is in the universe — consistency with
+    the symbol/bare validation. Folding the resolved ticker into the same
+    per-post set means "Nvidia" and "NVDA" in one post count once.
+    """
+
+    pattern: "re.Pattern[str]"
+    mapping: dict[str, str]
+
+    def tickers_in(self, text: str, universe: frozenset[str] | set[str]) -> set[str]:
+        out: set[str] = set()
+        if not text:
+            return out
+        for match in self.pattern.finditer(text):
+            ticker = self.mapping.get(match.group(0).lower())
+            if ticker and ticker in universe:
+                out.add(ticker)
+        return out
+
+
+def load_name_map(path: Path) -> dict[str, str]:
+    """Load the `name<TAB or ws>TICKER` map. Name lowercased, ticker uppercased.
+
+    The ticker is the final whitespace-delimited token, so multi-word names
+    (`home depot HD`) parse correctly. Blank lines and #comments ignored.
+    """
+    mapping: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = stripped.rsplit(None, 1)  # split on the last whitespace run
+        if len(parts) != 2:
+            continue
+        name, ticker = parts[0].strip().lower(), parts[1].strip().upper()
+        if name and ticker:
+            mapping[name] = ticker
+    return mapping
+
+
+def build_name_resolver(mapping: dict[str, str]) -> NameResolver | None:
+    """Compile a whole-word, case-insensitive resolver from a name map."""
+    if not mapping:
+        return None
+    # Longest names first so multi-word names win over any shorter prefix.
+    names = sorted(mapping.keys(), key=len, reverse=True)
+    pattern = re.compile(
+        r"\b(?:" + "|".join(re.escape(n) for n in names) + r")\b",
+        re.IGNORECASE,
+    )
+    return NameResolver(pattern=pattern, mapping=mapping)
+
+
 def _letter_len(sym: str) -> int:
     """Letter count, ignoring the class-share dot (MOG.A -> 4)."""
     return len(sym.replace(".", ""))
@@ -63,12 +120,15 @@ def tickers_in_post(
     blacklist: frozenset[str] | set[str],
     common_words: frozenset[str] | set[str] = _EMPTY,
     allowlist: frozenset[str] | set[str] = _EMPTY,
+    name_resolver: NameResolver | None = None,
 ) -> set[str]:
     """Return the set of valid tickers mentioned in one post's cleaned text.
 
     `blacklist` is the /biz/-slang denylist; `common_words` is the lowercased
     common-English-word set; `allowlist` is the uppercase set of real tickers
     that collide with common words (overrides the wordlist rule only).
+    `name_resolver` additionally resolves S&P 500 company names in prose; its
+    hits fold into the same per-post set, so a name + its symbol count once.
     """
     found: set[str] = set()
 
@@ -97,6 +157,10 @@ def tickers_in_post(
             continue
         found.add(sym)
 
+    # Name resolution — additive; resolver already gates on the universe.
+    if name_resolver is not None:
+        found |= name_resolver.tickers_in(com, universe)
+
     return found
 
 
@@ -107,6 +171,7 @@ def extract(
     blacklist: frozenset[str] | set[str],
     common_words: frozenset[str] | set[str] = _EMPTY,
     allowlist: frozenset[str] | set[str] = _EMPTY,
+    name_resolver: NameResolver | None = None,
 ) -> dict[str, TickerHits]:
     """Build the per-scrape frequency table over all validated tickers.
 
@@ -122,6 +187,7 @@ def extract(
             blacklist=blacklist,
             common_words=common_words,
             allowlist=allowlist,
+            name_resolver=name_resolver,
         ):
             table.setdefault(sym, TickerHits(ticker=sym)).post_ids.add(post_no)
     return table

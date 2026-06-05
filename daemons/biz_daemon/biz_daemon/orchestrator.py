@@ -83,26 +83,41 @@ def run_scrape(
         if universe_result.warning:
             errors.append(universe_result.warning)
 
-        # 4. Extract (four-layer bare-token filter).
+        # 4. Extract (four-layer bare-token filter + S&P 500 name resolution).
         blacklist = load_blacklist(cfg.blacklist_path)
         common_words = load_common_words(cfg.common_words_path)
+        name_resolver = None
+        try:
+            name_resolver = extractor.build_name_resolver(
+                extractor.load_name_map(cfg.sp500_names_path)
+            )
+        except Exception as exc:  # missing/broken map: degrade, don't crash
+            _log.warning("name map unavailable, skipping name resolution: %s", exc)
+            errors.append(f"ticker_universe: name map unavailable ({exc})")
         table = extractor.extract(
             all_posts,
             universe=universe_result.symbols,
             blacklist=blacklist,
             common_words=common_words,
             allowlist=cfg.word_ticker_allowlist,
+            name_resolver=name_resolver,
         )
 
-        # 5. Rank + attention flag.
+        # 5. Rank. The ATTENTION flag (●) is keyed to N; sentiment eligibility
+        #    is decoupled and runs at a lower floor.
         attention_tickers = {
             t for t, hits in table.items() if hits.mention_count >= cfg.attention_n
         }
+        sentiment_tickers = {
+            t
+            for t, hits in table.items()
+            if hits.mention_count >= cfg.sentiment_min_mentions
+        }
 
-        # 6. Sentiment on attention tier only.
+        # 6. Sentiment on the sentiment-eligible set (mentions >= floor).
         cost = sentiment.Cost()
         reads: dict[str, dict[str, Any]] = {}
-        if attention_tickers:
+        if sentiment_tickers:
             client = anthropic_client
             if client is None:
                 try:
@@ -110,12 +125,12 @@ def run_scrape(
                 except sentiment.SentimentError as exc:
                     msg = f"sentiment: {exc}"
                     errors.append(msg)
-                    for t in attention_tickers:
+                    for t in sentiment_tickers:
                         reads[t] = {"error": str(exc)}
                     client = None
             if client is not None:
                 outcome = sentiment.run_sentiment(
-                    attention_tickers=attention_tickers,
+                    attention_tickers=sentiment_tickers,
                     table=table,
                     posts_by_no=posts_by_no,
                     client=client,
@@ -133,6 +148,7 @@ def run_scrape(
             threads=threads,
             table=table,
             attention_tickers=attention_tickers,
+            sentiment_tickers=sentiment_tickers,
             reads=reads,
             cost=cost,
             errors=errors,
@@ -152,6 +168,7 @@ def _assemble(
     threads: list[fourchan_client.Thread],
     table: dict[str, extractor.TickerHits],
     attention_tickers: set[str],
+    sentiment_tickers: set[str],
     reads: dict[str, dict[str, Any]],
     cost: sentiment.Cost,
     errors: list[str],
@@ -162,7 +179,11 @@ def _assemble(
     tickers_out: list[dict[str, Any]] = []
     for hits in ranked:
         attention = hits.ticker in attention_tickers
-        sentiment_block = reads.get(hits.ticker) if attention else None
+        # sentiment is decoupled from attention: any ticker at/above the
+        # sentiment floor carries a read, even when attention=false.
+        sentiment_block = (
+            reads.get(hits.ticker) if hits.ticker in sentiment_tickers else None
+        )
         tickers_out.append(
             {
                 "ticker": hits.ticker,
@@ -227,6 +248,7 @@ def _finalize_error(
         threads=[],
         table={},
         attention_tickers=set(),
+        sentiment_tickers=set(),
         reads={},
         cost=cost,
         errors=errors,

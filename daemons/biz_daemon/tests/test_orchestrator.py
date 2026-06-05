@@ -164,6 +164,50 @@ def test_no_smg_thread_state_propagates(cfg, conn):
     assert row is not None
 
 
+_THREAD_FLOOR = {"posts": [
+    {"no": 100, "sub": "/smg/ - Stock Market General", "com": "GME bull"},
+    {"no": 101, "com": "GME"},
+    {"no": 102, "com": "GME"},
+    {"no": 103, "com": "GME"},
+    {"no": 104, "com": "GME"},   # GME x5 -> attention + sentiment
+    {"no": 105, "com": "AMD"},
+    {"no": 106, "com": "AMD"},
+    {"no": 107, "com": "AMD"},   # AMD x3 -> sentiment, NOT attention
+    {"no": 108, "com": "NTR"},
+    {"no": 109, "com": "NTR"},   # NTR x2 -> below floor, no sentiment
+]}
+
+
+def test_sentiment_floor_decoupled_from_attention(cfg, conn):
+    _seed_universe(conn)
+    classifications = (
+        [{"post_id": n, "ticker": "GME", "stance": "bullish"} for n in (100, 101, 102, 103, 104)]
+        + [{"post_id": n, "ticker": "AMD", "stance": "bearish"} for n in (105, 106, 107)]
+    )
+    client = FakeAnthropic(classifications)
+    payload = run_scrape(
+        cfg,
+        now=SCRAPE_TS,
+        fetcher=_fetcher([FakeResponse(200, _CATALOG), FakeResponse(200, _THREAD_FLOOR)]),
+        conn=conn,
+        anthropic_client=client,
+    )
+    by_ticker = {t["ticker"]: t for t in payload["tickers"]}
+
+    # GME: 5 mentions -> attention ● AND sentiment
+    assert by_ticker["GME"]["attention"] is True
+    assert by_ticker["GME"]["sentiment"]["read"] == "bullish"
+
+    # AMD: 3 mentions -> sentiment present, attention flag still false
+    assert by_ticker["AMD"]["attention"] is False
+    assert by_ticker["AMD"]["sentiment"] is not None
+    assert by_ticker["AMD"]["sentiment"]["read"] == "bearish"
+
+    # NTR: 2 mentions -> below floor, count-only, sentiment null
+    assert by_ticker["NTR"]["attention"] is False
+    assert by_ticker["NTR"]["sentiment"] is None
+
+
 def test_missing_anthropic_key_yields_structured_error_not_fabrication(cfg, conn):
     _seed_universe(conn)
     cfg_no_key = dataclasses.replace(cfg, anthropic_api_key=None)

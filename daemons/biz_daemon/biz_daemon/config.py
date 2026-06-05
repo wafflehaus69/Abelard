@@ -35,6 +35,11 @@ REDACTED = "***REDACTED***"
 HAIKU_MODEL_ID = "claude-haiku-4-5"
 
 DEFAULT_ATTENTION_N = 5
+# Sentiment runs on any ticker at/above this mention count, decoupled from the
+# ATTENTION flag (which stays at N=5 and only drives the ● marker). A ticker
+# with 3-4 mentions gets a sentiment read but attention=false; <3 stays
+# count-only with sentiment=null.
+DEFAULT_SENTIMENT_MIN_MENTIONS = 3
 DEFAULT_READ_BULL_PCT = 55
 DEFAULT_READ_BEAR_PCT = 55
 
@@ -62,6 +67,10 @@ def _default_blacklist_path() -> Path:
 
 def _default_common_words_path() -> Path:
     return _package_data_dir() / "common_words.txt"
+
+
+def _default_sp500_names_path() -> Path:
+    return _package_data_dir() / "sp500_names.txt"
 
 
 def resolve_blacklist_path() -> Path:
@@ -107,9 +116,11 @@ class Config:
     db_path: Path = field(default_factory=_default_db_path)
     blacklist_path: Path = field(default_factory=_default_blacklist_path)
     common_words_path: Path = field(default_factory=_default_common_words_path)
+    sp500_names_path: Path = field(default_factory=_default_sp500_names_path)
     symbol_fallback_path: Path = field(default_factory=_default_symbol_fallback_path)
     word_ticker_allowlist: frozenset[str] = DEFAULT_WORD_TICKER_ALLOWLIST
     attention_n: int = DEFAULT_ATTENTION_N
+    sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
     read_bull_pct: int = DEFAULT_READ_BULL_PCT
     read_bear_pct: int = DEFAULT_READ_BEAR_PCT
     universe_ttl_s: int = DEFAULT_UNIVERSE_TTL_S
@@ -135,6 +146,9 @@ class Config:
         common_words_path = _env_path(
             "BIZ_DAEMON_COMMON_WORDS", _default_common_words_path()
         )
+        sp500_names_path = _env_path(
+            "BIZ_DAEMON_SP500_NAMES", _default_sp500_names_path()
+        )
         symbol_fallback_path = _env_path(
             "BIZ_DAEMON_SYMBOL_FALLBACK", _default_symbol_fallback_path()
         )
@@ -149,9 +163,13 @@ class Config:
             db_path=db_path,
             blacklist_path=blacklist_path,
             common_words_path=common_words_path,
+            sp500_names_path=sp500_names_path,
             symbol_fallback_path=symbol_fallback_path,
             word_ticker_allowlist=allowlist,
             attention_n=_env_int("BIZ_DAEMON_ATTENTION_N", DEFAULT_ATTENTION_N),
+            sentiment_min_mentions=_env_int(
+                "BIZ_DAEMON_SENTIMENT_MIN", DEFAULT_SENTIMENT_MIN_MENTIONS
+            ),
             read_bull_pct=_env_int("BIZ_DAEMON_READ_BULL_PCT", DEFAULT_READ_BULL_PCT),
             read_bear_pct=_env_int("BIZ_DAEMON_READ_BEAR_PCT", DEFAULT_READ_BEAR_PCT),
         )
