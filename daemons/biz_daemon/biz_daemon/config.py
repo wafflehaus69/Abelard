@@ -30,6 +30,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from abelard_common.errors import DaemonError
+
 # The daemon's .env sits next to pyproject.toml, one level above the package.
 # Resolved from the module location so it loads regardless of cwd.
 _DOTENV_PATH = Path(__file__).resolve().parent.parent / ".env"
@@ -108,20 +110,13 @@ class ConfigError(RuntimeError):
     """Raised when required configuration is missing or invalid."""
 
 
-class BizDaemonError(RuntimeError):
-    """Base for loud, structured daemon failures.
-
-    Carries a `to_error()` rendering so leaf modules can fail loudly and the
-    orchestrator can fold the failure into the `errors` array of the output
-    contract without fabricating data.
-    """
-
-    def __init__(self, message: str, *, stage: str) -> None:
-        super().__init__(message)
-        self.stage = stage
-
-    def to_error(self) -> str:
-        return f"{self.stage}: {self}"
+# BizDaemon's historical structured-error type is now the monorepo-canonical
+# DaemonError (moved to abelard_common.errors). Aliased to the SAME class object
+# so every existing `except BizDaemonError` still catches the moved subclasses
+# (BlacklistError / FourchanError / NoSmgThreadError), which now also root at
+# DaemonError. New daemons subclass DaemonError directly; this alias is
+# BizDaemon's backward-compat, not the pattern new daemons copy.
+BizDaemonError = DaemonError
 
 
 @dataclass(frozen=True)

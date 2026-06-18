@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from biz_daemon import extractor
-from biz_daemon.extractor import tickers_in_post
+from abelard_common import ticker_noise as extractor
+from abelard_common.ticker_noise import tickers_in_post
 
 UNIVERSE = frozenset({"GME", "AMD", "ALL", "ON", "IT", "MOG.A", "T", "NTR"})
 BLACKLIST = frozenset({"FUD", "DD", "ATH", "ALL", "ON", "IT", "GO", "OR"})
@@ -69,7 +69,7 @@ def test_multi_ticker_post_attributes_both():
 
 # --- four-layer filter against the REAL bundled data files -------------------
 
-from biz_daemon import blacklist as _bl  # noqa: E402
+from abelard_common import ticker_noise as _bl  # noqa: E402
 from biz_daemon.config import (  # noqa: E402
     DEFAULT_WORD_TICKER_ALLOWLIST,
     _default_blacklist_path,

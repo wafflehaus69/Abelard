@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from biz_daemon import fourchan_client as fc
-from biz_daemon.fourchan_client import Fetcher, FourchanError, NoSmgThreadError
+from abelard_common import fourchan_fetch as fc
+from abelard_common.fourchan_fetch import Fetcher, FourchanError, NoSmgThreadError
 
 
 class FakeResponse:
@@ -163,7 +163,7 @@ import json as _json  # noqa: E402
 
 import requests as _requests  # noqa: E402
 
-from biz_daemon import extractor as _extractor  # noqa: E402
+from abelard_common import ticker_noise as _extractor  # noqa: E402
 
 
 def _utf8_response(obj, *, status=200, encoding="ISO-8859-1"):

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from biz_daemon import extractor
+from abelard_common import company_aliases, ticker_noise
 from biz_daemon.config import _default_sp500_names_path
 
-NAME_MAP = extractor.load_name_map(_default_sp500_names_path())
-RESOLVER = extractor.build_name_resolver(NAME_MAP)
+NAME_MAP = company_aliases.load_name_map(_default_sp500_names_path())
+RESOLVER = company_aliases.build_name_resolver(NAME_MAP)
 
 UNIVERSE = frozenset(
     {"NVDA", "AMZN", "MSFT", "HD", "JNJ", "KO", "GM", "GPS", "TGT", "AAPL"}
@@ -20,7 +20,7 @@ def _names(text, universe=UNIVERSE):
 
 
 def _extract_one(com, universe=UNIVERSE):
-    return extractor.extract(
+    return ticker_noise.extract(
         [{"no": 1, "com": com}], universe=universe, blacklist=frozenset(),
         name_resolver=RESOLVER,
     )

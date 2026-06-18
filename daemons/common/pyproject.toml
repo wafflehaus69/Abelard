@@ -1,0 +1,16 @@
+[project]
+name = "abelard-common"
+version = "0.1.0"
+description = "Shared mechanical primitives for the OpenClaw daemons: the four-layer ticker noise filter, company-name alias resolver, read-only 4chan fetch, and the canonical DaemonError contract. Logic only; each consuming daemon owns its seed data files."
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.31",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["abelard_common*"]

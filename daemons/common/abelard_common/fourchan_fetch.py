@@ -20,13 +20,18 @@ from typing import Any, Callable
 
 import requests
 
-from .config import BizDaemonError
+from .errors import DaemonError
 
 BASE = "https://a.4cdn.org/biz"
 CATALOG_URL = f"{BASE}/catalog.json"
 SMG_MARKER = "/smg/"
 MIN_REQUEST_INTERVAL_S = 1.0
 
+# NOTE: logger name preserved as "biz_daemon.fourchan" (not __name__) so child
+# records keep propagating to the "biz_daemon" root logger and its redacting
+# filter — renaming it here would change logging/redaction routing, a behavior
+# change out of scope for the Order 0 extraction. Revisit when ChatterDaemon
+# wires its own logging.
 _log = logging.getLogger("biz_daemon.fourchan")
 
 # Order matters in clean_com: anchors (quotelinks) carry text we want to drop
@@ -37,14 +42,14 @@ _WBR_RE = re.compile(r"<wbr\s*/?>", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
 
 
-class FourchanError(BizDaemonError):
+class FourchanError(DaemonError):
     """A fetch or parse failure against a.4cdn.org."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message, stage="fourchan")
 
 
-class NoSmgThreadError(BizDaemonError):
+class NoSmgThreadError(DaemonError):
     """No live /smg/ thread found — a legitimate state, surfaced loudly.
 
     This is NOT an empty success. The caller folds it into the `errors` array

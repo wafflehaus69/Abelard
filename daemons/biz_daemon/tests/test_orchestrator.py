@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from biz_daemon import fourchan_client, storage
+from abelard_common import fourchan_fetch as fourchan_client
+from biz_daemon import storage
 from biz_daemon.orchestrator import run_scrape
 
 SCRAPE_TS = 1_717_430_400

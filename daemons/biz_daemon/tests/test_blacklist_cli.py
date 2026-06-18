@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from biz_daemon import blacklist
+from abelard_common import ticker_noise as blacklist
 from biz_daemon.cli import main
 
 

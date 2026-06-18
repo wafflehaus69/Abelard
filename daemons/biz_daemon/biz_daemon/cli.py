@@ -19,7 +19,9 @@ import logging
 import sys
 from typing import Any
 
-from . import __version__, blacklist
+from abelard_common import ticker_noise
+
+from . import __version__
 from .config import Config, ConfigError, configure_logging, resolve_blacklist_path
 from .orchestrator import run_scrape
 from .tableview import render_table
@@ -72,10 +74,10 @@ def build_parser() -> argparse.ArgumentParser:
 def _handle_blacklist(args: argparse.Namespace) -> int:
     """Pure file maintenance on the slang denylist. Takes effect next scrape."""
     path = resolve_blacklist_path()
-    current = lambda: sorted(blacklist.load_blacklist(path)) if path.exists() else []
+    current = lambda: sorted(ticker_noise.load_blacklist(path)) if path.exists() else []
 
     if args.bl_action == "add":
-        added, skipped = blacklist.add_tokens(path, args.tokens)
+        added, skipped = ticker_noise.add_tokens(path, args.tokens)
         _emit(
             {
                 "command": "blacklist add",
@@ -87,7 +89,7 @@ def _handle_blacklist(args: argparse.Namespace) -> int:
         return 0
 
     if args.bl_action == "remove":
-        removed = blacklist.remove_tokens(path, args.tokens)
+        removed = ticker_noise.remove_tokens(path, args.tokens)
         _emit(
             {
                 "command": "blacklist remove",

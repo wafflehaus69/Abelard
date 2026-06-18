@@ -24,10 +24,12 @@ import logging
 import time
 from typing import Any
 
-from . import extractor, fourchan_client, sentiment, storage, ticker_universe
-from .blacklist import load_blacklist, load_common_words
+from abelard_common import company_aliases, fourchan_fetch, ticker_noise
+from abelard_common.fourchan_fetch import NoSmgThreadError
+from abelard_common.ticker_noise import load_blacklist, load_common_words
+
+from . import sentiment, storage, ticker_universe
 from .config import Config
-from .fourchan_client import NoSmgThreadError
 
 _log = logging.getLogger("biz_daemon.orchestrator")
 
@@ -38,7 +40,7 @@ def run_scrape(
     cfg: Config,
     *,
     now: int | None = None,
-    fetcher: fourchan_client.Fetcher | None = None,
+    fetcher: fourchan_fetch.Fetcher | None = None,
     conn: Any = None,
     anthropic_client: Any = None,
 ) -> dict[str, Any]:
@@ -53,18 +55,18 @@ def run_scrape(
 
     try:
         if fetcher is None:
-            fetcher = fourchan_client.Fetcher(
+            fetcher = fourchan_fetch.Fetcher(
                 user_agent=cfg.user_agent, timeout=cfg.http_timeout_s
             )
 
         # 2. Scrape /smg/. No-thread and hard-fetch failures surface loudly.
         try:
-            threads = fourchan_client.scrape_smg(fetcher)
+            threads = fourchan_fetch.scrape_smg(fetcher)
         except NoSmgThreadError as exc:
             return _finalize_error(
                 conn, cfg, scrape_ts, [exc.to_error()], owns_conn=owns_conn
             )
-        except fourchan_client.FourchanError as exc:
+        except fourchan_fetch.FourchanError as exc:
             return _finalize_error(
                 conn, cfg, scrape_ts, [exc.to_error()], owns_conn=owns_conn
             )
@@ -88,13 +90,13 @@ def run_scrape(
         common_words = load_common_words(cfg.common_words_path)
         name_resolver = None
         try:
-            name_resolver = extractor.build_name_resolver(
-                extractor.load_name_map(cfg.sp500_names_path)
+            name_resolver = company_aliases.build_name_resolver(
+                company_aliases.load_name_map(cfg.sp500_names_path)
             )
         except Exception as exc:  # missing/broken map: degrade, don't crash
             _log.warning("name map unavailable, skipping name resolution: %s", exc)
             errors.append(f"ticker_universe: name map unavailable ({exc})")
-        table = extractor.extract(
+        table = ticker_noise.extract(
             all_posts,
             universe=universe_result.symbols,
             blacklist=blacklist,
@@ -165,8 +167,8 @@ def run_scrape(
 def _assemble(
     *,
     scrape_ts: int,
-    threads: list[fourchan_client.Thread],
-    table: dict[str, extractor.TickerHits],
+    threads: list[fourchan_fetch.Thread],
+    table: dict[str, ticker_noise.TickerHits],
     attention_tickers: set[str],
     sentiment_tickers: set[str],
     reads: dict[str, dict[str, Any]],

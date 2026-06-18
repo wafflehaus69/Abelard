@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from biz_daemon import sentiment
-from biz_daemon.extractor import TickerHits
+from abelard_common.ticker_noise import TickerHits
 
 
 class FakeUsage:

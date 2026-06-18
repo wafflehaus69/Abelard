@@ -1,6 +1,6 @@
-"""Ticker extraction — the precision core.
+"""Ticker extraction — the precision core (four-layer noise filter).
 
-Per post's cleaned `com`, two confidence paths with a four-layer filter on the
+Per post's cleaned text, two confidence paths with a four-layer filter on the
 bare path. Filters apply in this order:
 
   a. Cashtag (high): `$AAPL`, `$MOG.A`. Uppercased, validated against the
@@ -12,7 +12,7 @@ bare path. Filters apply in this order:
   c. Wordlist rule: a bare candidate whose lowercased form is a common English
      word is rejected, UNLESS it is in the word_ticker_allowlist (real tickers
      that collide with words, e.g. NOW/META/CORN).
-  d. Denylist rule: a bare candidate in the /biz/-slang denylist is rejected.
+  d. Denylist rule: a bare candidate in the slang denylist is rejected.
      Comparison is case-insensitive (both sides uppercased).
 
 A bare candidate must also be a real symbol (in the universe). The `{1,5}`
@@ -21,6 +21,11 @@ length cap in the pattern is the cheap pre-filter — 6+ char all-caps
 
 The mention metric is DISTINCT posts mentioning a ticker, not raw occurrences —
 one post spamming `GME` ten times counts once.
+
+This module also owns the denylist / common-word list loaders and their
+CLI-backed maintenance helpers (formerly ``biz_daemon.blacklist``): the filter
+and the word-lists it consults travel together. Each consuming daemon passes the
+paths to its own bundled list files.
 """
 
 from __future__ import annotations
@@ -29,6 +34,9 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
+
+from .company_aliases import NameResolver
+from .errors import DaemonError
 
 # Capture keeps class-share symbols (MOG.A) intact; the tokenizer does not
 # split on `.` inside an uppercase run.
@@ -52,62 +60,6 @@ class TickerHits:
         return len(self.post_ids)
 
 
-@dataclass(frozen=True)
-class NameResolver:
-    """Resolves S&P 500 company names in prose to tickers (whole-word, ci).
-
-    A name only resolves if its ticker is in the universe — consistency with
-    the symbol/bare validation. Folding the resolved ticker into the same
-    per-post set means "Nvidia" and "NVDA" in one post count once.
-    """
-
-    pattern: "re.Pattern[str]"
-    mapping: dict[str, str]
-
-    def tickers_in(self, text: str, universe: frozenset[str] | set[str]) -> set[str]:
-        out: set[str] = set()
-        if not text:
-            return out
-        for match in self.pattern.finditer(text):
-            ticker = self.mapping.get(match.group(0).lower())
-            if ticker and ticker in universe:
-                out.add(ticker)
-        return out
-
-
-def load_name_map(path: Path) -> dict[str, str]:
-    """Load the `name<TAB or ws>TICKER` map. Name lowercased, ticker uppercased.
-
-    The ticker is the final whitespace-delimited token, so multi-word names
-    (`home depot HD`) parse correctly. Blank lines and #comments ignored.
-    """
-    mapping: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        parts = stripped.rsplit(None, 1)  # split on the last whitespace run
-        if len(parts) != 2:
-            continue
-        name, ticker = parts[0].strip().lower(), parts[1].strip().upper()
-        if name and ticker:
-            mapping[name] = ticker
-    return mapping
-
-
-def build_name_resolver(mapping: dict[str, str]) -> NameResolver | None:
-    """Compile a whole-word, case-insensitive resolver from a name map."""
-    if not mapping:
-        return None
-    # Longest names first so multi-word names win over any shorter prefix.
-    names = sorted(mapping.keys(), key=len, reverse=True)
-    pattern = re.compile(
-        r"\b(?:" + "|".join(re.escape(n) for n in names) + r")\b",
-        re.IGNORECASE,
-    )
-    return NameResolver(pattern=pattern, mapping=mapping)
-
-
 def _letter_len(sym: str) -> int:
     """Letter count, ignoring the class-share dot (MOG.A -> 4)."""
     return len(sym.replace(".", ""))
@@ -124,11 +76,11 @@ def tickers_in_post(
 ) -> set[str]:
     """Return the set of valid tickers mentioned in one post's cleaned text.
 
-    `blacklist` is the /biz/-slang denylist; `common_words` is the lowercased
+    `blacklist` is the slang denylist; `common_words` is the lowercased
     common-English-word set; `allowlist` is the uppercase set of real tickers
     that collide with common words (overrides the wordlist rule only).
-    `name_resolver` additionally resolves S&P 500 company names in prose; its
-    hits fold into the same per-post set, so a name + its symbol count once.
+    `name_resolver` additionally resolves company names in prose; its hits fold
+    into the same per-post set, so a name + its symbol count once.
     """
     found: set[str] = set()
 
@@ -191,3 +143,108 @@ def extract(
         ):
             table.setdefault(sym, TickerHits(ticker=sym)).post_ids.add(post_no)
     return table
+
+
+# --- denylist / common-word list loaders + maintenance (formerly blacklist.py) ---
+#
+# The denylist rejects bare-token ticker candidates that collide with finance/
+# forum slang (FUD, DD, ATH, ...). An explicit `$CASHTAG` bypasses it — see
+# `tickers_in_post`. The lists are config-file backed so they grow after live
+# scrapes without a code change.
+
+
+class BlacklistError(DaemonError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message, stage="blacklist")
+
+
+def load_blacklist(path: Path) -> frozenset[str]:
+    """Load the uppercase slang denylist. Blank lines and #comments ignored.
+
+    Tokens are uppercased on load so denylist enforcement is case-insensitive
+    against the (also-uppercased) bare candidates in the extractor.
+    """
+    if not path.exists():
+        raise BlacklistError(f"blacklist file not found: {path}")
+
+    tokens: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        token = line.strip()
+        if not token or token.startswith("#"):
+            continue
+        tokens.add(token.upper())
+    return frozenset(tokens)
+
+
+_CLI_SECTION = "# --- added via CLI ---"
+
+
+def _normalize_tokens(tokens: list[str]) -> list[str]:
+    """Uppercase, strip, drop blanks, dedupe preserving order."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for tok in tokens:
+        u = tok.strip().upper()
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        out.append(u)
+    return out
+
+
+def add_tokens(path: Path, tokens: list[str]) -> tuple[list[str], list[str]]:
+    """Append new denylist tokens. Uppercases, dedupes vs the file, appends.
+
+    Returns (added, skipped) where skipped were already present. The file is
+    re-read fresh on the next scrape, so the change takes effect immediately.
+    """
+    normalized = _normalize_tokens(tokens)
+    existing = load_blacklist(path) if path.exists() else frozenset()
+    added = [t for t in normalized if t not in existing]
+    skipped = [t for t in normalized if t in existing]
+
+    if added:
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
+        chunk = ""
+        if text and not text.endswith("\n"):
+            chunk += "\n"
+        if _CLI_SECTION not in text:
+            chunk += f"\n{_CLI_SECTION}\n"
+        chunk += "".join(f"{t}\n" for t in added)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(chunk)
+    return added, skipped
+
+
+def remove_tokens(path: Path, tokens: list[str]) -> list[str]:
+    """Remove denylist token lines from the file. Returns the tokens removed."""
+    if not path.exists():
+        return []
+    targets = set(_normalize_tokens(tokens))
+    removed: list[str] = []
+    kept: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and stripped.upper() in targets:
+            removed.append(stripped.upper())
+            continue
+        kept.append(line)
+    path.write_text("\n".join(kept) + ("\n" if kept else ""), encoding="utf-8")
+    # dedupe preserving order
+    seen: set[str] = set()
+    return [t for t in removed if not (t in seen or seen.add(t))]
+
+
+def load_common_words(path: Path) -> frozenset[str]:
+    """Load the lowercased common-English-word set for the wordlist filter."""
+    if not path.exists():
+        raise BlacklistError(f"common-words file not found: {path}")
+
+    words: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        word = line.strip()
+        if not word or word.startswith("#"):
+            continue
+        words.add(word.lower())
+    return frozenset(words)
