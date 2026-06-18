@@ -1,0 +1,29 @@
+[project]
+name = "chatter-daemon"
+version = "0.1.0"
+description = "Multi-source retail-chatter sensor for OpenClaw. Extracts US-equity ticker mentions, counts distinct-post salience, and classifies stance across StockTwits / Reddit / Google Trends / Finnhub news / 4chan /smg/, against named watchlists. The daemon is dumb; Abelard judges."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+chatter-daemon = "chatter_daemon.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chatter_daemon*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
