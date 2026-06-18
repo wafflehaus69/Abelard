@@ -142,6 +142,12 @@ class Fetcher:
         if resp.status_code != 200:
             raise FourchanError(f"{resp.status_code} from {url}")
 
+        # a.4cdn.org serves UTF-8 JSON. Force it — never let requests infer the
+        # encoding from headers/chardet or fall back to a platform default
+        # (cp1252 on Windows), which mis-decodes non-ASCII (en-dashes, smart
+        # quotes, accents) into mojibake. Corrupted bytes adjacent to a ticker
+        # eat its \b word boundary, so the ticker silently fails to extract.
+        resp.encoding = "utf-8"
         try:
             data = resp.json()
         except ValueError as exc:

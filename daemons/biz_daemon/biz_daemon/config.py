@@ -28,6 +28,22 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# The daemon's .env sits next to pyproject.toml, one level above the package.
+# Resolved from the module location so it loads regardless of cwd.
+_DOTENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+
+
+def _load_dotenv(path: Path | None = None) -> None:
+    """Load the daemon's .env into the environment, filling only the gaps.
+
+    override=False means a key already set in the shell wins over the .env
+    (session override wins; .env fills the gap). A missing file silently
+    no-ops — that is the desired graceful behavior.
+    """
+    load_dotenv(path if path is not None else _DOTENV_PATH, override=False)
+
 REDACTED = "***REDACTED***"
 
 # Live Haiku model ID (confirmed via the claude-api skill at build time,
@@ -133,7 +149,11 @@ class Config:
         return tuple(s for s in (self.finnhub_api_key, self.anthropic_api_key) if s)
 
     @classmethod
-    def from_env(cls) -> "Config":
+    def from_env(cls, *, dotenv_path: Path | None = None) -> "Config":
+        # Load the .env first so it fills any keys absent from the shell env.
+        # Shell vars already set win (override=False); a missing .env no-ops.
+        _load_dotenv(dotenv_path)
+
         finnhub = os.environ.get("FINNHUB_API_KEY", "").strip()
         if not finnhub:
             raise ConfigError("FINNHUB_API_KEY is not set")

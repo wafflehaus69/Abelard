@@ -157,6 +157,80 @@ def test_zero_smg_threads_raises_explicit_state():
         fc.scrape_smg(fetcher)
 
 
+# --- UTF-8 decode regression (encoding bug) ---------------------------------
+
+import json as _json  # noqa: E402
+
+import requests as _requests  # noqa: E402
+
+from biz_daemon import extractor as _extractor  # noqa: E402
+
+
+def _utf8_response(obj, *, status=200, encoding="ISO-8859-1"):
+    """A real requests.Response holding UTF-8 bytes but a MIS-inferred encoding.
+
+    Simulates a.4cdn.org's UTF-8 JSON when requests guesses the wrong encoding
+    (latin-1 / cp1252 / None). Our client must force utf-8 regardless.
+    """
+    r = _requests.Response()
+    r.status_code = status
+    r._content = _json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    r.encoding = encoding
+    r.headers["Content-Type"] = "application/json"
+    return r
+
+
+# en-dash subject + tickers wedged against non-ASCII punctuation/accents
+_NONASCII_CATALOG = [
+    {"page": 1, "threads": [{"no": 700, "sub": "/smg/ – Stock Market General"}]}
+]
+_NONASCII_THREAD = {"posts": [
+    {"no": 700, "sub": "/smg/ – Stock Market General", "com": "buying “GME” today"},
+    {"no": 701, "com": "NVDA—to the moon"},          # em-dash flush against ticker
+    {"no": 702, "com": "café vibes, AMD – strong"},  # accent + en-dash
+    {"no": 703, "com": "it’s TSLA season"},          # smart apostrophe
+]}
+
+
+def _utf8_fetcher(responses):
+    return Fetcher(
+        user_agent="t",
+        session=FakeSession(responses),
+        sleep=lambda _s: None,
+        clock=lambda: 0.0,
+    )
+
+
+def test_response_decoded_utf8_regardless_of_headers():
+    for enc in ("ISO-8859-1", None, "cp1252"):
+        fetcher = _utf8_fetcher([_utf8_response(_NONASCII_THREAD, encoding=enc)])
+        data = fetcher.get_json("https://a.4cdn.org/biz/thread/700.json")
+        assert data["posts"][0]["com"] == "buying “GME” today"
+        assert "—" in data["posts"][1]["com"]   # em-dash intact
+        assert "é" in data["posts"][2]["com"]   # é intact, not mojibake
+
+
+def test_nonascii_subject_clean_and_tickers_extract():
+    fetcher = _utf8_fetcher(
+        [_utf8_response(_NONASCII_CATALOG), _utf8_response(_NONASCII_THREAD)]
+    )
+    threads = fc.scrape_smg(fetcher)
+    t = threads[0]
+
+    # subject parses clean: real en-dash, not "ΓÇô" / "Ã" mojibake
+    assert t.subject == "/smg/ – Stock Market General"
+    assert "–" in t.subject
+    assert "Ã" not in t.subject and "Γ" not in t.subject
+
+    # cleaner preserved the Unicode in bodies
+    assert "–" in t.posts[2]["com"]
+
+    # every ticker adjacent to non-ASCII still extracts (the regression)
+    universe = frozenset({"GME", "NVDA", "AMD", "TSLA"})
+    table = _extractor.extract(t.posts, universe=universe, blacklist=frozenset())
+    assert set(table) == {"GME", "NVDA", "AMD", "TSLA"}
+
+
 def test_scrape_smg_collects_posts_and_cleans_com():
     catalog = [{"page": 1, "threads": [{"no": 100, "sub": "/smg/ general"}]}]
     thread = {"posts": [
