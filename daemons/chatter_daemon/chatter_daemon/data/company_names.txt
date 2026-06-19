@@ -1,0 +1,191 @@
+# S&P 500 company-name -> ticker map for prose name resolution.
+#
+# Format: name<TAB>TICKER (the ticker is the final whitespace token, so
+# multi-word names parse fine). Names are matched case-insensitively and
+# WHOLE-WORD against cleaned post text; a hit folds into the SAME mention
+# count as the symbol (distinct-post metric). A name only counts if its
+# ticker is in the Finnhub universe.
+#
+# PRECISION-BIASED. Names that are common English words or that false-match in
+# prose are deliberately PRUNED (a missed name is cheaper than a false one).
+# Dropped collisions include: apple, oracle, intel, visa, ford, uber, zoom,
+# snap, square, block, gap, target, match, host, union, public, service, best,
+# first, general, american, delta, marathon, dow, fox, paramount, charter,
+# progressive, dominion, southern, williams, caterpillar, lucid, carnival,
+# snowflake, and any bare single common word. Multi-word phrases that contain a
+# dropped word but are themselves distinctive (e.g. "general motors",
+# "bank of america") are kept.
+#
+# Grows/prunes after live scrapes. One entry per line; blank lines / #comments
+# ignored.
+
+# --- technology / semiconductors ---
+nvidia	NVDA
+microsoft	MSFT
+amazon	AMZN
+tesla	TSLA
+netflix	NFLX
+google	GOOGL
+facebook	META
+broadcom	AVGO
+qualcomm	QCOM
+micron	MU
+salesforce	CRM
+adobe	ADBE
+cisco	CSCO
+accenture	ACN
+intuit	INTU
+autodesk	ADSK
+synopsys	SNPS
+texas instruments	TXN
+analog devices	ADI
+applied materials	AMAT
+lam research	LRCX
+marvell	MRVL
+arista	ANET
+palantir	PLTR
+crowdstrike	CRWD
+fortinet	FTNT
+paypal	PYPL
+servicenow	NOW
+advanced micro devices	AMD
+western digital	WDC
+dell	DELL
+
+# --- industrials / defense / transport ---
+general motors	GM
+boeing	BA
+lockheed martin	LMT
+raytheon	RTX
+northrop grumman	NOC
+general dynamics	GD
+honeywell	HON
+general electric	GE
+john deere	DE
+cummins	CMI
+eaton	ETN
+emerson	EMR
+illinois tool works	ITW
+paccar	PCAR
+fedex	FDX
+united parcel service	UPS
+union pacific	UNP
+norfolk southern	NSC
+waste management	WM
+3m	MMM
+
+# --- financials ---
+jpmorgan	JPM
+jp morgan	JPM
+goldman sachs	GS
+morgan stanley	MS
+bank of america	BAC
+wells fargo	WFC
+citigroup	C
+mastercard	MA
+american express	AXP
+blackrock	BLK
+blackstone	BX
+charles schwab	SCHW
+berkshire hathaway	BRK.B
+allstate	ALL
+metlife	MET
+chubb	CB
+
+# --- healthcare / pharma ---
+pfizer	PFE
+merck	MRK
+abbvie	ABBV
+eli lilly	LLY
+johnson & johnson	JNJ
+bristol myers squibb	BMY
+amgen	AMGN
+gilead	GILD
+biogen	BIIB
+regeneron	REGN
+moderna	MRNA
+thermo fisher	TMO
+danaher	DHR
+medtronic	MDT
+stryker	SYK
+boston scientific	BSX
+intuitive surgical	ISRG
+unitedhealth	UNH
+humana	HUM
+cigna	CI
+mckesson	MCK
+abbott	ABT
+
+# --- consumer / retail / staples ---
+walmart	WMT
+costco	COST
+home depot	HD
+lowes	LOW
+lowe's	LOW
+dollar general	DG
+dollar tree	DLTR
+kroger	KR
+mcdonalds	MCD
+mcdonald's	MCD
+starbucks	SBUX
+chipotle	CMG
+yum brands	YUM
+darden	DRI
+nike	NKE
+lululemon	LULU
+estee lauder	EL
+colgate	CL
+kimberly clark	KMB
+procter & gamble	PG
+pepsi	PEP
+pepsico	PEP
+coca-cola	KO
+coca cola	KO
+mondelez	MDLZ
+kraft heinz	KHC
+general mills	GIS
+hershey	HSY
+philip morris	PM
+altria	MO
+ross stores	ROST
+autozone	AZO
+o'reilly	ORLY
+
+# --- media / communications / travel ---
+disney	DIS
+comcast	CMCSA
+verizon	VZ
+at&t	T
+t-mobile	TMUS
+tmobile	TMUS
+warner bros discovery	WBD
+marriott	MAR
+hilton	HLT
+airbnb	ABNB
+booking holdings	BKNG
+expedia	EXPE
+
+# --- conviction names typed as words (not strictly S&P 500) ---
+# Bare "strategy" is intentionally NOT mapped — common-word collision.
+coinbase	COIN
+microstrategy	MSTR
+
+# --- energy / materials ---
+exxon	XOM
+exxonmobil	XOM
+chevron	CVX
+conocophillips	COP
+schlumberger	SLB
+halliburton	HAL
+occidental	OXY
+phillips 66	PSX
+valero	VLO
+kinder morgan	KMI
+nextera	NEE
+nucor	NUE
+freeport mcmoran	FCX
+newmont	NEM
+dupont	DD
+linde	LIN
+sherwin williams	SHW
+air products	APD

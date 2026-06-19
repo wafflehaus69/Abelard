@@ -44,7 +44,32 @@ def _default_watchlists_dir() -> Path:
     return _DAEMON_ROOT / "watchlists"
 
 
+def _package_data_dir() -> Path:
+    return _PACKAGE_DIR / "data"
+
+
+def _default_company_names_path() -> Path:
+    return _package_data_dir() / "company_names.txt"
+
+
+def _default_common_words_path() -> Path:
+    return _package_data_dir() / "common_words.txt"
+
+
+def _default_slang_blacklist_path() -> Path:
+    return _package_data_dir() / "slang_blacklist.txt"
+
+
+def _env_path(name: str, default: Path) -> Path:
+    raw = os.environ.get(name, "").strip()
+    return Path(raw) if raw else default
+
+
 DEFAULT_USER_AGENT = "chatter-daemon/0.1"
+
+# Real tickers that collide with common words — the wordlist filter's exception
+# list (a bare token here survives common-word rejection). Lifted from BizDaemon.
+DEFAULT_WORD_TICKER_ALLOWLIST = frozenset({"NOW", "META", "CORN"})
 
 
 @dataclass(frozen=True)
@@ -55,6 +80,11 @@ class Config:
     # (creds bind at invocation, not spine startup). From env only, never logged.
     finnhub_api_key: str | None = None
     user_agent: str = DEFAULT_USER_AGENT
+    # Bundled seed data — the /smg/ matcher's company-name map + collision lists.
+    company_names_path: Path = field(default_factory=_default_company_names_path)
+    common_words_path: Path = field(default_factory=_default_common_words_path)
+    slang_blacklist_path: Path = field(default_factory=_default_slang_blacklist_path)
+    word_ticker_allowlist: frozenset[str] = DEFAULT_WORD_TICKER_ALLOWLIST
 
     def secrets(self) -> tuple[str, ...]:
         """Values to scrub from log output."""
@@ -74,6 +104,9 @@ class Config:
             log_level=log_level,
             finnhub_api_key=finnhub,
             user_agent=user_agent,
+            company_names_path=_env_path("CHATTER_COMPANY_NAMES", _default_company_names_path()),
+            common_words_path=_env_path("CHATTER_COMMON_WORDS", _default_common_words_path()),
+            slang_blacklist_path=_env_path("CHATTER_SLANG_BLACKLIST", _default_slang_blacklist_path()),
         )
 
 

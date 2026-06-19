@@ -24,6 +24,9 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["chatter_daemon*"]
 
+[tool.setuptools.package-data]
+chatter_daemon = ["data/*.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
