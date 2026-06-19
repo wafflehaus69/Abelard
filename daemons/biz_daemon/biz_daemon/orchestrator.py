@@ -56,7 +56,9 @@ def run_scrape(
     try:
         if fetcher is None:
             fetcher = fourchan_fetch.Fetcher(
-                user_agent=cfg.user_agent, timeout=cfg.http_timeout_s
+                user_agent=cfg.user_agent,
+                timeout=cfg.http_timeout_s,
+                logger=logging.getLogger("biz_daemon.fourchan"),
             )
 
         # 2. Scrape /smg/. No-thread and hard-fetch failures surface loudly.

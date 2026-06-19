@@ -27,13 +27,6 @@ CATALOG_URL = f"{BASE}/catalog.json"
 SMG_MARKER = "/smg/"
 MIN_REQUEST_INTERVAL_S = 1.0
 
-# NOTE: logger name preserved as "biz_daemon.fourchan" (not __name__) so child
-# records keep propagating to the "biz_daemon" root logger and its redacting
-# filter — renaming it here would change logging/redaction routing, a behavior
-# change out of scope for the Order 0 extraction. Revisit when ChatterDaemon
-# wires its own logging.
-_log = logging.getLogger("biz_daemon.fourchan")
-
 # Order matters in clean_com: anchors (quotelinks) carry text we want to drop
 # entirely, so they must be removed before the generic tag strip.
 _QUOTELINK_RE = re.compile(r"<a\b[^>]*>.*?</a>", re.IGNORECASE | re.DOTALL)
@@ -105,6 +98,10 @@ class Fetcher:
     session: requests.Session | None = None
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
+    # Injected per consumer so the consuming daemon's redaction filter catches
+    # these records; defaults to this module's logger (abelard_common.fourchan_fetch).
+    # BizDaemon injects "biz_daemon.fourchan" at construction to preserve routing.
+    logger: logging.Logger | None = None
     _last_request_at: float | None = field(default=None, init=False)
     _last_modified: dict[str, str] = field(default_factory=dict, init=False)
     _cached_json: dict[str, Any] = field(default_factory=dict, init=False)
@@ -112,6 +109,8 @@ class Fetcher:
     def __post_init__(self) -> None:
         if self.session is None:
             self.session = requests.Session()
+        if self.logger is None:
+            self.logger = logging.getLogger(__name__)
 
     def _throttle(self) -> None:
         if self._last_request_at is not None:
@@ -127,6 +126,7 @@ class Fetcher:
         Raises FourchanError on a non-200/304 status or malformed JSON.
         """
         assert self.session is not None
+        assert self.logger is not None
         self._throttle()
         headers = {"User-Agent": self.user_agent}
         prior = self._last_modified.get(url)
@@ -141,7 +141,7 @@ class Fetcher:
         if resp.status_code == 304:
             if url not in self._cached_json:
                 raise FourchanError(f"304 for {url} with no cached payload")
-            _log.debug("304 not-modified for %s", url)
+            self.logger.debug("304 not-modified for %s", url)
             return self._cached_json[url]
 
         if resp.status_code != 200:
