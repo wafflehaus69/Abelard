@@ -10,6 +10,7 @@ from __future__ import annotations
 from ..config import Config
 from .base import Source
 from .finnhub_news import FinnhubNewsSource
+from .google_trends import GoogleTrendsSource
 from .smg import SmgSource
 
 
@@ -23,4 +24,5 @@ def build_sources(cfg: Config) -> list[Source]:
             word_ticker_allowlist=cfg.word_ticker_allowlist,
             user_agent=cfg.user_agent,
         ),
+        GoogleTrendsSource(company_names_path=cfg.company_names_path),
     ]
