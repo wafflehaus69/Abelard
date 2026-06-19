@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import time
 
-from .schema import NormalizedRecord, ScanEnvelope, ScanMode, WatchlistSummary
+from .schema import NormalizedRecord, ScanEnvelope, ScanMode, SourceStatus, WatchlistSummary
 from .sources.base import ScanContext, Source
 from .watchlist import WatchlistConfig
 from .windows import derive_windows, iso_z
@@ -39,6 +39,7 @@ def run_scan(
     canonical_ts = iso_z(canonical_unix)
     windows = derive_windows(canonical_unix)
     context = ScanContext(
+        scan_mode=scan_mode,
         canonical_unix=canonical_unix,
         canonical_ts=canonical_ts,
         windows=windows,
@@ -47,23 +48,37 @@ def run_scan(
     registered = sources or []
     records: list[NormalizedRecord] = []
     errors: list[str] = []
+    sources_status: list[SourceStatus] = []
 
-    # Source fan-out. No plugins are registered at Order 1, so this is a no-op that
-    # yields an empty record list — but it already isolates per-source failure so
-    # the plugins (Orders 2-6) slot in without changing the spine's contract.
+    # Source fan-out with per-source failure isolation: a source that raises (or
+    # returns a fatal error) is recorded ok=False in `sources` and folded into
+    # `errors`, and the OTHER sources still produce output. Honest zeros (records
+    # with mention_count=0) are data, not failures.
     for source in registered:
+        src_records: list[NormalizedRecord] = []
+        src_error: str | None = None
         for watchlist in watchlists:
             try:
                 result = source.fetch(watchlist, context=context)
             except Exception as exc:  # one dead source never sinks the scan
-                name = getattr(source, "name", "source")
-                _log.warning("source %r failed: %s", name, exc)
-                errors.append(f"{name}: {exc}")
-                continue
-            records.extend(result.records)
+                src_error = str(exc)
+                _log.warning("source %r failed: %s", source.name, exc)
+                errors.append(f"{source.name}: {exc}")
+                break  # stop this source's remaining watchlists; others continue
+            src_records.extend(result.records)
             errors.extend(result.warnings)
             if result.error:
+                src_error = result.error
                 errors.append(f"{result.source}: {result.error}")
+        records.extend(src_records)
+        sources_status.append(
+            SourceStatus(
+                source=source.name,
+                ok=src_error is None,
+                record_count=len(src_records),
+                error=src_error,
+            )
+        )
 
     summaries = [
         WatchlistSummary(
@@ -71,11 +86,14 @@ def run_scan(
         )
         for w in watchlists
     ]
+    degraded = any(not s.ok for s in sources_status)
     return ScanEnvelope(
         scan_mode=scan_mode,
         canonical_ts=canonical_ts,
         windows=list(windows.values()),
         watchlists=summaries,
+        sources=sources_status,
         records=records,
+        degraded=degraded,
         errors=errors,
     )

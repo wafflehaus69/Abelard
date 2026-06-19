@@ -26,7 +26,6 @@ def test_run_scan_single_timestamp_no_clock_read(monkeypatch):
     env = run_scan([_wl()], now=FIXED)
     assert isinstance(env, ScanEnvelope)
     assert env.canonical_ts == iso_z(FIXED)
-    # all windows trace to the one timestamp
     assert {w.end for w in env.windows} == {iso_z(FIXED)}
     assert {w.label for w in env.windows} == {"24h", "7d", "monthly"}
 
@@ -35,6 +34,8 @@ def test_run_scan_no_sources_empty_records():
     env = run_scan([_wl()], now=FIXED)
     assert env.records == []
     assert env.errors == []
+    assert env.sources == []
+    assert env.degraded is False
     assert env.scan_mode == "watchlist"
     assert env.watchlists[0].name == "alpha"
     assert env.watchlists[0].tickers == 2
@@ -51,6 +52,10 @@ def test_run_scan_source_failure_isolated():
     env = run_scan([_wl()], sources=[BoomSource()], now=FIXED)
     assert any("upstream down" in e for e in env.errors)
     assert env.records == []  # the run survives a dead source
+    assert env.degraded is True
+    assert env.sources[0].source == "stocktwits"
+    assert env.sources[0].ok is False
+    assert "upstream down" in env.sources[0].error
 
 
 def test_run_scan_active_count_excludes_disabled():

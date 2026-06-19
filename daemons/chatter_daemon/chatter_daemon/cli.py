@@ -25,6 +25,7 @@ from . import __version__
 from .config import Config, ConfigError, configure_logging
 from .errors import ChatterDaemonError
 from .orchestrator import run_scan
+from .sources.registry import build_sources
 from .watchlist import load_all_watchlists, load_watchlist
 
 
@@ -63,7 +64,9 @@ def _error_envelope(message: str) -> dict[str, Any]:
         "canonical_ts": None,
         "windows": [],
         "watchlists": [],
+        "sources": [],
         "records": [],
+        "degraded": False,
         "errors": [message],
     }
 
@@ -104,9 +107,16 @@ def main(argv: list[str] | None = None) -> int:
         _emit(_error_envelope(f"unhandled: {exc}"))
         return 1
 
-    envelope = run_scan(watchlists)
+    envelope = run_scan(watchlists, sources=build_sources(cfg))
     _emit(envelope.model_dump(mode="json"))
-    return 0 if not envelope.errors else 1
+
+    # Exit-code rule (daemon-wide): a scan that ran exits 0 even with per-source
+    # failures isolated into errors[]; a TOTAL source failure (sources attempted,
+    # every one errored, zero records) is loud — exit 1. Spine failures (bad
+    # watchlist / config) already returned 1 above.
+    if envelope.sources and not envelope.records and all(not s.ok for s in envelope.sources):
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

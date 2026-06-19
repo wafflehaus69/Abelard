@@ -92,7 +92,10 @@ class NormalizedRecord(BaseModel):
     ticker: str
     matched_by: list[MatchedBy] = Field(default_factory=list)
     metrics: Metrics = Field(default_factory=Metrics)
-    sentiment: Sentiment | None = None
+    # Always present (never null): `method` is the stance discriminator. A
+    # no-stance source (Finnhub / Trends / /smg/) sets method="none"; the
+    # aggregator switches on method, so a null here would fork it.
+    sentiment: Sentiment
     flags: list[str] = Field(default_factory=list)
 
 
@@ -106,6 +109,19 @@ class WatchlistSummary(BaseModel):
     active: int  # enabled tickers (placeholders like an unverified `P` excluded)
 
 
+class SourceStatus(BaseModel):
+    """Per-source outcome in the run envelope — the machine-readable degradation
+    state. `ok=False` with an `error` means that source failed and was isolated
+    into the top-level `errors`; the other sources still produced output."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: SourceName
+    ok: bool
+    record_count: int = Field(default=0, ge=0)
+    error: str | None = None
+
+
 class ScanEnvelope(BaseModel):
     """Run-level output wrapper — one JSON object per invocation."""
 
@@ -116,5 +132,9 @@ class ScanEnvelope(BaseModel):
     canonical_ts: str
     windows: list[Window] = Field(default_factory=list)
     watchlists: list[WatchlistSummary] = Field(default_factory=list)
+    sources: list[SourceStatus] = Field(default_factory=list)
     records: list[NormalizedRecord] = Field(default_factory=list)
+    # True iff at least one source failed (partial or total). The exit code
+    # disambiguates: total source failure (zero records, all failed) -> exit 1.
+    degraded: bool = False
     errors: list[str] = Field(default_factory=list)

@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from ..schema import NormalizedRecord, SourceName, Window
+from ..schema import NormalizedRecord, ScanMode, SourceName, Window
 from ..watchlist import WatchlistConfig
 
 
@@ -38,9 +38,11 @@ from ..watchlist import WatchlistConfig
 class ScanContext:
     """Per-run timing context, stamped ONCE by the orchestrator and threaded to
     every adapter. No plugin recomputes "now" — it reads `canonical_ts` / the
-    `windows` it was handed.
+    `windows` it was handed. `scan_mode` is the run mode the plugin stamps onto
+    each NormalizedRecord.
     """
 
+    scan_mode: ScanMode
     canonical_unix: int
     canonical_ts: str  # ISO-8601 Z
     windows: dict[str, Window]  # label -> Window ("24h" / "7d" / "monthly")

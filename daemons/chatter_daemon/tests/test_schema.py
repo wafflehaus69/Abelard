@@ -92,3 +92,36 @@ def test_chatterpost_and_sourceresult_construct():
     res = SourceResult(source="reddit", warnings=["degraded"], error=None)
     assert res.records == []
     assert res.warnings == ["degraded"]
+
+
+def test_record_requires_sentiment():
+    base = _record()
+    del base["sentiment"]
+    with pytest.raises(ValidationError):
+        NormalizedRecord.model_validate(base)  # sentiment is non-optional
+
+
+def test_no_stance_source_uses_method_none():
+    rec = NormalizedRecord.model_validate(_record(sentiment={"method": "none"}))
+    assert rec.sentiment.method == "none"
+
+
+def test_envelope_carries_sources_and_degraded():
+    env = ScanEnvelope.model_validate(
+        {
+            "scan_mode": "watchlist",
+            "canonical_ts": "2026-06-18T18:00:00Z",
+            "windows": [_WINDOW],
+            "watchlists": [],
+            "sources": [
+                {"source": "finnhub_news", "ok": True, "record_count": 45},
+                {"source": "reddit", "ok": False, "record_count": 0, "error": "no key"},
+            ],
+            "records": [],
+            "degraded": True,
+            "errors": ["reddit: no key"],
+        }
+    )
+    assert env.degraded is True
+    assert env.sources[0].source == "finnhub_news"
+    assert env.sources[1].ok is False
