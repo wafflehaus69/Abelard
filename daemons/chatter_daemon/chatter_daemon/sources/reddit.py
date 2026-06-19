@@ -76,7 +76,9 @@ class RedditPost:
 class RedditClient(Protocol):
     """Injectable Reddit transport — the real one wraps PRAW; tests inject a fake."""
 
-    def posts(self, subreddits: tuple[str, ...], *, limit: int) -> list[RedditPost]:
+    def posts(
+        self, subreddits: tuple[str, ...], *, limit: int, listing: str = "hot"
+    ) -> list[RedditPost]:
         ...
 
 
@@ -106,10 +108,14 @@ class PrawClient:
         )
         self._reddit.read_only = True
 
-    def posts(self, subreddits: tuple[str, ...], *, limit: int) -> list[RedditPost]:
+    def posts(
+        self, subreddits: tuple[str, ...], *, limit: int, listing: str = "hot"
+    ) -> list[RedditPost]:
         out: list[RedditPost] = []
         for sub in subreddits:
-            for submission in self._reddit.subreddit(sub).hot(limit=limit):
+            sr = self._reddit.subreddit(sub)
+            stream = sr.rising(limit=limit) if listing == "rising" else sr.hot(limit=limit)
+            for submission in stream:
                 out.append(
                     RedditPost(
                         post_id=f"t3_{submission.id}",

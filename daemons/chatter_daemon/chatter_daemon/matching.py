@@ -88,6 +88,29 @@ class Matcher:
             resolver=build_name_resolver(build_name_map(watchlist, shared_map)),
         )
 
+    @classmethod
+    def for_universe(
+        cls,
+        universe,
+        *,
+        blacklist,
+        common_words,
+        allowlist,
+        resolver: NameResolver | None = None,
+    ) -> "Matcher":
+        """Universe-mode (ATTENTION, Order 8): propose ANY ticker-shaped token that is
+        in `universe` (the validated Finnhub symbol set) — not just a watchlist's. No
+        name resolver by default (off-watchlist discovery is cashtag/bare-symbol only;
+        there's no company-name map for the whole universe), so `match` yields only
+        the `cashtag`/`symbol` kinds, never `name`."""
+        return cls(
+            universe=frozenset(universe),
+            blacklist=frozenset(blacklist),
+            common_words=frozenset(common_words),
+            allowlist=frozenset(allowlist),
+            resolver=resolver if resolver is not None else build_name_resolver({}),
+        )
+
     def match(self, text: str) -> dict[str, set[str]]:
         """`{ticker: {kinds}}` for one post's text; kind ⊆ {cashtag, symbol, name}."""
         full = ticker_noise.tickers_in_post(

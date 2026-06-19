@@ -67,3 +67,15 @@ def test_audit_only_covers_name_match_true():
     audit = audit_name_match(wl, {})
     assert audit.get("NVDA") == ["nvidia"]
     assert "CAT" not in audit  # name_match:false tickers aren't audited
+
+
+def test_for_universe_proposes_any_symbol_in_set():
+    # ATTENTION universe-mode: any ticker-shaped token in the validation set counts;
+    # cashtag + bare symbol both resolve, names never do (no resolver).
+    m = Matcher.for_universe(
+        {"GME", "AMC", "NVDA"}, blacklist=_EMPTY, common_words=_EMPTY, allowlist=_EMPTY
+    )
+    hits = m.match("$GME squeeze and AMC too")
+    assert "GME" in hits and "AMC" in hits
+    assert "name" not in hits.get("GME", set())  # no name kind in universe mode
+    assert m.match("TSLA mooning") == {}  # not in this universe -> not proposed

@@ -125,6 +125,11 @@ DEFAULT_SOURCE_FLOORS: dict[str, int] = {
     "stocktwits": 10,
 }
 
+# Order 8 — ATTENTION discovery (Phase 1 calibration).
+DEFAULT_UNIVERSE_TTL_S = 86_400  # 24h Finnhub symbol cache
+DEFAULT_ATTENTION_SUBREDDITS = ("wallstreetbets",)
+DEFAULT_ATTENTION_POST_LIMIT = 100
+
 
 @dataclass(frozen=True)
 class Config:
@@ -157,6 +162,11 @@ class Config:
     source_floors: dict[str, int] = field(
         default_factory=lambda: dict(DEFAULT_SOURCE_FLOORS)
     )
+    # Order 8 — ATTENTION discovery (Phase 1).
+    universe_cache_ttl_s: int = DEFAULT_UNIVERSE_TTL_S
+    symbol_fallback_path: Path | None = None  # optional static US-symbol fallback
+    attention_subreddits: tuple[str, ...] = DEFAULT_ATTENTION_SUBREDDITS
+    attention_post_limit: int = DEFAULT_ATTENTION_POST_LIMIT
 
     def secrets(self) -> tuple[str, ...]:
         """Values to scrub from log output."""
@@ -207,6 +217,20 @@ class Config:
             baseline_min_obs=_env_int("CHATTER_BASELINE_MIN_OBS", DEFAULT_BASELINE_MIN_OBS),
             spike_z_threshold=_env_float("CHATTER_SPIKE_Z", DEFAULT_SPIKE_Z),
             trend_spike_ratio=_env_float("CHATTER_TREND_RATIO", DEFAULT_TREND_SPIKE_RATIO),
+            universe_cache_ttl_s=_env_int("CHATTER_UNIVERSE_TTL", DEFAULT_UNIVERSE_TTL_S),
+            symbol_fallback_path=(
+                Path(os.environ["CHATTER_SYMBOL_FALLBACK"].strip())
+                if os.environ.get("CHATTER_SYMBOL_FALLBACK", "").strip()
+                else None
+            ),
+            attention_subreddits=(
+                tuple(s.strip() for s in _attn_raw.split(",") if s.strip())
+                if (_attn_raw := os.environ.get("CHATTER_ATTENTION_SUBREDDITS", "").strip())
+                else DEFAULT_ATTENTION_SUBREDDITS
+            ),
+            attention_post_limit=_env_int(
+                "CHATTER_ATTENTION_LIMIT", DEFAULT_ATTENTION_POST_LIMIT
+            ),
         )
 
 

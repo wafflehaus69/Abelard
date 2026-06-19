@@ -25,13 +25,16 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import __version__, baseline
+from . import __version__, baseline, ticker_universe
 from .aggregate import build_aggregate
 from .config import Config, ConfigError, configure_logging
+from .discovery import format_distribution, run_dry_run
 from .errors import ChatterDaemonError
+from .matching import Matcher
 from .orchestrator import run_scan
 from .persist import ArchiveError, load_result, make_scan_id, write_result
 from .render import render_chatter
+from .sources.reddit import PrawClient, RedditAuthError
 from .sources.registry import build_sources
 from .watchlist import load_all_watchlists, load_watchlist
 
@@ -60,6 +63,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     read = sub.add_parser("read-chatter", help="render a persisted {scan_id}.json")
     read.add_argument("path", help="path to a persisted scan result")
+
+    attn = sub.add_parser(
+        "attention",
+        help="off-watchlist discovery (Phase 1: --dry-run calibration pull, no store)",
+    )
+    attn.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="calibration pull: print the per-source mention distribution, no store",
+    )
     return parser
 
 
@@ -156,6 +169,73 @@ def _cmd_read_chatter(args: argparse.Namespace, log: logging.Logger) -> int:
     return 0
 
 
+def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -> int:
+    if not args.dry_run:
+        sys.stderr.write("attention: use --dry-run (Phase 1; the live store is Phase 2)\n")
+        return 2
+
+    from abelard_common import fourchan_fetch, ticker_noise
+    from abelard_common.http_client import HttpClient
+
+    chatter_log = logging.getLogger("chatter_daemon")
+    now = int(time.time())
+    conn = baseline.connect(cfg.baseline_db_path)
+    ticker_universe.init_universe_table(conn)
+
+    # Validation universe: cache -> live Finnhub -> optional static fallback. Without
+    # it there's nothing to validate against, so a hard failure is loud (exit 1).
+    try:
+        universe = ticker_universe.load_universe(
+            conn,
+            client=HttpClient(user_agent=cfg.user_agent, logger=chatter_log),
+            api_key=cfg.finnhub_api_key or "",
+            ttl_s=cfg.universe_cache_ttl_s,
+            now=now,
+            fallback_path=cfg.symbol_fallback_path,
+        )
+    except ChatterDaemonError as exc:
+        log.error("attention: universe unavailable: %s", exc)
+        sys.stderr.write(f"attention: universe unavailable: {exc}\n")
+        return 1
+
+    matcher = Matcher.for_universe(
+        universe.symbols,
+        blacklist=ticker_noise.load_blacklist(cfg.slang_blacklist_path),
+        common_words=ticker_noise.load_common_words(cfg.common_words_path),
+        allowlist=cfg.word_ticker_allowlist,
+    )
+
+    # Reddit surface: skip cleanly if creds are absent — the pull runs on /smg/ alone.
+    reddit_client = None
+    try:
+        reddit_client = PrawClient(
+            client_id=cfg.reddit_client_id,
+            client_secret=cfg.reddit_client_secret,
+            user_agent=cfg.reddit_user_agent,
+        )
+    except RedditAuthError as exc:
+        log.warning("attention: reddit surface unavailable: %s", exc)
+
+    fetcher = fourchan_fetch.Fetcher(user_agent=cfg.user_agent, logger=chatter_log)
+
+    results = run_dry_run(
+        matcher=matcher,
+        universe=universe.symbols,
+        now=now,
+        reddit_client=reddit_client,
+        subreddits=cfg.attention_subreddits,
+        reddit_limit=cfg.attention_post_limit,
+        fetcher=fetcher,
+        stocktwits_client=None,  # walled; joins when the residential curl frees it
+    )
+    out = format_distribution(results)
+    if universe.warning:
+        out = f"[universe: {universe.warning}]\n" + out
+    sys.stdout.write(out + "\n")
+    sys.stdout.flush()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -173,14 +253,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "read-chatter":
         return _cmd_read_chatter(args, log)
 
-    # scan
     try:
         cfg = Config.from_env()
         configure_logging(cfg)
     except ConfigError as exc:
         log.error("configuration error: %s", exc)
+        if args.command == "attention":
+            sys.stderr.write(f"attention: config error: {exc}\n")
+            return 1
         _emit(_error_envelope(f"config: {exc}"))
         return 1
+
+    if args.command == "attention":
+        return _cmd_attention(args, cfg, log)
     return _cmd_scan(args, cfg, log)
 
 

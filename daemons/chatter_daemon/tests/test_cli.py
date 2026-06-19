@@ -157,3 +157,42 @@ def test_read_chatter_missing_path_fails_loud(capsys, tmp_path):
     assert rc == 1
     err = capsys.readouterr().err
     assert "read-chatter error" in err and "does not exist" in err
+
+
+def test_attention_requires_dry_run(capsys):
+    rc = main(["attention"])
+    assert rc == 2
+    assert "use --dry-run" in capsys.readouterr().err
+
+
+def test_attention_dry_run_prints_distribution(monkeypatch, capsys):
+    import chatter_daemon.cli as C
+    from chatter_daemon.discovery import SurfaceCounts
+    from chatter_daemon.ticker_universe import UniverseResult
+
+    # Mock the universe load + the pull so no network/transport runs.
+    monkeypatch.setattr(
+        C.ticker_universe, "load_universe",
+        lambda *a, **k: UniverseResult(frozenset({"GME"}), "finnhub"),
+    )
+    monkeypatch.setattr(
+        C, "run_dry_run",
+        lambda **k: [SurfaceCounts("smg_freq", "24h /smg/ posts", {"GME": 7})],
+    )
+    rc = main(["attention", "--dry-run"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ATTENTION calibration" in out and "smg_freq" in out and "GME" in out
+
+
+def test_attention_universe_unavailable_exit1(monkeypatch, capsys):
+    import chatter_daemon.cli as C
+    from chatter_daemon.ticker_universe import UniverseError
+
+    def boom(*a, **k):
+        raise UniverseError("no live endpoint and no fallback")
+
+    monkeypatch.setattr(C.ticker_universe, "load_universe", boom)
+    rc = main(["attention", "--dry-run"])
+    assert rc == 1
+    assert "universe unavailable" in capsys.readouterr().err
