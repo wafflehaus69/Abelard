@@ -60,6 +60,19 @@ def _default_slang_blacklist_path() -> Path:
     return _package_data_dir() / "slang_blacklist.txt"
 
 
+def _default_state_dir() -> Path:
+    # Mutable run state (the baseline DB) lives outside the package, next to .env.
+    return _DAEMON_ROOT / "state"
+
+
+def _default_baseline_db_path() -> Path:
+    return _default_state_dir() / "baseline.sqlite3"
+
+
+def _default_archive_root() -> Path:
+    return _DAEMON_ROOT / "archive"
+
+
 def _env_path(name: str, default: Path) -> Path:
     raw = os.environ.get(name, "").strip()
     return Path(raw) if raw else default
@@ -75,6 +88,16 @@ def _env_int(name: str, default: int) -> int:
         raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be a number, got {raw!r}") from exc
+
+
 DEFAULT_USER_AGENT = "chatter-daemon/0.1"
 
 # Real tickers that collide with common words — the wordlist filter's exception
@@ -86,6 +109,21 @@ DEFAULT_WORD_TICKER_ALLOWLIST = frozenset({"NOW", "META", "CORN"})
 DEFAULT_SUBREDDITS = ("wallstreetbets", "stocks", "investing", "options")
 HAIKU_MODEL_ID = "claude-haiku-4-5"
 DEFAULT_SENTIMENT_MIN_MENTIONS = 3
+
+# Order 7 — baseline store, archive, anomaly tunables.
+DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
+DEFAULT_BASELINE_MIN_OBS = 5  # N_min before a z-score is meaningful (else `building`)
+DEFAULT_SPIKE_Z = 2.0  # count-source spike threshold (z-score)
+DEFAULT_TREND_SPIKE_RATIO = 1.5  # Trends: interest_24h vs its trailing windows
+# Per-source min-volume floors: low-magnitude sources (Finnhub headlines, /smg/)
+# need low floors or a 2->8 jump on a quiet name z-scores huge off noise; Reddit
+# runs high. All tunable at live smoke.
+DEFAULT_SOURCE_FLOORS: dict[str, int] = {
+    "finnhub_news": 3,
+    "smg": 3,
+    "reddit": 12,
+    "stocktwits": 10,
+}
 
 
 @dataclass(frozen=True)
@@ -109,6 +147,16 @@ class Config:
     reddit_subreddits: tuple[str, ...] = DEFAULT_SUBREDDITS
     haiku_model_id: str = HAIKU_MODEL_ID
     sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
+    # Order 7 — baseline store, run archive, anomaly tunables.
+    baseline_db_path: Path = field(default_factory=_default_baseline_db_path)
+    archive_root: Path = field(default_factory=_default_archive_root)
+    baseline_window: int = DEFAULT_BASELINE_WINDOW
+    baseline_min_obs: int = DEFAULT_BASELINE_MIN_OBS
+    spike_z_threshold: float = DEFAULT_SPIKE_Z
+    trend_spike_ratio: float = DEFAULT_TREND_SPIKE_RATIO
+    source_floors: dict[str, int] = field(
+        default_factory=lambda: dict(DEFAULT_SOURCE_FLOORS)
+    )
 
     def secrets(self) -> tuple[str, ...]:
         """Values to scrub from log output."""
@@ -153,6 +201,12 @@ class Config:
             sentiment_min_mentions=_env_int(
                 "CHATTER_SENTIMENT_MIN", DEFAULT_SENTIMENT_MIN_MENTIONS
             ),
+            baseline_db_path=_env_path("CHATTER_BASELINE_DB", _default_baseline_db_path()),
+            archive_root=_env_path("CHATTER_ARCHIVE_ROOT", _default_archive_root()),
+            baseline_window=_env_int("CHATTER_BASELINE_WINDOW", DEFAULT_BASELINE_WINDOW),
+            baseline_min_obs=_env_int("CHATTER_BASELINE_MIN_OBS", DEFAULT_BASELINE_MIN_OBS),
+            spike_z_threshold=_env_float("CHATTER_SPIKE_Z", DEFAULT_SPIKE_Z),
+            trend_spike_ratio=_env_float("CHATTER_TREND_RATIO", DEFAULT_TREND_SPIKE_RATIO),
         )
 
 

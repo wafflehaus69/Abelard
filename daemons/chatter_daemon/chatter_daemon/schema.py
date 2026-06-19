@@ -153,3 +153,76 @@ class ScanEnvelope(BaseModel):
     # disambiguates: total source failure (zero records, all failed) -> exit 1.
     degraded: bool = False
     errors: list[str] = Field(default_factory=list)
+
+
+# --- Order 7: aggregation layer (separate from the plugin NormalizedRecord) -------
+
+AnomalyState = Literal["building", "thin", "ok", "spike", "none"]
+
+
+class Anomaly(BaseModel):
+    """Mechanical anomaly read for one (ticker, source) — Abelard interprets it.
+
+    `kind="count"` (Finnhub / Reddit / /smg/ / StockTwits): z-score vs the trailing
+    baseline, gated by a min-volume floor + history depth. `kind="trend"` (Trends):
+    within-record elevation of interest_24h over its trailing windows. States:
+    building (history < N_min) | thin (count < floor) | ok | spike | none (no signal
+    to score). A sigma=0 baseline yields no z — flagged in `note`, never fabricated.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["count", "trend"]
+    state: AnomalyState
+    z: float | None = None  # count: z-score (None when building/thin/sigma=0)
+    mean: float | None = None  # count: baseline mu
+    std: float | None = None  # count: baseline sigma
+    observations: int = 0  # count: prior history depth
+    ratio: float | None = None  # trend: interest_24h / trailing-max
+    discounted: bool = False  # trend: noisy_query -> Abelard discounts
+    note: str | None = None
+
+
+class SourceSignal(BaseModel):
+    """One source's observation of a ticker plus its anomaly read. Copies the plugin
+    record's payload — the NormalizedRecord itself stays untouched."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: SourceName
+    metrics: Metrics
+    sentiment: Sentiment
+    matched_by: list[MatchedBy] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)
+    anomaly: Anomaly
+
+
+class AggregatedTicker(BaseModel):
+    """Per-ticker cross-source view. `source_diversity` = how many sources show
+    nonzero signal (higher = corroborated across more surfaces)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    watchlist: str
+    ticker: str
+    sources: list[SourceSignal] = Field(default_factory=list)
+    source_diversity: int = Field(default=0, ge=0)
+
+
+class AggregatedScanResult(BaseModel):
+    """The persisted Order-7 artifact: the per-ticker anomaly view + run provenance
+    (sources / degraded / cost), keyed by a stable `scan_id`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["1"] = SCHEMA_VERSION
+    scan_id: str
+    scan_mode: ScanMode
+    canonical_ts: str
+    windows: list[Window] = Field(default_factory=list)
+    watchlists: list[WatchlistSummary] = Field(default_factory=list)
+    tickers: list[AggregatedTicker] = Field(default_factory=list)
+    sources: list[SourceStatus] = Field(default_factory=list)
+    degraded: bool = False
+    cost: CostTelemetry = Field(default_factory=CostTelemetry)
+    errors: list[str] = Field(default_factory=list)

@@ -1,0 +1,137 @@
+"""Aggregation layer (Order 7) — roll per-(ticker, source) NormalizedRecords into a
+per-ticker cross-source view with an anomaly read, against the trailing baseline.
+
+ORDERING INVARIANT (the load-bearing one): every anomaly is computed against the
+PRIOR baseline, and only THEN are the current scan's count observations appended —
+so a scan never sits in its own baseline. We do it in two passes: read+compute for
+all (ticker, source) pairs, then append. (`read_baseline` already excludes `< now`,
+so the two-pass split is belt-and-suspenders, but it keeps the invariant obvious.)
+
+Trends carries no store — its anomaly is within-record elevation, computed and never
+appended. The plugin `NormalizedRecord` is untouched; this builds a separate type.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+
+from .anomaly import compute_count_anomaly, compute_trend_anomaly
+from .baseline import append_observation, read_baseline
+from .schema import (
+    AggregatedScanResult,
+    AggregatedTicker,
+    ScanEnvelope,
+    SourceSignal,
+)
+
+# Sources whose signal is a count z-scored against the baseline store. Trends is the
+# odd one out (relative interest, within-record elevation, no store).
+COUNT_SOURCES = frozenset({"finnhub_news", "reddit", "smg", "stocktwits"})
+TREND_SOURCE = "google_trends"
+
+
+def build_aggregate(
+    envelope: ScanEnvelope,
+    *,
+    conn: sqlite3.Connection,
+    scan_id: str,
+    source_floors: dict[str, int],
+    baseline_window: int,
+    baseline_min_obs: int,
+    spike_z_threshold: float,
+    trend_spike_ratio: float,
+    now: int,
+    max_age_s: int | None = None,
+) -> AggregatedScanResult:
+    """Build the persisted aggregate from one scan envelope + the baseline store.
+
+    `now` is the run's canonical_unix (the single clock). Count observations are
+    appended at `now` AFTER every anomaly is computed.
+    """
+    by_ticker: dict[tuple[str, str], list] = {}
+    order: list[tuple[str, str]] = []
+    for rec in envelope.records:
+        key = (rec.watchlist, rec.ticker)
+        if key not in by_ticker:
+            by_ticker[key] = []
+            order.append(key)
+        by_ticker[key].append(rec)
+
+    tickers_out: list[AggregatedTicker] = []
+    pending: list[tuple[str, str, str, int]] = []  # (watchlist, ticker, source, count)
+
+    for wl, ticker in order:
+        signals: list[SourceSignal] = []
+        diversity = 0
+        for rec in by_ticker[(wl, ticker)]:
+            if rec.source == TREND_SOURCE:
+                anomaly = compute_trend_anomaly(
+                    interest_24h=rec.metrics.interest_24h,
+                    interest_7d=rec.metrics.interest_7d,
+                    interest_monthly=rec.metrics.interest_monthly,
+                    noisy="noisy_query" in rec.flags,
+                    ratio_threshold=trend_spike_ratio,
+                )
+                signaled = (
+                    rec.metrics.interest_24h is not None and rec.metrics.interest_24h > 0
+                )
+            else:
+                count = rec.metrics.mention_count
+                baseline = read_baseline(
+                    conn,
+                    watchlist=wl,
+                    ticker=ticker,
+                    source=rec.source,
+                    window=baseline_window,
+                    now=now,
+                    max_age_s=max_age_s,
+                )
+                anomaly = compute_count_anomaly(
+                    baseline,
+                    count=count,
+                    floor=source_floors.get(rec.source, 0),
+                    min_obs=baseline_min_obs,
+                    z_threshold=spike_z_threshold,
+                )
+                signaled = count > 0
+                pending.append((wl, ticker, rec.source, count))
+
+            if signaled:
+                diversity += 1
+            signals.append(
+                SourceSignal(
+                    source=rec.source,
+                    metrics=rec.metrics,
+                    sentiment=rec.sentiment,
+                    matched_by=rec.matched_by,
+                    flags=rec.flags,
+                    anomaly=anomaly,
+                )
+            )
+        tickers_out.append(
+            AggregatedTicker(
+                watchlist=wl, ticker=ticker, sources=signals, source_diversity=diversity
+            )
+        )
+
+    # PASS 2 — append the current scan's counts, AFTER every baseline was read.
+    for wl, ticker, source, count in pending:
+        append_observation(
+            conn, watchlist=wl, ticker=ticker, source=source, canonical_unix=now, count=count
+        )
+
+    return AggregatedScanResult(
+        scan_id=scan_id,
+        scan_mode=envelope.scan_mode,
+        canonical_ts=envelope.canonical_ts,
+        windows=envelope.windows,
+        watchlists=envelope.watchlists,
+        tickers=tickers_out,
+        sources=envelope.sources,
+        degraded=envelope.degraded,
+        cost=envelope.cost,
+        errors=envelope.errors,
+    )
+
+
+__all__ = ["COUNT_SOURCES", "TREND_SOURCE", "build_aggregate"]
