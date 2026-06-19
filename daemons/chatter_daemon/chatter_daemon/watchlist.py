@@ -20,9 +20,9 @@ Per-ticker flags drive downstream behavior (honored from Order 2 on):
                           collision-word ticker's full company name is a fine search
                           term). May be empty for S&P names (resolved from the shared
                           alias map); filled by hand for non-S&P names (see `notes`).
-  - `trends_noisy`     -> the Trends search term is ambiguous (Apple / Oracle /
-                          Caterpillar...); emits `noisy_query`. Independent of
-                          `name_match` (which governs free-text matching, not queries).
+  - `ambiguous_name`   -> the Trends search term is ambiguous (Apple / Oracle /
+                          Caterpillar...); emits `noisy_query` (with REAL interest).
+                          Independent of `name_match` (governs free-text, not queries).
   - `notes`            -> free-text annotation / scaffold TODO for the operator.
 """
 
@@ -56,7 +56,7 @@ class TickerSpec(BaseModel):
     # Trends-only: the company name is an ambiguous search term (Apple, Oracle,
     # Caterpillar...). Drives the `noisy_query` flag; independent of `name_match`,
     # which governs FREE-TEXT matching, not search queries.
-    trends_noisy: bool = False
+    ambiguous_name: bool = False
     notes: str | None = None
 
     @field_validator("symbol")

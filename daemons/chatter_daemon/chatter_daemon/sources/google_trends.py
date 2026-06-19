@@ -15,11 +15,12 @@ Disciplines (Trends is the flakiest upstream — treat breakage as first-class):
     still carry the scan. It does NOT raise.
   - **upstream-shape change -> RAISE.** An unexpected structure fails loud — never
     emit a guessed / zero interest.
-  - **noisy_query** flag for two cases, both honest about precision: (a) the search
-    term is ambiguous (`trends_noisy`: Apple / Oracle / Caterpillar / Parsons /
-    Palomar) — the company dominates that search volume but Abelard discounts the
-    number; the interest is still real. (b) the ticker has NO clean search term
-    (ETFs) — null interest, `matched_by=[]`, rather than a fabricated zero.
+  - **noisy_query** flag, STRICT: set ONLY when the search term is ambiguous
+    (`ambiguous_name`: Apple / Oracle / Caterpillar / Parsons / Palomar) — the
+    company dominates that search volume so Abelard discounts the number, but the
+    interest is REAL. A ticker with NO clean search term (ETF) gets null interest
+    + `matched_by=[]` + NO flag — "no signal", kept distinct from this "weak signal"
+    so the Order-7 anomaly layer never conflates them.
 
 pytrends owns its own transport and is **lazy-imported** behind an injected
 `TrendsClient`, so this module loads (and tests run) without it. Non-ASCII
@@ -134,9 +135,10 @@ class GoogleTrendsSource:
         for spec in watchlist.active_tickers:
             query = query_name(spec, self._shared_map)
             if query is None:
-                # No clean search term (ETF) -> null + noisy_query, no name match.
+                # No clean search term (ETF) -> null, no name match, NO flag.
+                # "no signal" stays distinct from the ambiguous "weak signal".
                 records.append(
-                    self._record(watchlist.name, spec, context, window, {}, matched_by=[], noisy=True)
+                    self._record(watchlist.name, spec, context, window, {}, matched_by=[], noisy=False)
                 )
                 continue
             if degraded is not None:
@@ -161,7 +163,7 @@ class GoogleTrendsSource:
             records.append(
                 self._record(
                     watchlist.name, spec, context, window, interest,
-                    matched_by=["name"], noisy=spec.trends_noisy,
+                    matched_by=["name"], noisy=spec.ambiguous_name,
                 )
             )
 

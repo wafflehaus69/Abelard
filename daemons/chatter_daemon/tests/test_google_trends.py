@@ -26,7 +26,7 @@ WL = WatchlistConfig(
         {"symbol": "NVDA"},  # name_match:true -> shared-map alias, clean
         {"symbol": "MELI", "names": ["MercadoLibre", "Mercado Libre"]},  # inline, clean
         {"symbol": "DE", "name_match": False, "names": ["John Deere"]},  # name_match:false, still queried
-        {"symbol": "CAT", "name_match": False, "names": ["Caterpillar"], "trends_noisy": True},  # queried + noisy
+        {"symbol": "CAT", "name_match": False, "names": ["Caterpillar"], "ambiguous_name": True},  # queried + noisy
         {"symbol": "ITA", "is_etf": True, "name_match": False},  # ETF, no name -> null
         {"symbol": "P", "enabled": False},  # excluded
     ],
@@ -89,7 +89,7 @@ def test_clean_names_three_windows():
 
 
 def test_ambiguous_term_queries_with_noisy_flag():
-    # CAT (trends_noisy) queries "Caterpillar" AND returns a REAL value + noisy_query
+    # CAT (ambiguous_name) queries "Caterpillar" AND returns a REAL value + noisy_query
     # (the §C rework: was null, now a discounted-but-present number).
     client = _FakeClient(
         interest_map={_NVDA_Q: 50.0, _MELI_Q: 50.0, "John Deere": 50.0, "Caterpillar": 88.0}
@@ -109,7 +109,7 @@ def test_etf_no_query_null():
     res = _src(client).fetch(WL, context=_ctx())
     ita = {r.ticker: r for r in res.records}["ITA"]
     assert ita.metrics.interest_24h is None  # ETF -> null, never fabricated
-    assert ita.flags == ["noisy_query"]
+    assert ita.flags == []  # "no signal" -> NO noisy_query (kept distinct from ambiguous)
     assert ita.matched_by == []
     assert "ITA" not in {q[0] for q in client.queries}  # never queried (no clean term)
 
