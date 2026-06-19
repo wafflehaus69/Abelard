@@ -14,7 +14,14 @@ from __future__ import annotations
 import logging
 import time
 
-from .schema import NormalizedRecord, ScanEnvelope, ScanMode, SourceStatus, WatchlistSummary
+from .schema import (
+    CostTelemetry,
+    NormalizedRecord,
+    ScanEnvelope,
+    ScanMode,
+    SourceStatus,
+    WatchlistSummary,
+)
 from .sources.base import ScanContext, Source
 from .watchlist import WatchlistConfig
 from .windows import derive_windows, iso_z
@@ -49,6 +56,7 @@ def run_scan(
     records: list[NormalizedRecord] = []
     errors: list[str] = []
     sources_status: list[SourceStatus] = []
+    cost = CostTelemetry()  # LLM cost, folded in before the envelope is returned
 
     # Source fan-out with per-source failure isolation: a source that raises (or
     # returns a fatal error) is recorded ok=False in `sources` and folded into
@@ -67,6 +75,12 @@ def run_scan(
                 break  # stop this source's remaining watchlists; others continue
             src_records.extend(result.records)
             errors.extend(result.warnings)
+            if result.cost is not None:
+                cost.haiku_calls += result.cost.haiku_calls
+                cost.input_tokens += result.cost.input_tokens
+                cost.output_tokens += result.cost.output_tokens
+                cost.cache_read_input_tokens += result.cost.cache_read_input_tokens
+                cost.cache_creation_input_tokens += result.cost.cache_creation_input_tokens
             if result.error:
                 src_error = result.error
                 errors.append(f"{result.source}: {result.error}")
@@ -94,6 +108,7 @@ def run_scan(
         watchlists=summaries,
         sources=sources_status,
         records=records,
+        cost=cost,
         degraded=degraded,
         errors=errors,
     )

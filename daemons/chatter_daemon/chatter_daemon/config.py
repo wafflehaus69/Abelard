@@ -65,11 +65,27 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(raw) if raw else default
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
+
+
 DEFAULT_USER_AGENT = "chatter-daemon/0.1"
 
 # Real tickers that collide with common words — the wordlist filter's exception
 # list (a bare token here survives common-word rejection). Lifted from BizDaemon.
 DEFAULT_WORD_TICKER_ALLOWLIST = frozenset({"NOW", "META", "CORN"})
+
+# Reddit (Order 6). Subreddits configurable; the Haiku model id is pinned here,
+# verified live via the claude-api skill at build time (not from memory).
+DEFAULT_SUBREDDITS = ("wallstreetbets", "stocks", "investing", "options")
+HAIKU_MODEL_ID = "claude-haiku-4-5"
+DEFAULT_SENTIMENT_MIN_MENTIONS = 3
 
 
 @dataclass(frozen=True)
@@ -85,10 +101,26 @@ class Config:
     common_words_path: Path = field(default_factory=_default_common_words_path)
     slang_blacklist_path: Path = field(default_factory=_default_slang_blacklist_path)
     word_ticker_allowlist: frozenset[str] = DEFAULT_WORD_TICKER_ALLOWLIST
+    # Reddit + Haiku (Order 6). Creds optional at load, required at the plugin's fetch.
+    anthropic_api_key: str | None = None
+    reddit_client_id: str | None = None
+    reddit_client_secret: str | None = None
+    reddit_user_agent: str | None = None
+    reddit_subreddits: tuple[str, ...] = DEFAULT_SUBREDDITS
+    haiku_model_id: str = HAIKU_MODEL_ID
+    sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
 
     def secrets(self) -> tuple[str, ...]:
         """Values to scrub from log output."""
-        return tuple(s for s in (self.finnhub_api_key,) if s)
+        return tuple(
+            s
+            for s in (
+                self.finnhub_api_key,
+                self.anthropic_api_key,
+                self.reddit_client_secret,
+            )
+            if s
+        )
 
     @classmethod
     def from_env(cls, *, dotenv_path: Path | None = None) -> "Config":
@@ -99,6 +131,12 @@ class Config:
         log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
         finnhub = os.environ.get("FINNHUB_API_KEY", "").strip() or None
         user_agent = os.environ.get("CHATTER_USER_AGENT", "").strip() or DEFAULT_USER_AGENT
+        subreddits_raw = os.environ.get("CHATTER_SUBREDDITS", "").strip()
+        subreddits = (
+            tuple(s.strip() for s in subreddits_raw.split(",") if s.strip())
+            if subreddits_raw
+            else DEFAULT_SUBREDDITS
+        )
         return cls(
             watchlists_dir=watchlists_dir,
             log_level=log_level,
@@ -107,6 +145,14 @@ class Config:
             company_names_path=_env_path("CHATTER_COMPANY_NAMES", _default_company_names_path()),
             common_words_path=_env_path("CHATTER_COMMON_WORDS", _default_common_words_path()),
             slang_blacklist_path=_env_path("CHATTER_SLANG_BLACKLIST", _default_slang_blacklist_path()),
+            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "").strip() or None,
+            reddit_client_id=os.environ.get("REDDIT_CLIENT_ID", "").strip() or None,
+            reddit_client_secret=os.environ.get("REDDIT_CLIENT_SECRET", "").strip() or None,
+            reddit_user_agent=os.environ.get("REDDIT_USER_AGENT", "").strip() or None,
+            reddit_subreddits=subreddits,
+            sentiment_min_mentions=_env_int(
+                "CHATTER_SENTIMENT_MIN", DEFAULT_SENTIMENT_MIN_MENTIONS
+            ),
         )
 
 

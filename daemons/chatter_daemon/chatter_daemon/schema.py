@@ -122,6 +122,20 @@ class SourceStatus(BaseModel):
     error: str | None = None
 
 
+class CostTelemetry(BaseModel):
+    """LLM cost telemetry — captured before any persistence so a downstream write
+    failure can't lose the record of what the Haiku batch cost (doctrine #8). Only
+    the Reddit plugin (Order 6) populates it; every other source is LLM-free."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    haiku_calls: int = Field(default=0, ge=0)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cache_read_input_tokens: int = Field(default=0, ge=0)
+    cache_creation_input_tokens: int = Field(default=0, ge=0)
+
+
 class ScanEnvelope(BaseModel):
     """Run-level output wrapper — one JSON object per invocation."""
 
@@ -134,6 +148,7 @@ class ScanEnvelope(BaseModel):
     watchlists: list[WatchlistSummary] = Field(default_factory=list)
     sources: list[SourceStatus] = Field(default_factory=list)
     records: list[NormalizedRecord] = Field(default_factory=list)
+    cost: CostTelemetry = Field(default_factory=CostTelemetry)
     # True iff at least one source failed (partial or total). The exit code
     # disambiguates: total source failure (zero records, all failed) -> exit 1.
     degraded: bool = False

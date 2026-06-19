@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from ..schema import NormalizedRecord, ScanMode, SourceName, Window
+from ..schema import CostTelemetry, NormalizedRecord, ScanMode, SourceName, Window
 from ..watchlist import WatchlistConfig
 
 
@@ -77,6 +77,7 @@ class SourceResult:
     records: list[NormalizedRecord] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    cost: CostTelemetry | None = None  # LLM cost (Reddit/Haiku only); folded into the envelope
 
 
 @runtime_checkable
