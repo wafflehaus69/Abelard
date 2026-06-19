@@ -1,14 +1,13 @@
 """/smg/ plugin (Order 3) — dual-scan over 4chan /smg/, watchlist-scoped.
 
 A free-text source. For each ACTIVE watchlist ticker, count distinct /smg/ posts
-mentioning it by **cashtag**, **bare symbol**, or **company name** — using the
-shared four-layer noise filter + alias resolver, all `\\b`-anchored. The universe
-is the watchlist's own symbols (watchlist-scoped, not universe-wide extraction —
-that is ATTENTION, Order 8).
+mentioning it by **cashtag**, **bare symbol**, or **company name** — via the shared
+`matching.Matcher` (the dual-scan + `\\b` discipline reused by Reddit, Order 6).
+The universe is the watchlist's own symbols (watchlist-scoped; universe-wide
+extraction is ATTENTION, Order 8).
 
   - `matched_by` records which path hit: cashtag / symbol (bare) / name.
-  - Collision-word names are **ticker-only**: `name_match:false` tickers
-    contribute no name aliases, so they match by symbol/cashtag only.
+  - Collision-word names are **ticker-only** (`name_match:false` → no name aliases).
   - `rarity_hit` is set whenever a ticker appears at all (count >= 1): these
     serious large-caps surfacing in degen territory is the signal, not magnitude.
   - `sentiment.method = "none"` — no LLM, no stance.
@@ -22,13 +21,13 @@ orchestrator isolates the source.
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 from abelard_common import fourchan_fetch, ticker_noise
-from abelard_common.company_aliases import build_name_resolver, load_name_map
+from abelard_common.company_aliases import load_name_map
 
 from ..config import DEFAULT_USER_AGENT, DEFAULT_WORD_TICKER_ALLOWLIST
+from ..matching import Matcher, audit_name_match, build_name_map  # re-exported below
 from ..schema import Metrics, NormalizedRecord, Sentiment
 from ..watchlist import WatchlistConfig
 from .base import ScanContext, SourceResult
@@ -36,49 +35,8 @@ from .base import ScanContext, SourceResult
 SOURCE_NAME = "smg"
 WINDOW_LABEL = "24h"
 
-# Provenance: the cashtag path, mirroring ticker_noise's cashtag regex so the
-# plugin can tag matched_by without reaching into the shared module's internals.
-_CASHTAG_RE = re.compile(r"\$([A-Za-z]{1,5}(?:\.[A-Za-z])?)\b")
-
-
-def build_name_map(watchlist: WatchlistConfig, shared_map: dict[str, str]) -> dict[str, str]:
-    """`name(lower) -> SYMBOL` for `name_match:true` tickers only.
-
-    Inline `names[]` take precedence; a name_match:true ticker without inline
-    names falls back to the shared alias map's entries for its symbol.
-    `name_match:false` tickers contribute NO names (ticker-only).
-    """
-    out: dict[str, str] = {}
-    for spec in watchlist.active_tickers:
-        if not spec.name_match:
-            continue
-        if spec.names:
-            for n in spec.names:
-                out[n.lower()] = spec.symbol
-        else:
-            for name, sym in shared_map.items():
-                if sym == spec.symbol:
-                    out[name] = spec.symbol
-    return out
-
-
-def audit_name_match(
-    watchlist: WatchlistConfig, shared_map: dict[str, str]
-) -> dict[str, list[str]]:
-    """`{symbol: resolved_names}` for every `name_match:true` ticker.
-
-    A symbol mapping to `[]` resolves NOTHING — the silent can't-match bug the
-    audit gate forbids. The caller flips those to `name_match:false`.
-    """
-    name_map = build_name_map(watchlist, shared_map)
-    inverted: dict[str, list[str]] = {}
-    for name, sym in name_map.items():
-        inverted.setdefault(sym, []).append(name)
-    return {
-        spec.symbol: sorted(inverted.get(spec.symbol, []))
-        for spec in watchlist.active_tickers
-        if spec.name_match
-    }
+# Re-exported for callers/tests that import the audit + name-map helpers from here.
+__all__ = ["SmgSource", "audit_name_match", "build_name_map"]
 
 
 class SmgSource:
@@ -106,9 +64,13 @@ class SmgSource:
         self._fetcher = fetcher  # injected in tests; built per-fetch otherwise
 
     def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
-        universe = frozenset(s.symbol for s in watchlist.active_tickers)
-        name_map = build_name_map(watchlist, self._shared_map)
-        resolver = build_name_resolver(name_map)
+        matcher = Matcher.for_watchlist(
+            watchlist,
+            shared_map=self._shared_map,
+            blacklist=self._blacklist,
+            common_words=self._common_words,
+            allowlist=self._allowlist,
+        )
         window = context.windows[WINDOW_LABEL]
 
         fetcher = self._fetcher or fourchan_fetch.Fetcher(
@@ -121,29 +83,13 @@ class SmgSource:
         counts: dict[str, set[int]] = {}
         kinds: dict[str, set[str]] = {}
         for post in posts:
-            com = post.get("com", "")
-            full = ticker_noise.tickers_in_post(
-                com,
-                universe=universe,
-                blacklist=self._blacklist,
-                common_words=self._common_words,
-                allowlist=self._allowlist,
-                name_resolver=resolver,
-            )
-            if not full:
+            hits = matcher.match(post.get("com", ""))
+            if not hits:
                 continue
             post_no = int(post["no"])
-            cashtag = {m.upper() for m in _CASHTAG_RE.findall(com)} & universe
-            named = resolver.tickers_in(com, universe) if resolver else set()
-            for sym in full:
+            for sym, ks in hits.items():
                 counts.setdefault(sym, set()).add(post_no)
-                ks = kinds.setdefault(sym, set())
-                if sym in cashtag:
-                    ks.add("cashtag")
-                if sym in named:
-                    ks.add("name")
-                if sym not in cashtag and sym not in named:
-                    ks.add("symbol")
+                kinds.setdefault(sym, set()).update(ks)
 
         records: list[NormalizedRecord] = []
         for spec in watchlist.active_tickers:

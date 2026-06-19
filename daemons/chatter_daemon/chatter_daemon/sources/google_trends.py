@@ -1,20 +1,25 @@
 """Google Trends plugin (Order 5) — name-keyed search-interest, three windows.
 
-For each ACTIVE `name_match:true` ticker, query Google Trends (pytrends) by the
-SAME company-name alias the /smg/ matcher resolves — never the bare ticker (a
-symbol is noise as a search term). Three interest figures from the single
-canonical anchor: 24h (`now 1-d`), 7d (`now 7-d`), monthly (`today 1-m`, trailing
-~30d). `method="none"`, no LLM, `matched_by=["name"]`.
+For each ACTIVE ticker that has a company-name search term, query Google Trends
+(pytrends) by that NAME — never the bare ticker (a symbol is noise as a search
+term). The query is **independent of `name_match`**: `name_match` governs free-text
+matching (/smg/, Reddit), but a collision-word ticker's full company name (DE ->
+"John Deere", MU -> "Micron") is a perfectly distinctive SEARCH term. Three interest
+figures from the single canonical anchor: 24h (`now 1-d`), 7d (`now 7-d`), monthly
+(`today 1-m`, trailing ~30d). `method="none"`, no LLM, `matched_by=["name"]` when
+queried.
 
 Disciplines (Trends is the flakiest upstream — treat breakage as first-class):
-  - **429 → degrade, never sink.** A rate-limit returns the source with an
-    `error` set (so it shows `ok=False` / the scan is `degraded`) and the OTHER
-    sources still carry the scan. It does NOT raise.
-  - **upstream-shape change → RAISE.** An unexpected structure fails loud — never
+  - **429 -> degrade, never sink.** A rate-limit returns the source with an `error`
+    set (so it shows `ok=False` / the scan is `degraded`) and the OTHER sources
+    still carry the scan. It does NOT raise.
+  - **upstream-shape change -> RAISE.** An unexpected structure fails loud — never
     emit a guessed / zero interest.
-  - **noisy_query** flag where a clean name query isn't possible (collision / ETF
-    / no clean name): emit the record with `noisy_query` + null interest rather
-    than fabricating precision.
+  - **noisy_query** flag for two cases, both honest about precision: (a) the search
+    term is ambiguous (`trends_noisy`: Apple / Oracle / Caterpillar / Parsons /
+    Palomar) — the company dominates that search volume but Abelard discounts the
+    number; the interest is still real. (b) the ticker has NO clean search term
+    (ETFs) — null interest, `matched_by=[]`, rather than a fabricated zero.
 
 pytrends owns its own transport and is **lazy-imported** behind an injected
 `TrendsClient`, so this module loads (and tests run) without it. Non-ASCII
@@ -94,10 +99,10 @@ class PytrendsClient:
 
 
 def query_name(spec: TickerSpec, shared_map: dict[str, str]) -> str | None:
-    """The single Trends query term for a ticker — its primary alias (the same
-    name the matcher resolves). None for `name_match:false` / no clean name."""
-    if not spec.name_match:
-        return None
+    """The single Trends query term for a ticker — its primary alias, INDEPENDENT
+    of `name_match` (this is a search term, not a free-text matcher). `names[0]` if
+    present, else the shortest shared-map alias for the symbol, else None (no clean
+    search term — e.g. an ETF)."""
     if spec.names:
         return spec.names[0]
     candidates = sorted((n for n, sym in shared_map.items() if sym == spec.symbol), key=len)
@@ -129,12 +134,16 @@ class GoogleTrendsSource:
         for spec in watchlist.active_tickers:
             query = query_name(spec, self._shared_map)
             if query is None:
-                # No clean name (collision / ETF) -> flag, do not fabricate.
-                records.append(self._record(watchlist.name, spec, context, window, {}, noisy=True))
+                # No clean search term (ETF) -> null + noisy_query, no name match.
+                records.append(
+                    self._record(watchlist.name, spec, context, window, {}, matched_by=[], noisy=True)
+                )
                 continue
             if degraded is not None:
                 # Already rate-limited this run -> null interest, no fabrication.
-                records.append(self._record(watchlist.name, spec, context, window, {}, noisy=False))
+                records.append(
+                    self._record(watchlist.name, spec, context, window, {}, matched_by=["name"], noisy=False)
+                )
                 continue
             interest: dict[str, float | None] = {}
             try:
@@ -144,11 +153,16 @@ class GoogleTrendsSource:
                 # Degrade: mark the source failed, keep the scan alive. NOT a raise.
                 degraded = f"rate limited (429); interest skipped from {spec.symbol}: {exc}"
                 self._log.warning("google_trends %s", degraded)
-                records.append(self._record(watchlist.name, spec, context, window, {}, noisy=False))
+                records.append(
+                    self._record(watchlist.name, spec, context, window, {}, matched_by=["name"], noisy=False)
+                )
                 continue
             # TrendsShapeError intentionally propagates -> orchestrator isolates loudly.
             records.append(
-                self._record(watchlist.name, spec, context, window, interest, noisy=False)
+                self._record(
+                    watchlist.name, spec, context, window, interest,
+                    matched_by=["name"], noisy=spec.trends_noisy,
+                )
             )
 
         return SourceResult(source=SOURCE_NAME, records=records, error=degraded)
@@ -161,6 +175,7 @@ class GoogleTrendsSource:
         window: Window,
         interest: dict[str, float | None],
         *,
+        matched_by: list[str],
         noisy: bool,
     ) -> NormalizedRecord:
         return NormalizedRecord(
@@ -170,7 +185,7 @@ class GoogleTrendsSource:
             window=window,
             source=SOURCE_NAME,
             ticker=spec.symbol,
-            matched_by=[] if noisy else ["name"],
+            matched_by=matched_by,
             metrics=Metrics(
                 interest_24h=interest.get("interest_24h"),
                 interest_7d=interest.get("interest_7d"),

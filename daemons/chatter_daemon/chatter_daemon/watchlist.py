@@ -14,9 +14,15 @@ Per-ticker flags drive downstream behavior (honored from Order 2 on):
   - `is_etf=True`      -> documents expected chatter/news silence (read-path hint).
   - `enabled=False`    -> excluded from scanning; a visible placeholder for an
                           unverified symbol (e.g. `P`, pending confirmation).
-  - `names`            -> free-text aliases. For S&P names this may be left empty
-                          and resolved from the shared abelard_common alias map; for
-                          non-S&P names it must be filled by hand (see `notes`).
+  - `names`            -> aliases, used TWO ways: free-text matching (only when
+                          `name_match=True`) AND the Google Trends search query (for
+                          ANY ticker that has one, even `name_match:false` — a
+                          collision-word ticker's full company name is a fine search
+                          term). May be empty for S&P names (resolved from the shared
+                          alias map); filled by hand for non-S&P names (see `notes`).
+  - `trends_noisy`     -> the Trends search term is ambiguous (Apple / Oracle /
+                          Caterpillar...); emits `noisy_query`. Independent of
+                          `name_match` (which governs free-text matching, not queries).
   - `notes`            -> free-text annotation / scaffold TODO for the operator.
 """
 
@@ -47,6 +53,10 @@ class TickerSpec(BaseModel):
     name_match: bool = True
     is_etf: bool = False
     enabled: bool = True
+    # Trends-only: the company name is an ambiguous search term (Apple, Oracle,
+    # Caterpillar...). Drives the `noisy_query` flag; independent of `name_match`,
+    # which governs FREE-TEXT matching, not search queries.
+    trends_noisy: bool = False
     notes: str | None = None
 
     @field_validator("symbol")

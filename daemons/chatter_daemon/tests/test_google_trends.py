@@ -1,4 +1,5 @@
-"""Google Trends plugin — name-keyed interest, noisy_query, 429-degrade, shape-raise."""
+"""Google Trends — query decoupled from name_match, noisy_query for ambiguous terms
+(real value) AND for no-term ETFs (null), 429-degrade, shape-raise, non-ASCII."""
 
 from __future__ import annotations
 
@@ -22,10 +23,11 @@ FIXED = 1_718_733_600
 WL = WatchlistConfig(
     name="t",
     tickers=[
-        {"symbol": "NVDA"},  # name_match:true -> shared-map alias
-        {"symbol": "MELI", "names": ["MercadoLibre", "Mercado Libre"]},  # inline alias
-        {"symbol": "ITA", "is_etf": True, "name_match": False},  # ETF -> noisy_query
-        {"symbol": "CAT", "name_match": False},  # collision -> noisy_query
+        {"symbol": "NVDA"},  # name_match:true -> shared-map alias, clean
+        {"symbol": "MELI", "names": ["MercadoLibre", "Mercado Libre"]},  # inline, clean
+        {"symbol": "DE", "name_match": False, "names": ["John Deere"]},  # name_match:false, still queried
+        {"symbol": "CAT", "name_match": False, "names": ["Caterpillar"], "trends_noisy": True},  # queried + noisy
+        {"symbol": "ITA", "is_etf": True, "name_match": False},  # ETF, no name -> null
         {"symbol": "P", "enabled": False},  # excluded
     ],
 )
@@ -61,43 +63,55 @@ def _src(client):
     return GoogleTrendsSource(company_names_path=_default_company_names_path(), client=client)
 
 
-def test_query_name_uses_alias_not_ticker():
-    assert _NVDA_Q is not None and _NVDA_Q != "NVDA"
+def test_query_name_decoupled_from_name_match():
+    assert _NVDA_Q is not None and _NVDA_Q != "NVDA"  # name_match:true via shared map
     assert query_name(WL.tickers[1], _SHARED) == "MercadoLibre"  # names[0]
-    assert query_name(WL.tickers[2], _SHARED) is None  # ETF, name_match:false
-    assert query_name(WL.tickers[3], _SHARED) is None  # collision, name_match:false
+    # the decoupling: name_match:false tickers WITH names[] are still queried
+    assert query_name(WL.tickers[2], _SHARED) == "John Deere"
+    assert query_name(WL.tickers[3], _SHARED) == "Caterpillar"
+    assert query_name(WL.tickers[4], _SHARED) is None  # ETF, no name -> no query
 
 
-def test_clean_name_three_windows():
-    client = _FakeClient(interest_map={_NVDA_Q: 75.0, _MELI_Q: 40.0})
+def test_clean_names_three_windows():
+    client = _FakeClient(interest_map={_NVDA_Q: 75.0, _MELI_Q: 40.0, "John Deere": 20.0})
     res = _src(client).fetch(WL, context=_ctx())
     by = {r.ticker: r for r in res.records}
-    assert by["NVDA"].metrics.interest_24h == 75.0
-    assert by["NVDA"].metrics.interest_7d == 75.0
-    assert by["NVDA"].metrics.interest_monthly == 75.0
-    assert by["NVDA"].matched_by == ["name"]
-    assert by["NVDA"].flags == []
-    assert by["NVDA"].sentiment.method == "none"
-    # queried by the matcher's name across the three anchored timeframes
-    assert (_NVDA_Q, "now 1-d") in client.queries
-    assert (_NVDA_Q, "now 7-d") in client.queries
-    assert (_NVDA_Q, "today 1-m") in client.queries
+    for sym, val in (("NVDA", 75.0), ("MELI", 40.0), ("DE", 20.0)):
+        assert by[sym].metrics.interest_24h == val
+        assert by[sym].metrics.interest_7d == val
+        assert by[sym].metrics.interest_monthly == val
+        assert by[sym].matched_by == ["name"]
+        assert by[sym].flags == []
+        assert by[sym].sentiment.method == "none"
     assert all(q[0] != "NVDA" for q in client.queries)  # never the bare ticker
+    assert ("John Deere", "now 1-d") in client.queries  # name_match:false ticker still queried
     assert res.error is None
 
 
-def test_noisy_query_null_interest():
-    client = _FakeClient(interest_map={_NVDA_Q: 50.0, _MELI_Q: 50.0})
+def test_ambiguous_term_queries_with_noisy_flag():
+    # CAT (trends_noisy) queries "Caterpillar" AND returns a REAL value + noisy_query
+    # (the §C rework: was null, now a discounted-but-present number).
+    client = _FakeClient(
+        interest_map={_NVDA_Q: 50.0, _MELI_Q: 50.0, "John Deere": 50.0, "Caterpillar": 88.0}
+    )
     res = _src(client).fetch(WL, context=_ctx())
-    by = {r.ticker: r for r in res.records}
-    for sym in ("ITA", "CAT"):
-        assert by[sym].flags == ["noisy_query"]
-        assert by[sym].metrics.interest_24h is None
-        assert by[sym].metrics.interest_monthly is None
-        assert by[sym].matched_by == []
-    # the noisy names were never queried (no fabricated precision)
-    queried = {q[0] for q in client.queries}
-    assert queried == {_NVDA_Q, _MELI_Q}
+    cat = {r.ticker: r for r in res.records}["CAT"]
+    assert cat.metrics.interest_24h == 88.0  # NOT null
+    assert cat.flags == ["noisy_query"]
+    assert cat.matched_by == ["name"]
+    assert ("Caterpillar", "now 1-d") in client.queries
+
+
+def test_etf_no_query_null():
+    client = _FakeClient(
+        interest_map={_NVDA_Q: 50.0, _MELI_Q: 50.0, "John Deere": 50.0, "Caterpillar": 50.0}
+    )
+    res = _src(client).fetch(WL, context=_ctx())
+    ita = {r.ticker: r for r in res.records}["ITA"]
+    assert ita.metrics.interest_24h is None  # ETF -> null, never fabricated
+    assert ita.flags == ["noisy_query"]
+    assert ita.matched_by == []
+    assert "ITA" not in {q[0] for q in client.queries}  # never queried (no clean term)
 
 
 def test_429_degrades_not_raises():
@@ -106,7 +120,7 @@ def test_429_degrades_not_raises():
     assert res.error is not None and "429" in res.error
     by = {r.ticker: r for r in res.records}
     assert by["NVDA"].metrics.interest_24h is None  # null, not fabricated
-    assert len(res.records) == 4  # all active tickers still emitted
+    assert len(res.records) == 5  # all active tickers still emitted
 
 
 def test_shape_change_raises():
@@ -130,4 +144,4 @@ def test_end_to_end_run_scan_degraded_but_alive():
     assert env.sources[0].source == "google_trends"
     assert env.sources[0].ok is False  # 429 -> source degraded
     assert env.degraded is True
-    assert len(env.records) == 4  # the scan did not sink
+    assert len(env.records) == 5  # the scan did not sink
