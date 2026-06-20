@@ -1,0 +1,95 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# graphify corpus scope — Abelard.  CODE-ONLY.
+#
+# Doctrine, docs, configs, secrets, virtualenvs, caches and fixtures are EXCLUDED.
+#
+# WHY code-only is the whole game here: graphify only invokes an LLM backend for
+# document/paper/image files (.md/.txt/.rst/.html/.yaml/.yml/.pdf/images/office/
+# video). A pure-code corpus never enters that path, so extraction is 100% local
+# AST (tree-sitter) — zero network calls, zero API cost. Excluding every doc-class
+# file is therefore BOTH the doctrine safeguard AND the offline guarantee.
+#
+# graphify merges .gitignore + .graphifyignore (gitignore semantics: last-match-
+# wins, '!' negation, parent-exclusion). A '!' here can NEVER re-include a file
+# that .gitignore already excludes (.venv/, .env, *.env, __pycache__/, *.db,
+# *.egg-info/, .pytest_cache/, build/, dist/) — an extra safety floor under the
+# allowlist below.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 1) Exclude everything, then re-include ONLY the source trees.
+#    (daemons/common/abelard_common/ lives under daemons/, so it is covered.)
+*
+!daemons/
+!daemons/**
+!scripts/
+!scripts/**
+
+# 2) Doctrine — must never enter the corpus. Redundant with *.md below, but
+#    listed explicitly so the intent is auditable. Bare names match at any depth,
+#    so the per-daemon SOUL.md files are caught too.
+SOUL.md
+IDENTITY.md
+USER.md
+AGENTS.md
+SECURITY.md
+WORLDVIEW.md
+THESES.md
+METHODOLOGY.md
+MEMORY.md
+
+# 3) ALL doc / prose / config / media extensions — keeps the corpus code-only,
+#    which is what keeps extraction fully offline (see header).
+*.md
+*.markdown
+*.mdx
+*.qmd
+*.rst
+*.txt
+*.html
+*.htm
+*.yaml
+*.yml
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.docx
+*.xlsx
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.avi
+*.m4v
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.gdoc
+*.gsheet
+*.gslides
+
+# 4) Secrets / virtualenvs / caches / build artifacts. Most are already in
+#    .gitignore, but .venv-linux/ is NOT, so cover the venv variants explicitly.
+.env
+*.env
+.venv/
+.venv*/
+venv/
+**/__pycache__/
+.pytest_cache/
+*.egg-info/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite3
+
+# 5) Test fixtures (captured payloads / data, not source).
+**/tests/fixtures/**
+
+# 6) graphify's own output directory.
+graphify-out/
