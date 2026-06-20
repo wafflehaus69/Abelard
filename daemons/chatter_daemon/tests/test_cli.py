@@ -159,10 +159,31 @@ def test_read_chatter_missing_path_fails_loud(capsys, tmp_path):
     assert "read-chatter error" in err and "does not exist" in err
 
 
-def test_attention_requires_dry_run(capsys):
-    rc = main(["attention"])
-    assert rc == 2
-    assert "use --dry-run" in capsys.readouterr().err
+def test_attention_real_scan_persists_and_reads(monkeypatch, capsys, tmp_path):
+    import chatter_daemon.cli as C
+    from chatter_daemon.discovery import SurfaceCounts
+    from chatter_daemon.ticker_universe import UniverseResult
+
+    monkeypatch.setattr(
+        C.ticker_universe, "load_universe",
+        lambda *a, **k: UniverseResult(frozenset({"GME", "NVDA"}), "finnhub"),
+    )
+    monkeypatch.setattr(
+        C, "run_dry_run",
+        lambda **k: [SurfaceCounts("smg_freq", "24h /smg/ posts", {"GME": 7, "NVDA": 2})],
+    )
+    rc, payload = _run(["attention"], capsys)  # real scan (no --dry-run)
+    assert rc == 0
+    assert payload["scan_mode"] == "attention"
+    admitted = {t["ticker"] for t in payload["tickers"]}
+    assert "GME" in admitted and "NVDA" not in admitted  # NVDA 2 < /smg/ floor 3
+
+    scan_id = payload["scan_id"]
+    files = list((tmp_path / "archive").rglob(f"{scan_id}.json"))
+    assert len(files) == 1  # persisted under YYYY-MM
+    rc2 = main(["read-chatter", str(files[0])])
+    out = capsys.readouterr().out
+    assert rc2 == 0 and "ATTENTION scan" in out and "SALIENCE" in out and "GME" in out
 
 
 def test_attention_dry_run_prints_distribution(monkeypatch, capsys):

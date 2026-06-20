@@ -226,3 +226,96 @@ class AggregatedScanResult(BaseModel):
     degraded: bool = False
     cost: CostTelemetry = Field(default_factory=CostTelemetry)
     errors: list[str] = Field(default_factory=list)
+
+
+# --- Order 8: ATTENTION cold archive (prune roll-up) ------------------------------
+
+
+class DayRollup(BaseModel):
+    """One pruned (day, ticker, source) summary — what survives the 14-day hot
+    window as compact long-term memory."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    day: str  # YYYY-MM-DD (UTC)
+    ticker: str
+    source: str
+    scans: int = Field(ge=0)
+    total_count: int = Field(ge=0)
+    max_count: int = Field(ge=0)
+
+
+class ColdRollup(BaseModel):
+    """A prune batch: hot events aged past 14 days, aggregated per day/ticker/source
+    and archived to cold storage BEFORE deletion. Indefinite; never feeds live
+    velocity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["1"] = SCHEMA_VERSION
+    rollup_id: str
+    generated_ts: int
+    cutoff_ts: int
+    rollups: list[DayRollup] = Field(default_factory=list)
+
+
+# --- Order 8: ATTENTION scan result (off-watchlist discovery) ---------------------
+
+# Discovery surfaces are their own labels (rising / frequency / trending) — a parallel
+# vocabulary to the watchlist SourceName, not the same enum.
+AttentionSource = Literal["smg_freq", "reddit_rising", "stocktwits_trending"]
+
+
+class AttentionSignal(BaseModel):
+    """One surface's observation of a discovered ticker. `anomaly` is the VELOCITY
+    read (count z-score vs the rolling baseline) for count surfaces; None for a point-
+    in-time surface (StockTwits trending), which feeds salience only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: AttentionSource
+    semantics: str
+    count: int = Field(ge=0)
+    anomaly: Anomaly | None = None
+
+
+class AttentionTicker(BaseModel):
+    """One discovered ticker: its per-surface signals, current salience, and whether
+    the crowd found one of the operator's watchlist names on its own (amplified)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str
+    signals: list[AttentionSignal] = Field(default_factory=list)
+    salience: int = Field(default=0, ge=0)  # "loud right now" — sum across surfaces
+    on_watchlists: list[str] = Field(default_factory=list)
+    amplified: bool = False
+    flags: list[str] = Field(default_factory=list)  # cold_start / spike
+
+
+class AttentionSurfaceStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: AttentionSource
+    ok: bool
+    candidates: int = Field(default=0, ge=0)  # tickers admitted (count >= floor)
+    floor: int = Field(default=0, ge=0)
+    warning: str | None = None
+
+
+class AttentionResult(BaseModel):
+    """The persisted ATTENTION artifact — salience + velocity + amplified intersections
+    over the discovered universe. Descriptive; Abelard judges materiality."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["1"] = SCHEMA_VERSION
+    scan_id: str
+    scan_mode: Literal["attention"] = "attention"
+    canonical_ts: str
+    surfaces: list[AttentionSurfaceStatus] = Field(default_factory=list)
+    tickers: list[AttentionTicker] = Field(default_factory=list)
+    pruned: int = Field(default=0, ge=0)  # hot rows rolled to cold this run
+    degraded: bool = False
+    cost: CostTelemetry = Field(default_factory=CostTelemetry)
+    errors: list[str] = Field(default_factory=list)

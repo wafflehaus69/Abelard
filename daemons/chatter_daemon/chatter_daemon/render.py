@@ -13,7 +13,7 @@ the scan was partial, and what the Haiku batch cost.
 
 from __future__ import annotations
 
-from .schema import Anomaly, AggregatedScanResult, SourceSignal
+from .schema import Anomaly, AggregatedScanResult, AttentionResult, SourceSignal
 
 _COUNT_NOUN = {
     "finnhub_news": "headlines",
@@ -99,4 +99,64 @@ def _anomaly_tag(a: Anomaly) -> str:
     return f"ok ({a.note})" if a.note else "ok"
 
 
-__all__ = ["render_chatter"]
+def render_attention(result: AttentionResult) -> str:
+    """Human-readable ATTENTION view: salience (loud now), accelerating (velocity vs
+    trailing baseline), and amplified (also on a watchlist) — plus the run's
+    degraded/surfaces/cost/prune state. Source-labeled, descriptive."""
+    lines: list[str] = []
+    lines.append(f"ATTENTION scan {result.scan_id}")
+    lines.append(f"  at {result.canonical_ts}  mode={result.scan_mode}")
+    src_bits = [
+        f"{s.source}={'ok' if s.ok else 'FAILED'}({s.candidates}, floor {s.floor})"
+        for s in result.surfaces
+    ]
+    lines.append(f"  surfaces: {', '.join(src_bits) if src_bits else '(none)'}")
+    if result.degraded:
+        lines.append("  DEGRADED: one or more discovery surfaces failed — partial scan")
+    c = result.cost
+    lines.append(f"  cost: {c.haiku_calls} haiku calls, in={c.input_tokens} out={c.output_tokens}")
+    lines.append(f"  pruned: {result.pruned} hot rows rolled to cold archive")
+    if result.errors:
+        lines.append("  errors:")
+        lines.extend(f"    - {e}" for e in result.errors)
+    lines.append("")
+
+    lines.append("SALIENCE (loud right now):")
+    if not result.tickers:
+        lines.append("  (nothing above the floor)")
+    for t in result.tickers:  # already sorted by salience desc
+        sig = "  ".join(f"{s.source}:{s.count}" for s in t.signals)
+        tags = []
+        if "spike" in t.flags:
+            tags.append("SPIKE")
+        if "cold_start" in t.flags:
+            tags.append("cold-start")
+        if t.amplified:
+            tags.append("AMPLIFIED " + "/".join(t.on_watchlists))
+        suffix = f"  [{', '.join(tags)}]" if tags else ""
+        lines.append(f"  {t.ticker:8} {t.salience:>4}  {sig}{suffix}")
+    lines.append("")
+
+    accel = [t for t in result.tickers if "spike" in t.flags]
+    lines.append("ACCELERATING (vs trailing baseline):")
+    if not accel:
+        lines.append("  (none)")
+    for t in accel:
+        zbits = "  ".join(
+            f"{s.source} z={s.anomaly.z}"
+            for s in t.signals
+            if s.anomaly is not None and s.anomaly.state == "spike"
+        )
+        lines.append(f"  {t.ticker:8} {zbits}")
+    lines.append("")
+
+    amp = [t for t in result.tickers if t.amplified]
+    lines.append("AMPLIFIED (also on a watchlist):")
+    if not amp:
+        lines.append("  (none)")
+    for t in amp:
+        lines.append(f"  {t.ticker:8} on {', '.join(t.on_watchlists)}")
+    return "\n".join(lines)
+
+
+__all__ = ["render_attention", "render_chatter"]

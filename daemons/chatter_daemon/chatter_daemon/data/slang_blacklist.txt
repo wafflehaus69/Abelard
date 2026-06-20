@@ -88,3 +88,32 @@ DOW
 BEAT
 FLAG
 HAIL
+
+# --- Tier-1 ATTENTION calibration (Order 8 Phase 2) ---
+# Real-ticker English words observed in the live /smg/ pull. The universe-
+# validator can't catch these (they ARE listed symbols) — only the blacklist
+# can. Bare tokens drop here; an explicit $CASHTAG still bypasses. Grows with
+# Mando's /smg/-literate review of more pulls (a config edit, not code).
+TV
+PC
+UP
+CC
+DC
+AS
+BY
+FR
+ES
+SO
+MA
+IQ
+RR
+AR
+CD
+CP
+TECH
+EASY
+HOUR
+BOSS
+COLD
+SAFE
+BOAT

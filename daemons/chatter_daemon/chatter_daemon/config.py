@@ -130,6 +130,15 @@ DEFAULT_UNIVERSE_TTL_S = 86_400  # 24h Finnhub symbol cache
 DEFAULT_ATTENTION_SUBREDDITS = ("wallstreetbets",)
 DEFAULT_ATTENTION_POST_LIMIT = 100
 
+# Order 8 Phase 2 — per-surface admit floors. /smg/ = 3 is CALIBRATED from the live
+# pull (150 tickers / 341 mentions; floor 3 keeps the ~25-name head, drops the junk
+# tail). WSB / StockTwits floors are deferred placeholders — set on first live pull.
+DEFAULT_ATTENTION_FLOORS: dict[str, int] = {
+    "smg_freq": 3,  # CALIBRATED
+    "reddit_rising": 10,  # uncalibrated placeholder — volume; set on first live WSB pull
+    "stocktwits_trending": 1,  # presence-based (trending list); floor 1 admits, recalibrate live
+}
+
 
 @dataclass(frozen=True)
 class Config:
@@ -167,6 +176,9 @@ class Config:
     symbol_fallback_path: Path | None = None  # optional static US-symbol fallback
     attention_subreddits: tuple[str, ...] = DEFAULT_ATTENTION_SUBREDDITS
     attention_post_limit: int = DEFAULT_ATTENTION_POST_LIMIT
+    attention_floors: dict[str, int] = field(
+        default_factory=lambda: dict(DEFAULT_ATTENTION_FLOORS)
+    )
 
     def secrets(self) -> tuple[str, ...]:
         """Values to scrub from log output."""

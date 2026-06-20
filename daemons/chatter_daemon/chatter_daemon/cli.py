@@ -25,18 +25,28 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import __version__, baseline, ticker_universe
+from . import __version__, attention_store, baseline, ticker_universe
 from .aggregate import build_aggregate
+from .attention import prune_cold, run_attention_scan
 from .config import Config, ConfigError, configure_logging
 from .discovery import format_distribution, run_dry_run
 from .errors import ChatterDaemonError
 from .matching import Matcher
 from .orchestrator import run_scan
-from .persist import ArchiveError, load_result, make_scan_id, write_result
-from .render import render_chatter
+from .persist import (
+    ArchiveError,
+    load_attention_result,
+    load_result,
+    make_scan_id,
+    peek_scan_mode,
+    write_attention_result,
+    write_result,
+)
+from .render import render_attention, render_chatter
 from .sources.reddit import PrawClient, RedditAuthError
 from .sources.registry import build_sources
 from .watchlist import load_all_watchlists, load_watchlist
+from .windows import iso_z
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -158,22 +168,24 @@ def _cmd_scan(args: argparse.Namespace, cfg: Config, log: logging.Logger) -> int
 
 
 def _cmd_read_chatter(args: argparse.Namespace, log: logging.Logger) -> int:
+    path = Path(args.path)
     try:
-        result = load_result(Path(args.path))
+        # Dispatch on the persisted scan_mode: watchlist scans and attention scans
+        # render through their own views.
+        if peek_scan_mode(path) == "attention":
+            text = render_attention(load_attention_result(path))
+        else:
+            text = render_chatter(load_result(path))
     except ArchiveError as exc:
         log.error("read-chatter: %s", exc)
         sys.stderr.write(f"read-chatter error: {exc}\n")
         return 1
-    sys.stdout.write(render_chatter(result) + "\n")
+    sys.stdout.write(text + "\n")
     sys.stdout.flush()
     return 0
 
 
 def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -> int:
-    if not args.dry_run:
-        sys.stderr.write("attention: use --dry-run (Phase 1; the live store is Phase 2)\n")
-        return 2
-
     from abelard_common import fourchan_fetch, ticker_noise
     from abelard_common.http_client import HttpClient
 
@@ -181,6 +193,7 @@ def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -
     now = int(time.time())
     conn = baseline.connect(cfg.baseline_db_path)
     ticker_universe.init_universe_table(conn)
+    attention_store.init_attention_table(conn)
 
     # Validation universe: cache -> live Finnhub -> optional static fallback. Without
     # it there's nothing to validate against, so a hard failure is loud (exit 1).
@@ -217,8 +230,7 @@ def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -
         log.warning("attention: reddit surface unavailable: %s", exc)
 
     fetcher = fourchan_fetch.Fetcher(user_agent=cfg.user_agent, logger=chatter_log)
-
-    results = run_dry_run(
+    surfaces = run_dry_run(
         matcher=matcher,
         universe=universe.symbols,
         now=now,
@@ -228,12 +240,63 @@ def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -
         fetcher=fetcher,
         stocktwits_client=None,  # walled; joins when the residential curl frees it
     )
-    out = format_distribution(results)
+
+    # --dry-run: calibration only — print the distribution; no store, gate, or persist.
+    if args.dry_run:
+        out = format_distribution(surfaces)
+        if universe.warning:
+            out = f"[universe: {universe.warning}]\n" + out
+        sys.stdout.write(out + "\n")
+        sys.stdout.flush()
+        return 0
+
+    # Real scan: gate -> store -> salience/velocity -> amplified -> prune -> persist.
+    canonical_ts = iso_z(now)
+    try:
+        watchlist_symbols = {
+            w.name: {s.symbol for s in w.active_tickers}
+            for w in load_all_watchlists(cfg.watchlists_dir)
+        }
+    except ChatterDaemonError as exc:
+        log.warning("attention: watchlists unavailable for amplified flag: %s", exc)
+        watchlist_symbols = {}
+
+    result = run_attention_scan(
+        conn=conn,
+        surfaces=surfaces,
+        watchlist_symbols=watchlist_symbols,
+        floors=cfg.attention_floors,
+        scan_id=make_scan_id(canonical_ts, ["attention"]),
+        canonical_ts=canonical_ts,
+        now=now,
+        baseline_window=cfg.baseline_window,
+        baseline_min_obs=cfg.baseline_min_obs,
+        spike_z_threshold=cfg.spike_z_threshold,
+    )
     if universe.warning:
-        out = f"[universe: {universe.warning}]\n" + out
-    sys.stdout.write(out + "\n")
-    sys.stdout.flush()
-    return 0
+        result.errors.append(f"universe: {universe.warning}")
+
+    rc = 0
+    try:
+        result.pruned = prune_cold(
+            conn, now=now, archive_root=cfg.archive_root, generated_ts=now
+        )
+    except ArchiveError as exc:
+        log.error("attention: prune-to-cold failed: %s", exc)
+        result.errors.append(f"prune: {exc}")
+        rc = 1
+    try:
+        write_attention_result(cfg.archive_root, result)
+    except ArchiveError as exc:
+        log.error("attention: archive write failed (output preserved on stdout): %s", exc)
+        result.errors.append(f"archive: {exc}")
+        rc = 1
+
+    _emit(result.model_dump(mode="json"))
+    # Total discovery failure: surfaces attempted, all failed, nothing admitted.
+    if result.surfaces and not result.tickers and all(not s.ok for s in result.surfaces):
+        return 1
+    return rc
 
 
 def main(argv: list[str] | None = None) -> int:

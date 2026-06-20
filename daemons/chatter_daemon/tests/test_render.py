@@ -3,11 +3,15 @@ and the degraded/sources/cost/errors surfacing that closes read-brief's gap."""
 
 from __future__ import annotations
 
-from chatter_daemon.render import render_chatter
+from chatter_daemon.render import render_attention, render_chatter
 from chatter_daemon.schema import (
     AggregatedScanResult,
     AggregatedTicker,
     Anomaly,
+    AttentionResult,
+    AttentionSignal,
+    AttentionSurfaceStatus,
+    AttentionTicker,
     CostTelemetry,
     Metrics,
     Sentiment,
@@ -114,3 +118,38 @@ def test_etf_no_interest_renders_na():
     )
     out = render_chatter(_result(tickers=[t]))
     assert "interest n/a" in out and "no signal" in out
+
+
+def test_render_attention_view():
+    res = AttentionResult(
+        scan_id="cd-2023-11-14T00-00-00Z-deadbeef",
+        canonical_ts="2023-11-14T00:00:00Z",
+        surfaces=[
+            AttentionSurfaceStatus(source="smg_freq", ok=True, candidates=2, floor=3),
+            AttentionSurfaceStatus(source="reddit_rising", ok=False, candidates=0, floor=10, warning="praw down"),
+        ],
+        tickers=[
+            AttentionTicker(
+                ticker="GME", salience=40, amplified=True, on_watchlists=["barber_growth"],
+                flags=["spike", "cold_start"],
+                signals=[AttentionSignal(source="smg_freq", semantics="24h", count=40,
+                                         anomaly=Anomaly(kind="count", state="spike", z=5.0, observations=8))],
+            ),
+            AttentionTicker(
+                ticker="AMC", salience=4,
+                signals=[AttentionSignal(source="smg_freq", semantics="24h", count=4,
+                                         anomaly=Anomaly(kind="count", state="ok", z=0.3, observations=8))],
+            ),
+        ],
+        pruned=3,
+        degraded=True,
+        errors=["reddit_rising: praw down"],
+    )
+    out = render_attention(res)
+    assert "ATTENTION scan" in out
+    assert "smg_freq=ok(2, floor 3)" in out and "reddit_rising=FAILED" in out
+    assert "DEGRADED" in out and "pruned: 3" in out
+    assert "SALIENCE" in out and "GME" in out and "AMC" in out
+    assert "SPIKE" in out and "AMPLIFIED barber_growth" in out and "cold-start" in out
+    assert "ACCELERATING" in out and "z=5.0" in out
+    assert "AMPLIFIED (also on a watchlist)" in out
