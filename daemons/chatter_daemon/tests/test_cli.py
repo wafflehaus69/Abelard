@@ -186,6 +186,28 @@ def test_attention_real_scan_persists_and_reads(monkeypatch, capsys, tmp_path):
     assert rc2 == 0 and "ATTENTION scan" in out and "SALIENCE" in out and "GME" in out
 
 
+def test_report_renders_pdf_from_persisted_scan(watchlists_dir, monkeypatch, capsys, tmp_path):
+    monkeypatch.setenv("CHATTER_WATCHLISTS_DIR", str(watchlists_dir))
+    client = _FakeClient([[{"headline": "NVDA pops", "url": "http://a"}], []])
+    monkeypatch.setattr(
+        "chatter_daemon.cli.build_sources",
+        lambda cfg: [FinnhubNewsSource(api_key="k", client=client)],
+    )
+    rc, payload = _run(["scan", "--watchlist", "alpha"], capsys)
+    assert rc == 0
+    scan_path = list((tmp_path / "archive").rglob(f"{payload['scan_id']}.json"))[0]
+    out_pdf = tmp_path / "out.pdf"
+    rc2 = main(["report", str(scan_path), "--out", str(out_pdf)])
+    assert rc2 == 0
+    assert out_pdf.read_bytes()[:5] == b"%PDF-"
+
+
+def test_report_missing_path_fails_loud(capsys, tmp_path):
+    rc = main(["report", str(tmp_path / "nope.json")])
+    err = capsys.readouterr().err
+    assert rc == 1 and "report error" in err and "does not exist" in err
+
+
 def test_attention_dry_run_prints_distribution(monkeypatch, capsys):
     import chatter_daemon.cli as C
     from chatter_daemon.discovery import SurfaceCounts

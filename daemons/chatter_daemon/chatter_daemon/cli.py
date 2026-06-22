@@ -83,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="calibration pull: print the per-source mention distribution, no store",
     )
+
+    rep = sub.add_parser("report", help="render a persisted scan as a client-facing PDF")
+    rep.add_argument("path", help="path to a persisted scan result")
+    rep.add_argument("--out", metavar="FILE", help="output PDF path (default: {scan_id}.pdf)")
     return parser
 
 
@@ -181,6 +185,32 @@ def _cmd_read_chatter(args: argparse.Namespace, log: logging.Logger) -> int:
         sys.stderr.write(f"read-chatter error: {exc}\n")
         return 1
     sys.stdout.write(text + "\n")
+    sys.stdout.flush()
+    return 0
+
+
+def _cmd_report(args: argparse.Namespace, log: logging.Logger) -> int:
+    path = Path(args.path)
+    try:
+        result = (
+            load_attention_result(path)
+            if peek_scan_mode(path) == "attention"
+            else load_result(path)
+        )
+    except ArchiveError as exc:
+        log.error("report: %s", exc)
+        sys.stderr.write(f"report error: {exc}\n")
+        return 1
+    out = Path(args.out) if args.out else Path(f"{result.scan_id}.pdf")
+    try:
+        from .report import render_report
+
+        render_report(result, out)
+    except Exception as exc:  # surface a render failure loudly, never a half file
+        log.error("report: PDF render failed: %s", exc)
+        sys.stderr.write(f"report error: PDF render failed: {exc}\n")
+        return 1
+    sys.stdout.write(f"wrote {out}\n")
     sys.stdout.flush()
     return 0
 
@@ -315,6 +345,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "read-chatter":
         return _cmd_read_chatter(args, log)
+    if args.command == "report":
+        return _cmd_report(args, log)
 
     try:
         cfg = Config.from_env()

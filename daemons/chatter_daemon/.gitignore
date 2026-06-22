@@ -12,3 +12,8 @@ __pycache__/
 # Order 7 runtime state — never commit the baseline DB or the run archive.
 state/
 archive/
+
+# Run artifacts — live-run captures, error logs, and generated report PDFs.
+scrape_*.json
+err_*.log
+*.pdf
