@@ -1,5 +1,5 @@
 """Shared free-text ticker matcher — dual-scan (symbol + company name), watchlist-
-scoped, with match provenance. Used by /smg/ (Order 3) and Reddit (Order 6).
+scoped, with match provenance. Used by /smg/ (Order 3) and ATTENTION discovery (Order 8).
 
 Reuses the abelard_common four-layer filter + alias resolver. `Matcher.match()`
 returns `{ticker: {kinds}}` where each kind ⊆ {cashtag, symbol, name}. The universe

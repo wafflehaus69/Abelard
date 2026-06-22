@@ -18,13 +18,13 @@ def _store(tmp_path):
     return conn
 
 
-def _append(conn, ts, count, *, ticker="NVDA", source="reddit"):
+def _append(conn, ts, count, *, ticker="NVDA", source="stocktwits"):
     append_observation(
         conn, watchlist="w", ticker=ticker, source=source, canonical_unix=ts, count=count
     )
 
 
-def _read(conn, *, window=20, now=10_000, ticker="NVDA", source="reddit", max_age_s=None):
+def _read(conn, *, window=20, now=10_000, ticker="NVDA", source="stocktwits", max_age_s=None):
     return read_baseline(
         conn,
         watchlist="w",
@@ -85,10 +85,10 @@ def test_single_obs_std_zero(tmp_path):
 
 def test_keyed_by_ticker_and_source(tmp_path):
     conn = _store(tmp_path)
-    _append(conn, 1, 10, source="reddit")
+    _append(conn, 1, 10, source="stocktwits")
     _append(conn, 1, 99, source="smg")
-    _append(conn, 1, 50, ticker="AMD", source="reddit")
-    b = _read(conn)  # NVDA/reddit only
+    _append(conn, 1, 50, ticker="AMD", source="stocktwits")
+    b = _read(conn)  # NVDA/stocktwits only
     assert b.n == 1 and b.mean == 10.0
 
 

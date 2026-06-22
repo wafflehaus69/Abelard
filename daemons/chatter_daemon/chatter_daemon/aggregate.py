@@ -26,7 +26,7 @@ from .schema import (
 
 # Sources whose signal is a count z-scored against the baseline store. Trends is the
 # odd one out (relative interest, within-record elevation, no store).
-COUNT_SOURCES = frozenset({"finnhub_news", "reddit", "smg", "stocktwits"})
+COUNT_SOURCES = frozenset({"finnhub_news", "smg", "stocktwits"})
 TREND_SOURCE = "google_trends"
 
 

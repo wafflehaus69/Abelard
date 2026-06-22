@@ -1,6 +1,6 @@
 """Anomaly computation (Order 7) — two mechanical modes (Abelard interprets).
 
-Count sources (Finnhub / Reddit / /smg/ / StockTwits): z-score the current count
+Count sources (Finnhub / /smg/ / StockTwits): z-score the current count
 against the trailing baseline, gated by a per-source min-volume floor and a minimum
 history depth. Trends: within-record elevation of interest_24h over its own trailing
 windows — no store, since Trends already returns relative interest.

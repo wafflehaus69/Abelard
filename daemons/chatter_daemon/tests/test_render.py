@@ -52,7 +52,7 @@ def test_source_labeled_counts_and_sentiment():
         sources=[
             _sig("finnhub_news", Anomaly(kind="count", state="ok", z=0.5, observations=8), mention_count=4),
             _sig(
-                "reddit",
+                "stocktwits",
                 Anomaly(kind="count", state="spike", z=3.2, observations=8),
                 mention_count=20,
                 sentiment=Sentiment(method="haiku", bullish=12, bearish=3, neutral=5),
@@ -75,13 +75,13 @@ def test_surfaces_degraded_and_sources():
         _result(
             degraded=True,
             sources=[
-                SourceStatus(source="reddit", ok=True, record_count=5),
+                SourceStatus(source="stocktwits", ok=True, record_count=5),
                 SourceStatus(source="google_trends", ok=False, record_count=0, error="429"),
             ],
         )
     )
     assert "DEGRADED" in out
-    assert "reddit=ok(5)" in out
+    assert "stocktwits=ok(5)" in out
     assert "google_trends=FAILED(0)" in out
 
 
@@ -126,7 +126,7 @@ def test_render_attention_view():
         canonical_ts="2023-11-14T00:00:00Z",
         surfaces=[
             AttentionSurfaceStatus(source="smg_freq", ok=True, candidates=2, floor=3),
-            AttentionSurfaceStatus(source="reddit_rising", ok=False, candidates=0, floor=10, warning="praw down"),
+            AttentionSurfaceStatus(source="stocktwits_trending", ok=False, candidates=0, floor=10, warning="praw down"),
         ],
         tickers=[
             AttentionTicker(
@@ -143,11 +143,11 @@ def test_render_attention_view():
         ],
         pruned=3,
         degraded=True,
-        errors=["reddit_rising: praw down"],
+        errors=["stocktwits_trending: praw down"],
     )
     out = render_attention(res)
     assert "ATTENTION scan" in out
-    assert "smg_freq=ok(2, floor 3)" in out and "reddit_rising=FAILED" in out
+    assert "smg_freq=ok(2, floor 3)" in out and "stocktwits_trending=FAILED" in out
     assert "DEGRADED" in out and "pruned: 3" in out
     assert "SALIENCE" in out and "GME" in out and "AMC" in out
     assert "SPIKE" in out and "AMPLIFIED barber_growth" in out and "cold-start" in out

@@ -43,7 +43,6 @@ from .persist import (
     write_result,
 )
 from .render import render_attention, render_chatter
-from .sources.reddit import PrawClient, RedditAuthError
 from .sources.registry import build_sources
 from .watchlist import load_all_watchlists, load_watchlist
 from .windows import iso_z
@@ -248,25 +247,11 @@ def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -
         allowlist=cfg.word_ticker_allowlist,
     )
 
-    # Reddit surface: skip cleanly if creds are absent — the pull runs on /smg/ alone.
-    reddit_client = None
-    try:
-        reddit_client = PrawClient(
-            client_id=cfg.reddit_client_id,
-            client_secret=cfg.reddit_client_secret,
-            user_agent=cfg.reddit_user_agent,
-        )
-    except RedditAuthError as exc:
-        log.warning("attention: reddit surface unavailable: %s", exc)
-
     fetcher = fourchan_fetch.Fetcher(user_agent=cfg.user_agent, logger=chatter_log)
     surfaces = run_dry_run(
         matcher=matcher,
         universe=universe.symbols,
         now=now,
-        reddit_client=reddit_client,
-        subreddits=cfg.attention_subreddits,
-        reddit_limit=cfg.attention_post_limit,
         fetcher=fetcher,
         stocktwits_client=None,  # walled; joins when the residential curl frees it
     )

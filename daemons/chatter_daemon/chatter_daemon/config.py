@@ -1,8 +1,8 @@
 """Configuration: .env auto-load plus resolved paths / log level.
 
 Order 1 requires NO credentials — the spine loads watchlists and derives windows
-offline. Source keys (Finnhub, Anthropic, Reddit) become required at their plugin's
-invocation (Orders 4 / 6), never at spine startup. A missing .env no-ops; the
+offline. Source keys (Finnhub, Anthropic) become required at their plugin's
+invocation, never at spine startup. A missing .env no-ops; the
 daemon falls through to a loud `ConfigError` only if a genuinely-required value is
 ever absent.
 """
@@ -104,9 +104,8 @@ DEFAULT_USER_AGENT = "chatter-daemon/0.1"
 # list (a bare token here survives common-word rejection). Lifted from BizDaemon.
 DEFAULT_WORD_TICKER_ALLOWLIST = frozenset({"NOW", "META", "CORN"})
 
-# Reddit (Order 6). Subreddits configurable; the Haiku model id is pinned here,
-# verified live via the claude-api skill at build time (not from memory).
-DEFAULT_SUBREDDITS = ("wallstreetbets", "stocks", "investing", "options")
+# Haiku sentiment (repointed from Reddit comments to StockTwits message bodies,
+# Order 9). Model id pinned here, verified live via the claude-api skill at build time.
 HAIKU_MODEL_ID = "claude-haiku-4-5"
 DEFAULT_SENTIMENT_MIN_MENTIONS = 3
 
@@ -116,26 +115,22 @@ DEFAULT_BASELINE_MIN_OBS = 5  # N_min before a z-score is meaningful (else `buil
 DEFAULT_SPIKE_Z = 2.0  # count-source spike threshold (z-score)
 DEFAULT_TREND_SPIKE_RATIO = 1.5  # Trends: interest_24h vs its trailing windows
 # Per-source min-volume floors: low-magnitude sources (Finnhub headlines, /smg/)
-# need low floors or a 2->8 jump on a quiet name z-scores huge off noise; Reddit
-# runs high. All tunable at live smoke.
+# need low floors or a 2->8 jump on a quiet name z-scores huge off noise.
+# All tunable at live smoke.
 DEFAULT_SOURCE_FLOORS: dict[str, int] = {
     "finnhub_news": 3,
     "smg": 3,
-    "reddit": 12,
     "stocktwits": 10,
 }
 
 # Order 8 — ATTENTION discovery (Phase 1 calibration).
 DEFAULT_UNIVERSE_TTL_S = 86_400  # 24h Finnhub symbol cache
-DEFAULT_ATTENTION_SUBREDDITS = ("wallstreetbets",)
-DEFAULT_ATTENTION_POST_LIMIT = 100
 
 # Order 8 Phase 2 — per-surface admit floors. /smg/ = 3 is CALIBRATED from the live
 # pull (150 tickers / 341 mentions; floor 3 keeps the ~25-name head, drops the junk
 # tail). WSB / StockTwits floors are deferred placeholders — set on first live pull.
 DEFAULT_ATTENTION_FLOORS: dict[str, int] = {
     "smg_freq": 3,  # CALIBRATED
-    "reddit_rising": 10,  # uncalibrated placeholder — volume; set on first live WSB pull
     "stocktwits_trending": 1,  # presence-based (trending list); floor 1 admits, recalibrate live
 }
 
@@ -153,12 +148,8 @@ class Config:
     common_words_path: Path = field(default_factory=_default_common_words_path)
     slang_blacklist_path: Path = field(default_factory=_default_slang_blacklist_path)
     word_ticker_allowlist: frozenset[str] = DEFAULT_WORD_TICKER_ALLOWLIST
-    # Reddit + Haiku (Order 6). Creds optional at load, required at the plugin's fetch.
+    # Haiku sentiment (StockTwits bodies, Order 9). Key optional at load, required at fetch.
     anthropic_api_key: str | None = None
-    reddit_client_id: str | None = None
-    reddit_client_secret: str | None = None
-    reddit_user_agent: str | None = None
-    reddit_subreddits: tuple[str, ...] = DEFAULT_SUBREDDITS
     haiku_model_id: str = HAIKU_MODEL_ID
     sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
     # Order 7 — baseline store, run archive, anomaly tunables.
@@ -174,8 +165,6 @@ class Config:
     # Order 8 — ATTENTION discovery (Phase 1).
     universe_cache_ttl_s: int = DEFAULT_UNIVERSE_TTL_S
     symbol_fallback_path: Path | None = None  # optional static US-symbol fallback
-    attention_subreddits: tuple[str, ...] = DEFAULT_ATTENTION_SUBREDDITS
-    attention_post_limit: int = DEFAULT_ATTENTION_POST_LIMIT
     attention_floors: dict[str, int] = field(
         default_factory=lambda: dict(DEFAULT_ATTENTION_FLOORS)
     )
@@ -187,7 +176,6 @@ class Config:
             for s in (
                 self.finnhub_api_key,
                 self.anthropic_api_key,
-                self.reddit_client_secret,
             )
             if s
         )
@@ -201,12 +189,6 @@ class Config:
         log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
         finnhub = os.environ.get("FINNHUB_API_KEY", "").strip() or None
         user_agent = os.environ.get("CHATTER_USER_AGENT", "").strip() or DEFAULT_USER_AGENT
-        subreddits_raw = os.environ.get("CHATTER_SUBREDDITS", "").strip()
-        subreddits = (
-            tuple(s.strip() for s in subreddits_raw.split(",") if s.strip())
-            if subreddits_raw
-            else DEFAULT_SUBREDDITS
-        )
         return cls(
             watchlists_dir=watchlists_dir,
             log_level=log_level,
@@ -216,10 +198,6 @@ class Config:
             common_words_path=_env_path("CHATTER_COMMON_WORDS", _default_common_words_path()),
             slang_blacklist_path=_env_path("CHATTER_SLANG_BLACKLIST", _default_slang_blacklist_path()),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "").strip() or None,
-            reddit_client_id=os.environ.get("REDDIT_CLIENT_ID", "").strip() or None,
-            reddit_client_secret=os.environ.get("REDDIT_CLIENT_SECRET", "").strip() or None,
-            reddit_user_agent=os.environ.get("REDDIT_USER_AGENT", "").strip() or None,
-            reddit_subreddits=subreddits,
             sentiment_min_mentions=_env_int(
                 "CHATTER_SENTIMENT_MIN", DEFAULT_SENTIMENT_MIN_MENTIONS
             ),
@@ -234,14 +212,6 @@ class Config:
                 Path(os.environ["CHATTER_SYMBOL_FALLBACK"].strip())
                 if os.environ.get("CHATTER_SYMBOL_FALLBACK", "").strip()
                 else None
-            ),
-            attention_subreddits=(
-                tuple(s.strip() for s in _attn_raw.split(",") if s.strip())
-                if (_attn_raw := os.environ.get("CHATTER_ATTENTION_SUBREDDITS", "").strip())
-                else DEFAULT_ATTENTION_SUBREDDITS
-            ),
-            attention_post_limit=_env_int(
-                "CHATTER_ATTENTION_LIMIT", DEFAULT_ATTENTION_POST_LIMIT
             ),
         )
 

@@ -7,7 +7,7 @@ baseline, velocity, or persistence — it exists to print the per-source mention
 distribution so the volume floor + blacklist get set by LOOKING, not guessing.
 
 Per-source count semantics differ and are LABELED, not forced uniform:
-  - reddit_rising / smg_freq — trailing-24h counts (posts/comments are timestamped).
+  - smg_freq — trailing-24h counts (posts are timestamped).
   - stocktwits_trending — a point-in-time "trending now" snapshot (no window).
 
 The two noise problems stay separate: junk strings are the filter+validation's job
@@ -16,7 +16,7 @@ distribution this prints is exactly what tells the two tails apart.
 
 A surface that fails is ISOLATED (returns a warning + empty counts); the pull runs on
 whatever surfaces succeed. StockTwits is included only when a client is supplied (the
-residential-curl gate); absent, the pull runs clean on WSB-rising + /smg/.
+residential-curl gate); absent, the pull runs clean on /smg/ alone.
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from abelard_common import fourchan_fetch
 
 from .matching import Matcher
 
-REDDIT_SOURCE = "reddit_rising"
 SMG_SOURCE = "smg_freq"
 STOCKTWITS_SOURCE = "stocktwits_trending"
 
@@ -51,25 +50,6 @@ class StockTwitsTrendingClient(Protocol):
     def trending(self) -> list[str]:
         """Return the current trending symbols (point-in-time)."""
         ...
-
-
-def pull_reddit_rising(
-    client: Any, matcher: Matcher, *, subreddits: tuple[str, ...], limit: int, now: int
-) -> SurfaceCounts:
-    """WSB rising/hot — distinct in-window posts/comments per validated ticker."""
-    semantics = "24h WSB rising posts+comments"
-    try:
-        posts = client.posts(subreddits, limit=limit, listing="rising")
-    except Exception as exc:  # one surface down never sinks the pull
-        return SurfaceCounts(REDDIT_SOURCE, semantics, warning=f"reddit: {exc}")
-    cutoff = now - _DAY_SECONDS
-    seen: dict[str, set[str]] = {}
-    for post in posts:
-        if not (cutoff <= post.created_unix <= now):
-            continue
-        for sym in matcher.match(post.text):
-            seen.setdefault(sym, set()).add(post.post_id)
-    return SurfaceCounts(REDDIT_SOURCE, semantics, {s: len(ids) for s, ids in seen.items()})
 
 
 def pull_smg_frequency(fetcher: Any, matcher: Matcher) -> SurfaceCounts:
@@ -110,21 +90,12 @@ def run_dry_run(
     matcher: Matcher,
     universe: frozenset[str],
     now: int,
-    reddit_client: Any | None = None,
-    subreddits: tuple[str, ...] = (),
-    reddit_limit: int = 100,
     fetcher: Any | None = None,
     stocktwits_client: Any | None = None,
 ) -> list[SurfaceCounts]:
     """Run every supplied surface (each self-isolating) and return their counts.
     A surface whose client/fetcher is None is skipped cleanly."""
     results: list[SurfaceCounts] = []
-    if reddit_client is not None:
-        results.append(
-            pull_reddit_rising(
-                reddit_client, matcher, subreddits=subreddits, limit=reddit_limit, now=now
-            )
-        )
     if fetcher is not None:
         results.append(pull_smg_frequency(fetcher, matcher))
     if stocktwits_client is not None:
@@ -162,13 +133,11 @@ def format_distribution(results: list[SurfaceCounts]) -> str:
 
 
 __all__ = [
-    "REDDIT_SOURCE",
     "SMG_SOURCE",
     "STOCKTWITS_SOURCE",
     "StockTwitsTrendingClient",
     "SurfaceCounts",
     "format_distribution",
-    "pull_reddit_rising",
     "pull_smg_frequency",
     "pull_stocktwits_trending",
     "run_dry_run",

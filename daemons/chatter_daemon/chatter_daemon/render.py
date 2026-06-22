@@ -17,7 +17,6 @@ from .schema import Anomaly, AggregatedScanResult, AttentionResult, SourceSignal
 
 _COUNT_NOUN = {
     "finnhub_news": "headlines",
-    "reddit": "mentions",
     "smg": "mentions",
     "stocktwits": "mentions",
 }

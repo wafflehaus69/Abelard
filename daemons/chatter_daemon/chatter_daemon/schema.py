@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 SCHEMA_VERSION = "1"
 
 # Closed contract vocabularies. A value outside these is a validation error.
-SourceName = Literal["stocktwits", "smg", "finnhub_news", "google_trends", "reddit"]
+SourceName = Literal["stocktwits", "smg", "finnhub_news", "google_trends"]
 ScanMode = Literal["watchlist", "attention"]
 MatchedBy = Literal["symbol", "cashtag", "name"]
 SentimentMethod = Literal["native", "haiku", "none"]
@@ -68,7 +68,7 @@ class Metrics(BaseModel):
 
 class Sentiment(BaseModel):
     """Stance aggregation. `method` records HOW it was produced: native tags
-    (StockTwits), Haiku (Reddit), or none (sources that carry no stance)."""
+    (StockTwits tags), Haiku (StockTwits bodies), or none (sources with no stance)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -125,7 +125,7 @@ class SourceStatus(BaseModel):
 class CostTelemetry(BaseModel):
     """LLM cost telemetry — captured before any persistence so a downstream write
     failure can't lose the record of what the Haiku batch cost (doctrine #8). Only
-    the Reddit plugin (Order 6) populates it; every other source is LLM-free."""
+    the StockTwits plugin populates it; every other source is LLM-free."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -163,7 +163,7 @@ AnomalyState = Literal["building", "thin", "ok", "spike", "none"]
 class Anomaly(BaseModel):
     """Mechanical anomaly read for one (ticker, source) — Abelard interprets it.
 
-    `kind="count"` (Finnhub / Reddit / /smg/ / StockTwits): z-score vs the trailing
+    `kind="count"` (Finnhub / /smg/ / StockTwits): z-score vs the trailing
     baseline, gated by a min-volume floor + history depth. `kind="trend"` (Trends):
     within-record elevation of interest_24h over its trailing windows. States:
     building (history < N_min) | thin (count < floor) | ok | spike | none (no signal
@@ -263,7 +263,7 @@ class ColdRollup(BaseModel):
 
 # Discovery surfaces are their own labels (rising / frequency / trending) — a parallel
 # vocabulary to the watchlist SourceName, not the same enum.
-AttentionSource = Literal["smg_freq", "reddit_rising", "stocktwits_trending"]
+AttentionSource = Literal["smg_freq", "stocktwits_trending"]
 
 
 class AttentionSignal(BaseModel):

@@ -18,7 +18,7 @@ from chatter_daemon.windows import derive_windows, iso_z
 
 FIXED = 1_718_733_600
 W = derive_windows(FIXED)
-FLOORS = {"finnhub_news": 3, "reddit": 12, "smg": 3, "stocktwits": 10}
+FLOORS = {"finnhub_news": 3, "smg": 3, "stocktwits": 10}
 
 
 def _rec(ticker, source, *, count=0, i24=None, i7=None, im=None, flags=None, window="24h"):
@@ -78,32 +78,32 @@ def _prime(conn, ticker, source, counts, *, end=FIXED):
 def test_groups_by_ticker_and_diversity(tmp_path):
     conn = _store(tmp_path)
     env = _env([
-        _rec("NVDA", "reddit", count=20),
+        _rec("NVDA", "stocktwits", count=20),
         _rec("NVDA", "smg", count=4),
         _rec("NVDA", "google_trends", i24=50, i7=40, im=30),
-        _rec("AMD", "reddit", count=0),  # zero -> no signal
+        _rec("AMD", "stocktwits", count=0),  # zero -> no signal
     ])
     res = _agg(conn, env)
     by = {t.ticker: t for t in res.tickers}
-    assert {s.source for s in by["NVDA"].sources} == {"reddit", "smg", "google_trends"}
+    assert {s.source for s in by["NVDA"].sources} == {"stocktwits", "smg", "google_trends"}
     assert by["NVDA"].source_diversity == 3  # all three nonzero
-    assert by["AMD"].source_diversity == 0  # reddit count 0
+    assert by["AMD"].source_diversity == 0  # stocktwits count 0
 
 
 def test_building_on_first_run(tmp_path):
     conn = _store(tmp_path)
-    res = _agg(conn, _env([_rec("NVDA", "reddit", count=99)]))
+    res = _agg(conn, _env([_rec("NVDA", "stocktwits", count=99)]))
     assert res.tickers[0].sources[0].anomaly.state == "building"  # no history yet
 
 
 def test_spike_against_prior_baseline_then_appended(tmp_path):
     conn = _store(tmp_path)
-    _prime(conn, "NVDA", "reddit", [10, 10, 11, 9, 10, 10])  # mean ~10, small sigma
-    res = _agg(conn, _env([_rec("NVDA", "reddit", count=40)]), now=FIXED)
+    _prime(conn, "NVDA", "stocktwits", [10, 10, 11, 9, 10, 10])  # mean ~10, small sigma
+    res = _agg(conn, _env([_rec("NVDA", "stocktwits", count=40)]), now=FIXED)
     a = res.tickers[0].sources[0].anomaly
     assert a.state == "spike" and a.z is not None and a.z > 2.0
     # the current 40 is appended only AFTER the anomaly was computed
-    b = read_baseline(conn, watchlist="w", ticker="NVDA", source="reddit", window=20, now=FIXED + 1)
+    b = read_baseline(conn, watchlist="w", ticker="NVDA", source="stocktwits", window=20, now=FIXED + 1)
     assert b.n == 7  # 6 prior + the just-appended 40
 
 
@@ -133,8 +133,8 @@ def test_noisy_trend_discounted(tmp_path):
 def test_run_provenance_passthrough(tmp_path):
     conn = _store(tmp_path)
     env = _env(
-        [_rec("NVDA", "reddit", count=5)],
-        sources=[SourceStatus(source="reddit", ok=True, record_count=1)],
+        [_rec("NVDA", "stocktwits", count=5)],
+        sources=[SourceStatus(source="stocktwits", ok=True, record_count=1)],
         degraded=False,
         cost=CostTelemetry(haiku_calls=2, input_tokens=100),
         errors=["smg: warn"],
@@ -146,5 +146,5 @@ def test_run_provenance_passthrough(tmp_path):
     )
     assert res.scan_id == "cd-xyz"
     assert res.cost.haiku_calls == 2 and res.cost.input_tokens == 100
-    assert res.degraded is False and res.sources[0].source == "reddit"
+    assert res.degraded is False and res.sources[0].source == "stocktwits"
     assert res.errors == ["smg: warn"]

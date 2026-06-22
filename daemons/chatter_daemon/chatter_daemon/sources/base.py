@@ -50,7 +50,7 @@ class ScanContext:
 
 @dataclass(frozen=True)
 class ChatterPost:
-    """One raw post from a FREE-TEXT source (Reddit / /smg/), normalized for the
+    """One raw post from a FREE-TEXT source (/smg/ / StockTwits), normalized for the
     shared matcher. `text` is already cleaned and UTF-8-decoded (see the module
     docstring's decode obligation). Symbol-keyed sources (StockTwits / Finnhub /
     Trends) do not produce these — they count per queried ticker directly and emit
@@ -77,7 +77,7 @@ class SourceResult:
     records: list[NormalizedRecord] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
-    cost: CostTelemetry | None = None  # LLM cost (Reddit/Haiku only); folded into the envelope
+    cost: CostTelemetry | None = None  # LLM cost (StockTwits/Haiku only); folded into the envelope
 
 
 @runtime_checkable

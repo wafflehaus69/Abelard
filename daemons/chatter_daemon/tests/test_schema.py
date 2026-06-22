@@ -86,10 +86,10 @@ def test_source_protocol_runtime_checkable():
 
 
 def test_chatterpost_and_sourceresult_construct():
-    post = ChatterPost(source="reddit", post_id="t3_abc", text="GME to the moon")
+    post = ChatterPost(source="stocktwits", post_id="t3_abc", text="GME to the moon")
     assert post.explicit_symbols == ()
     assert post.meta == {}
-    res = SourceResult(source="reddit", warnings=["degraded"], error=None)
+    res = SourceResult(source="stocktwits", warnings=["degraded"], error=None)
     assert res.records == []
     assert res.warnings == ["degraded"]
 
@@ -115,11 +115,11 @@ def test_envelope_carries_sources_and_degraded():
             "watchlists": [],
             "sources": [
                 {"source": "finnhub_news", "ok": True, "record_count": 45},
-                {"source": "reddit", "ok": False, "record_count": 0, "error": "no key"},
+                {"source": "stocktwits", "ok": False, "record_count": 0, "error": "no key"},
             ],
             "records": [],
             "degraded": True,
-            "errors": ["reddit: no key"],
+            "errors": ["stocktwits: no key"],
         }
     )
     assert env.degraded is True

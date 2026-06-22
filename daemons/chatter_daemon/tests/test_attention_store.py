@@ -58,7 +58,7 @@ def test_sample_std_and_window(tmp_path):
 def test_keyed_by_ticker_and_source(tmp_path):
     conn = _store(tmp_path)
     _append(conn, BASE, 10, ticker="GME", source="smg_freq")
-    _append(conn, BASE, 99, ticker="GME", source="reddit_rising")
+    _append(conn, BASE, 99, ticker="GME", source="stocktwits_trending")
     _append(conn, BASE, 50, ticker="AMC", source="smg_freq")
     b = _read(conn, now=BASE + 100)  # GME / smg_freq only
     assert b.n == 1 and b.mean == 10.0

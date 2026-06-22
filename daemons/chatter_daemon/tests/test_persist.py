@@ -21,7 +21,7 @@ from chatter_daemon.schema import (
 
 def _result(scan_id="cd-2026-06-19T14-32-08Z-abcd1234"):
     sig = SourceSignal(
-        source="reddit",
+        source="stocktwits",
         metrics=Metrics(mention_count=20),
         sentiment=Sentiment(method="haiku", bullish=3, bearish=1, neutral=2),
         matched_by=[],

@@ -16,7 +16,7 @@ from chatter_daemon.discovery import SurfaceCounts
 
 NOW = 1_700_000_000
 _DAY = 24 * 60 * 60
-FLOORS = {"smg_freq": 3, "reddit_rising": 10, "stocktwits_trending": 1}
+FLOORS = {"smg_freq": 3, "stocktwits_trending": 1}
 
 
 def _conn(tmp_path):
@@ -95,12 +95,12 @@ def test_stocktwits_salience_only_no_store(tmp_path):
 def test_degraded_surface_isolates(tmp_path):
     res = _run(
         _conn(tmp_path),
-        [_sc("smg_freq", {"NVDA": 5}), _sc("reddit_rising", {}, warning="reddit: praw down")],
+        [_sc("smg_freq", {"NVDA": 5}), _sc("stocktwits_trending", {}, warning="reddit: praw down")],
     )
     assert res.degraded is True
     assert any("praw down" in e for e in res.errors)
     statuses = {s.source: s for s in res.surfaces}
-    assert statuses["smg_freq"].ok is True and statuses["reddit_rising"].ok is False
+    assert statuses["smg_freq"].ok is True and statuses["stocktwits_trending"].ok is False
     assert "NVDA" in {t.ticker for t in res.tickers}  # the good surface still produced
 
 

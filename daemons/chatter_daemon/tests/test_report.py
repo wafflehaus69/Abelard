@@ -59,7 +59,7 @@ def _wresult(tickers, *, degraded=False, sources=None):
 
 def test_ranking_peak_magnitude_beats_diversity():
     nvda = _wt("NVDA", [_wsig("finnhub_news", count=218)], 1)  # loud on ONE source
-    weak = _wt("XYZ", [_wsig("smg", count=2), _wsig("reddit", count=1), _wsig("google_trends", i24=5.0)], 3)
+    weak = _wt("XYZ", [_wsig("smg", count=2), _wsig("stocktwits", count=1), _wsig("google_trends", i24=5.0)], 3)
     ranked = rank_watchlist(_wresult([weak, nvda]))
     assert [t.ticker for t in ranked] == ["NVDA", "XYZ"]  # 218 outranks the weak triple
 
@@ -72,7 +72,7 @@ def test_quiet_tail_is_diversity_zero():
 
 def test_degraded_banner():
     sources = [
-        SourceStatus(source="reddit", ok=True, record_count=5),
+        SourceStatus(source="stocktwits", ok=True, record_count=5),
         SourceStatus(source="google_trends", ok=False, record_count=0, error="429"),
     ]
     assert degraded_banner(sources, True) == "Partial scan: Google Trends unavailable this run."

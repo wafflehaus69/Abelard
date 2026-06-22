@@ -3,7 +3,7 @@
 The front half is Phase 1's discovery (`SurfaceCounts`). This back half:
   1. GATE — admit a (ticker, source) when its count >= the per-source floor. The junk
      already died at the filter/blacklist; the floor is the real-but-quiet cutoff.
-  2. VELOCITY — for count surfaces (smg_freq / reddit_rising): z-score the current
+  2. VELOCITY — for the count surface (smg_freq; StockTwits joins in Phase B): z-score the current
      count vs the ticker's trailing baseline in the rolling store, reusing Order-7
      anomaly states (building < N_min -> thin < floor -> z, sigma=0 guard). Baselines
      are read BEFORE the current scan is appended (exclude-current invariant).
@@ -39,7 +39,7 @@ from .schema import (
 
 # Surfaces whose count is a time series we z-score for velocity. StockTwits trending is
 # point-in-time -> salience only.
-VELOCITY_SOURCES = frozenset({"smg_freq", "reddit_rising"})
+VELOCITY_SOURCES = frozenset({"smg_freq"})
 
 
 def run_attention_scan(

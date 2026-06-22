@@ -32,18 +32,15 @@ _DIGEST_LOUDEST = 5
 _SOURCE_LABEL = {
     "finnhub_news": "Finnhub news",
     "smg": "/smg/",
-    "reddit": "Reddit",
     "google_trends": "Google Trends",
     "stocktwits": "StockTwits",
     # attention surfaces
     "smg_freq": "/smg/",
-    "reddit_rising": "WSB rising",
     "stocktwits_trending": "StockTwits",
 }
 _COUNT_NOUN = {
     "finnhub_news": "headlines",
     "smg": "/smg/ mentions",
-    "reddit": "Reddit mentions",
     "stocktwits": "StockTwits mentions",
 }
 
