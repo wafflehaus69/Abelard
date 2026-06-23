@@ -181,4 +181,116 @@ def test_end_to_end_via_run_scan():
     assert env.sources[0].ok is True
     nvda = next(r for r in env.records if r.ticker == "NVDA")
     assert nvda.metrics.mention_count == 1
-    assert nvda.sentiment.method == "none"
+    assert nvda.sentiment.method == "none"  # 1 mention < floor (and no key) -> no stance
+
+
+# --- Haiku stance over /smg/ post text (Order 9) ---------------------------
+
+
+class _Block:
+    def __init__(self, text):
+        self.type = "text"
+        self.text = text
+
+
+class _Usage:
+    def __init__(self):
+        self.input_tokens = 10
+        self.output_tokens = 5
+        self.cache_read_input_tokens = 0
+        self.cache_creation_input_tokens = 0
+
+
+class _Resp:
+    def __init__(self, text, stop):
+        self.content = [_Block(text)]
+        self.usage = _Usage()
+        self.stop_reason = stop
+
+
+class _FakeMessages:
+    def __init__(self, text, stop):
+        self._text, self._stop = text, stop
+
+    def create(self, **kwargs):
+        return _Resp(self._text, self._stop)
+
+
+class _FakeAnthropic:
+    def __init__(self, text='{"classifications":[]}', stop="end_turn"):
+        self.messages = _FakeMessages(text, stop)
+
+
+def _smg_haiku(fetcher, anthropic_client, *, floor=3):
+    return SmgSource(
+        company_names_path=_default_company_names_path(),
+        common_words_path=_default_common_words_path(),
+        slang_blacklist_path=_default_slang_blacklist_path(),
+        anthropic_client=anthropic_client,
+        sentiment_min_mentions=floor,
+        fetcher=fetcher,
+    )
+
+
+def test_smg_haiku_stance_above_floor():
+    thread = _thread(["$NVDA breaking out", "$NVDA loading calls", "$NVDA puts look juicy"])
+    classifications = {"classifications": [
+        {"post_id": "100", "ticker": "NVDA", "stance": "bullish"},
+        {"post_id": "101", "ticker": "NVDA", "stance": "bullish"},
+        {"post_id": "102", "ticker": "NVDA", "stance": "bearish"},
+    ]}
+    src = _smg_haiku(
+        _fetcher([_FakeResp(200, _CATALOG), _FakeResp(200, thread)]),
+        _FakeAnthropic(text=_json.dumps(classifications)),
+        floor=3,
+    )
+    res = src.fetch(WL, context=_ctx())
+    by = {r.ticker: r for r in res.records}
+    nvda = by["NVDA"]
+    assert nvda.metrics.mention_count == 3
+    assert nvda.sentiment.method == "haiku"
+    assert (nvda.sentiment.bullish, nvda.sentiment.bearish, nvda.sentiment.neutral) == (2, 1, 0)
+    assert res.cost.haiku_calls == 1  # one per-ticker call
+    assert by["DE"].sentiment.method == "none"  # 0 mentions -> below floor, no stance
+
+
+def test_smg_below_floor_no_haiku():
+    thread = _thread(["$NVDA solo mention"])  # 1 distinct post < floor 3
+    src = _smg_haiku(
+        _fetcher([_FakeResp(200, _CATALOG), _FakeResp(200, thread)]), _FakeAnthropic(), floor=3
+    )
+    res = src.fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.metrics.mention_count == 1 and nvda.sentiment.method == "none"
+    assert res.cost.haiku_calls == 0  # gate held
+
+
+def test_smg_no_anthropic_key_no_haiku():
+    # above floor (3 posts) but NO key -> provider returns None -> method stays none
+    thread = _thread(["$NVDA a", "$NVDA b", "$NVDA c"])
+    src = _smg(_fetcher([_FakeResp(200, _CATALOG), _FakeResp(200, thread)]))
+    res = src.fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.metrics.mention_count == 3 and nvda.sentiment.method == "none"
+
+
+def test_smg_haiku_failure_degrades_to_none():
+    thread = _thread(["$NVDA a", "$NVDA b", "$NVDA c"])
+    src = _smg_haiku(
+        _fetcher([_FakeResp(200, _CATALOG), _FakeResp(200, thread)]),
+        _FakeAnthropic(text="not json at all"),  # parse error -> SentimentError
+        floor=3,
+    )
+    res = src.fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.sentiment.method == "none"  # degraded, but the count still ships
+    assert nvda.metrics.mention_count == 3
+    assert any("NVDA" in w and "Haiku failed" in w for w in res.warnings)
+
+
+def test_clean_com_strips_html_and_unescapes():
+    from chatter_daemon.sources.smg import _clean_com
+
+    out = _clean_com('<span class="quote">&gt;buy $NVDA</span><br>great &amp; cheap')
+    assert "<" not in out and "&gt;" not in out and "&amp;" not in out
+    assert ">buy $NVDA" in out and "great & cheap" in out

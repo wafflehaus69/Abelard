@@ -33,7 +33,7 @@ from typing import Any, Callable
 
 from ..config import DEFAULT_SENTIMENT_MIN_MENTIONS, HAIKU_MODEL_ID
 from ..schema import CostTelemetry, Metrics, NativeStance, NormalizedRecord, Sentiment
-from ..sentiment import SentimentError, build_anthropic_client, classify_stance
+from ..sentiment import AnthropicProvider, SentimentError, classify_stance
 from ..watchlist import WatchlistConfig
 from .base import ScanContext, SourceResult
 
@@ -205,9 +205,10 @@ class StockTwitsSource:
         logger: logging.Logger | None = None,
     ) -> None:
         self._log = logger or logging.getLogger("chatter_daemon.stocktwits")
-        self._client = client  # built lazily (browser UA) if absent
-        self._anthropic = anthropic_client  # injected; else built lazily from the key
-        self._anthropic_api_key = anthropic_api_key
+        self._client = client  # StockTwitsClient; built lazily (impersonating) if absent
+        self._anthropic = AnthropicProvider(
+            api_key=anthropic_api_key, client=anthropic_client, logger=self._log
+        )
         self._haiku_model = haiku_model
         self._floor = sentiment_min_mentions
         self._sleep = sleep if sleep is not None else _courtesy_sleep
@@ -277,7 +278,7 @@ class StockTwitsSource:
         sentiment: Sentiment | None = None
         # Haiku gated ABOVE the sentiment floor, and only with an Anthropic client + bodies.
         if n >= self._floor and posts:
-            anthropic = self._ensure_anthropic()
+            anthropic = self._anthropic.get()
             if anthropic is not None:
                 try:
                     tallies = classify_stance(
@@ -313,22 +314,6 @@ class StockTwitsSource:
             sentiment=sentiment,
             flags=[],
         )
-
-    def _ensure_anthropic(self) -> Any | None:
-        """Lazily build the Anthropic client from the key; None if there's no key
-        (native-only mode — a missing key is NOT fatal, the zero-cost native read still
-        ships). A genuine build failure logs and degrades to native too."""
-        if self._anthropic is not None:
-            return self._anthropic
-        if not self._anthropic_api_key:
-            return None
-        try:
-            self._anthropic = build_anthropic_client(self._anthropic_api_key)
-        except SentimentError as exc:
-            self._log.warning("stocktwits: Anthropic client unavailable: %s", exc)
-            return None
-        return self._anthropic
-
 
 __all__ = [
     "BROWSER_UA",

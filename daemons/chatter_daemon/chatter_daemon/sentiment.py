@@ -27,6 +27,7 @@ matches the claude-api skill's current Haiku-tier guidance.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from .schema import CostTelemetry
@@ -97,6 +98,32 @@ def build_anthropic_client(api_key: str) -> Any:
             "(`pip install anthropic`)"
         ) from exc
     return anthropic.Anthropic(api_key=api_key)
+
+
+class AnthropicProvider:
+    """Lazily builds + caches an Anthropic client from an API key; returns None when
+    there's no key (the caller degrades to native/none). Shared by the Haiku sources
+    (StockTwits bodies, /smg/ posts) so the lazy-build-and-degrade lives in one place.
+    Inject a ready `client` (a fake) in tests to bypass the build entirely."""
+
+    def __init__(
+        self, *, api_key: str | None = None, client: Any | None = None, logger=None
+    ) -> None:
+        self._client = client
+        self._api_key = api_key
+        self._log = logger or logging.getLogger("chatter_daemon")
+
+    def get(self) -> Any | None:
+        if self._client is not None:
+            return self._client
+        if not self._api_key:
+            return None
+        try:
+            self._client = build_anthropic_client(self._api_key)
+        except SentimentError as exc:
+            self._log.warning("anthropic client unavailable: %s", exc)
+            return None
+        return self._client
 
 
 def classify_stance(

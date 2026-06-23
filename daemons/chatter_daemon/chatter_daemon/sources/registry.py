@@ -24,6 +24,10 @@ def build_sources(cfg: Config) -> list[Source]:
             slang_blacklist_path=cfg.slang_blacklist_path,
             word_ticker_allowlist=cfg.word_ticker_allowlist,
             user_agent=cfg.user_agent,
+            # Haiku stance over the matched /smg/ post text (Order 9), gated above the floor.
+            anthropic_api_key=cfg.anthropic_api_key,
+            haiku_model=cfg.haiku_model_id,
+            sentiment_min_mentions=cfg.sentiment_min_mentions,
         ),
         GoogleTrendsSource(company_names_path=cfg.company_names_path),
         # StockTwits sentiment (Order 9): native tags + Haiku-on-bodies blend. Browser
