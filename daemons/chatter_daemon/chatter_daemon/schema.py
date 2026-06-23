@@ -66,9 +66,27 @@ class Metrics(BaseModel):
     headlines: list[Headline] | None = None
 
 
+class NativeStance(BaseModel):
+    """StockTwits users' own Bull/Bear self-tags — zero-cost, sparse (~40% of messages
+    carry one). Carried ALONGSIDE the Haiku body-read on a StockTwits record so the two
+    reads sit side by side; `tagged`/`messages` give the native read's coverage.
+    Divergence between this and the Haiku tally is signal Abelard reconciles — the
+    daemon never collapses them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bullish: int = Field(default=0, ge=0)
+    bearish: int = Field(default=0, ge=0)
+    tagged: int = Field(default=0, ge=0)    # messages carrying a native tag
+    messages: int = Field(default=0, ge=0)  # total messages seen (coverage = tagged/messages)
+
+
 class Sentiment(BaseModel):
-    """Stance aggregation. `method` records HOW it was produced: native tags
-    (StockTwits tags), Haiku (StockTwits bodies), or none (sources with no stance)."""
+    """Stance aggregation. `method` records how the PRIMARY tally was produced: native
+    tags (StockTwits self-tags), Haiku (StockTwits bodies), or none (sources with no
+    stance). For a StockTwits record the users' own native tally rides in `native`
+    alongside the primary — when Haiku ran (method="haiku") the two are distinct reads,
+    and the daemon does NOT reconcile a divergence (that is Abelard's call)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -76,6 +94,7 @@ class Sentiment(BaseModel):
     bullish: int = Field(default=0, ge=0)
     bearish: int = Field(default=0, ge=0)
     neutral: int = Field(default=0, ge=0)
+    native: NativeStance | None = None
 
 
 class NormalizedRecord(BaseModel):

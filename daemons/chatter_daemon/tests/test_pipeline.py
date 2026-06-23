@@ -88,4 +88,4 @@ def test_building_ok_thin_spike_as_baseline_fills(tmp_path):
     loaded = load_result(path)
     assert loaded.tickers[0].sources[0].anomaly.state == "spike"
     out = render_chatter(loaded)
-    assert "SPIKE" in out and "NVDA" in out and "mentions" in out
+    assert "SPIKE" in out and "NVDA" in out and "messages" in out  # stocktwits noun

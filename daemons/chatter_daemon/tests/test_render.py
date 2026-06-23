@@ -63,7 +63,7 @@ def test_source_labeled_counts_and_sentiment():
     )
     out = render_chatter(_result(tickers=[t]))
     assert "4 headlines" in out  # Finnhub semantics
-    assert "20 mentions" in out  # Reddit semantics
+    assert "20 messages" in out  # StockTwits semantics
     assert "interest 80.0 (7d 40.0 / mo 30.0)" in out  # Trends semantics
     assert "12/3/5" in out  # bull/bear/neutral
     assert "diversity 3" in out

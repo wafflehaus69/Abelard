@@ -1,9 +1,11 @@
-"""Haiku stance classification for Reddit (Order 6) — the daemon's ONE LLM call.
+"""Haiku stance classification for StockTwits message bodies (Order 6/9) — the
+daemon's ONE LLM call.
 
-Gated ABOVE the mention floor: only tickers with `mention_count >= floor` reach
-Haiku; tail tickers never do (their `sentiment.method` stays "none"). One batched
-call per scan keeps cost trivial; the system prompt + schema are stable and
-prompt-cached (`cache_control: ephemeral` — a no-op below Haiku's 4096-token
+Gated ABOVE the sentiment floor: only tickers whose stream has `messages >= floor`
+reach Haiku; thinner tickers fall back to the native tag read (`method="native"`).
+One batched call per ticker classifies the full body set (the native tags cover only
+~40% of messages; Haiku gives full coverage). The system prompt + schema are stable
+and prompt-cached (`cache_control: ephemeral` — a no-op below Haiku's 4096-token
 minimum, harmless above it).
 
 Cost telemetry (token usage) is accumulated into the caller's `CostTelemetry`
@@ -11,9 +13,10 @@ IMMEDIATELY after the call returns — before any record is built or persisted
 (doctrine #8). The cost object is mutated in place, so even when this pass fails
 loud the caller still holds the tokens already spent.
 
-Fail loud: any API / parse / truncation failure RAISES `SentimentError`; the Reddit
-plugin turns it into a `SourceResult(error=...)` so the orchestrator isolates the
-source. We never fabricate a `neutral`.
+Fail loud: any API / parse / truncation failure RAISES `SentimentError`; the StockTwits
+source catches it PER TICKER and degrades to that ticker's native tag read (a logged
+warning, never a fabricated `neutral`), so one ticker's Haiku failure never sinks the
+rest of the scan.
 
 The Haiku model id is pinned by the caller (config), verified live via the
 claude-api skill at build time — not from memory. The request shape
@@ -28,18 +31,18 @@ from typing import Any
 
 from .schema import CostTelemetry
 
-# Bounded output ceiling. A batch of Reddit posts classifies well under this; a
-# response that still hits it is caught via stop_reason and fails the batch loudly
-# rather than parsing a truncated array and silently dropping tickers.
+# Bounded output ceiling. A ticker's StockTwits message batch classifies well under
+# this; a response that still hits it is caught via stop_reason and fails the batch
+# loudly rather than parsing a truncated array and silently dropping classifications.
 _MAX_TOKENS = 8192
 
 _STANCE_VALUES = ("bullish", "bearish", "neutral")
 
 _SYSTEM_PROMPT = (
-    "You are a stance classifier for retail-investor posts from Reddit (subreddits "
-    "like r/wallstreetbets, r/stocks, r/investing, r/options). You are given a JSON "
-    "array of posts. Each post has a string `post_id`, the post `text`, and a "
-    "`tickers` array of US-equity symbols that were detected in that post.\n\n"
+    "You are a stance classifier for retail-investor messages from StockTwits (the "
+    "cashtag-driven equity social network). You are given a JSON array of messages. "
+    "Each item has a string `post_id`, the message `text`, and a `tickers` array of "
+    "US-equity symbols the message is about.\n\n"
     "For every (post, ticker) pair, classify the AUTHOR'S STANCE toward that "
     "specific ticker as exactly one of: bullish, bearish, neutral.\n\n"
     "Rules:\n"
@@ -85,12 +88,12 @@ def build_anthropic_client(api_key: str) -> Any:
     """Construct the production Anthropic client. Lazy-imports the SDK so the test
     path (which injects a fake) never needs `anthropic` installed."""
     if not api_key:
-        raise SentimentError("ANTHROPIC_API_KEY is empty; Reddit sentiment cannot run")
+        raise SentimentError("ANTHROPIC_API_KEY is empty; StockTwits sentiment cannot run")
     try:
         import anthropic
     except ImportError as exc:
         raise SentimentError(
-            "the `anthropic` package is not installed; Reddit sentiment cannot run "
+            "the `anthropic` package is not installed; StockTwits sentiment cannot run "
             "(`pip install anthropic`)"
         ) from exc
     return anthropic.Anthropic(api_key=api_key)

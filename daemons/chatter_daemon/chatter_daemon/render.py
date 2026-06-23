@@ -18,7 +18,7 @@ from .schema import Anomaly, AggregatedScanResult, AttentionResult, SourceSignal
 _COUNT_NOUN = {
     "finnhub_news": "headlines",
     "smg": "mentions",
-    "stocktwits": "mentions",
+    "stocktwits": "messages",
 }
 
 
@@ -70,6 +70,9 @@ def _render_signal(sig: SourceSignal) -> str:
     if sig.sentiment.method != "none":
         s = sig.sentiment
         sent = f"  bull/bear/neutral {s.bullish}/{s.bearish}/{s.neutral} ({sig.sentiment.method})"
+        if s.native is not None and sig.sentiment.method == "haiku":
+            nv = s.native  # the users' own tags, alongside the Haiku read (divergence view)
+            sent += f"  [native {nv.bullish}/{nv.bearish}, {nv.tagged}/{nv.messages} tagged]"
 
     flags = f"  flags={','.join(sig.flags)}" if sig.flags else ""
     return f"{sig.source:14} {body}{sent}  [{_anomaly_tag(sig.anomaly)}]{flags}"
