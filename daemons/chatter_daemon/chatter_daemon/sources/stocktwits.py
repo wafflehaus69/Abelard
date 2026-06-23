@@ -1,8 +1,10 @@
-"""StockTwits source (Order 9) — public API, no key, browser UA.
+"""StockTwits source (Order 9) — public API, no key, browser-TLS impersonation.
 
 Two public endpoints back two jobs; this module is the transport + parse layer for
-both. NO credentials — StockTwits' public API needs none; a browser User-Agent is the
-only requirement.
+both. NO credentials — StockTwits' public API needs none. It DOES sit behind
+CloudFlare, which 403s the Python `requests`/urllib3 TLS signature on sight regardless
+of headers, so the default transport uses `curl_cffi` to impersonate a real Chrome
+TLS + HTTP2 fingerprint (the live-verified way past the wall).
 
   - trending  (DISCOVERY, Phase B): GET /api/2/trending/symbols.json
       -> 30 pre-ranked symbol objects. The ranking IS the gate (top-30), so there is
@@ -13,22 +15,21 @@ only requirement.
   - symbol stream (SENTIMENT, Phase C): GET /api/2/streams/symbol/{T}.json
       -> 30 messages/ticker, each a free-text body + an optional native Bull/Bear tag.
 
-DEGRADE-CLEAN (non-negotiable). CloudFlare can wall any call with a 200 + HTML
-challenge instead of JSON. Every method is best-effort: a CF wall / non-JSON /
-transport / rate-limit failure raises `StockTwitsBlocked`, which the caller turns into
-a soft per-surface (trending) or per-ticker (stream) failure and sets `degraded`. The
-daemon never crashes on StockTwits and never fabricates — /smg/, Finnhub, and Trends
-carry the scan when StockTwits is dark.
+DEGRADE-CLEAN (non-negotiable). Impersonation gets clean JSON today, but CloudFlare can
+still re-wall any call (a 403 challenge or a non-JSON body) if it tightens. Every method
+is best-effort: a CF wall / non-JSON / transport / rate-limit failure raises
+`StockTwitsBlocked`, which the caller turns into a soft per-surface (trending) or
+per-ticker (stream) failure and sets `degraded`. The daemon never crashes on StockTwits
+and never fabricates — /smg/, Finnhub, and Trends carry the scan when StockTwits is dark.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 import time
 from typing import Any, Callable
-
-from abelard_common.http_client import HttpClient
 
 from ..config import DEFAULT_SENTIMENT_MIN_MENTIONS, HAIKU_MODEL_ID
 from ..schema import CostTelemetry, Metrics, NativeStance, NormalizedRecord, Sentiment
@@ -40,24 +41,56 @@ API_BASE = "https://api.stocktwits.com/api/2"
 TRENDING_URL = f"{API_BASE}/trending/symbols.json"
 STREAM_URL = API_BASE + "/streams/symbol/{symbol}.json"
 
-# The public endpoints answer a browser UA, not the daemon's default. A real Chrome
-# string keeps us off the trivial-bot path (CF can still wall us — see degrade-clean).
+# The browser UA curl_cffi presents (informational — the `impersonate` profile sets the
+# matching UA + TLS + HTTP2 fingerprint together; a UA alone does NOT pass CloudFlare).
 BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
+# curl_cffi impersonation profile — the live-verified one past StockTwits' CloudFlare.
+DEFAULT_IMPERSONATE = "chrome"
+
 
 class StockTwitsBlocked(RuntimeError):
-    """A soft, degrade-clean failure: CF wall (200 + HTML), non-JSON, or transport.
+    """A soft, degrade-clean failure: CF wall (403 / non-JSON) or transport.
 
     Distinct from a crash — the caller logs it, marks the surface / ticker failed, sets
     `degraded`, and carries on. Never raised past a pull/stream boundary.
     """
 
 
+class _ImpersonatingTransport:
+    """Default StockTwits transport: `curl_cffi` impersonating a real browser's TLS +
+    HTTP2 fingerprint. StockTwits sits behind CloudFlare, which 403s the Python
+    `requests`/urllib3 TLS signature on sight regardless of headers — impersonation is
+    what gets clean JSON (live-verified). Exposes the same `get_json(url)` the client
+    expects, forces UTF-8 decode, and raises on any non-2xx / non-JSON so the client
+    maps it to a degrade-clean StockTwitsBlocked."""
+
+    def __init__(
+        self,
+        *,
+        impersonate: str = DEFAULT_IMPERSONATE,
+        timeout: float = 20.0,
+        logger: logging.Logger | None = None,
+    ) -> None:
+        self._impersonate = impersonate
+        self._timeout = timeout
+        self._log = logger or logging.getLogger("chatter_daemon.stocktwits")
+
+    def get_json(self, url: str) -> Any:
+        # Lazy import: only StockTwits pulls in curl_cffi, and tests inject a fake client.
+        from curl_cffi import requests as _creq
+
+        resp = _creq.get(url, impersonate=self._impersonate, timeout=self._timeout)
+        resp.raise_for_status()  # 403 challenge / 5xx -> HTTPError -> StockTwitsBlocked
+        return json.loads(resp.content.decode("utf-8"))  # UTF-8 decode obligation
+
+
 class StockTwitsClient:
-    """Public StockTwits client — no key, browser UA, injectable transport for tests.
+    """Public StockTwits client — no key. The default transport impersonates a browser
+    TLS fingerprint (curl_cffi) to clear CloudFlare; a fake `client` is injected in tests.
 
     `trending()` powers ATTENTION discovery (Phase B); `symbol_stream()` powers the
     sentiment blend (Phase C). Both raise `StockTwitsBlocked` on any soft failure.
@@ -66,17 +99,14 @@ class StockTwitsClient:
     def __init__(
         self,
         *,
-        user_agent: str = BROWSER_UA,
-        client: HttpClient | None = None,
+        impersonate: str = DEFAULT_IMPERSONATE,
+        client: Any | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self._log = logger or logging.getLogger("chatter_daemon.stocktwits")
-        # Browser-ish Accept alongside the UA; the shared client forces UTF-8 decode.
-        self._client = client or HttpClient(
-            user_agent=user_agent,
-            default_headers={"Accept": "application/json"},
-            logger=self._log,
-        )
+        # Default: TLS-impersonating transport (clears CF). Any object exposing
+        # `get_json(url)` can be injected for tests.
+        self._client = client or _ImpersonatingTransport(impersonate=impersonate, logger=self._log)
 
     def trending(self) -> list[dict[str, Any]]:
         """The 30 trending symbol objects (DISCOVERY). Raises StockTwitsBlocked on a CF
