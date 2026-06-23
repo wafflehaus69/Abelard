@@ -3,16 +3,17 @@
 The front half is Phase 1's discovery (`SurfaceCounts`). This back half:
   1. GATE — admit a (ticker, source) when its count >= the per-source floor. The junk
      already died at the filter/blacklist; the floor is the real-but-quiet cutoff.
-  2. VELOCITY — for the count surface (smg_freq; StockTwits joins in Phase B): z-score the current
-     count vs the ticker's trailing baseline in the rolling store, reusing Order-7
-     anomaly states (building < N_min -> thin < floor -> z, sigma=0 guard). Baselines
-     are read BEFORE the current scan is appended (exclude-current invariant).
+  2. VELOCITY — for each count surface (smg_freq mentions, stocktwits_trending score):
+     z-score the current count vs the ticker's trailing baseline in the rolling store,
+     reusing Order-7 anomaly states (building < N_min -> thin < floor -> z, sigma=0
+     guard). Baselines are read BEFORE the current scan is appended (exclude-current).
   3. SALIENCE — "loud right now" = the per-surface counts; no baseline needed, so a
      brand-new ticker from zero surfaces immediately (flagged `cold_start`).
   4. AMPLIFIED — a discovered ticker also on a loaded watchlist: the crowd found one
      of his names on its own.
 
-StockTwits trending is point-in-time -> salience only (no velocity, no store).
+StockTwits trending feeds BOTH salience (its score magnitude) and velocity (the
+trending_score z-scored over the rolling store) — Order 9 joined it to the count path.
 
 PRUNE = roll-up-to-cold: events past 14 days aggregate to a `ColdRollup`, get ARCHIVED,
 and only then leave the hot table (archive before delete, nothing lost). Descriptive
@@ -37,9 +38,9 @@ from .schema import (
     CostTelemetry,
 )
 
-# Surfaces whose count is a time series we z-score for velocity. StockTwits trending is
-# point-in-time -> salience only.
-VELOCITY_SOURCES = frozenset({"smg_freq"})
+# Surfaces whose count is a time series we z-score for velocity: /smg/ mention counts
+# and StockTwits trending_score (the momentum axis). Both feed the rolling store.
+VELOCITY_SOURCES = frozenset({"smg_freq", "stocktwits_trending"})
 
 
 def run_attention_scan(
@@ -96,9 +97,18 @@ def run_attention_scan(
             if ticker not in per_ticker:
                 per_ticker[ticker] = []
                 order.append(ticker)
+            extras = sc.meta.get(ticker, {})
             per_ticker[ticker].append(
                 AttentionSignal(
-                    source=sc.source, semantics=sc.semantics, count=count, anomaly=anomaly
+                    source=sc.source,
+                    semantics=sc.semantics,
+                    count=count,
+                    anomaly=anomaly,
+                    rank=extras.get("rank"),
+                    trending_score=extras.get("trending_score"),
+                    watchlist_count=extras.get("watchlist_count"),
+                    sector=extras.get("sector"),
+                    summary=extras.get("summary"),
                 )
             )
         surface_status.append(

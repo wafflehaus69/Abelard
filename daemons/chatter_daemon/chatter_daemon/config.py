@@ -131,7 +131,7 @@ DEFAULT_UNIVERSE_TTL_S = 86_400  # 24h Finnhub symbol cache
 # tail). WSB / StockTwits floors are deferred placeholders — set on first live pull.
 DEFAULT_ATTENTION_FLOORS: dict[str, int] = {
     "smg_freq": 3,  # CALIBRATED
-    "stocktwits_trending": 1,  # presence-based (trending list); floor 1 admits, recalibrate live
+    "stocktwits_trending": 0,  # NO floor — the API's top-30 ranking IS the gate (Order 9)
 }
 
 

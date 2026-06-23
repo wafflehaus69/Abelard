@@ -1,5 +1,6 @@
 """ATTENTION scan — /smg/ floor=3 gate, cold-start salience (no baseline), velocity
-maturation, amplified watchlist intersection, StockTwits salience-only, prune-to-cold."""
+maturation, amplified watchlist intersection, StockTwits velocity + carry-through,
+prune-to-cold."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from chatter_daemon.discovery import SurfaceCounts
 
 NOW = 1_700_000_000
 _DAY = 24 * 60 * 60
-FLOORS = {"smg_freq": 3, "stocktwits_trending": 1}
+FLOORS = {"smg_freq": 3, "stocktwits_trending": 0}  # ST: top-30 self-gates (no floor)
 
 
 def _conn(tmp_path):
@@ -25,8 +26,8 @@ def _conn(tmp_path):
     return conn
 
 
-def _sc(source, counts, *, semantics="24h", warning=None):
-    return SurfaceCounts(source, semantics, dict(counts), warning)
+def _sc(source, counts, *, semantics="24h", warning=None, meta=None):
+    return SurfaceCounts(source, semantics, dict(counts), warning, meta or {})
 
 
 def _run(conn, surfaces, *, wl=None, now=NOW, min_obs=5):
@@ -82,23 +83,33 @@ def test_amplified_watchlist_intersection(tmp_path):
     assert by["AMC"].amplified is False and by["AMC"].on_watchlists == []
 
 
-def test_stocktwits_salience_only_no_store(tmp_path):
+def test_stocktwits_velocity_stores_and_carries_meta(tmp_path):
+    # Order 9: StockTwits trending joined the count path. The rounded trending_score is
+    # the salience/velocity axis; rank/score/watchlist_count/sector/summary carry through.
     conn = _conn(tmp_path)
-    res = _run(conn, [_sc("stocktwits_trending", {"GME": 1}, semantics="point-in-time")])
+    sc = _sc(
+        "stocktwits_trending", {"GME": 88}, semantics="point-in-time trending (top 30)",
+        meta={"GME": {"rank": 1, "trending_score": 88.4, "watchlist_count": 123,
+                      "sector": "Consumer", "summary": "up big"}},
+    )
+    res = _run(conn, [sc])
     t = res.tickers[0]
-    assert t.ticker == "GME" and t.salience == 1
-    assert t.signals[0].anomaly is None  # point-in-time -> no velocity
-    # not stored as a time series
-    assert read_baseline(conn, ticker="GME", source="stocktwits_trending", window=20, now=NOW + 1).n == 0
+    assert t.ticker == "GME" and t.salience == 88  # rounded trending_score
+    sig = t.signals[0]
+    assert sig.anomaly is not None and sig.anomaly.state == "building"  # velocity, first obs
+    assert sig.rank == 1 and sig.trending_score == 88.4 and sig.watchlist_count == 123
+    assert sig.sector == "Consumer" and sig.summary == "up big"
+    # NOW stored as a time series (n == 1 after this scan)
+    assert read_baseline(conn, ticker="GME", source="stocktwits_trending", window=20, now=NOW + 1).n == 1
 
 
 def test_degraded_surface_isolates(tmp_path):
     res = _run(
         _conn(tmp_path),
-        [_sc("smg_freq", {"NVDA": 5}), _sc("stocktwits_trending", {}, warning="reddit: praw down")],
+        [_sc("smg_freq", {"NVDA": 5}), _sc("stocktwits_trending", {}, warning="stocktwits: CF wall or transport")],
     )
     assert res.degraded is True
-    assert any("praw down" in e for e in res.errors)
+    assert any("CF wall" in e for e in res.errors)
     statuses = {s.source: s for s in res.surfaces}
     assert statuses["smg_freq"].ok is True and statuses["stocktwits_trending"].ok is False
     assert "NVDA" in {t.ticker for t in res.tickers}  # the good surface still produced

@@ -268,8 +268,13 @@ AttentionSource = Literal["smg_freq", "stocktwits_trending"]
 
 class AttentionSignal(BaseModel):
     """One surface's observation of a discovered ticker. `anomaly` is the VELOCITY
-    read (count z-score vs the rolling baseline) for count surfaces; None for a point-
-    in-time surface (StockTwits trending), which feeds salience only."""
+    read — the count z-score vs the rolling baseline. For /smg/ the count is distinct-
+    post mentions; for StockTwits trending it's the (rounded) trending_score — the
+    momentum axis (rank/score), never the watchlist_count (too stable to gate on).
+
+    The StockTwits carry-through fields are null-guarded: absent upstream (an ETF with
+    no fundamentals, a `trends: null` with no blurb) or on a non-StockTwits surface,
+    they stay None."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -277,6 +282,12 @@ class AttentionSignal(BaseModel):
     semantics: str
     count: int = Field(ge=0)
     anomaly: Anomaly | None = None
+    # StockTwits trending carry-through (Order 9 Phase B) — null-guarded, see above.
+    rank: int | None = None
+    trending_score: float | None = None
+    watchlist_count: int | None = None
+    sector: str | None = None
+    summary: str | None = None
 
 
 class AttentionTicker(BaseModel):

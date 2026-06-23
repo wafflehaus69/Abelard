@@ -218,6 +218,8 @@ def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -
     from abelard_common import fourchan_fetch, ticker_noise
     from abelard_common.http_client import HttpClient
 
+    from .sources.stocktwits import StockTwitsClient
+
     chatter_log = logging.getLogger("chatter_daemon")
     now = int(time.time())
     conn = baseline.connect(cfg.baseline_db_path)
@@ -248,12 +250,17 @@ def _cmd_attention(args: argparse.Namespace, cfg: Config, log: logging.Logger) -
     )
 
     fetcher = fourchan_fetch.Fetcher(user_agent=cfg.user_agent, logger=chatter_log)
+    # StockTwits trending: public endpoint, browser UA, no key. Degrade-clean — a CF
+    # wall raises inside the pull and becomes a soft surface warning, never a crash.
+    stocktwits_client = StockTwitsClient(
+        logger=logging.getLogger("chatter_daemon.stocktwits")
+    )
     surfaces = run_dry_run(
         matcher=matcher,
         universe=universe.symbols,
         now=now,
         fetcher=fetcher,
-        stocktwits_client=None,  # walled; joins when the residential curl frees it
+        stocktwits_client=stocktwits_client,
     )
 
     # --dry-run: calibration only — print the distribution; no store, gate, or persist.
