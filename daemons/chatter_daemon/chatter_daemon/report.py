@@ -21,6 +21,7 @@ DEFENSIVELY via `getattr` — it renders the moment Order 9 adds those fields, n
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from xml.sax.saxutils import escape
 
@@ -38,11 +39,14 @@ _SOURCE_LABEL = {
     "smg_freq": "/smg/",
     "stocktwits_trending": "StockTwits",
 }
+# StockTwits is intentionally absent: its symbol-stream count is a fixed 30-message
+# page (zero information), so StockTwits speaks through STANCE, not a volume noun.
 _COUNT_NOUN = {
     "finnhub_news": "headlines",
     "smg": "/smg/ mentions",
-    "stocktwits": "StockTwits mentions",
 }
+
+_STANCE_LABEL = {"stocktwits": "StockTwits", "smg": "/smg/"}
 
 
 def friendly_source(source: str) -> str:
@@ -53,10 +57,14 @@ def friendly_source(source: str) -> str:
 
 
 def watchlist_peak(ticker) -> float:
-    """Peak single-source magnitude — the largest count across count-sources, or the
-    24h Trends interest. The ranking key (loudest-on-any-source wins)."""
+    """Peak single-source magnitude — the largest real count across count-sources, or
+    the 24h Trends interest. The ranking key (loudest-on-any-source wins). StockTwits is
+    EXCLUDED: its count is a constant 30-message page, not volume, so it never sets the
+    rank — StockTwits contributes stance, not magnitude."""
     peak = 0.0
     for s in ticker.sources:
+        if s.source == "stocktwits":
+            continue
         if s.source == "google_trends":
             peak = max(peak, s.metrics.interest_24h or 0.0)
         else:
@@ -86,16 +94,32 @@ def degraded_banner(sources, degraded: bool) -> str | None:
     return f"Partial scan: {', '.join(failed)} unavailable this run."
 
 
-def headline_sample(signal) -> tuple[int, list[str]]:
-    """(count, top-3 titles) — the single biggest reportability fix: never dump the
-    full headline array."""
+def _title_relevant(title: str, symbol: str, aliases) -> bool:
+    """Does a headline actually name THIS ticker? Symbol as a whole word (so 'DE' does
+    not match 'DECIDE'), or any company-name alias as a substring (distinctive enough:
+    'duke energy', 'l3harris')."""
+    t = title.lower()
+    if symbol and re.search(rf"\b{re.escape(symbol.lower())}\b", t):
+        return True
+    return any(a and a in t for a in (aliases or ()))
+
+
+def headline_sample(signal, ticker_symbol: str = "", aliases=None) -> tuple[int, list[str]]:
+    """(count, top-3 titles). Finnhub cross-tags broad-market stories onto every large-
+    cap, so the sample is filtered to titles that actually name the ticker (symbol or a
+    company-name alias); only when NONE match does it fall back to feed order. The raw
+    `headlines` array on the record is untouched — this filters the SAMPLE only."""
     heads = signal.metrics.headlines or []
-    titles = [h.title for h in heads[:_HEADLINE_SAMPLE]]
+    relevant = [h for h in heads if _title_relevant(h.title, ticker_symbol, aliases)]
+    pool = relevant if relevant else heads
+    titles = [h.title for h in pool[:_HEADLINE_SAMPLE]]
     return signal.metrics.mention_count, titles
 
 
-def _watchlist_phrase(s) -> str | None:
-    """One source's contribution, source-labeled — or None if it carries no signal."""
+def _watchlist_phrase(s, ticker_symbol: str = "", aliases=None) -> str | None:
+    """One source's VOLUME / interest contribution, source-labeled — or None if it
+    carries none. StockTwits returns None here: its count is page size, so StockTwits
+    speaks through `_stance_phrase`, not a volume figure."""
     if s.source == "google_trends":
         i = s.metrics.interest_24h
         if i is None:
@@ -104,19 +128,85 @@ def _watchlist_phrase(s) -> str | None:
         if s.metrics.interest_7d is not None or s.metrics.interest_monthly is not None:
             extra = f" (7d {s.metrics.interest_7d} / mo {s.metrics.interest_monthly})"
         return f"interest {i}{extra}"
+    if s.source == "stocktwits":
+        return None  # page-size count is noise; stance carries StockTwits (see below)
     n = s.metrics.mention_count
     if n <= 0:
         return None
     if s.source == "finnhub_news":
-        count, titles = headline_sample(s)
+        count, titles = headline_sample(s, ticker_symbol, aliases)
         if titles:
             sample = "; ".join(escape(t) for t in titles)
             return f"{count} headlines (top: {sample})"
         return f"{count} headlines"
     noun = _COUNT_NOUN.get(s.source, "mentions")
-    phrase = f"{n} {noun}"
-    extra = _stocktwits_extras(s)  # defensive — empty until Order 9
-    return phrase + extra
+    return f"{n} {noun}"
+
+
+# --- stance (Order 11): direction-first, divergence-aware --------------------------
+
+
+def _net_dir(sentiment) -> str | None:
+    """Net direction of a stance: 'bull' | 'bear' | 'flat', or None when the source
+    classified nothing (method=none). Finnhub/Trends are always None — never fabricate."""
+    if sentiment is None or sentiment.method == "none":
+        return None
+    if sentiment.bullish > sentiment.bearish:
+        return "bull"
+    if sentiment.bearish > sentiment.bullish:
+        return "bear"
+    return "flat"
+
+
+def _stance_phrase(s) -> str | None:
+    """Concise, direction-first stance for the digest: 'StockTwits 11/8 bull
+    (native 9/3)'. None when the source carries no stance."""
+    d = _net_dir(s.sentiment)
+    if d is None:
+        return None
+    label = _STANCE_LABEL.get(s.source, friendly_source(s.source))
+    out = f"{label} {s.sentiment.bullish}/{s.sentiment.bearish} {d}"
+    nat = s.sentiment.native
+    if nat is not None:
+        out += f" (native {nat.bullish}/{nat.bearish})"
+    return out
+
+
+def _stance_detail(s) -> str | None:
+    """Full stance line for the detail block: bull/bear/neutral, plus the native
+    companion with how many messages were classified (the honest read of StockTwits'
+    30-message page). None when the source carries no stance."""
+    sent = s.sentiment
+    if sent is None or sent.method == "none":
+        return None
+    label = _STANCE_LABEL.get(s.source, friendly_source(s.source))
+    out = (
+        f"{label}: {sent.method.title()} {sent.bullish} bull / {sent.bearish} bear "
+        f"/ {sent.neutral} neutral"
+    )
+    nat = sent.native
+    if nat is not None:
+        out += (
+            f" &middot; native {nat.bullish} bull / {nat.bearish} bear "
+            f"({nat.messages} msgs classified)"
+        )
+    return out
+
+
+def _divergence(ticker):
+    """`{'smg': dir, 'stocktwits': dir}` when the two retail crowds disagree in
+    DIRECTION on this ticker (one net-bull, one net-bear) — the high-value cross-source
+    signal. None when they agree, or either lacks a directional read. The daemon carries
+    both and reconciles nothing; the report just surfaces the gap."""
+    dirs = {}
+    for s in ticker.sources:
+        if s.source in ("smg", "stocktwits"):
+            d = _net_dir(s.sentiment)
+            if d in ("bull", "bear"):
+                dirs[s.source] = d
+    if "smg" in dirs and "stocktwits" in dirs and dirs["smg"] != dirs["stocktwits"]:
+        return dirs
+    return None
 
 
 def _has_spike(ticker) -> bool:
@@ -166,11 +256,13 @@ def _attention_phrase(s) -> str:
 # --- PDF rendering (ReportLab, lazy) ----------------------------------------------
 
 
-def render_report(result, out_path: Path) -> Path:
-    """Dispatch on artifact type and render the PDF. Returns the output path."""
+def render_report(result, out_path: Path, *, name_aliases=None) -> Path:
+    """Dispatch on artifact type and render the PDF. `name_aliases` ({SYMBOL: [name
+    words]}) sharpens the watchlist report's headline-relevance filter; None falls back
+    to symbol-only matching. Returns the output path."""
     if isinstance(result, AttentionResult):
         return _render_attention_pdf(result, out_path)
-    return _render_watchlist_pdf(result, out_path)
+    return _render_watchlist_pdf(result, out_path, name_aliases)
 
 
 def _styles():
@@ -195,7 +287,7 @@ def _styles():
     return base
 
 
-def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path) -> Path:
+def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path, name_aliases=None) -> Path:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
@@ -214,7 +306,7 @@ def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path) -> Path:
         story.append(Paragraph(escape(banner), st["Banner"]))
 
     story.append(Paragraph("Digest", st["Heading2"]))
-    for line in _watchlist_digest(result):
+    for line in _watchlist_digest(result, name_aliases):
         story.append(Paragraph(line, st["Normal"]))
     story.append(Spacer(1, 10))
 
@@ -223,7 +315,7 @@ def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path) -> Path:
     if not ranked:
         story.append(Paragraph("No chatter on any name this scan.", st["Normal"]))
     for t in ranked:
-        story.append(Paragraph(_watchlist_block(t), st["Block"]))
+        story.append(Paragraph(_watchlist_block(t, name_aliases), st["Block"]))
 
     quiet = quiet_watchlist(result)
     if quiet:
@@ -249,12 +341,23 @@ def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path) -> Path:
     return out_path
 
 
-def _watchlist_digest(result: AggregatedScanResult) -> list[str]:
+def _watchlist_digest(result: AggregatedScanResult, aliases=None) -> list[str]:
     ranked = rank_watchlist(result)
     lines: list[str] = []
     for t in ranked[:_DIGEST_LOUDEST]:
-        phrases = [p for p in (_watchlist_phrase(s) for s in _by_magnitude(t)) if p]
-        lines.append(f"<b>{escape(t.ticker)}</b> — {'; '.join(phrases)}")
+        al = (aliases or {}).get(t.ticker)
+        vol = [p for p in (_watchlist_phrase(s, t.ticker, al) for s in _by_magnitude(t)) if p]
+        stance = [p for p in (_stance_phrase(s) for s in _by_magnitude(t)) if p]
+        lines.append(f"<b>{escape(t.ticker)}</b> — {'; '.join(vol + stance)}")
+    # Cross-source divergence — the crowds disagreeing IS the signal; surface it loud,
+    # not buried in the detail.
+    splits = []
+    for t in ranked:
+        d = _divergence(t)
+        if d:
+            splits.append(f"{escape(t.ticker)} (/smg/ {d['smg']} vs StockTwits {d['stocktwits']})")
+    if splits:
+        lines.append(f"<b>Sources split</b> (crowds disagree on direction): {', '.join(splits)}.")
     multi = [escape(t.ticker) for t in ranked if t.source_diversity >= 2]
     if multi:
         lines.append(f"Across multiple sources: {', '.join(multi)}.")
@@ -268,12 +371,18 @@ def _watchlist_digest(result: AggregatedScanResult) -> list[str]:
 
 def _by_magnitude(ticker):
     def mag(s):
-        return s.metrics.interest_24h or 0.0 if s.source == "google_trends" else float(s.metrics.mention_count)
+        if s.source == "google_trends":
+            return s.metrics.interest_24h or 0.0
+        if s.source == "stocktwits":
+            return 0.0  # page size, not magnitude — don't let the constant 30 sort it up
+        return float(s.metrics.mention_count)
     return sorted(ticker.sources, key=lambda s: -mag(s))
 
 
-def _watchlist_block(ticker) -> str:
-    phrases = [p for p in (_watchlist_phrase(s) for s in _by_magnitude(ticker)) if p]
+def _watchlist_block(ticker, aliases=None) -> str:
+    al = (aliases or {}).get(ticker.ticker)
+    phrases = [p for p in (_watchlist_phrase(s, ticker.ticker, al) for s in _by_magnitude(ticker)) if p]
+    phrases += [p for p in (_stance_detail(s) for s in _by_magnitude(ticker)) if p]
     for s in ticker.sources:  # StockTwits "why it's trending" — folds in with Order 9
         summ = _summary_of(s)
         if summ:
@@ -284,6 +393,8 @@ def _watchlist_block(ticker) -> str:
     tags = []
     if _has_spike(ticker):
         tags.append("SPIKE")
+    if _divergence(ticker):
+        tags.append("SPLIT")
     if ticker.source_diversity >= 2:
         tags.append(f"{ticker.source_diversity} sources")
     if tags:

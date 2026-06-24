@@ -188,6 +188,26 @@ def _cmd_read_chatter(args: argparse.Namespace, log: logging.Logger) -> int:
     return 0
 
 
+def _report_aliases(cfg: Config, log: logging.Logger) -> dict[str, list[str]] | None:
+    """`{SYMBOL: [name words]}` from the watchlists + shared company-name map, for the
+    report's ticker-relevance headline filter. Best-effort: an unreadable watchlists dir
+    or name map degrades to symbol-only matching (None), never fails the report."""
+    try:
+        from abelard_common.company_aliases import load_name_map
+
+        from .matching import build_name_map
+
+        shared = load_name_map(cfg.company_names_path)
+        aliases: dict[str, set[str]] = {}
+        for wl in load_all_watchlists(cfg.watchlists_dir):
+            for name, sym in build_name_map(wl, shared).items():
+                aliases.setdefault(sym, set()).add(name)
+        return {k: sorted(v) for k, v in aliases.items()} or None
+    except Exception as exc:
+        log.warning("report: name aliases unavailable (symbol-only headlines): %s", exc)
+        return None
+
+
 def _cmd_report(args: argparse.Namespace, log: logging.Logger) -> int:
     path = Path(args.path)
     try:
@@ -200,11 +220,18 @@ def _cmd_report(args: argparse.Namespace, log: logging.Logger) -> int:
         log.error("report: %s", exc)
         sys.stderr.write(f"report error: {exc}\n")
         return 1
+    # Ticker-relevance aliases for headline sampling (watchlist mode). Built best-effort
+    # so a missing watchlists dir degrades to symbol-only matching, never fails the report.
+    try:
+        cfg = Config.from_env()
+    except ConfigError:
+        cfg = Config()  # defaults — the report only needs paths, not keys
+    name_aliases = _report_aliases(cfg, log)
     out = Path(args.out) if args.out else Path(f"{result.scan_id}.pdf")
     try:
         from .report import render_report
 
-        render_report(result, out)
+        render_report(result, out, name_aliases=name_aliases)
     except Exception as exc:  # surface a render failure loudly, never a half file
         log.error("report: PDF render failed: %s", exc)
         sys.stderr.write(f"report error: PDF render failed: {exc}\n")
