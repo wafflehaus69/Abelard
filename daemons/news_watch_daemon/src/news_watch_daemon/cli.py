@@ -22,6 +22,7 @@ import sys
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from .config import Config, ConfigError, configure_logging
@@ -87,6 +88,7 @@ from .synthesize.synthesize import (
 )
 # Full Brief Stage 2b-ii: orchestrator + render for the full-brief subcommand.
 from .fullbrief.brief import FullBriefEnvelope
+from .fullbrief.loader import FullBriefLoadError, load_full_brief_from_path
 from .fullbrief.orchestrator import assemble_full_brief
 from .fullbrief.render import render_full_brief
 from .synthesize.llm_client import SynthesisLLMError
@@ -211,6 +213,26 @@ def build_parser() -> argparse.ArgumentParser:
             "Print the JSON artifact to stdout instead of human-readable "
             "rendering. For downstream tooling consumption. Mutually "
             "exclusive with --quiet."
+        ),
+    )
+
+    # ---- read-brief (reload + render a persisted Full Brief artifact) ----
+
+    p_read_brief = top.add_parser(
+        "read-brief",
+        help=(
+            "Reload a persisted Full Brief v1 JSON artifact from disk and render "
+            "it to stdout — identical human-readable output to `full-brief` at "
+            "generation time. No scrape, no LLM calls, no disk writes."
+        ),
+    )
+    p_read_brief.add_argument(
+        "path",
+        help=(
+            "Filesystem path to a persisted Full Brief artifact "
+            "(nwd-fullbrief-*.json). Validated against the FullBriefEnvelope "
+            "schema before rendering; malformed / wrong-type / missing files "
+            "fail loudly with a nonzero exit."
         ),
     )
 
@@ -2016,6 +2038,62 @@ def _handle_full_brief(args: argparse.Namespace, cfg: Config) -> int:
     return _compute_full_brief_exit_code(envelope)
 
 
+# ---------- read-brief subcommand (reload + render persisted artifact) -------
+#
+# read-brief shares full-brief's stdout-render output semantics (human-readable
+# text, NOT a JSON envelope), so it bypasses the standard dispatch ->
+# _emit_envelope -> 0/1 pipeline and is special-cased in main() alongside
+# full-brief.
+#
+# It reuses the SAME renderer (render_full_brief) and the SAME schema
+# (FullBriefEnvelope) as generation — no second renderer, no forked validation.
+# Generation already renders via the reusable render_full_brief(envelope), so
+# no extraction/refactor was needed; read-brief just loads-then-renders.
+#
+# Exit codes (fail-loud doctrine — the subcommand owns failure cases):
+#   0 — artifact loaded, validated, and rendered successfully
+#   1 — load/validate failure (missing file, malformed JSON, wrong brief_type,
+#       schema mismatch). Explicit error to stderr naming the path; no stdout.
+# Note: read-brief does NOT recompute full-brief's exit-code-2 from the
+# persisted envelope's health — exit 2 is a generation-time primary-path
+# signal. A re-read of a degraded brief still renders fine (the ENVELOPE HEALTH
+# / PASS FAILURES sections surface the degradation in the output itself), so a
+# successful read is exit 0 regardless of the persisted brief's internal health.
+
+
+def _handle_read_brief(args: argparse.Namespace, cfg: Config) -> int:
+    """Handle the `read-brief <path>` subcommand. Returns exit code directly.
+
+    Loads the persisted Full Brief JSON at `args.path`, validates it against
+    the FullBriefEnvelope schema, and renders it to stdout via the shared
+    render_full_brief — byte-identical to `full-brief`'s default rendering.
+
+    Returns:
+      0 — loaded + rendered successfully
+      1 — path missing, malformed JSON, wrong brief_type, or schema mismatch
+    """
+    # Match full-brief's Windows-stdout discipline: the render layer emits
+    # Unicode (→ U+2192, Δ U+0394) that cp1252 can't encode. Force UTF-8 so
+    # the reloaded render is identical cross-platform; no-op on POSIX.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+    path = Path(args.path)
+    try:
+        envelope = load_full_brief_from_path(path)
+    except FullBriefLoadError as exc:
+        sys.stderr.write(f"ERROR: read-brief failed: {exc}\n")
+        sys.stderr.flush()
+        return 1
+
+    sys.stdout.write(render_full_brief(envelope))
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+    return 0
+
+
 def dispatch(args: argparse.Namespace, *, cfg: Config) -> dict[str, Any]:
     leaf = command_path(args)
     handler = HANDLERS.get(leaf)
@@ -2071,6 +2149,18 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 — CLI boundary
             log.exception("unhandled error in full-brief")
             sys.stderr.write(f"ERROR: unhandled exception in full-brief: {exc}\n")
+            sys.stderr.flush()
+            return 1
+
+    # read-brief shares full-brief's stdout-render output semantics (rendered
+    # text, not a JSON envelope), so it also bypasses the standard
+    # dispatch -> _emit_envelope -> 0/1 flow.
+    if command_path(args) == "read-brief":
+        try:
+            return _handle_read_brief(args, cfg)
+        except Exception as exc:  # noqa: BLE001 — CLI boundary
+            log.exception("unhandled error in read-brief")
+            sys.stderr.write(f"ERROR: unhandled exception in read-brief: {exc}\n")
             sys.stderr.flush()
             return 1
 
