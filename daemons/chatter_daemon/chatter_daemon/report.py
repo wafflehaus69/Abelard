@@ -22,8 +22,10 @@ DEFENSIVELY via `getattr` — it renders the moment Order 9 adds those fields, n
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
+from zoneinfo import ZoneInfo
 
 from .schema import AggregatedScanResult, AttentionResult
 
@@ -234,35 +236,6 @@ def _stance_phrase(s) -> str | None:
     return out
 
 
-def _stance_detail(s) -> str | None:
-    """Full stance line for the detail block. StockTwits -> the aggregate read (Order 12)
-    with the native tags as a companion; /smg/ -> its Haiku bull/bear/neutral. None when
-    neither carries a read."""
-    if s.source == "stocktwits":
-        agg = _st_phrase(s.st_aggregate)
-        if agg:
-            nat = s.sentiment.native if s.sentiment else None
-            if nat is not None and (nat.bullish or nat.bearish):
-                agg += f" &middot; native tags {nat.bullish} bull / {nat.bearish} bear"
-            return agg
-        # gateway down -> the native tag read below is the StockTwits stance
-    sent = s.sentiment
-    if sent is None or sent.method == "none":
-        return None
-    label = _STANCE_LABEL.get(s.source, friendly_source(s.source))
-    out = (
-        f"{label}: {sent.method.title()} {sent.bullish} bull / {sent.bearish} bear "
-        f"/ {sent.neutral} neutral"
-    )
-    nat = sent.native
-    if nat is not None:
-        out += (
-            f" &middot; native {nat.bullish} bull / {nat.bearish} bear "
-            f"({nat.messages} msgs classified)"
-        )
-    return out
-
-
 def _divergence(ticker):
     """`{'smg': dir, 'stocktwits': dir}` when the two retail crowds disagree in
     DIRECTION on this ticker (one net-bull, one net-bear) — the high-value cross-source
@@ -281,6 +254,125 @@ def _divergence(ticker):
 
 def _has_spike(ticker) -> bool:
     return any(s.anomaly is not None and s.anomaly.state == "spike" for s in ticker.sources)
+
+
+# --- Order 13: banded rendering (colors encode DIRECTION; the WORDS carry warnings) ---
+
+_GREEN = "#1a7f37"   # bullish
+_RED = "#b00020"     # bearish / danger
+_MUTED = "#666666"   # neutral / secondary meta
+_DANGER = "#b00020"  # confidence / pump / thin warning flags
+_SHADE = "#f0f0f2"   # social-band background tint
+_RULE = "#bbbbbb"    # divider / box rule
+
+
+def eastern_stamp(iso_utc: str) -> str:
+    """UTC ISO-8601 (Z) -> 'MM-DD-YYYY HH:MM TZ' in US Eastern, with the correct EST/EDT
+    for that date (zoneinfo knows the DST rules — never hardcode the offset). 01:13 UTC
+    rolls back to the prior Eastern evening; a hardcoded -5 would mis-date and mislabel."""
+    try:
+        dt = datetime.fromisoformat(iso_utc.replace("Z", "+00:00"))
+        east = dt.astimezone(ZoneInfo("America/New_York"))
+        return f"{east:%m-%d-%Y %H:%M} {east.tzname()}"
+    except (ValueError, TypeError):
+        return iso_utc  # malformed -> raw, never crash
+
+
+def report_default_filename(iso_utc: str) -> str:
+    """Filesystem-safe default report name carrying the Eastern timestamp, e.g.
+    'chatter-report_06-23-2026_2113_EDT.pdf' (no colon/space — Windows-safe)."""
+    stamp = eastern_stamp(iso_utc).replace(":", "").replace(" ", "_")
+    return f"chatter-report_{stamp}.pdf"
+
+
+def _src(ticker, name):
+    return next((s for s in ticker.sources if s.source == name), None)
+
+
+def _dir_color(norm) -> str:
+    if norm is None:
+        return _MUTED
+    return _GREEN if norm > 50 else _RED if norm < 50 else _MUTED
+
+
+def _dir_color_counts(bull, bear) -> str:
+    return _GREEN if bull > bear else _RED if bear > bull else _MUTED
+
+
+def _meta_bits(ticker) -> list[str]:
+    """Compact header counts (no titles): 'N headlines', 'interest X', 'N /smg/'."""
+    bits = []
+    fin = _src(ticker, "finnhub_news")
+    if fin and fin.metrics.mention_count > 0:
+        bits.append(f"{fin.metrics.mention_count} headlines")
+    tr = _src(ticker, "google_trends")
+    if tr and tr.metrics.interest_24h is not None:
+        bits.append(f"interest {int(round(tr.metrics.interest_24h))}")
+    smg = _src(ticker, "smg")
+    if smg and smg.metrics.mention_count > 0:
+        bits.append(f"{smg.metrics.mention_count} /smg/")
+    return bits
+
+
+def _news_lines(ticker, aliases=None) -> list[str]:
+    """News-band html: 'news · <top relevant headline>' and '/smg/ · X bull / Y bear'.
+    A source carrying nothing is omitted (no empty rows)."""
+    lines = []
+    fin = _src(ticker, "finnhub_news")
+    if fin and fin.metrics.mention_count > 0:
+        _, titles = headline_sample(fin, ticker.ticker, (aliases or {}).get(ticker.ticker))
+        if titles:
+            lines.append(f'<font color="{_MUTED}">news &middot;</font> {escape(titles[0])}')
+    smg = _src(ticker, "smg")
+    if smg and smg.sentiment and smg.sentiment.method != "none":
+        s = smg.sentiment
+        col = _dir_color_counts(s.bullish, s.bearish)
+        lines.append(
+            f'<font color="{_MUTED}">/smg/ &middot;</font> '
+            f'<font color="{col}">{s.bullish} bull / {s.bearish} bear</font>'
+        )
+    return lines
+
+
+def _social_band_html(s) -> str | None:
+    """The SHADED StockTwits social band — the Order-12 aggregate read, colored by
+    DIRECTION (green bull / red bear / gray neutral) with the confidence flag in a danger
+    tone. The warning WORDS carry the meaning so it survives a grayscale print. None when
+    there is no StockTwits read at all."""
+    if s is None:
+        return None
+    agg = s.st_aggregate
+    if agg is not None and agg.sent_now_norm is not None:
+        n = agg.sent_now_norm
+        col = _dir_color(n)
+        head = f'<b>STOCKTWITS</b>  <font color="{col}"><b>{agg.sent_now_label or _band(n)} {n}</b></font>'
+        gap = agg.sent_gap
+        if gap is not None and abs(gap) >= _ST_SPIKE_GAP:
+            head += f'  <font color="{col}">gap {gap:+d} {"igniting" if gap > 0 else "cooling"}</font>'
+        elif gap is not None:
+            head += f'  <font color="{_MUTED}">(24h {agg.sent_24h_norm}, steady)</font>'
+        line2 = ""
+        if agg.vol_now_norm is not None:
+            line2 = f'<font color="{_MUTED}">vol {_band(agg.vol_now_norm)} {_fmt_msgs(agg.vol_now_raw)}'
+            if agg.participation_norm is not None:
+                line2 += f"  &middot;  participation {agg.participation_norm}"
+            line2 += "</font>"
+        flag = _CONF_FLAG.get(agg.confidence)
+        if flag:
+            line2 += f'  <font color="{_DANGER}"><b>{flag}</b></font>'
+        nat = s.sentiment.native if s.sentiment else None
+        line3 = (
+            f'<font color="{_MUTED}">native {nat.bullish}/{nat.bearish}</font>'
+            if nat is not None and (nat.bullish or nat.bearish)
+            else ""
+        )
+        return "<br/>".join(p for p in (head, line2, line3) if p)
+    # gateway down -> the native tag read is the StockTwits band
+    sent = s.sentiment
+    if sent is not None and sent.method == "native":
+        col = _dir_color_counts(sent.bullish, sent.bearish)
+        return f'<b>STOCKTWITS</b>  <font color="{col}">native {sent.bullish} bull / {sent.bearish} bear</font>'
+    return None
 
 
 def _stocktwits_extras(signal) -> str:
@@ -354,7 +446,56 @@ def _styles():
         ParagraphStyle("Foot", parent=base["Normal"], textColor=colors.grey, fontSize=8, leading=10)
     )
     base.add(ParagraphStyle("Block", parent=base["Normal"], spaceAfter=6, leading=13))
+    base.add(ParagraphStyle("Band", parent=base["Normal"], fontSize=9, leading=12))
+    base.add(ParagraphStyle("BandR", parent=base["Normal"], fontSize=9, leading=12, alignment=2))
     return base
+
+
+def _ticker_table(ticker, aliases, st):
+    """One ticker as a bounded two-band row (Order 13): header (ticker + compact meta +
+    a right-aligned flags pill), a white news band, then a SHADED StockTwits social band
+    under a divider rule. A band a source doesn't have is omitted (no empty rows)."""
+    from reportlab.lib import colors
+    from reportlab.platypus import KeepTogether, Paragraph, Table, TableStyle
+
+    meta = "  &middot;  ".join(_meta_bits(ticker))
+    hdr = f'<font size="11"><b>{escape(ticker.ticker)}</b></font>'
+    if meta:
+        hdr += f'   <font size="8" color="{_MUTED}">{meta}</font>'
+    flags = []
+    if _has_spike(ticker):
+        flags.append("SPIKE")
+    if _divergence(ticker):
+        flags.append("SPLIT")
+    flag_html = f'<font size="8" color="{_DANGER}"><b>[{"&middot;".join(flags)}]</b></font>' if flags else ""
+
+    data = [[Paragraph(hdr, st["Band"]), Paragraph(flag_html, st["BandR"])]]
+    style = [
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor(_RULE)),
+    ]
+    row = 1
+    news = _news_lines(ticker, aliases)
+    if news:
+        data.append([Paragraph("<br/>".join(news), st["Band"]), ""])
+        style.append(("SPAN", (0, row), (1, row)))
+        row += 1
+    social = _social_band_html(_src(ticker, "stocktwits"))
+    if social:
+        data.append([Paragraph(social, st["Band"]), ""])
+        style += [
+            ("SPAN", (0, row), (1, row)),
+            ("BACKGROUND", (0, row), (1, row), colors.HexColor(_SHADE)),
+            ("LINEABOVE", (0, row), (1, row), 0.5, colors.HexColor(_RULE)),
+        ]
+        row += 1
+    tbl = Table(data, colWidths=[398, 70])
+    tbl.setStyle(TableStyle(style))
+    return KeepTogether([tbl])
 
 
 def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path, name_aliases=None) -> Path:
@@ -366,7 +507,7 @@ def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path, name_ali
     wl = ", ".join(escape(w.name) for w in result.watchlists) or "(none)"
     story.append(Paragraph("Chatter Report", st["Title"]))
     story.append(
-        Paragraph(f"Watchlist: {wl} &nbsp;&middot;&nbsp; {escape(result.canonical_ts)} "
+        Paragraph(f"{wl} &nbsp;&middot;&nbsp; {escape(eastern_stamp(result.canonical_ts))} "
                   f"&nbsp;&middot;&nbsp; {result.scan_mode}", st["Normal"])
     )
     story.append(Spacer(1, 8))
@@ -385,7 +526,8 @@ def _render_watchlist_pdf(result: AggregatedScanResult, out_path: Path, name_ali
     if not ranked:
         story.append(Paragraph("No chatter on any name this scan.", st["Normal"]))
     for t in ranked:
-        story.append(Paragraph(_watchlist_block(t, name_aliases), st["Block"]))
+        story.append(_ticker_table(t, name_aliases, st))
+        story.append(Spacer(1, 4))
 
     quiet = quiet_watchlist(result)
     if quiet:
@@ -449,29 +591,6 @@ def _by_magnitude(ticker):
     return sorted(ticker.sources, key=lambda s: -mag(s))
 
 
-def _watchlist_block(ticker, aliases=None) -> str:
-    al = (aliases or {}).get(ticker.ticker)
-    phrases = [p for p in (_watchlist_phrase(s, ticker.ticker, al) for s in _by_magnitude(ticker)) if p]
-    phrases += [p for p in (_stance_detail(s) for s in _by_magnitude(ticker)) if p]
-    for s in ticker.sources:  # StockTwits "why it's trending" — folds in with Order 9
-        summ = _summary_of(s)
-        if summ:
-            phrases.append(f"<i>{escape(summ)}</i>")
-    parts = [f"<b>{escape(ticker.ticker)}</b>"]
-    if phrases:
-        parts.append("<br/>" + "<br/>".join(phrases))
-    tags = []
-    if _has_spike(ticker):
-        tags.append("SPIKE")
-    if _divergence(ticker):
-        tags.append("SPLIT")
-    if ticker.source_diversity >= 2:
-        tags.append(f"{ticker.source_diversity} sources")
-    if tags:
-        parts.append(f"  [{', '.join(tags)}]")
-    return "".join(parts)
-
-
 def _render_attention_pdf(result: AttentionResult, out_path: Path) -> Path:
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
@@ -480,7 +599,7 @@ def _render_attention_pdf(result: AttentionResult, out_path: Path) -> Path:
     story = []
     story.append(Paragraph("Chatter — Discovery Report", st["Title"]))
     story.append(
-        Paragraph(f"Off-watchlist attention &nbsp;&middot;&nbsp; {escape(result.canonical_ts)} "
+        Paragraph(f"Off-watchlist attention &nbsp;&middot;&nbsp; {escape(eastern_stamp(result.canonical_ts))} "
                   f"&nbsp;&middot;&nbsp; {result.scan_mode}", st["Normal"])
     )
     story.append(Spacer(1, 8))
@@ -561,10 +680,12 @@ __all__ = [
     "attention_accelerating",
     "attention_amplified",
     "degraded_banner",
+    "eastern_stamp",
     "friendly_source",
     "headline_sample",
     "quiet_watchlist",
     "rank_watchlist",
     "render_report",
+    "report_default_filename",
     "watchlist_peak",
 ]

@@ -227,10 +227,10 @@ def _cmd_report(args: argparse.Namespace, log: logging.Logger) -> int:
     except ConfigError:
         cfg = Config()  # defaults — the report only needs paths, not keys
     name_aliases = _report_aliases(cfg, log)
-    out = Path(args.out) if args.out else Path(f"{result.scan_id}.pdf")
-    try:
-        from .report import render_report
+    from .report import render_report, report_default_filename
 
+    out = Path(args.out) if args.out else Path(report_default_filename(result.canonical_ts))
+    try:
         render_report(result, out, name_aliases=name_aliases)
     except Exception as exc:  # surface a render failure loudly, never a half file
         log.error("report: PDF render failed: %s", exc)

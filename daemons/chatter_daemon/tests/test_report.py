@@ -168,29 +168,33 @@ def test_render_attention_pdf_is_valid(tmp_path):
 
 
 def test_stance_in_digest_and_detail():
-    from chatter_daemon.report import _watchlist_block, _watchlist_digest
+    from chatter_daemon.report import _news_lines, _social_band_html, _src, _watchlist_digest
 
     mu = _wt("MU", [
         _wsig("finnhub_news", count=40, headlines=[Headline(title="Micron MU falls", url="http://x")]),
         _wsig("smg", count=69, sentiment=_sent("haiku", 23, 29, 17)),
-        _wsig("stocktwits", count=30, sentiment=_sent("haiku", 11, 8, 11, native={"bullish": 9, "bearish": 3, "tagged": 12, "messages": 30})),
+        _wsig("stocktwits", st_aggregate=_blze_agg(),
+              sentiment=_sent("native", 6, 1, 0, native={"bullish": 6, "bearish": 1, "tagged": 7, "messages": 30})),
     ], 3)
+    # digest carries the StockTwits aggregate read + the /smg/ stance
     digest = " ".join(_watchlist_digest(_wresult([mu])))
-    assert "StockTwits 11/8 bull (native 9/3)" in digest  # direction-first, native carried
+    assert "StockTwits NOW EXTREMELY_BULLISH 98" in digest
     assert "/smg/ 23/29 bear" in digest
-    block = _watchlist_block(mu)
-    assert "StockTwits: Haiku 11 bull / 8 bear / 11 neutral" in block
-    assert "30 msgs classified" in block
-    assert "/smg/: Haiku 23 bull / 29 bear / 17 neutral" in block
+    # detail bands: the /smg/ stance lives in the news band, the aggregate in the social band
+    news = " ".join(_news_lines(mu))
+    assert "23 bull / 29 bear" in news and "Micron MU falls" in news
+    social = _social_band_html(_src(mu, "stocktwits"))
+    assert "STOCKTWITS" in social and "EXTREMELY_BULLISH 98" in social
 
 
 def test_no_stance_for_method_none():
-    from chatter_daemon.report import _stance_detail, _stance_phrase
+    from chatter_daemon.report import _social_band_html, _stance_phrase
 
     fin = _wsig("finnhub_news", count=10, headlines=[Headline(title="x", url="http://x")])
     trend = _wsig("google_trends", i24=50.0)
-    assert _stance_phrase(fin) is None and _stance_detail(fin) is None  # never fabricated
-    assert _stance_phrase(trend) is None and _stance_detail(trend) is None
+    # Finnhub/Trends carry no stance — absent from the digest stance AND the social band.
+    assert _stance_phrase(fin) is None and _stance_phrase(trend) is None
+    assert _social_band_html(fin) is None and _social_band_html(trend) is None
 
 
 def test_divergence_callout_fires_on_disagreement():
@@ -217,14 +221,17 @@ def test_divergence_silent_when_sources_agree():
 
 
 def test_stocktwits_count_not_a_volume_metric():
-    from chatter_daemon.report import _watchlist_block, _watchlist_phrase
+    from chatter_daemon.report import _meta_bits, _social_band_html, _watchlist_phrase
 
-    stw = _wsig("stocktwits", count=30, sentiment=_sent("haiku", 6, 10, 14, native={"bullish": 0, "bearish": 1, "tagged": 1, "messages": 30}))
-    assert _watchlist_phrase(stw, "AAPL") is None  # no "30 mentions" volume phrase
-    block = _watchlist_block(_wt("AAPL", [stw], 1))
-    assert "30 StockTwits mentions" not in block and "30 mentions" not in block
-    assert "StockTwits: Haiku 6 bull / 10 bear / 14 neutral" in block  # stance instead
-    assert "30 msgs classified" in block  # page size labeled honestly, not as volume
+    agg = _stagg(sent_now_norm=30, sent_now_label="BEARISH", sent_24h_norm=28, sent_gap=2,
+                 vol_now_norm=37, vol_now_raw=82000, participation_norm=37, confidence="low")
+    stw = _wsig("stocktwits", st_aggregate=agg,
+                sentiment=_sent("native", 0, 1, 0, native={"bullish": 0, "bearish": 1, "tagged": 1, "messages": 30}))
+    assert _watchlist_phrase(stw, "AAPL") is None       # no count phrase
+    assert _meta_bits(_wt("AAPL", [stw], 1)) == []      # no StockTwits header count ("30")
+    social = _social_band_html(stw)
+    assert "30 StockTwits mentions" not in social and "30 msgs classified" not in social
+    assert "vol LOW 82k" in social                      # REAL volume, not page-size 30
 
 
 def test_stocktwits_constant_count_does_not_set_rank():
@@ -291,7 +298,7 @@ def _blze_agg():
 
 
 def test_report_aggregate_gap_led_when_igniting():
-    from chatter_daemon.report import _watchlist_block, _watchlist_digest
+    from chatter_daemon.report import _social_band_html, _src, _watchlist_digest
 
     blze = _wt("BLZE", [_wsig("stocktwits", st_aggregate=_blze_agg(),
                               sentiment=_sent("native", 6, 1, 0, native={"bullish": 6, "bearish": 1, "tagged": 7, "messages": 30}))], 1)
@@ -300,9 +307,9 @@ def test_report_aggregate_gap_led_when_igniting():
     assert "gap +58 IGNITING" in digest and "24h 40" in digest  # gap leads a moving name
     assert "vol EXTREMELY_HIGH (41k)" in digest                 # real volume, banded
     assert "participation HIGH 74" in digest
-    block = _watchlist_block(blze)
-    assert "native tags 6 bull / 1 bear" in block               # native companion
-    assert "30 msgs classified" not in block                    # page-size phrasing gone
+    social = _social_band_html(_src(blze, "stocktwits"))
+    assert "native 6/1" in social                               # native companion
+    assert "30 msgs classified" not in social                   # page-size phrasing gone
 
 
 def test_report_steady_when_stable_no_manufactured_spike():
@@ -344,3 +351,88 @@ def test_report_gateway_down_falls_back_to_native_stance():
     nv = _wt("NVDA", [_wsig("stocktwits", sentiment=_sent("native", 7, 1, 0, native={"bullish": 7, "bearish": 1, "tagged": 8, "messages": 30}))], 1)
     digest = " ".join(_watchlist_digest(_wresult([nv])))
     assert "StockTwits 7/1 bull" in digest  # fell back to the native tag read
+
+
+# --- Order 13: banded rows + Eastern EST/EDT timestamp -----------------------------
+
+
+def test_eastern_stamp_summer_edt_and_date_rollback():
+    from chatter_daemon.report import eastern_stamp
+    # 01:13 UTC rolls back to the prior Eastern evening; June -> EDT; MM-DD-YYYY dashes
+    assert eastern_stamp("2026-06-24T01:13:36Z") == "06-23-2026 21:13 EDT"
+
+
+def test_eastern_stamp_winter_est():
+    from chatter_daemon.report import eastern_stamp
+    assert eastern_stamp("2026-01-15T03:00:00Z") == "01-14-2026 22:00 EST"  # winter -> EST
+
+
+def test_eastern_stamp_format_and_malformed():
+    import re
+
+    from chatter_daemon.report import eastern_stamp
+    assert re.fullmatch(r"\d{2}-\d{2}-\d{4} \d{2}:\d{2} E[DS]T", eastern_stamp("2026-07-04T13:05:00Z"))
+    assert eastern_stamp("not-a-timestamp") == "not-a-timestamp"  # never crash
+
+
+def test_report_default_filename_carries_eastern_timestamp():
+    from chatter_daemon.report import report_default_filename
+    # filesystem-safe: no colon/space; the Eastern timestamp is in the name
+    assert report_default_filename("2026-06-24T01:13:36Z") == "chatter-report_06-23-2026_2113_EDT.pdf"
+
+
+def test_meta_bits_compact_counts_no_titles():
+    from chatter_daemon.report import _meta_bits
+
+    t = _wt("MU", [
+        _wsig("finnhub_news", count=131, headlines=[Headline(title="x", url="http://x")]),
+        _wsig("google_trends", i24=48.2),
+        _wsig("smg", count=47, sentiment=_sent("haiku", 14, 19, 0)),
+        _wsig("stocktwits", st_aggregate=_blze_agg()),
+    ], 4)
+    assert _meta_bits(t) == ["131 headlines", "interest 48", "47 /smg/"]  # no titles, no ST count
+
+
+def test_news_lines_omits_absent_smg():
+    from chatter_daemon.report import _news_lines
+
+    t = _wt("ABBV", [_wsig("finnhub_news", count=10, headlines=[Headline(title="ABBV deal", url="http://x")])], 1)
+    lines = _news_lines(t)
+    assert len(lines) == 1 and "ABBV deal" in lines[0] and "/smg/" not in " ".join(lines)
+
+
+def test_social_band_color_encodes_direction():
+    from chatter_daemon.report import _GREEN, _RED, _social_band_html
+
+    bull = _social_band_html(_wsig("stocktwits", st_aggregate=_stagg(
+        sent_now_norm=90, sent_now_label="EXTREMELY_BULLISH", sent_24h_norm=88, sent_gap=2,
+        vol_now_norm=70, vol_now_raw=5000, participation_norm=70, confidence="high")))
+    assert _GREEN in bull and _RED not in bull  # bullish -> green, no red
+    bear = _social_band_html(_wsig("stocktwits", st_aggregate=_stagg(
+        sent_now_norm=12, sent_now_label="EXTREMELY_BEARISH", sent_24h_norm=14, sent_gap=-2,
+        vol_now_norm=60, vol_now_raw=3000, participation_norm=70, confidence="high")))
+    assert _RED in bear  # bearish -> red
+
+
+def test_social_band_pump_flag_danger_tone_on_bullish():
+    from chatter_daemon.report import _DANGER, _GREEN, _social_band_html
+
+    agg = _stagg(sent_now_norm=80, sent_now_label="BULLISH", sent_24h_norm=78, sent_gap=2,
+                 vol_now_norm=90, vol_now_raw=50000, participation_norm=20, confidence="pump_suspect")
+    html = _social_band_html(_wsig("stocktwits", st_aggregate=agg))
+    assert _GREEN in html                                # bullish read = green
+    assert _DANGER in html and "possible pump" in html   # warning: danger tone AND words (grayscale-safe)
+
+
+def test_banded_pdf_renders_valid(tmp_path):
+    mu = _wt("MU", [
+        _wsig("finnhub_news", count=40, state="spike", headlines=[Headline(title="Micron MU", url="http://x")]),
+        _wsig("smg", count=20, sentiment=_sent("haiku", 2, 9, 1)),
+        _wsig("stocktwits", st_aggregate=_blze_agg(), state="spike"),
+    ], 3)
+    res = _wresult([mu, _wt("BAI", [], 0)], degraded=True,
+                   sources=[SourceStatus(source="google_trends", ok=False, record_count=0, error="429")])
+    out = tmp_path / "banded.pdf"
+    render_report(res, out)
+    data = out.read_bytes()
+    assert data[:5] == b"%PDF-" and len(data) > 1000  # banded layout + degraded banner + quiet tail
