@@ -1,0 +1,7 @@
+# Pin YAML to LF across Windows edits + WSL/mini (Order NW-1).
+# An editor flipped ai_capex_cycle.yaml LF->CRLF mid-order, producing
+# whole-file line-ending churn in the diff. eol=lf makes git normalize
+# YAML to LF in the repo regardless of how the working file was written,
+# so theme-config diffs show only real content changes.
+*.yaml text eol=lf
+*.yml text eol=lf
