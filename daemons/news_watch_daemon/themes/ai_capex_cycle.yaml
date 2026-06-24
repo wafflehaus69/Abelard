@@ -117,42 +117,92 @@ keywords:
 
 tracked_entities:
   tickers:
+    # Hyperscalers / AI demand (held)
     - NVDA
     - META
     - MSFT
     - GOOGL
     - GOOG
     - AMZN
+    - AAPL
     - ORCL
-    - ASML
+    # Semis / compute (held)
     - TSM
     - AVGO
+    - INTC
+    - AMAT
+    - ASML
+    - SNPS
+    # Watchlist (tracked-not-held)
     - AMD
+    - MU
     - SMCI
     - DELL
     - HPE
+    - MRVL
+    - ANET
+    # Data centers (held)
+    - CRWV
+    # Power / grid / cooling (held)
     - VRT
-    - ETN
     - GEV
-    - LIN
+    - CEG
+    - ETN
+    # Uranium / power supply (watchlist)
     - CCJ
     - URA
-    - CRWV
+    # Industrial gases (cross-theme; fab gas supply)
+    - LIN
+    # AI software (held)
     - NOW
   companies:
+    # Hyperscalers / AI demand
+    - Apple
+    - Microsoft
+    - Alphabet
+    - Google
+    - Amazon
+    - Meta Platforms
+    - Oracle
     - Nvidia
+    # Frontier model labs
+    - OpenAI
+    - Anthropic
+    - xAI
+    - Databricks
+    - Stargate
+    # Semis / compute
     - Taiwan Semiconductor Manufacturing
-    - ASML
+    - TSMC
     - Samsung Electronics
     - SK Hynix
     - Micron
     - Broadcom
+    - Intel
+    - Applied Materials
+    - Synopsys
+    - Advanced Micro Devices
+    - AMD
+    # Hardware / systems
+    - Super Micro Computer
+    - Dell Technologies
+    - Hewlett Packard Enterprise
+    - ASML
+    # Power / grid / cooling
     - Vertiv
     - Eaton
     - Schneider Electric
+    - Constellation Energy
+    # Uranium / fuel
+    - Cameco
+    # Neocloud / data centers
     - CoreWeave
     - Lambda Labs
     - Crusoe Energy
+    # AI software
+    - ServiceNow
+    # Industrial gases
+    - Linde
   countries:
     - United States
     - Taiwan
@@ -167,17 +217,35 @@ tracked_entities:
     - copper
     - silicon
     - silicon wafer
+    - rare earths
+    - HBM
   people:
-    - Jensen Huang
-    - Sundar Pichai
+    # Hyperscaler CEOs
+    - Tim Cook
     - Satya Nadella
+    - Sundar Pichai
+    - Andy Jassy
     - Mark Zuckerberg
     - Larry Ellison
+    - Safra Catz
+    # Frontier labs
     - Sam Altman
     - Dario Amodei
-    - Lisa Su
-    - Pat Gelsinger
+    - Demis Hassabis
+    - Elon Musk
+    # Semis
+    - Jensen Huang
     - C.C. Wei
+    - Lisa Su
+    - Hock Tan
+    - Lip-Bu Tan
+    - Pat Gelsinger
+    - Christophe Fouquet
+    - Lee Jae-yong
+    # Neocloud
+    - Michael Intrator
+    # AI software
+    - Bill McDermott
 
 synthesis:
   cadence_hours: 4
