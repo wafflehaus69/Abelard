@@ -7,16 +7,19 @@ drives `symbol_stream`, and a fake Anthropic client drives the Haiku path.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from chatter_daemon.sources.base import ScanContext
 from chatter_daemon.sources.stocktwits import (
+    SENTIMENT_URL,
     StockTwitsBlocked,
     StockTwitsClient,
     StockTwitsSource,
     TRENDING_URL,
     native_tag,
+    parse_sentiment_aggregate,
 )
 from chatter_daemon.watchlist import WatchlistConfig
 from chatter_daemon.windows import derive_windows, iso_z
@@ -58,19 +61,37 @@ class _FakeHttp:
 
 
 class _FakeST:
-    """Fake StockTwitsClient: per-symbol canned streams; a symbol mapped to "BLOCK"
-    raises StockTwitsBlocked (the CF-walled-ticker path)."""
+    """Fake StockTwitsClient: per-symbol canned gateway payloads (sentiment_detail) AND
+    streams (symbol_stream). A symbol mapped to "BLOCK", or absent from `gateways`,
+    raises StockTwitsBlocked on that path (the per-path degrade)."""
 
-    def __init__(self, streams):
-        self._streams = streams
-        self.calls: list[str] = []
+    def __init__(self, *, gateways=None, streams=None):
+        self._gateways = gateways or {}
+        self._streams = streams or {}
+        self.gateway_calls: list[str] = []
+        self.stream_calls: list[str] = []
+
+    def sentiment_detail(self, symbol):
+        self.gateway_calls.append(symbol)
+        g = self._gateways.get(symbol)
+        if g is None or g == "BLOCK":
+            raise StockTwitsBlocked(f"gateway unavailable {symbol}")
+        return g
 
     def symbol_stream(self, symbol):
-        self.calls.append(symbol)
+        self.stream_calls.append(symbol)
         s = self._streams.get(symbol)
         if s == "BLOCK":
-            raise StockTwitsBlocked(f"CF wall {symbol}")
+            raise StockTwitsBlocked(f"stream wall {symbol}")
         return list(s or [])
+
+
+_FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _gateway(ticker):
+    """A captured live sentiment-API payload (PLTR/BLZE/XOVR) as a gateway fixture."""
+    return json.loads((_FIXTURES / f"sentiment_{ticker}.json").read_text(encoding="utf-8"))
 
 
 class _Block:
@@ -183,80 +204,190 @@ def test_native_tag_reads_basic_and_guards_nulls():
     assert native_tag({"id": 6, "entities": {"sentiment": {"basic": "Neutral"}}}) is None  # not bull/bear
 
 
-# --- StockTwitsSource native + Haiku blend ---------------------------------
+# --- sentiment-API parser (Order 12): now-primary, gap, raw-ignored, 5-band ---------
 
 
-def test_source_native_only_below_floor():
-    # 2 messages < floor 3 -> Haiku never runs; the native tally is the primary read.
-    streams = {"NVDA": [_msg(1, "to the moon", "Bullish"), _msg(2, "meh")], "AMC": []}
-    src = StockTwitsSource(sentiment_min_mentions=3, client=_FakeST(streams), sleep=lambda: None)
-    res = src.fetch(WL, context=_ctx())
+def test_parser_now_primary_not_24h():
+    # BLZE: now EXTREMELY_BULLISH 98; 24h is the stale BEARISH 40. We report NOW.
+    a = parse_sentiment_aggregate(_gateway("BLZE"))
+    assert a.sent_now_norm == 98 and a.sent_now_label == "EXTREMELY_BULLISH"
+    assert a.sent_24h_norm == 40 and a.sent_24h_label == "BEARISH"  # baseline, NOT the headline
+    # XOVR: now EXTREMELY_BEARISH 14
+    x = parse_sentiment_aggregate(_gateway("XOVR"))
+    assert x.sent_now_norm == 14 and x.sent_now_label == "EXTREMELY_BEARISH"
+
+
+def test_parser_gap_computed():
+    assert parse_sentiment_aggregate(_gateway("BLZE")).sent_gap == 58   # 98 - 40 igniting
+    assert parse_sentiment_aggregate(_gateway("XOVR")).sent_gap == 4    # 14 - 10 stable
+    assert parse_sentiment_aggregate(_gateway("PLTR")).sent_gap == -2   # ~0 steady
+
+
+def test_parser_ignores_raw_label_uses_normalized():
+    # PLTR sentiment raw label = EXTREMELY_BULLISH, labelNormalized = NEUTRAL. Use normalized.
+    a = parse_sentiment_aggregate(_gateway("PLTR"))
+    assert a.sent_now_label == "NEUTRAL" and a.sent_now_norm == 53  # NOT EXTREMELY_BULLISH
+
+
+def test_parser_normalized_inversion_volume():
+    # Synthetic: raw label EXTREMELY_HIGH but labelNormalized EXTREMELY_LOW -> report LOW.
+    raw = {"data": {
+        "messageVolume": {"now": {"loaded": True, "value": 12, "valueNormalized": 8,
+                                  "label": "EXTREMELY_HIGH", "labelNormalized": "EXTREMELY_LOW", "change": 0}},
+        "sentiment": {"now": {"loaded": True, "value": -0.5, "valueNormalized": 20,
+                              "label": "BULLISH", "labelNormalized": "BEARISH", "change": 0}},
+    }}
+    a = parse_sentiment_aggregate(raw)
+    assert a.vol_now_norm == 8 and a.sent_now_norm == 20 and a.sent_now_label == "BEARISH"
+
+
+def test_parser_5_band_scale_preserved():
+    # the 0-100 score is carried, not collapsed to 3 buckets: XOVR-14 != a mild-bear-40
+    assert parse_sentiment_aggregate(_gateway("XOVR")).sent_now_norm == 14
+    assert parse_sentiment_aggregate(_gateway("BLZE")).sent_24h_norm == 40
+
+
+def test_parser_participation_and_confidence_gate():
+    # BLZE: vol high + part high -> high; XOVR: vol low + part high -> quiet (real but quiet);
+    # PLTR: vol high + part low -> pump_suspect.
+    assert parse_sentiment_aggregate(_gateway("BLZE")).confidence == "high"
+    x = parse_sentiment_aggregate(_gateway("XOVR"))
+    assert x.participation_norm == 66 and x.confidence == "quiet"
+    assert parse_sentiment_aggregate(_gateway("PLTR")).confidence == "pump_suspect"
+
+
+def test_parser_confidence_quadrants_synthetic():
+    def agg(vol, part):
+        raw = {"data": {
+            "messageVolume": {"now": {"loaded": True, "value": 1, "valueNormalized": vol, "labelNormalized": "X"}},
+            "sentiment": {"now": {"loaded": True, "value": 0, "valueNormalized": 50, "labelNormalized": "NEUTRAL"}},
+            "timeframes": {"1D": {"participationScore": {"loaded": True, "value": 0.5, "valueNormalized": part, "labelNormalized": "X"}}},
+        }}
+        return parse_sentiment_aggregate(raw).confidence
+    assert agg(10, 80) == "quiet"          # low vol, high part -> real but quiet
+    assert agg(10, 20) == "low"            # low vol, low part -> thin noise
+    assert agg(90, 80) == "high"           # high vol, high part -> genuine surge
+    assert agg(90, 20) == "pump_suspect"   # high vol, low part -> possible pump
+
+
+def test_parser_real_volume_not_page_size():
+    assert parse_sentiment_aggregate(_gateway("BLZE")).vol_now_raw == 41730  # not 30
+    assert parse_sentiment_aggregate(_gateway("XOVR")).vol_now_raw == 655
+
+
+def test_parser_ignores_timeframes_ge_1w():
+    a = parse_sentiment_aggregate(_gateway("PLTR"))
+    # 1W timeframe sentiment is BEARISH 38; we must NOT have consumed it as the read.
+    assert a.sent_now_norm == 53 and a.sent_now_label == "NEUTRAL"  # from `now`, not 1W
+
+
+def test_parser_guards_unloaded_metric():
+    raw = {"data": {
+        "sentiment": {"now": {"loaded": False, "valueNormalized": 99, "labelNormalized": "EXTREMELY_BULLISH"},
+                      "24h": {"loaded": True, "valueNormalized": 50, "labelNormalized": "NEUTRAL"}},
+        "messageVolume": {"now": {"loaded": True, "value": 5, "valueNormalized": 30, "labelNormalized": "LOW"}},
+    }}
+    a = parse_sentiment_aggregate(raw)
+    assert a.sent_now_norm is None and a.sent_24h_norm == 50  # unloaded `now` not consumed
+    assert a.sent_gap is None  # no now -> no gap
+
+
+def test_parser_no_data_returns_none():
+    assert parse_sentiment_aggregate({"nope": 1}) is None
+    assert parse_sentiment_aggregate({"data": {"timeframes": {}}}) is None  # no now/vol -> degrade
+
+
+# --- StockTwitsSource: aggregate primary + native fallback + demoted Haiku (Order 12) ---
+
+
+def test_source_aggregate_primary_zero_haiku():
+    # gateway returns BLZE; stream gives native tags; default Haiku OFF -> 0 calls.
+    client = _FakeST(
+        gateways={"NVDA": _gateway("BLZE")},
+        streams={"NVDA": [_msg(1, "calls", "Bullish"), _msg(2, "long", "Bullish")], "AMC": []},
+    )
+    res = StockTwitsSource(client=client, sleep=lambda: None).fetch(WL, context=_ctx())
     nvda = {r.ticker: r for r in res.records}["NVDA"]
-    assert nvda.metrics.mention_count == 2 and nvda.sentiment.method == "native"
-    assert nvda.sentiment.bullish == 1 and nvda.sentiment.bearish == 0
-    assert nvda.sentiment.native.tagged == 1 and nvda.sentiment.native.messages == 2
-    assert res.cost.haiku_calls == 0  # gate held
+    agg = nvda.st_aggregate
+    assert agg is not None
+    assert agg.sent_now_norm == 98 and agg.sent_now_label == "EXTREMELY_BULLISH"  # now-primary
+    assert agg.sent_24h_norm == 40 and agg.sent_gap == 58                         # baseline + gap
+    assert agg.vol_now_raw == 41730 and agg.confidence == "high"
+    assert nvda.metrics.mention_count == 41730  # REAL volume, not page-size 30
+    assert nvda.sentiment.method == "native"    # native carried; NO Haiku
+    assert res.cost.haiku_calls == 0
 
 
-def test_source_haiku_above_floor_carries_native_distinct():
-    streams = {
-        "NVDA": [
-            _msg(1, "calls", "Bullish"), _msg(2, "long", "Bullish"),
-            _msg(3, "puts", "Bearish"), _msg(4, "just holding"),
-        ],
-        "AMC": [],
-    }
+def test_source_gateway_down_falls_back_to_native():
+    # gateway blocked, stream works -> aggregate null but native read still ships (the
+    # gateway is NOT a single point of failure); the surface does NOT degrade.
+    client = _FakeST(gateways={"NVDA": "BLOCK"}, streams={"NVDA": [_msg(1, "x", "Bullish")], "AMC": []})
+    res = StockTwitsSource(client=client, sleep=lambda: None).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.st_aggregate is None
+    assert nvda.sentiment.method == "native" and nvda.sentiment.bullish == 1
+    assert res.error is None  # a read was produced -> not degraded
+
+
+def test_source_both_dead_degrades_per_ticker():
+    client = _FakeST(gateways={"NVDA": "BLOCK"}, streams={"NVDA": "BLOCK", "AMC": []})
+    res = StockTwitsSource(client=client, sleep=lambda: None).fetch(WL, context=_ctx())
+    tickers = {r.ticker for r in res.records}
+    assert "NVDA" not in tickers and "AMC" in tickers  # both paths dead -> no record
+    assert res.error and "NVDA" in res.error and "unavailable" in res.error
+
+
+def test_source_haiku_off_by_default_even_above_floor():
+    streams = {"NVDA": [_msg(i, "body", "Bullish") for i in range(1, 5)], "AMC": []}
+    client = _FakeST(gateways={"NVDA": _gateway("PLTR")}, streams=streams)
+    res = StockTwitsSource(
+        sentiment_min_mentions=3, client=client,
+        anthropic_client=_FakeAnthropic(), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert res.cost.haiku_calls == 0 and nvda.sentiment.method == "native"  # DEMOTED
+
+
+def test_source_haiku_opt_in_fires_aggregate_still_primary():
+    streams = {"NVDA": [_msg(1, "calls", "Bullish"), _msg(2, "long", "Bullish"),
+                        _msg(3, "puts", "Bearish"), _msg(4, "hold")], "AMC": []}
     classifications = {"classifications": [
         {"post_id": "1", "ticker": "NVDA", "stance": "bullish"},
         {"post_id": "2", "ticker": "NVDA", "stance": "bullish"},
-        {"post_id": "3", "ticker": "NVDA", "stance": "bullish"},
-        {"post_id": "4", "ticker": "NVDA", "stance": "bearish"},
+        {"post_id": "3", "ticker": "NVDA", "stance": "bearish"},
+        {"post_id": "4", "ticker": "NVDA", "stance": "neutral"},
     ]}
-    src = StockTwitsSource(
-        sentiment_min_mentions=3,
-        client=_FakeST(streams),
-        anthropic_client=_FakeAnthropic(text=json.dumps(classifications)),
-        sleep=lambda: None,
-    )
-    res = src.fetch(WL, context=_ctx())
+    client = _FakeST(gateways={"NVDA": _gateway("BLZE")}, streams=streams)
+    res = StockTwitsSource(
+        sentiment_min_mentions=3, haiku_enabled=True, client=client,
+        anthropic_client=_FakeAnthropic(text=json.dumps(classifications)), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
     nvda = {r.ticker: r for r in res.records}["NVDA"]
-    # Haiku is the PRIMARY read (full coverage); the native tally rides alongside, distinct.
     assert nvda.sentiment.method == "haiku"
-    assert (nvda.sentiment.bullish, nvda.sentiment.bearish, nvda.sentiment.neutral) == (3, 1, 0)
-    assert nvda.sentiment.native.bullish == 2 and nvda.sentiment.native.bearish == 1
-    assert nvda.sentiment.native.tagged == 3 and nvda.sentiment.native.messages == 4
-    assert res.cost.haiku_calls == 1  # NVDA only (AMC empty -> below gate, skipped)
+    assert (nvda.sentiment.bullish, nvda.sentiment.bearish, nvda.sentiment.neutral) == (2, 1, 1)
+    assert nvda.sentiment.native is not None and res.cost.haiku_calls == 1
+    assert nvda.st_aggregate.sent_now_norm == 98  # aggregate STILL primary alongside Haiku
 
 
-def test_source_degrades_per_ticker_on_block():
-    streams = {"NVDA": [_msg(1, "x", "Bullish")], "AMC": "BLOCK"}
-    src = StockTwitsSource(sentiment_min_mentions=3, client=_FakeST(streams), sleep=lambda: None)
-    res = src.fetch(WL, context=_ctx())
-    tickers = {r.ticker for r in res.records}
-    assert "NVDA" in tickers and "AMC" not in tickers  # blocked ticker -> no record, others ship
-    # a CF block marks the surface degraded (orchestrator flips `degraded` via ok=False)
-    assert res.error and "AMC" in res.error and "walled" in res.error
-
-
-def test_source_haiku_failure_falls_back_to_native():
+def test_source_haiku_opt_in_failure_falls_back_to_native():
     streams = {"NVDA": [_msg(i, "body", "Bullish") for i in range(1, 5)], "AMC": []}
-    src = StockTwitsSource(
-        sentiment_min_mentions=3,
-        client=_FakeST(streams),
-        anthropic_client=_FakeAnthropic(text="not json at all"),  # parse error -> SentimentError
-        sleep=lambda: None,
-    )
-    res = src.fetch(WL, context=_ctx())
+    client = _FakeST(gateways={"NVDA": _gateway("PLTR")}, streams=streams)
+    res = StockTwitsSource(
+        sentiment_min_mentions=3, haiku_enabled=True, client=client,
+        anthropic_client=_FakeAnthropic(text="not json"), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
     nvda = {r.ticker: r for r in res.records}["NVDA"]
-    assert nvda.sentiment.method == "native" and nvda.sentiment.bullish == 4  # fell back to native
+    assert nvda.sentiment.method == "native" and nvda.sentiment.bullish == 4
     assert any("NVDA" in w and "Haiku failed" in w for w in res.warnings)
 
 
-def test_source_courtesy_sleep_between_tickers():
+def test_source_courtesy_sleep_two_calls_per_ticker():
     n = {"sleeps": 0}
 
     def _sleep():
         n["sleeps"] += 1
 
-    StockTwitsSource(client=_FakeST({"NVDA": [], "AMC": []}), sleep=_sleep).fetch(WL, context=_ctx())
-    assert n["sleeps"] == 1  # 2 tickers -> 1 inter-ticker delay (none before the first)
+    client = _FakeST(streams={"NVDA": [], "AMC": []})  # no gateways -> both raise; streams empty
+    StockTwitsSource(client=client, sleep=_sleep).fetch(WL, context=_ctx())
+    # 2 tickers x (gateway, stream); sleep before each call except the very first -> 3
+    assert n["sleeps"] == 3

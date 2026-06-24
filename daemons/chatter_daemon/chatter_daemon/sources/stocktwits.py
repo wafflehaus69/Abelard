@@ -32,7 +32,14 @@ import time
 from typing import Any, Callable
 
 from ..config import DEFAULT_SENTIMENT_MIN_MENTIONS, HAIKU_MODEL_ID
-from ..schema import CostTelemetry, Metrics, NativeStance, NormalizedRecord, Sentiment
+from ..schema import (
+    CostTelemetry,
+    Metrics,
+    NativeStance,
+    NormalizedRecord,
+    Sentiment,
+    StockTwitsAggregate,
+)
 from ..sentiment import AnthropicProvider, SentimentError, classify_stance
 from ..watchlist import WatchlistConfig
 from .base import ScanContext, SourceResult
@@ -40,6 +47,9 @@ from .base import ScanContext, SourceResult
 API_BASE = "https://api.stocktwits.com/api/2"
 TRENDING_URL = f"{API_BASE}/trending/symbols.json"
 STREAM_URL = API_BASE + "/streams/symbol/{symbol}.json"
+# Undocumented internal sentiment gateway (Order 12) — different host, but the same TLS
+# impersonation clears it. StockTwits' OWN full-stream aggregate (now-primary).
+SENTIMENT_URL = "https://api-gw-prd.stocktwits.com/sentiment-api/v2/{symbol}/detail"
 
 # The browser UA curl_cffi presents (informational — the `impersonate` profile sets the
 # matching UA + TLS + HTTP2 fingerprint together; a UA alone does NOT pass CloudFlare).
@@ -133,6 +143,17 @@ class StockTwitsClient:
             )
         return [m for m in messages if isinstance(m, dict)]
 
+    def sentiment_detail(self, symbol: str) -> dict[str, Any]:
+        """StockTwits' OWN computed sentiment aggregate (gateway, Order 12). Returns the
+        raw `{data: {...}}` payload; `parse_sentiment_aggregate` pulls now/24h + the 1D
+        participation. Raises StockTwitsBlocked on a CF wall / non-JSON / missing `data`.
+        UNDOCUMENTED internal gateway (highest change-risk source) — callers degrade per
+        ticker so the gateway is never a single point of failure."""
+        data = self._get_json(SENTIMENT_URL.format(symbol=symbol), what=f"sentiment {symbol}")
+        if not isinstance(data, dict) or not isinstance(data.get("data"), dict):
+            raise StockTwitsBlocked(f"sentiment {symbol}: no `data` block (CF challenge?)")
+        return data
+
     def _get_json(self, url: str, *, what: str) -> Any:
         """GET + parse, mapping every failure to StockTwitsBlocked. The shared client
         raises on transport / 404 / 429; `.json()` raises on a non-JSON CF wall. We
@@ -172,23 +193,116 @@ def native_tag(message: dict[str, Any]) -> str | None:
     return None
 
 
+# --- sentiment-API aggregate parsing (Order 12) -----------------------------------
+
+_CONF_HIGH = 50  # valueNormalized split for the volume x participation confidence quadrants
+
+
+def _agg_metric(block: Any) -> tuple[int, str | None] | None:
+    """(valueNormalized:int, labelNormalized) for a LOADED metric block, else None. NEVER
+    reads raw `value`/`label` — those are proven invertible (PLTR label EXTREMELY_BULLISH
+    vs labelNormalized NEUTRAL; XOVR vol label EXTREMELY_HIGH vs labelNormalized LOW)."""
+    if not isinstance(block, dict) or not block.get("loaded"):
+        return None
+    vn = block.get("valueNormalized")
+    if not isinstance(vn, (int, float)):
+        return None
+    label = block.get("labelNormalized")
+    return int(round(vn)), (label if isinstance(label, str) and label else None)
+
+
+def _confidence(vol_norm: int | None, part_norm: int | None) -> str | None:
+    """Volume x participation trust gate. Sentiment confidence rides on PARTICIPATION,
+    not volume: a quiet name with high participation is a real small-crowd consensus; a
+    loud name with low participation is a possible pump."""
+    if vol_norm is None or part_norm is None:
+        return None
+    vhigh, phigh = vol_norm >= _CONF_HIGH, part_norm >= _CONF_HIGH
+    if vhigh and phigh:
+        return "high"           # genuine surge (BLZE: vol 98, part 74)
+    if not vhigh and phigh:
+        return "quiet"          # real but quiet — trustworthy small crowd (XOVR: vol 6, part 66)
+    if not vhigh and not phigh:
+        return "low"            # thin noise
+    return "pump_suspect"       # high volume, low participation — possible bot/spam
+
+
+def parse_sentiment_aggregate(raw: dict[str, Any]) -> StockTwitsAggregate | None:
+    """Parse the sentiment-API payload into a StockTwitsAggregate. now-primary, 24h as
+    baseline, `gap = now - 24h`. Consumes ONLY `now`/`24h` (sentiment + volume) and the
+    `timeframes.1D` participation; IGNORES timeframes >= 1W (paywalled/stale) and the raw
+    `value`/`label`. Returns None when nothing usable loaded (degrade-clean)."""
+    data = raw.get("data") if isinstance(raw, dict) else None
+    if not isinstance(data, dict):
+        return None
+    sent = data.get("sentiment") if isinstance(data.get("sentiment"), dict) else {}
+    vol = data.get("messageVolume") if isinstance(data.get("messageVolume"), dict) else {}
+
+    s_now = _agg_metric(sent.get("now"))
+    s_24h = _agg_metric(sent.get("24h"))
+    sent_now_norm = s_now[0] if s_now else None
+    sent_24h_norm = s_24h[0] if s_24h else None
+    gap = (
+        sent_now_norm - sent_24h_norm
+        if sent_now_norm is not None and sent_24h_norm is not None
+        else None
+    )
+
+    v_now = vol.get("now")
+    vol_now_norm = vol_now_raw = vol_change = None
+    if isinstance(v_now, dict) and v_now.get("loaded"):
+        vn, vr, vc = v_now.get("valueNormalized"), v_now.get("value"), v_now.get("change")
+        vol_now_norm = int(round(vn)) if isinstance(vn, (int, float)) else None
+        vol_now_raw = int(vr) if isinstance(vr, (int, float)) else None  # raw count IS the real volume
+        vol_change = float(vc) if isinstance(vc, (int, float)) else None
+
+    # Participation lives in timeframes.1D (NOT a `now` block — the order's literal field
+    # was off; 1D is < 1W so trustworthy, and the value matches the live page: BLZE 74,
+    # XOVR 66).
+    part_norm = None
+    tfs = data.get("timeframes")
+    tf1d = tfs.get("1D") if isinstance(tfs, dict) else None
+    if isinstance(tf1d, dict):
+        ps = tf1d.get("participationScore")
+        if isinstance(ps, dict) and ps.get("loaded"):
+            pv = ps.get("valueNormalized")
+            part_norm = int(round(pv)) if isinstance(pv, (int, float)) else None
+
+    if sent_now_norm is None and vol_now_norm is None:
+        return None  # nothing usable -> degrade
+
+    return StockTwitsAggregate(
+        sent_now_norm=sent_now_norm,
+        sent_now_label=s_now[1] if s_now else None,
+        sent_24h_norm=sent_24h_norm,
+        sent_24h_label=s_24h[1] if s_24h else None,
+        sent_gap=gap,
+        vol_now_norm=vol_now_norm,
+        vol_now_raw=vol_now_raw,
+        vol_change=vol_change,
+        participation_norm=part_norm,
+        confidence=_confidence(vol_now_norm, part_norm),
+    )
+
+
 class StockTwitsSource:
-    """Watchlist sentiment source (Order 9). For each ACTIVE watchlist ticker, pull its
-    StockTwits message stream and blend two stance reads:
+    """Watchlist StockTwits source (Order 12). PRIMARY = StockTwits' OWN sentiment-API
+    aggregate (the gateway, parsed now-primary): the live `now` sentiment, the 24h
+    baseline, the now-vs-24h gap (the spike signal), the REAL message volume (retiring
+    the page-size 30), and a participation-gated confidence. Carried alongside:
 
-      - NATIVE — the users' own Bull/Bear self-tags, tallied at zero LLM cost (~40%
-        coverage). ALWAYS carried (in `sentiment.native`) with its tagged/messages
-        coverage.
-      - HAIKU — Claude classifies the message bodies for FULL coverage, but only when
-        the stream has `messages >= sentiment_min_mentions` (the gate) and an Anthropic
-        client is available. Above the gate the Haiku tally is the primary read and the
-        native tally rides alongside, so a divergence stays visible (Abelard reconciles,
-        the daemon does not).
+      - NATIVE tags from the documented symbol-stream — free explicit-user-stance, AND
+        the degrade-clean FALLBACK: the gateway dies, native tags still yield a read so
+        the gateway is never a single point of failure.
+      - HAIKU-on-bodies — DEMOTED (off by default). The free full-stream aggregate
+        supersedes paying Haiku for a 30-message window; the gated path stays for opt-in
+        corroboration only. The default scan spends ZERO Haiku on StockTwits.
 
-    DEGRADE-CLEAN per ticker: a CF-walled stream (StockTwitsBlocked) yields a warning
-    and no record for that ticker (an honest "unread", not a fabricated zero); a Haiku
-    failure falls back to the native read with a warning. One ticker never sinks the
-    rest, and nothing is fabricated.
+    The reads are carried DISTINCTLY (`st_aggregate`, `sentiment.native`, optional
+    Haiku); the daemon reconciles nothing (Abelard's job).
+
+    DEGRADE-CLEAN per ticker: gateway 403/non-JSON -> aggregate null; stream walled ->
+    native null; only when BOTH die is there no record (and the surface degrades).
     """
 
     name = SOURCE_NAME
@@ -199,6 +313,7 @@ class StockTwitsSource:
         anthropic_api_key: str | None = None,
         haiku_model: str = HAIKU_MODEL_ID,
         sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS,
+        haiku_enabled: bool = False,
         client: StockTwitsClient | None = None,
         anthropic_client: Any | None = None,
         sleep: Callable[[], None] | None = None,
@@ -211,6 +326,7 @@ class StockTwitsSource:
         )
         self._haiku_model = haiku_model
         self._floor = sentiment_min_mentions
+        self._haiku_enabled = haiku_enabled  # Order 12: off by default (aggregate supersedes)
         self._sleep = sleep if sleep is not None else _courtesy_sleep
 
     def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
@@ -223,27 +339,36 @@ class StockTwitsSource:
         actives = watchlist.active_tickers
 
         for i, spec in enumerate(actives):
+            sym = spec.symbol
             if i:
-                self._sleep()  # courtesy delay BETWEEN tickers (not before the first)
+                self._sleep()  # courtesy delay between tickers
+            # 1. PRIMARY: StockTwits' own aggregate (the gateway).
+            agg = None
             try:
-                messages = client.symbol_stream(spec.symbol)
+                agg = parse_sentiment_aggregate(client.sentiment_detail(sym))
             except StockTwitsBlocked as exc:
-                # Per-ticker degrade-clean: log it, emit NO record (an honest "unread",
-                # not a fabricated zero), and remember it so the surface is marked
-                # degraded below. The unblocked tickers still ship.
-                self._log.warning("stocktwits stream blocked for %s: %s", spec.symbol, exc)
-                blocked.append(spec.symbol)
+                self._log.warning("stocktwits gateway blocked for %s: %s", sym, exc)
+            # 2. FALLBACK + native tags: the documented symbol-stream.
+            self._sleep()  # courtesy delay between the two calls
+            messages = None
+            try:
+                messages = client.symbol_stream(sym)
+            except StockTwitsBlocked as exc:
+                self._log.warning("stocktwits stream blocked for %s: %s", sym, exc)
+            if agg is None and messages is None:
+                # BOTH paths dead -> honest "unread"; the surface degrades, others ship.
+                blocked.append(sym)
                 continue
             records.append(
-                self._build_record(watchlist, context, window, spec.symbol, messages, warnings, cost)
+                self._build_record(watchlist, context, window, sym, agg, messages, warnings, cost)
             )
 
-        # Any CF-walled ticker degrades the surface — `error` flips the envelope
-        # `degraded` flag (ok=False) while the unblocked tickers carry on. Haiku
-        # soft-fallbacks stay in `warnings` (data present, lower-quality stance) and do
-        # NOT flip degraded.
+        # A ticker with BOTH paths dead degrades the surface (ok=False flips the envelope
+        # `degraded`); the rest carry on. Haiku soft-fallbacks (when enabled) stay in
+        # `warnings` and do NOT flip degraded.
         error = (
-            f"{len(blocked)}/{len(actives)} streams walled (CF): {', '.join(blocked)}"
+            f"{len(blocked)}/{len(actives)} StockTwits unavailable (gateway+stream): "
+            f"{', '.join(blocked)}"
             if blocked
             else None
         )
@@ -251,33 +376,32 @@ class StockTwitsSource:
             source=SOURCE_NAME, records=records, warnings=warnings, error=error, cost=cost
         )
 
-    def _build_record(self, watchlist, context, window, symbol, messages, warnings, cost):
+    def _build_record(self, watchlist, context, window, symbol, agg, messages, warnings, cost):
+        # Native tags + (optional) Haiku from the stream, when we got it.
+        native = None
         nat_bull = nat_bear = nat_tagged = 0
         posts: list[dict[str, Any]] = []
-        for idx, m in enumerate(messages):
-            tag = native_tag(m)
-            if tag == "bullish":
-                nat_bull += 1
-                nat_tagged += 1
-            elif tag == "bearish":
-                nat_bear += 1
-                nat_tagged += 1
-            body = m.get("body")
-            if isinstance(body, str) and body.strip():
-                posts.append(
-                    {
-                        "post_id": str(m.get("id", f"st-{symbol}-{idx}")),
-                        "text": body,
-                        "tickers": [symbol],
-                    }
-                )
-
-        n = len(messages)
-        native = NativeStance(bullish=nat_bull, bearish=nat_bear, tagged=nat_tagged, messages=n)
+        n_msgs = 0
+        if messages is not None:
+            n_msgs = len(messages)
+            for idx, m in enumerate(messages):
+                tag = native_tag(m)
+                if tag == "bullish":
+                    nat_bull += 1
+                    nat_tagged += 1
+                elif tag == "bearish":
+                    nat_bear += 1
+                    nat_tagged += 1
+                body = m.get("body")
+                if isinstance(body, str) and body.strip():
+                    posts.append(
+                        {"post_id": str(m.get("id", f"st-{symbol}-{idx}")), "text": body, "tickers": [symbol]}
+                    )
+            native = NativeStance(bullish=nat_bull, bearish=nat_bear, tagged=nat_tagged, messages=n_msgs)
 
         sentiment: Sentiment | None = None
-        # Haiku gated ABOVE the sentiment floor, and only with an Anthropic client + bodies.
-        if n >= self._floor and posts:
+        # Haiku DEMOTED: only when explicitly enabled, above the floor, with bodies + a client.
+        if self._haiku_enabled and n_msgs >= self._floor and posts:
             anthropic = self._anthropic.get()
             if anthropic is not None:
                 try:
@@ -297,10 +421,19 @@ class StockTwitsSource:
                         native=native,
                     )
         if sentiment is None:
-            # Below the gate, no Anthropic client, or Haiku failed -> native is primary.
-            sentiment = Sentiment(
-                method="native", bullish=nat_bull, bearish=nat_bear, native=native
-            )
+            # Native tags primary when the stream worked; else no per-message stance
+            # (the gateway aggregate is the read, carried in st_aggregate).
+            if native is not None:
+                sentiment = Sentiment(method="native", bullish=nat_bull, bearish=nat_bear, native=native)
+            else:
+                sentiment = Sentiment(method="none")
+
+        # mention_count = the REAL volume (aggregate's raw count), retiring the page-size
+        # 30. Fall back to the stream page size only when the gateway is dark.
+        if agg is not None and agg.vol_now_raw is not None:
+            mention_count = agg.vol_now_raw
+        else:
+            mention_count = n_msgs
 
         return NormalizedRecord(
             watchlist=watchlist.name,
@@ -310,13 +443,16 @@ class StockTwitsSource:
             source=SOURCE_NAME,
             ticker=symbol,
             matched_by=["cashtag"],  # StockTwits is cashtag-native
-            metrics=Metrics(mention_count=n),
+            metrics=Metrics(mention_count=mention_count),
             sentiment=sentiment,
+            st_aggregate=agg,
             flags=[],
         )
 
+
 __all__ = [
     "BROWSER_UA",
+    "SENTIMENT_URL",
     "SOURCE_NAME",
     "STREAM_URL",
     "TRENDING_URL",
@@ -324,4 +460,5 @@ __all__ = [
     "StockTwitsClient",
     "StockTwitsSource",
     "native_tag",
+    "parse_sentiment_aggregate",
 ]

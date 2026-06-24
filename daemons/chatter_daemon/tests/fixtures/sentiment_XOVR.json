@@ -1,0 +1,303 @@
+{
+  "data": {
+    "messageVolume": {
+      "15m": {
+        "change": 0,
+        "label": "EXTREMELY_LOW",
+        "labelNormalized": "EXTREMELY_LOW",
+        "loaded": true,
+        "value": 665,
+        "valueNormalized": 6
+      },
+      "24h": {
+        "change": 33.3333,
+        "label": "EXTREMELY_LOW",
+        "labelNormalized": "EXTREMELY_LOW",
+        "loaded": true,
+        "value": 843,
+        "valueNormalized": 8
+      },
+      "now": {
+        "change": 0,
+        "label": "EXTREMELY_LOW",
+        "labelNormalized": "EXTREMELY_LOW",
+        "loaded": true,
+        "value": 655,
+        "valueNormalized": 6
+      }
+    },
+    "sentiment": {
+      "15m": {
+        "change": 0,
+        "label": "EXTREMELY_BEARISH",
+        "labelNormalized": "EXTREMELY_BEARISH",
+        "loaded": true,
+        "value": -0.6099,
+        "valueNormalized": 14
+      },
+      "24h": {
+        "change": -28.5714,
+        "label": "EXTREMELY_BEARISH",
+        "labelNormalized": "EXTREMELY_BEARISH",
+        "loaded": true,
+        "value": -0.7142,
+        "valueNormalized": 10
+      },
+      "now": {
+        "change": 0,
+        "label": "EXTREMELY_BEARISH",
+        "labelNormalized": "EXTREMELY_BEARISH",
+        "loaded": true,
+        "value": -0.6101,
+        "valueNormalized": 14
+      }
+    },
+    "timeframes": {
+      "1D": {
+        "buzz": {
+          "change": 0,
+          "label": "",
+          "labelNormalized": "",
+          "loaded": false,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "loaded": true,
+        "messageVolume": {
+          "change": 33.3333,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "EXTREMELY_LOW",
+          "loaded": true,
+          "value": 843,
+          "valueNormalized": 8
+        },
+        "participationScore": {
+          "change": -17.5,
+          "label": "HIGH",
+          "labelNormalized": "HIGH",
+          "loaded": true,
+          "value": 0.667,
+          "valueNormalized": 66
+        },
+        "sentiment": {
+          "change": -28.5714,
+          "label": "EXTREMELY_BEARISH",
+          "labelNormalized": "EXTREMELY_BEARISH",
+          "loaded": true,
+          "value": -0.7142,
+          "valueNormalized": 10
+        }
+      },
+      "1M": {
+        "buzz": {
+          "change": 0,
+          "label": "",
+          "labelNormalized": "",
+          "loaded": false,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "loaded": true,
+        "messageVolume": {
+          "change": 1116.6667,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "HIGH",
+          "loaded": true,
+          "value": 691,
+          "valueNormalized": 73
+        },
+        "participationScore": {
+          "change": -65,
+          "label": "HIGH",
+          "labelNormalized": "LOW",
+          "loaded": true,
+          "value": 0.636,
+          "valueNormalized": 28
+        },
+        "sentiment": {
+          "change": 492.8571,
+          "label": "EXTREMELY_BULLISH",
+          "labelNormalized": "EXTREMELY_BULLISH",
+          "loaded": true,
+          "value": 0.82,
+          "valueNormalized": 83
+        }
+      },
+      "1W": {
+        "buzz": {
+          "change": 0,
+          "label": "",
+          "labelNormalized": "",
+          "loaded": false,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "loaded": true,
+        "messageVolume": {
+          "change": 1266.6667,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "EXTREMELY_HIGH",
+          "loaded": true,
+          "value": 1084,
+          "valueNormalized": 82
+        },
+        "participationScore": {
+          "change": -62.5,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "LOW",
+          "loaded": true,
+          "value": 0.818,
+          "valueNormalized": 30
+        },
+        "sentiment": {
+          "change": 285.7143,
+          "label": "BULLISH",
+          "labelNormalized": "NEUTRAL",
+          "loaded": true,
+          "value": 0.224,
+          "valueNormalized": 54
+        }
+      },
+      "1Y": {
+        "buzz": {
+          "change": 0,
+          "label": "",
+          "labelNormalized": "",
+          "loaded": false,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "loaded": true,
+        "messageVolume": {
+          "change": 516.6667,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "LOW",
+          "loaded": true,
+          "value": 150,
+          "valueNormalized": 37
+        },
+        "participationScore": {
+          "change": -47.5,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "LOW",
+          "loaded": true,
+          "value": 1,
+          "valueNormalized": 42
+        },
+        "sentiment": {
+          "change": 192.8571,
+          "label": "BULLISH",
+          "labelNormalized": "BEARISH",
+          "loaded": true,
+          "value": 0.151,
+          "valueNormalized": 41
+        }
+      },
+      "3M": {
+        "buzz": {
+          "change": 0,
+          "label": "",
+          "labelNormalized": "",
+          "loaded": false,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "loaded": true,
+        "messageVolume": {
+          "change": 766.6667,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "NORMAL",
+          "loaded": true,
+          "value": 217,
+          "valueNormalized": 52
+        },
+        "participationScore": {
+          "change": -100,
+          "label": "EXTREMELY_LOW",
+          "labelNormalized": "EXTREMELY_LOW",
+          "loaded": true,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "sentiment": {
+          "change": 278.5714,
+          "label": "BULLISH",
+          "labelNormalized": "NEUTRAL",
+          "loaded": true,
+          "value": 0.476,
+          "valueNormalized": 53
+        }
+      },
+      "6M": {
+        "buzz": {
+          "change": 0,
+          "label": "",
+          "labelNormalized": "",
+          "loaded": false,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "loaded": true,
+        "messageVolume": {
+          "change": 1233.3333,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "EXTREMELY_HIGH",
+          "loaded": true,
+          "value": 134,
+          "valueNormalized": 80
+        },
+        "participationScore": {
+          "change": -70,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "EXTREMELY_LOW",
+          "loaded": true,
+          "value": 1,
+          "valueNormalized": 24
+        },
+        "sentiment": {
+          "change": 364.2857,
+          "label": "EXTREMELY_BULLISH",
+          "labelNormalized": "BULLISH",
+          "loaded": true,
+          "value": 0.647,
+          "valueNormalized": 65
+        }
+      },
+      "ALL": {
+        "buzz": {
+          "change": 0,
+          "label": "",
+          "labelNormalized": "",
+          "loaded": false,
+          "value": 0,
+          "valueNormalized": 0
+        },
+        "loaded": true,
+        "messageVolume": {
+          "change": 0,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "EXTREMELY_LOW",
+          "loaded": true,
+          "value": 655,
+          "valueNormalized": 6
+        },
+        "participationScore": {
+          "change": 0,
+          "label": "EXTREMELY_HIGH",
+          "labelNormalized": "EXTREMELY_HIGH",
+          "loaded": true,
+          "value": 0.75,
+          "valueNormalized": 80
+        },
+        "sentiment": {
+          "change": 0,
+          "label": "EXTREMELY_BEARISH",
+          "labelNormalized": "EXTREMELY_BEARISH",
+          "loaded": true,
+          "value": -0.6101,
+          "valueNormalized": 14
+        }
+      }
+    }
+  }
+}

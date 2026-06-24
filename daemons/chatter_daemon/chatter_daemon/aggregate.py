@@ -20,14 +20,29 @@ from .baseline import append_observation, read_baseline
 from .schema import (
     AggregatedScanResult,
     AggregatedTicker,
+    Anomaly,
     ScanEnvelope,
     SourceSignal,
 )
 
 # Sources whose signal is a count z-scored against the baseline store. Trends is the
-# odd one out (relative interest, within-record elevation, no store).
-COUNT_SOURCES = frozenset({"finnhub_news", "smg", "stocktwits"})
+# odd one out (relative interest, within-record elevation, no store); StockTwits is left
+# OUT (Order 12) — its velocity is the aggregate's now-vs-24h gap, not a rolling count,
+# so it never touches the rolling store.
+COUNT_SOURCES = frozenset({"finnhub_news", "smg"})
 TREND_SOURCE = "google_trends"
+STOCKTWITS_SOURCE = "stocktwits"
+ST_GAP_SPIKE = 15  # |now - 24h| sentiment points that flags an igniting/cooling name
+
+
+def _stocktwits_gap_anomaly(agg) -> Anomaly:
+    """The StockTwits aggregate's velocity = the now-vs-24h sentiment gap (Order 12).
+    |gap| >= ST_GAP_SPIKE -> spike (igniting or cooling); else ok; no aggregate -> none."""
+    if agg is None or agg.sent_gap is None:
+        return Anomaly(kind="count", state="none", note="no StockTwits aggregate")
+    gap = agg.sent_gap
+    state = "spike" if abs(gap) >= ST_GAP_SPIKE else "ok"
+    return Anomaly(kind="count", state=state, note=f"sentiment gap now-24h {gap:+d}")
 
 
 def build_aggregate(
@@ -75,6 +90,11 @@ def build_aggregate(
                 signaled = (
                     rec.metrics.interest_24h is not None and rec.metrics.interest_24h > 0
                 )
+            elif rec.source == STOCKTWITS_SOURCE:
+                # Order 12: velocity = the aggregate's now-vs-24h gap (no rolling store).
+                # Presence of an aggregate read = signal (the page-size count is retired).
+                anomaly = _stocktwits_gap_anomaly(rec.st_aggregate)
+                signaled = rec.st_aggregate is not None or rec.metrics.mention_count > 0
             else:
                 count = rec.metrics.mention_count
                 baseline = read_baseline(
@@ -103,6 +123,7 @@ def build_aggregate(
                     source=rec.source,
                     metrics=rec.metrics,
                     sentiment=rec.sentiment,
+                    st_aggregate=rec.st_aggregate,
                     matched_by=rec.matched_by,
                     flags=rec.flags,
                     anomaly=anomaly,

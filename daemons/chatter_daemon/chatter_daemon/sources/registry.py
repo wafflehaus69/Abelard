@@ -30,11 +30,13 @@ def build_sources(cfg: Config) -> list[Source]:
             sentiment_min_mentions=cfg.sentiment_min_mentions,
         ),
         GoogleTrendsSource(company_names_path=cfg.company_names_path),
-        # StockTwits sentiment (Order 9): native tags + Haiku-on-bodies blend. Browser
-        # UA, no key; the Anthropic key (optional) gates Haiku above the sentiment floor.
+        # StockTwits (Order 12): PRIMARY = the sentiment-API aggregate (now-primary live
+        # read, real volume, participation); native tags from the stream; Haiku-on-bodies
+        # OFF by default (the free aggregate supersedes it).
         StockTwitsSource(
             anthropic_api_key=cfg.anthropic_api_key,
             haiku_model=cfg.haiku_model_id,
             sentiment_min_mentions=cfg.sentiment_min_mentions,
+            haiku_enabled=cfg.stocktwits_haiku_enabled,
         ),
     ]

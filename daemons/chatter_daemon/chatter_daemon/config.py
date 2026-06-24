@@ -98,6 +98,13 @@ def _env_float(name: str, default: float) -> float:
         raise ConfigError(f"{name} must be a number, got {raw!r}") from exc
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
 DEFAULT_USER_AGENT = "chatter-daemon/0.1"
 
 # Real tickers that collide with common words — the wordlist filter's exception
@@ -108,6 +115,9 @@ DEFAULT_WORD_TICKER_ALLOWLIST = frozenset({"NOW", "META", "CORN"})
 # Order 9). Model id pinned here, verified live via the claude-api skill at build time.
 HAIKU_MODEL_ID = "claude-haiku-4-5"
 DEFAULT_SENTIMENT_MIN_MENTIONS = 3
+# Order 12: Haiku-on-StockTwits-bodies DEMOTED — OFF by default (the free sentiment-API
+# aggregate supersedes it). Opt in for corroboration only; Haiku stays ON for /smg/.
+DEFAULT_STOCKTWITS_HAIKU = False
 
 # Order 7 — baseline store, archive, anomaly tunables.
 DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
@@ -152,6 +162,7 @@ class Config:
     anthropic_api_key: str | None = None
     haiku_model_id: str = HAIKU_MODEL_ID
     sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
+    stocktwits_haiku_enabled: bool = DEFAULT_STOCKTWITS_HAIKU
     # Order 7 — baseline store, run archive, anomaly tunables.
     baseline_db_path: Path = field(default_factory=_default_baseline_db_path)
     archive_root: Path = field(default_factory=_default_archive_root)
@@ -200,6 +211,9 @@ class Config:
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "").strip() or None,
             sentiment_min_mentions=_env_int(
                 "CHATTER_SENTIMENT_MIN", DEFAULT_SENTIMENT_MIN_MENTIONS
+            ),
+            stocktwits_haiku_enabled=_env_bool(
+                "CHATTER_STOCKTWITS_HAIKU", DEFAULT_STOCKTWITS_HAIKU
             ),
             baseline_db_path=_env_path("CHATTER_BASELINE_DB", _default_baseline_db_path()),
             archive_root=_env_path("CHATTER_ARCHIVE_ROOT", _default_archive_root()),

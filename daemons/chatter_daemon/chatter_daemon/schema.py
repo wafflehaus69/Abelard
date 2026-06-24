@@ -97,6 +97,29 @@ class Sentiment(BaseModel):
     native: NativeStance | None = None
 
 
+class StockTwitsAggregate(BaseModel):
+    """StockTwits' OWN computed aggregate over the full stream (sentiment-API gateway,
+    Order 12) — the now-primary read that supersedes the 30-message window. Everything
+    is normalized (0-100) + a 5-band categorical; the raw `value`/`label` are NEVER
+    consumed (proven invertible in live data). `*_now` is the live gauge, `*_24h` the
+    trailing baseline, and `sent_gap = now - 24h` is the spike / regime-shift signal.
+    `confidence` is the volume x participation trust gate. All nullable — a missing or
+    `loaded:false` metric stays None."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sent_now_norm: int | None = None       # 0-100 (50=neutral, <25 extreme-bear, >75 extreme-bull)
+    sent_now_label: str | None = None      # labelNormalized, 5-band
+    sent_24h_norm: int | None = None       # trailing baseline
+    sent_24h_label: str | None = None
+    sent_gap: int | None = None            # signed now - 24h (the spike signal)
+    vol_now_norm: int | None = None        # 0-100 volume band
+    vol_now_raw: int | None = None         # real message count (retires the page-size 30)
+    vol_change: float | None = None
+    participation_norm: int | None = None  # 0-100 (timeframes.1D) — the trust gate
+    confidence: str | None = None          # high | quiet | low | pump_suspect
+
+
 class NormalizedRecord(BaseModel):
     """One (ticker, source, window) observation — plugin output, pre-anomaly."""
 
@@ -115,6 +138,8 @@ class NormalizedRecord(BaseModel):
     # no-stance source (Finnhub / Trends / /smg/) sets method="none"; the
     # aggregator switches on method, so a null here would fork it.
     sentiment: Sentiment
+    # StockTwits sentiment-API aggregate (Order 12) — present only on stocktwits records.
+    st_aggregate: StockTwitsAggregate | None = None
     flags: list[str] = Field(default_factory=list)
 
 
@@ -211,6 +236,7 @@ class SourceSignal(BaseModel):
     source: SourceName
     metrics: Metrics
     sentiment: Sentiment
+    st_aggregate: StockTwitsAggregate | None = None  # StockTwits sentiment-API (Order 12)
     matched_by: list[MatchedBy] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     anomaly: Anomaly

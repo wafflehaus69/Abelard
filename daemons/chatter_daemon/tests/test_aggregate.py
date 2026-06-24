@@ -92,18 +92,18 @@ def test_groups_by_ticker_and_diversity(tmp_path):
 
 def test_building_on_first_run(tmp_path):
     conn = _store(tmp_path)
-    res = _agg(conn, _env([_rec("NVDA", "stocktwits", count=99)]))
+    res = _agg(conn, _env([_rec("NVDA", "smg", count=99)]))
     assert res.tickers[0].sources[0].anomaly.state == "building"  # no history yet
 
 
 def test_spike_against_prior_baseline_then_appended(tmp_path):
     conn = _store(tmp_path)
-    _prime(conn, "NVDA", "stocktwits", [10, 10, 11, 9, 10, 10])  # mean ~10, small sigma
-    res = _agg(conn, _env([_rec("NVDA", "stocktwits", count=40)]), now=FIXED)
+    _prime(conn, "NVDA", "smg", [10, 10, 11, 9, 10, 10])  # mean ~10, small sigma
+    res = _agg(conn, _env([_rec("NVDA", "smg", count=40)]), now=FIXED)
     a = res.tickers[0].sources[0].anomaly
     assert a.state == "spike" and a.z is not None and a.z > 2.0
     # the current 40 is appended only AFTER the anomaly was computed
-    b = read_baseline(conn, watchlist="w", ticker="NVDA", source="stocktwits", window=20, now=FIXED + 1)
+    b = read_baseline(conn, watchlist="w", ticker="NVDA", source="smg", window=20, now=FIXED + 1)
     assert b.n == 7  # 6 prior + the just-appended 40
 
 

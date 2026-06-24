@@ -29,7 +29,7 @@ def _env(count, ts):
         scan_mode="watchlist",
         canonical_ts=iso_z(ts),
         window=W["24h"],
-        source="stocktwits",
+        source="smg",  # a rolling-count source (StockTwits velocity is the aggregate gap now)
         ticker="NVDA",
         matched_by=[],
         metrics=Metrics(mention_count=count),
@@ -51,7 +51,7 @@ def _run(conn, count, ts, *, min_obs=5, floor=5, z=2.0):
         _env(count, ts),
         conn=conn,
         scan_id=make_scan_id(iso_z(ts), ["w"]),
-        source_floors={"stocktwits": floor},
+        source_floors={"smg": floor},
         baseline_window=20,
         baseline_min_obs=min_obs,
         spike_z_threshold=z,
@@ -88,4 +88,4 @@ def test_building_ok_thin_spike_as_baseline_fills(tmp_path):
     loaded = load_result(path)
     assert loaded.tickers[0].sources[0].anomaly.state == "spike"
     out = render_chatter(loaded)
-    assert "SPIKE" in out and "NVDA" in out and "messages" in out  # stocktwits noun
+    assert "SPIKE" in out and "NVDA" in out and "mentions" in out  # smg noun
