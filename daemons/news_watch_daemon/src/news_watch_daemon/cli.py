@@ -393,6 +393,24 @@ def build_parser() -> argparse.ArgumentParser:
             "queue before committing to the cost/rate-limit envelope."
         ),
     )
+    p_retag = db_sub.add_parser(
+        "retag",
+        help=(
+            "Re-evaluate existing headlines against CURRENT active theme configs "
+            "and add any newly-matching theme tags. Purely additive (never deletes "
+            "or alters existing tags or headlines). Idempotent via the "
+            "(headline_id, theme_id) primary key + INSERT OR IGNORE. Re-run after "
+            "any matcher/keyword change (e.g. the semis widen) to backfill history."
+        ),
+    )
+    p_retag.add_argument(
+        "--dry-run", action="store_true",
+        help=(
+            "Report how many currently-untagged (headline, theme) pairs WOULD newly "
+            "tag under current config, broken down by theme with samples, without "
+            "writing anything. The gate: review the count before authorizing the write."
+        ),
+    )
 
     # ---- translate (Pass F manual one-shot) ----
 
@@ -560,6 +578,135 @@ def _handle_db_backfill_language(
         },
         source="internal",
     )
+
+
+# ---------- db retag (retroactive tag backfill) ----------
+
+
+def _handle_db_retag(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Re-evaluate existing headlines against CURRENT active theme configs and
+    add any newly-matching theme tags. Purely additive + idempotent.
+
+    Why: matcher/keyword changes (e.g. the semis-demand widen) tag forward-only
+    — headlines already in the corpus that arrived before the change stay
+    untagged because dedup drops re-fetches, so nothing re-evaluates them. This
+    pass closes that gap WITHOUT a DB wipe: it is a tagging backfill, not a
+    capture-logic change.
+
+    Mechanism reuse: the scrape orchestrator's exact tag path
+    (`_compile_theme_regexes` / `_tag_for_theme`), tagging against
+    `COALESCE(headline_en, headline)` — the same canonical text the
+    orchestrator and the Pass F translation re-tag use. Never deletes or alters
+    existing tags/headlines; new tag rows only.
+
+    Idempotent by construction: candidates exclude already-tagged
+    (headline_id, theme_id) pairs, AND inserts are `INSERT OR IGNORE` against
+    the `headline_theme_tags` PRIMARY KEY (headline_id, theme_id). A second run
+    finds zero candidates and writes nothing.
+
+    `--dry-run` is the gate: reports the by-theme would-add count + samples
+    with no write, so the operator validates before authorizing the mutation.
+    """
+    from .scrape.orchestrator import _compile_theme_regexes, _tag_for_theme
+
+    dry_run = bool(getattr(args, "dry_run", False))
+    conn = connect(cfg.db_path)
+    try:
+        if schema_version(conn) == 0:
+            return build_error(
+                status="error", source="internal",
+                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
+            )
+        registered = list_themes(conn)
+        active_ids = {e.theme_id for e in registered if e.status == "active"}
+        if not active_ids:
+            return build_error(
+                status="error", source="internal",
+                detail="no active themes in registry. Run `news-watch-daemon themes load` first.",
+            )
+        try:
+            all_themes = load_all_themes(cfg.themes_dir)
+        except ThemeLoadError as exc:
+            return build_error(
+                status="error", source="internal",
+                detail=f"theme load failed: {exc}",
+            )
+        themes = [t for t in all_themes if t.theme_id in active_ids and t.status == "active"]
+        if not themes:
+            return build_error(
+                status="error", source="internal",
+                detail="registry lists active themes but none parse from themes_dir.",
+            )
+        theme_regexes = _compile_theme_regexes(themes)
+
+        # Existing tags — so the backfill only ADDS, never re-touches.
+        existing: set[tuple[str, str]] = {
+            (r["headline_id"], r["theme_id"])
+            for r in conn.execute(
+                "SELECT headline_id, theme_id FROM headline_theme_tags"
+            )
+        }
+
+        rows = conn.execute(
+            "SELECT headline_id, COALESCE(headline_en, headline) AS txt FROM headlines"
+        ).fetchall()
+        headlines_examined = len(rows)
+
+        candidates: list[tuple[str, str, str]] = []
+        by_theme: dict[str, int] = {}
+        samples: dict[str, list[str]] = {}
+        for r in rows:
+            hid = r["headline_id"]
+            txt = r["txt"] or ""
+            for regs in theme_regexes:
+                if (hid, regs.theme_id) in existing:
+                    continue
+                confidence = _tag_for_theme(txt, regs)
+                if confidence is not None:
+                    candidates.append((hid, regs.theme_id, confidence))
+                    by_theme[regs.theme_id] = by_theme.get(regs.theme_id, 0) + 1
+                    bucket = samples.setdefault(regs.theme_id, [])
+                    if len(bucket) < 5:
+                        bucket.append(txt[:120])
+
+        by_theme_sorted = dict(sorted(by_theme.items(), key=lambda kv: -kv[1]))
+
+        if dry_run:
+            return build_ok(
+                {
+                    "db_path": str(cfg.db_path),
+                    "dry_run": True,
+                    "headlines_examined": headlines_examined,
+                    "tags_would_add": len(candidates),
+                    "by_theme": by_theme_sorted,
+                    "samples_by_theme": samples,
+                },
+                source="internal",
+            )
+
+        now_unix = int(time.time())
+        added = 0
+        with transaction(conn):
+            for hid, theme_id, confidence in candidates:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO headline_theme_tags "
+                    "(headline_id, theme_id, confidence, tagged_at_unix) "
+                    "VALUES (?, ?, ?, ?)",
+                    (hid, theme_id, confidence, now_unix),
+                )
+                added += cur.rowcount
+        return build_ok(
+            {
+                "db_path": str(cfg.db_path),
+                "dry_run": False,
+                "headlines_examined": headlines_examined,
+                "tags_added": added,
+                "by_theme": by_theme_sorted,
+            },
+            source="internal",
+        )
+    finally:
+        conn.close()
 
 
 # ---------- Pass F translation handlers (Commit 2) ----------
@@ -1905,6 +2052,7 @@ HANDLERS: dict[str, Handler] = {
     "db migrate": _handle_db_migrate,
     "db backfill-language": _handle_db_backfill_language,
     "db backfill-translation": _handle_db_backfill_translation,
+    "db retag": _handle_db_retag,
     "translate": _handle_translate,
     "themes load": _handle_themes_load,
     "themes list": _handle_themes_list,
