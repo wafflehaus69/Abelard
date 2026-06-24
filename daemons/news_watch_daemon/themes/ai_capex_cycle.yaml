@@ -81,6 +81,25 @@ keywords:
     - "Larry Ellison"
     - "CoreWeave"
     - "Lambda Labs"
+    # Robotics / automation — folded in 2026-06-24 (Order NW-1 Leg 2 Phase 1).
+    # Robotics couldn't stand as its own leg (8 corpus matches); folded here
+    # now that the technology feed lands robotics/humanoid/automation
+    # feedstock. Word-boundary matcher requires enumerated forms. "automation"
+    # is intentionally scoped to industrial/factory/warehouse compounds — NOT
+    # the bare word — to hold the theme's tightness discipline (deeds, not
+    # generic business-process-automation noise).
+    - "robotics"
+    - "robotic"
+    - "humanoid"
+    - "humanoid robot"
+    - "humanoid robots"
+    - "Unitree"
+    - "Boston Dynamics"
+    - "robotaxi"
+    - "cobot"
+    - "industrial automation"
+    - "factory automation"
+    - "warehouse automation"
   exclusions:
     - "AI girlfriend"
     - "AI boyfriend"
@@ -268,6 +287,14 @@ rss_feeds:
   # coverage with wire-shape framing.
   - url: https://feeds.bloomberg.com/markets/news.rss
     feed_id: bloomberg_markets
+  # Technology vertical — wired 2026-06-24 (Order NW-1 Leg 2 Phase 1).
+  # Live-curl confirmed dense AI-capex/semis/datacenter feedstock
+  # (SK Hynix, Qualcomm/Modular, OpenAI-Broadcom chip, Micron, Cerebras,
+  # datacenter/power). Diagnosed fix for the #1 source-starvation that
+  # left this theme at ~1% inflow. Tagging is global, so china_us_decoupling
+  # also reads the semis/Taiwan-supply-chain crossover this feed carries.
+  - url: https://feeds.bloomberg.com/technology/news.rss
+    feed_id: bloomberg_technology
 
 telegram_channels:
   - username: CIG_telegram

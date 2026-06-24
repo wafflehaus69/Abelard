@@ -170,6 +170,12 @@ rss_feeds:
   # macro framing.
   - url: https://feeds.bloomberg.com/economics/news.rss
     feed_id: bloomberg_economics
+  # Technology vertical — wired 2026-06-24 (Order NW-1 Leg 2 Phase 1).
+  # Carries semiconductor / Taiwan-supply-chain / export-control crossover.
+  # Deduped by feed_id with ai_capex_cycle's entry (factory builds one
+  # RssSource per feed_id); listed here to document the read intent.
+  - url: https://feeds.bloomberg.com/technology/news.rss
+    feed_id: bloomberg_technology
 
 telegram_channels:
   - username: CIG_telegram
