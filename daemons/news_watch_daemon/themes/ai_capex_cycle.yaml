@@ -100,6 +100,46 @@ keywords:
     - "industrial automation"
     - "factory automation"
     - "warehouse automation"
+    # Semis demand/supply — added 2026-06-24 (Order NW-1 Leg 2 Step 2).
+    # The technology feed lands the demand side, but tagging keyed only on
+    # infra terms (datacenter/GPU/Nvidia/TSMC) and missed the memory/compute
+    # names (they lived in tracked_entities, which does NOT gate tagging).
+    # Generic terms are lowercase = case-insensitive (Title-Case robust);
+    # all-caps acronyms (DRAM/HBM/NAND/ASML/KLA/AMD) are case-sensitive by
+    # the matcher's acronym rule. Collision-prone tokens are compounded:
+    # "chip" -> chip demand/sales/shortage/glut/fab; "Arm" -> Arm Holdings;
+    # "Samsung" -> Samsung Electronics (avoid phones/TVs noise). Financing
+    # (listing/IPO/raise) is walled in exclusions below, not here.
+    - "semiconductor"
+    - "semiconductors"
+    - "chipmaker"
+    - "chipmakers"
+    - "chip demand"
+    - "chip sales"
+    - "chip shortage"
+    - "chip glut"
+    - "chip fab"
+    - "memory chip"
+    - "memory chips"
+    - "DRAM"
+    - "HBM"
+    - "NAND"
+    - "wafer"
+    - "wafers"
+    - "Micron"
+    - "SK Hynix"
+    - "Broadcom"
+    - "Qualcomm"
+    - "ASML"
+    - "Applied Materials"
+    - "Lam Research"
+    - "KLA"
+    - "Marvell"
+    - "GlobalFoundries"
+    - "AMD"
+    - "Advanced Micro Devices"
+    - "Arm Holdings"
+    - "Samsung Electronics"
   exclusions:
     - "AI girlfriend"
     - "AI boyfriend"
@@ -133,6 +173,25 @@ keywords:
     - "hits record"
     - "all-time high"
     - "all-time low"
+    # Financing wall — added 2026-06-24 (Order NW-1 Leg 2 Step 2b). Exclusions
+    # override inclusions in _tag_for_theme (checked first, returns None), so
+    # these deliberately keep capacity-FINANCING out of the capex-demand theme
+    # now that semis names (Micron/SK Hynix) could otherwise tag a "$29B
+    # listing". Compounded to avoid false exclusion of demand verbs: bare
+    # "raise" (raise forecast/output) and bare "Series" (TV/World Series) are
+    # NOT used. IPO/SPAC are all-caps = case-sensitive acronyms.
+    - "IPO"
+    - "SPAC"
+    - "going public"
+    - "listing"
+    - "public listing"
+    - "funding round"
+    - "secondary offering"
+    - "capital raise"
+    - "equity raise"
+    - "Series A"
+    - "Series B"
+    - "Series C"
 
 tracked_entities:
   tickers:
