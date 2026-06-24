@@ -14,9 +14,12 @@
 # Usage:
 #   scripts/setup.sh                  set up common + every daemon (reuse existing venvs)
 #   scripts/setup.sh --force          delete and recreate each venv from scratch
-#   scripts/setup.sh --test           run each package's pytest after install
+#   scripts/setup.sh --test           install + run each package's pytest (FAIL-LOUD)
+#   scripts/setup.sh --check          ONLY import-smoke existing venvs (fast drift check)
 #   scripts/setup.sh chatter_daemon   set up only the named package(s)
 #
+# Self-verifying: after install it import-smokes each daemon's load-bearing deps and
+# FAILS LOUD (non-zero) if any don't import — so a dep declared-but-absent can't hide.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,12 +29,15 @@ COMMON_DIR="$DAEMONS_DIR/common"
 
 FORCE=0
 RUN_TESTS=0
+CHECK=0
+FAILURES=""
 ONLY=()
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
     --test)  RUN_TESTS=1 ;;
-    -h|--help) sed -n '2,19p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
+    --check) CHECK=1 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
     --*) echo "unknown flag: $arg (try --help)" >&2; exit 2 ;;
     *) ONLY+=("$arg") ;;
   esac
@@ -71,6 +77,37 @@ else
   while IFS= read -r d; do TARGETS+=("$d"); done < <(discover)
 fi
 
+# --- import-smoke (anti-drift): PROVE the deps import, not just that pip ran ----------
+critical_deps() {
+  # Load-bearing third-party deps to smoke EXPLICITLY (beyond the transitive package
+  # import) — the ones that drift declared-but-absent, and that the daemon lazy-imports
+  # (so a plain package import would NOT catch them). Empty = rely on the package import.
+  case "$1" in
+    chatter_daemon) echo "curl_cffi pytrends anthropic reportlab" ;;
+    *) echo "" ;;
+  esac
+}
+
+smoke_imports() {
+  # Import the daemon's own top-level package (catches a broken/uninstalled package + its
+  # eager deps) PLUS the explicit critical deps. A missing dep fails HERE — loud — instead
+  # of mid-scan. Returns non-zero on failure; the caller records it -> non-zero final exit
+  # (the failure is surfaced, never swallowed).
+  local name="$1" dir="$2" py="$3" pkg extra imports err
+  pkg="$(grep -m1 -E '^name *= *"' "$dir/pyproject.toml" | sed -E 's/^name *= *"([^"]+)".*/\1/' | tr '-' '_')"
+  [ -n "$pkg" ] || pkg="$name"
+  extra="$(critical_deps "$name")"
+  imports="$pkg"
+  [ -n "$extra" ] && imports="$imports, ${extra// /, }"
+  if "$py" -c "import ${imports}" >/dev/null 2>&1; then
+    echo "   $name: import smoke OK ($imports)"
+    return 0
+  fi
+  err="$("$py" -c "import ${imports}" 2>&1 1>/dev/null | tail -1)"
+  echo "   !! $name: import smoke FAILED -- ${err:-unknown} (declared in pyproject? installed?)" >&2
+  return 1
+}
+
 # --- set up one package: venv -> (common editable, unless this IS common) -> self --
 setup_one() {
   local name="$1" dir="$DAEMONS_DIR/$1" venv py
@@ -81,6 +118,20 @@ setup_one() {
   venv="$dir/.venv"
   echo
   echo "=== $name ==="
+
+  # --check: import-smoke the EXISTING venv only — fast drift detection, no rebuild.
+  if [ "$CHECK" -eq 1 ]; then
+    if [ ! -d "$venv" ]; then
+      echo "   !! $name: no .venv — run setup first" >&2
+      FAILURES="$FAILURES $name(no-venv)"
+      return 0
+    fi
+    py="$venv/bin/python"
+    [ -x "$py" ] || py="$venv/Scripts/python.exe"
+    smoke_imports "$name" "$dir" "$py" || FAILURES="$FAILURES $name(import)"
+    return 0
+  fi
+
   if [ -d "$venv" ] && [ "$FORCE" -eq 1 ]; then
     echo "   --force: removing existing .venv"
     rm -rf "$venv"
@@ -105,18 +156,30 @@ setup_one() {
     echo "     (no [dev] extra resolved; installing without extras)"
     ( cd "$dir" && "$py" -m pip install --quiet -e "." )
   fi
+  # Anti-drift: pip succeeding != deps present (if pyproject under-declares). Prove it.
+  smoke_imports "$name" "$dir" "$py" || FAILURES="$FAILURES $name(import)"
   if [ "$RUN_TESTS" -eq 1 ]; then
     echo "   running pytest"
     if ( cd "$dir" && "$py" -m pytest -q ); then
       echo "   tests OK"
     else
       echo "   !! tests FAILED for $name" >&2
+      FAILURES="$FAILURES $name(test)"
     fi
   fi
   echo "   $name ready"
 }
 
 for t in "${TARGETS[@]}"; do setup_one "$t"; done
+
+# Fail loud: any import-smoke or --test failure across the run -> non-zero exit (after
+# running everything, so every failure is visible, not just the first).
+if [ -n "$FAILURES" ]; then
+  echo >&2
+  echo ">> FAILED:$FAILURES" >&2
+  echo ">> setup did NOT complete cleanly — see the '!!' lines above." >&2
+  exit 1
+fi
 
 cat <<'EOF'
 
