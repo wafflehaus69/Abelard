@@ -124,6 +124,7 @@ def build_aggregate(
                     metrics=rec.metrics,
                     sentiment=rec.sentiment,
                     st_aggregate=rec.st_aggregate,
+                    news_summary=rec.news_summary,
                     matched_by=rec.matched_by,
                     flags=rec.flags,
                     anomaly=anomaly,

@@ -118,6 +118,9 @@ DEFAULT_SENTIMENT_MIN_MENTIONS = 3
 # Order 12: Haiku-on-StockTwits-bodies DEMOTED — OFF by default (the free sentiment-API
 # aggregate supersedes it). Opt in for corroboration only; Haiku stays ON for /smg/.
 DEFAULT_STOCKTWITS_HAIKU = False
+# Order 15: per-ticker named-news summary (Finnhub interpretation). Per-scan cost backstop
+# — generous (typical ~$0.10-0.25); a fail-loud guard, not a routine limiter.
+DEFAULT_SUMMARY_COST_CAP_USD = 1.0
 
 # Order 7 — baseline store, archive, anomaly tunables.
 DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
@@ -163,6 +166,7 @@ class Config:
     haiku_model_id: str = HAIKU_MODEL_ID
     sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
     stocktwits_haiku_enabled: bool = DEFAULT_STOCKTWITS_HAIKU
+    news_summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD
     # Order 7 — baseline store, run archive, anomaly tunables.
     baseline_db_path: Path = field(default_factory=_default_baseline_db_path)
     archive_root: Path = field(default_factory=_default_archive_root)
@@ -214,6 +218,9 @@ class Config:
             ),
             stocktwits_haiku_enabled=_env_bool(
                 "CHATTER_STOCKTWITS_HAIKU", DEFAULT_STOCKTWITS_HAIKU
+            ),
+            news_summary_cost_cap_usd=_env_float(
+                "CHATTER_SUMMARY_COST_CAP", DEFAULT_SUMMARY_COST_CAP_USD
             ),
             baseline_db_path=_env_path("CHATTER_BASELINE_DB", _default_baseline_db_path()),
             archive_root=_env_path("CHATTER_ARCHIVE_ROOT", _default_archive_root()),

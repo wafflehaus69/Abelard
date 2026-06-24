@@ -60,6 +60,17 @@ def audit_name_match(
     }
 
 
+def title_mentions_ticker(title: str, symbol: str, aliases=None) -> bool:
+    """Does a (news) headline NAME this ticker — its symbol as a whole word (so 'DE' does
+    not match 'DECIDE'), or any company-name alias as a substring ('duke energy')? The ONE
+    source of truth for 'direct mention', shared by the report's headline-relevance filter
+    (Order 11) and the Finnhub news-summary gate (Order 15)."""
+    t = title.lower()
+    if symbol and re.search(rf"\b{re.escape(symbol.lower())}\b", t):
+        return True
+    return any(a and a in t for a in (aliases or ()))
+
+
 @dataclass(frozen=True)
 class Matcher:
     """Watchlist-scoped dual-scan matcher with match provenance."""

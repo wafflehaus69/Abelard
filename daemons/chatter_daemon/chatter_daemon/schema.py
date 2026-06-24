@@ -140,6 +140,9 @@ class NormalizedRecord(BaseModel):
     sentiment: Sentiment
     # StockTwits sentiment-API aggregate (Order 12) — present only on stocktwits records.
     st_aggregate: StockTwitsAggregate | None = None
+    # Haiku one-paragraph summary of the NAMED news (Order 15) — Finnhub records only; the
+    # factual "why", distinct from the source's method=none count contract.
+    news_summary: str | None = None
     flags: list[str] = Field(default_factory=list)
 
 
@@ -237,6 +240,7 @@ class SourceSignal(BaseModel):
     metrics: Metrics
     sentiment: Sentiment
     st_aggregate: StockTwitsAggregate | None = None  # StockTwits sentiment-API (Order 12)
+    news_summary: str | None = None  # Finnhub named-news Haiku summary (Order 15)
     matched_by: list[MatchedBy] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     anomaly: Anomaly

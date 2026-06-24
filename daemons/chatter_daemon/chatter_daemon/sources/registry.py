@@ -17,7 +17,16 @@ from .stocktwits import StockTwitsSource
 
 def build_sources(cfg: Config) -> list[Source]:
     return [
-        FinnhubNewsSource(api_key=cfg.finnhub_api_key, user_agent=cfg.user_agent),
+        FinnhubNewsSource(
+            api_key=cfg.finnhub_api_key,
+            user_agent=cfg.user_agent,
+            # Order 15: named-news summary — company aliases for the direct-mention gate,
+            # the shared Anthropic key, and the per-scan cost cap.
+            company_names_path=cfg.company_names_path,
+            anthropic_api_key=cfg.anthropic_api_key,
+            haiku_model=cfg.haiku_model_id,
+            summary_cost_cap_usd=cfg.news_summary_cost_cap_usd,
+        ),
         SmgSource(
             company_names_path=cfg.company_names_path,
             common_words_path=cfg.common_words_path,

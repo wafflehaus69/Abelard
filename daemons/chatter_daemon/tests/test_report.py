@@ -33,12 +33,13 @@ from chatter_daemon.schema import (
 )
 
 
-def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None):
+def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None, news_summary=None):
     return SourceSignal(
         source=source,
         metrics=Metrics(mention_count=count, interest_24h=i24, interest_7d=i7, interest_monthly=im, headlines=headlines),
         sentiment=sentiment or Sentiment(method="none"),
         st_aggregate=st_aggregate,
+        news_summary=news_summary,
         anomaly=Anomaly(kind="trend" if source == "google_trends" else "count", state=state),
     )
 
@@ -379,6 +380,29 @@ def test_report_default_filename_carries_eastern_timestamp():
     from chatter_daemon.report import report_default_filename
     # filesystem-safe: no colon/space; the Eastern timestamp is in the name
     assert report_default_filename("2026-06-24T01:13:36Z") == "chatter-report_06-23-2026_2113_EDT.pdf"
+
+
+# --- Order 15: named-news summary line in the news band ----------------------------
+
+
+def test_news_band_shows_summary_and_omits_when_none():
+    from chatter_daemon.report import _news_lines
+
+    with_sum = _wt("NVDA", [_wsig("finnhub_news", count=5,
+                                  headlines=[Headline(title="NVDA beats", url="http://x")],
+                                  news_summary="Strong data-center demand drove the quarter.")], 1)
+    lines = " ".join(_news_lines(with_sum))
+    assert "summary &middot;" in lines and "Strong data-center demand" in lines
+    # None -> the summary line is omitted entirely (no "summary", no empty row, no "null")
+    no_sum = _wt("XYZ", [_wsig("finnhub_news", count=5, headlines=[Headline(title="XYZ news", url="http://x")])], 1)
+    assert "summary" not in " ".join(_news_lines(no_sum))
+
+
+def test_report_relevance_filter_is_the_shared_matching_function():
+    from chatter_daemon.matching import title_mentions_ticker
+    from chatter_daemon.report import _title_relevant
+    # one source of truth: the report's filter IS the matcher's, shared with Finnhub's gate
+    assert _title_relevant is title_mentions_ticker
 
 
 def test_meta_bits_compact_counts_no_titles():

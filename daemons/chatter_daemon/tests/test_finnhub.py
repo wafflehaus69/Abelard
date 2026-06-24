@@ -98,6 +98,129 @@ def test_malformed_payload_raises():
         FinnhubNewsSource(api_key="k", client=client).fetch(WL, context=_ctx())
 
 
+# --- Order 15: named-news summary (gated on mention, cost-capped, degrade-clean) ----
+
+
+class _Blk:
+    def __init__(self, text):
+        self.type = "text"
+        self.text = text
+
+
+class _Usage:
+    def __init__(self, i, o):
+        self.input_tokens = i
+        self.output_tokens = o
+        self.cache_read_input_tokens = 0
+        self.cache_creation_input_tokens = 0
+
+
+class _Resp:
+    def __init__(self, text, i, o):
+        self.content = [_Blk(text)]
+        self.usage = _Usage(i, o)
+        self.stop_reason = "end_turn"
+
+
+class _Msgs:
+    def __init__(self, text, i, o):
+        self._t, self._i, self._o = text, i, o
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return _Resp(self._t, self._i, self._o)
+
+
+class _FakeAnthropic:
+    def __init__(self, text="Factual one-paragraph summary.", i=50, o=40):
+        self.messages = _Msgs(text, i, o)
+
+
+def _finnhub(client, *, anthropic=None, cap=1.0):
+    # no company_names_path -> aliases empty -> the gate is symbol-word-boundary only
+    return FinnhubNewsSource(api_key="k", client=client, anthropic_client=anthropic, summary_cost_cap_usd=cap)
+
+
+def test_summary_gated_on_direct_mention():
+    fake = _FakeAnthropic(text="NVDA reported strong data-center results.")
+    client = _FakeClient([
+        [{"headline": "NVDA jumps on earnings", "url": "http://x"}],     # named -> summarize
+        [{"headline": "broad market selloff today", "url": "http://x"}], # ITA unnamed -> skip
+    ])
+    res = _finnhub(client, anthropic=fake).fetch(WL, context=_ctx())
+    by = {r.ticker: r for r in res.records}
+    assert by["NVDA"].news_summary == "NVDA reported strong data-center results."
+    assert by["ITA"].news_summary is None                # no named news -> skip (no call)
+    assert len(fake.messages.calls) == 1 and res.cost.haiku_calls == 1
+
+
+def test_summary_no_key_no_call():
+    client = _FakeClient([
+        [{"headline": "NVDA jumps", "url": "http://x"}],
+        [{"headline": "x", "url": "http://x"}],
+    ])
+    res = _finnhub(client, anthropic=None).fetch(WL, context=_ctx())  # no Anthropic client
+    assert {r.ticker: r for r in res.records}["NVDA"].news_summary is None
+    assert res.cost.haiku_calls == 0
+
+
+def test_summary_cost_cap_enforced_and_visible():
+    # each call's output ~ $1.00 (200k out * $5/M); the 2nd ticker trips the cap.
+    fake = _FakeAnthropic(text="summary", i=0, o=200_000)
+    client = _FakeClient([
+        [{"headline": "NVDA news today", "url": "http://x"}],
+        [{"headline": "ITA fund news about ITA", "url": "http://x"}],  # named, but capped
+    ])
+    res = _finnhub(client, anthropic=fake, cap=1.0).fetch(WL, context=_ctx())
+    by = {r.ticker: r for r in res.records}
+    assert by["NVDA"].news_summary == "summary"      # first call lands (cost was $0 before it)
+    assert by["ITA"].news_summary is None            # cap tripped before the 2nd call
+    assert len(fake.messages.calls) == 1             # NO call issued once over cap
+    assert any("ITA" in w and "cost cap" in w for w in res.warnings)  # fail-loud, visible
+
+
+def test_summary_degrades_on_haiku_failure():
+    class _Boom:
+        def __init__(self):
+            self.messages = self
+
+        def create(self, **kwargs):
+            raise RuntimeError("api down")
+
+    client = _FakeClient([
+        [{"headline": "NVDA news", "url": "http://x"}],
+        [{"headline": "x", "url": "http://x"}],
+    ])
+    res = _finnhub(client, anthropic=_Boom()).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.news_summary is None                       # degraded to None
+    assert nvda.metrics.mention_count == 1                 # count UNAFFECTED
+    assert nvda.metrics.headlines[0].title == "NVDA news"  # headlines UNAFFECTED
+    assert any("NVDA" in w and "summary failed" in w for w in res.warnings)
+
+
+def test_summary_headline_cap_bounds_the_call():
+    fake = _FakeAnthropic(text="ok")
+    heads = [{"headline": f"NVDA item {i}", "url": "http://x"} for i in range(250)]
+    client = _FakeClient([heads, [{"headline": "x", "url": "http://x"}]])
+    _finnhub(client, anthropic=fake).fetch(WL, context=_ctx())
+    user = fake.messages.calls[0]["messages"][0]["content"]
+    assert user.count("NVDA item") == 15  # only the capped top-15 fed, not 250
+
+
+def test_summary_uses_shared_relevance_filter():
+    fake = _FakeAnthropic(text="ok")
+    heads = [
+        {"headline": "NVDA earnings beat", "url": "http://x"},  # direct mention -> fed
+        {"headline": "broad market memo", "url": "http://x"},   # no mention -> filtered out
+    ]
+    client = _FakeClient([heads, [{"headline": "x", "url": "http://x"}]])
+    _finnhub(client, anthropic=fake).fetch(WL, context=_ctx())
+    user = fake.messages.calls[0]["messages"][0]["content"]
+    assert "NVDA earnings beat" in user and "broad market memo" not in user
+
+
 def test_nonascii_headline_decodes_through_real_client():
     # A real Response holding UTF-8 bytes with a MIS-set encoding, through the real
     # HttpClient -> the adapter's non-ASCII regression (the decode obligation).

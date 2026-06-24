@@ -234,3 +234,56 @@ def _first_text(response: Any) -> str:
         if getattr(block, "type", None) == "text":
             return (getattr(block, "text", "") or "").strip()
     return ""
+
+
+# --- Order 15: named-news one-paragraph summary (factual cause, no stance) -------------
+
+_SUMMARY_SYSTEM = (
+    "You summarize company news for a financial-attention sensor. Given a US-equity "
+    "ticker, its company name, and recent headlines that name it, write ONE short "
+    "paragraph stating factually what the news is about for THIS company.\n"
+    "Rules:\n"
+    "- Factual and neutral — report what happened or was reported.\n"
+    "- NO price prediction, NO buy/sell/hold language, NO investment advice.\n"
+    "- Focus on this company specifically; ignore any headline that is really about a "
+    "different company.\n"
+    "- If the headlines are thin, a brief factual sentence is fine — do not pad.\n"
+    "- One paragraph. No preamble, no bullet points, no headers."
+)
+_SUMMARY_MAX_TOKENS = 512
+
+
+def summarize_news(*, titles, ticker, company, client, model, cost) -> str:
+    """One Haiku call -> a one-paragraph factual summary of what the NAMED news says about
+    THIS company. No stance, no price view (Abelard judges). Accumulates token usage into
+    `cost` immediately after the response (doctrine #8). Raises SentimentError on a
+    transport / empty-response failure — the caller degrades to None + a warning; a
+    max_tokens truncation is kept (a clipped paragraph is still usable)."""
+    if not titles:
+        return ""
+    user = (
+        f"Ticker: {ticker}\nCompany: {company or ticker}\n\nHeadlines:\n"
+        + "\n".join(f"- {t}" for t in titles)
+    )
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=_SUMMARY_MAX_TOKENS,
+            system=[{"type": "text", "text": _SUMMARY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user}],
+        )
+    except Exception as exc:  # SDK / transport — degrade to None, never fabricate.
+        raise SentimentError(f"news summary call failed: {exc}") from exc
+    cost.haiku_calls += 1
+    _accumulate_usage(getattr(response, "usage", None), cost)
+    text = _first_text(response)
+    if not text:
+        raise SentimentError("news summary returned no text")
+    return text
+
+
+def summary_cost_usd(cost) -> float:
+    """Haiku-4.5 USD estimate from accumulated tokens (~$1/M input, ~$5/M output); all
+    input-side counted at the input rate — slightly conservative for the cost-cap guard."""
+    in_tok = cost.input_tokens + cost.cache_read_input_tokens + cost.cache_creation_input_tokens
+    return in_tok / 1_000_000 * 1.0 + cost.output_tokens / 1_000_000 * 5.0

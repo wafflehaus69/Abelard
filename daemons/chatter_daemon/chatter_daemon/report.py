@@ -21,12 +21,12 @@ DEFENSIVELY via `getattr` — it renders the moment Order 9 adds those fields, n
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 
+from .matching import title_mentions_ticker as _title_relevant
 from .schema import AggregatedScanResult, AttentionResult
 
 _HEADLINE_SAMPLE = 3
@@ -94,16 +94,6 @@ def degraded_banner(sources, degraded: bool) -> str | None:
     if not failed:
         return "Partial scan: one or more sources were unavailable this run."
     return f"Partial scan: {', '.join(failed)} unavailable this run."
-
-
-def _title_relevant(title: str, symbol: str, aliases) -> bool:
-    """Does a headline actually name THIS ticker? Symbol as a whole word (so 'DE' does
-    not match 'DECIDE'), or any company-name alias as a substring (distinctive enough:
-    'duke energy', 'l3harris')."""
-    t = title.lower()
-    if symbol and re.search(rf"\b{re.escape(symbol.lower())}\b", t):
-        return True
-    return any(a and a in t for a in (aliases or ()))
 
 
 def headline_sample(signal, ticker_symbol: str = "", aliases=None) -> tuple[int, list[str]]:
@@ -323,6 +313,9 @@ def _news_lines(ticker, aliases=None) -> list[str]:
         _, titles = headline_sample(fin, ticker.ticker, (aliases or {}).get(ticker.ticker))
         if titles:
             lines.append(f'<font color="{_MUTED}">news &middot;</font> {escape(titles[0])}')
+    summary = fin.news_summary if fin else None  # Order 15: the named-news "why"
+    if summary:
+        lines.append(f'<font color="{_MUTED}">summary &middot;</font> {escape(summary)}')
     smg = _src(ticker, "smg")
     if smg and smg.sentiment and smg.sentiment.method != "none":
         s = smg.sentiment
