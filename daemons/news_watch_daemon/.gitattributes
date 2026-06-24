@@ -1,7 +1,10 @@
-# Pin YAML to LF across Windows edits + WSL/mini (Order NW-1).
-# An editor flipped ai_capex_cycle.yaml LF->CRLF mid-order, producing
-# whole-file line-ending churn in the diff. eol=lf makes git normalize
-# YAML to LF in the repo regardless of how the working file was written,
-# so theme-config diffs show only real content changes.
+# Pin all text to LF across Windows edits + WSL/mini (Order NW-1).
+# A Windows editor flipped ai_capex_cycle.yaml AND cli.py LF->CRLF mid-order,
+# producing whole-file line-ending churn that masked real changes. text=auto
+# lets git detect text vs binary; eol=lf normalizes every detected text file
+# to LF in the repo regardless of how the working file was written, so diffs
+# show only real content changes. Binaries are auto-detected and left alone.
+* text=auto eol=lf
+# Explicit (redundant under the wildcard, kept for intent clarity).
 *.yaml text eol=lf
 *.yml text eol=lf
