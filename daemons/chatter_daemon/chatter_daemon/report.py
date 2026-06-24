@@ -158,9 +158,71 @@ def _net_dir(sentiment) -> str | None:
     return "flat"
 
 
+_ST_SPIKE_GAP = 15  # |now - 24h| points read as igniting/cooling (matches aggregate.ST_GAP_SPIKE)
+_CONF_FLAG = {"low": "thin, low-confidence", "pump_suspect": "possible pump, low participation"}
+
+
+def _band(norm) -> str:
+    """0-100 -> a 5-band label for the StockTwits volume / participation display."""
+    if norm is None:
+        return "?"
+    if norm >= 80:
+        return "EXTREMELY_HIGH"
+    if norm >= 60:
+        return "HIGH"
+    if norm >= 40:
+        return "NORMAL"
+    if norm >= 20:
+        return "LOW"
+    return "EXTREMELY_LOW"
+
+
+def _fmt_msgs(n) -> str:
+    if n is None:
+        return "?"
+    return f"{n // 1000}k" if n >= 1000 else str(n)
+
+
+def _st_phrase(agg) -> str | None:
+    """The StockTwits aggregate read (Order 12) — gap-LED when igniting/cooling, marked
+    steady otherwise; real volume + participation + a low-confidence flag. None when the
+    aggregate is absent (gateway down -> the caller falls back to native tags)."""
+    if agg is None or agg.sent_now_norm is None:
+        return None
+    out = f"StockTwits NOW {agg.sent_now_label or _band(agg.sent_now_norm)} {agg.sent_now_norm}"
+    gap = agg.sent_gap
+    if gap is not None and abs(gap) >= _ST_SPIKE_GAP:
+        out += f" (24h {agg.sent_24h_norm}, gap {gap:+d} {'IGNITING' if gap > 0 else 'COOLING'})"
+    elif gap is not None:
+        out += " (steady)"
+    if agg.vol_now_norm is not None:
+        out += f" &middot; vol {_band(agg.vol_now_norm)} ({_fmt_msgs(agg.vol_now_raw)})"
+    if agg.participation_norm is not None:
+        out += f" &middot; participation {_band(agg.participation_norm)} {agg.participation_norm}"
+    flag = _CONF_FLAG.get(agg.confidence)
+    if flag:
+        out += f" [{flag}]"
+    return out
+
+
+def _signal_dir(s) -> str | None:
+    """Net direction for divergence. StockTwits speaks via its aggregate NOW sentiment
+    (>50 bull, <50 bear); other sources via the bull/bear tally."""
+    if s.source == "stocktwits" and s.st_aggregate is not None and s.st_aggregate.sent_now_norm is not None:
+        n = s.st_aggregate.sent_now_norm
+        return "bull" if n > 50 else "bear" if n < 50 else "flat"
+    return _net_dir(s.sentiment)
+
+
 def _stance_phrase(s) -> str | None:
-    """Concise, direction-first stance for the digest: 'StockTwits 11/8 bull
-    (native 9/3)'. None when the source carries no stance."""
+    """Direction-first stance for the digest. StockTwits speaks through its sentiment-API
+    aggregate (gap-led, Order 12); /smg/ through its Haiku bull/bear. None when neither
+    carries a read."""
+    if s.source == "stocktwits":
+        agg = _st_phrase(s.st_aggregate)
+        if agg:
+            return agg
+        # gateway down -> fall back to the native tag read below
     d = _net_dir(s.sentiment)
     if d is None:
         return None
@@ -173,9 +235,17 @@ def _stance_phrase(s) -> str | None:
 
 
 def _stance_detail(s) -> str | None:
-    """Full stance line for the detail block: bull/bear/neutral, plus the native
-    companion with how many messages were classified (the honest read of StockTwits'
-    30-message page). None when the source carries no stance."""
+    """Full stance line for the detail block. StockTwits -> the aggregate read (Order 12)
+    with the native tags as a companion; /smg/ -> its Haiku bull/bear/neutral. None when
+    neither carries a read."""
+    if s.source == "stocktwits":
+        agg = _st_phrase(s.st_aggregate)
+        if agg:
+            nat = s.sentiment.native if s.sentiment else None
+            if nat is not None and (nat.bullish or nat.bearish):
+                agg += f" &middot; native tags {nat.bullish} bull / {nat.bearish} bear"
+            return agg
+        # gateway down -> the native tag read below is the StockTwits stance
     sent = s.sentiment
     if sent is None or sent.method == "none":
         return None
@@ -201,7 +271,7 @@ def _divergence(ticker):
     dirs = {}
     for s in ticker.sources:
         if s.source in ("smg", "stocktwits"):
-            d = _net_dir(s.sentiment)
+            d = _signal_dir(s)
             if d in ("bull", "bear"):
                 dirs[s.source] = d
     if "smg" in dirs and "stocktwits" in dirs and dirs["smg"] != dirs["stocktwits"]:

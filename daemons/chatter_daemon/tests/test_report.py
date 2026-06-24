@@ -29,16 +29,22 @@ from chatter_daemon.schema import (
     Sentiment,
     SourceSignal,
     SourceStatus,
+    StockTwitsAggregate,
 )
 
 
-def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None):
+def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None):
     return SourceSignal(
         source=source,
         metrics=Metrics(mention_count=count, interest_24h=i24, interest_7d=i7, interest_monthly=im, headlines=headlines),
         sentiment=sentiment or Sentiment(method="none"),
+        st_aggregate=st_aggregate,
         anomaly=Anomaly(kind="trend" if source == "google_trends" else "count", state=state),
     )
+
+
+def _stagg(**kw):
+    return StockTwitsAggregate(**kw)
 
 
 def _sent(method="none", b=0, r=0, n=0, native=None):
@@ -273,3 +279,68 @@ def test_utf8_headline_roundtrips_persist_load_render(tmp_path):
     out = tmp_path / "r.pdf"
     render_report(loaded, out)
     assert out.read_bytes()[:5] == b"%PDF-"  # rendered without crashing
+
+
+# --- Order 12: StockTwits aggregate gap-led report ---------------------------------
+
+
+def _blze_agg():
+    return _stagg(sent_now_norm=98, sent_now_label="EXTREMELY_BULLISH", sent_24h_norm=40,
+                  sent_24h_label="BEARISH", sent_gap=58, vol_now_norm=98, vol_now_raw=41730,
+                  participation_norm=74, confidence="high")
+
+
+def test_report_aggregate_gap_led_when_igniting():
+    from chatter_daemon.report import _watchlist_block, _watchlist_digest
+
+    blze = _wt("BLZE", [_wsig("stocktwits", st_aggregate=_blze_agg(),
+                              sentiment=_sent("native", 6, 1, 0, native={"bullish": 6, "bearish": 1, "tagged": 7, "messages": 30}))], 1)
+    digest = " ".join(_watchlist_digest(_wresult([blze])))
+    assert "StockTwits NOW EXTREMELY_BULLISH 98" in digest      # now-primary, not 24h
+    assert "gap +58 IGNITING" in digest and "24h 40" in digest  # gap leads a moving name
+    assert "vol EXTREMELY_HIGH (41k)" in digest                 # real volume, banded
+    assert "participation HIGH 74" in digest
+    block = _watchlist_block(blze)
+    assert "native tags 6 bull / 1 bear" in block               # native companion
+    assert "30 msgs classified" not in block                    # page-size phrasing gone
+
+
+def test_report_steady_when_stable_no_manufactured_spike():
+    from chatter_daemon.report import _watchlist_digest
+
+    steady = _stagg(sent_now_norm=50, sent_now_label="NEUTRAL", sent_24h_norm=51, sent_gap=-1,
+                    vol_now_norm=45, vol_now_raw=900, participation_norm=42, confidence=None)
+    t = _wt("XYZ", [_wsig("stocktwits", st_aggregate=steady)], 1)
+    digest = " ".join(_watchlist_digest(_wresult([t])))
+    assert "StockTwits NOW NEUTRAL 50 (steady)" in digest
+    assert "IGNITING" not in digest and "COOLING" not in digest
+
+
+def test_report_confidence_flag_surfaced():
+    from chatter_daemon.report import _st_phrase
+
+    pump = _stagg(sent_now_norm=80, sent_now_label="BULLISH", sent_24h_norm=78, sent_gap=2,
+                  vol_now_norm=90, vol_now_raw=50000, participation_norm=20, confidence="pump_suspect")
+    assert "possible pump" in _st_phrase(pump)
+    quiet = _stagg(sent_now_norm=14, sent_now_label="EXTREMELY_BEARISH", sent_24h_norm=10, sent_gap=4,
+                   vol_now_norm=6, vol_now_raw=655, participation_norm=66, confidence="quiet")
+    # quiet = trustworthy small crowd -> NOT flagged low-confidence
+    assert "low-confidence" not in _st_phrase(quiet) and "pump" not in _st_phrase(quiet)
+
+
+def test_report_divergence_uses_aggregate_direction():
+    from chatter_daemon.report import _divergence
+
+    bull_agg = _stagg(sent_now_norm=98, sent_now_label="EXTREMELY_BULLISH", sent_24h_norm=40, sent_gap=58)
+    mu = _wt("MU", [_wsig("smg", count=10, sentiment=_sent("haiku", 2, 9, 1)),      # bear
+                    _wsig("stocktwits", st_aggregate=bull_agg)], 2)                 # aggregate bull
+    assert _divergence(mu) == {"smg": "bear", "stocktwits": "bull"}
+
+
+def test_report_gateway_down_falls_back_to_native_stance():
+    from chatter_daemon.report import _watchlist_digest
+
+    # no st_aggregate (gateway down) but native tags present -> bull/bear shown
+    nv = _wt("NVDA", [_wsig("stocktwits", sentiment=_sent("native", 7, 1, 0, native={"bullish": 7, "bearish": 1, "tagged": 8, "messages": 30}))], 1)
+    digest = " ".join(_watchlist_digest(_wresult([nv])))
+    assert "StockTwits 7/1 bull" in digest  # fell back to the native tag read
