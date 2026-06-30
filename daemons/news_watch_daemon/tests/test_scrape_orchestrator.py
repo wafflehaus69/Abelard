@@ -874,18 +874,27 @@ def test_gunman_post_no_tokenized_finance_false_fire():
 def test_ai_exclusion_cluster_self_consistency():
     """Mixed-convention regression-guard for the audit observation.
 
-    The ai_capex_cycle theme has 'AI infrastructure' (secondary) AND
-    'AI bubble' (exclusion) — both containing 2+ caps, both now case-sensitive
-    under the rule. On a synthetic post with 'AI infrastructure' in uppercase
-    + 'ai bubble' in lowercase, and no primary keywords:
+    The ai_capex_cycle theme has 'DRAM' (secondary) AND 'AI hype'
+    (exclusion) — both containing 2+ CONSECUTIVE caps, both case-sensitive
+    under the acronym rule. On a synthetic post with 'DRAM' in its canonical
+    case + 'ai hype' in lowercase, and no primary keywords:
 
-      - 'AI infrastructure' matches case-sensitively → secondary tag fires
-      - 'AI bubble' does NOT match 'ai bubble' (lowercase) → exclusion misses
+      - 'DRAM' matches case-sensitively → secondary tag fires
+      - 'AI hype' does NOT match 'ai hype' (lowercase) → exclusion misses
       - Result: secondary tag wins
 
     Self-consistency check: same text all-lowercase fires neither secondary
-    nor exclusion (both case-sensitive now). The theme correctly stays silent
-    on casual-source 'ai bubble' content rather than half-tagging.
+    nor exclusion (both case-sensitive). The theme correctly stays silent on
+    casual-source 'ai hype' content rather than half-tagging.
+
+    (Note: 'AI bubble' used to be the exclusion example here, but the
+    2026-06-30 recall widen moved it to a lowercase inclusion as an AI-trade
+    signal, so this guard now uses 'AI hype', which remains a case-sensitive
+    exclusion. The acronym rule keys on 2+ CONSECUTIVE caps, so 'DRAM' is
+    case-sensitive but a single-internal-cap name like 'CoreWeave' is not —
+    'DRAM' is used precisely because it is. The lowercase test text
+    deliberately contains no admitted capital-cycle phrase, so the
+    all-lowercase case still fires nothing.)
 
     If someone later modifies the rule and breaks this self-consistency
     (e.g. exclusion goes case-insensitive while secondary stays case-sensitive),
@@ -899,13 +908,13 @@ def test_ai_exclusion_cluster_self_consistency():
 
     # Mixed-case post, no primary keywords present (no hyperscaler/capex/datacenter/etc.):
     mixed_case = (
-        "AI infrastructure scaling continues quietly across many regions; "
-        "ai bubble noise dominates retail blogs"
+        "DRAM pricing firms across many regions; "
+        "ai hype commentary dominates retail blogs"
     )
     assert _tag_for_theme(mixed_case, regs) == "secondary"
 
-    # Same text all-lowercase: 'AI infrastructure' case-sensitive secondary doesn't fire,
-    # 'AI bubble' case-sensitive exclusion doesn't fire either — internally consistent.
+    # Same text all-lowercase: 'DRAM' case-sensitive secondary doesn't fire,
+    # 'AI hype' case-sensitive exclusion doesn't fire either — internally consistent.
     assert _tag_for_theme(mixed_case.lower(), regs) is None
 
 

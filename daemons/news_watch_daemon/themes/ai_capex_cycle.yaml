@@ -140,6 +140,53 @@ keywords:
     - "Advanced Micro Devices"
     - "Arm Holdings"
     - "Samsung Electronics"
+    # AI capital-cycle language -- added 2026-06-30 (ai_capex recall widen).
+    # Admits the capital-cycle / AI-trade / AI-automation phrasing the strict
+    # hardware-keyword matcher missed (Lee's $880B AI bet, Korea/Japan buildouts,
+    # AI investment costs, the AI boom). Written LOWERCASE on purpose: the matcher
+    # makes any keyword with 2+ consecutive caps case-SENSITIVE, so "AI buildout"
+    # would miss Title-Case "AI Buildouts" -- lowercase keeps these case-insensitive.
+    # Plurals enumerated (the word-boundary matcher won't span them). Phrase-
+    # specificity (AI + a capital-cycle word) keeps the labor/society bucket out
+    # ("AI job losses" has no capex phrase); the financing wall below still
+    # overrides, so an "AI IPO/listing/raise" stays suppressed.
+    - "ai buildout"
+    - "ai buildouts"
+    # "AI infrastructure" already exists as a case-SENSITIVE secondary above, which
+    # misses Title-Case "AI Infrastructure" in headlines; the lowercase form here
+    # (admit list, 2026-06-30) makes it case-insensitive so Title-Case tags.
+    - "ai infrastructure"
+    # "bet on ai" dropped from the admit list 2026-06-30: it false-positives on
+    # "Bet on AI Science Research to Prevent Cancer" (society/science bucket).
+    # "ai bet"/"ai bets" already catch the capital signal ("$880B AI Bet").
+    - "ai bet"
+    - "ai bets"
+    - "ai investment"
+    - "ai investments"
+    - "ai boom"
+    - "ai spending"
+    - "ai capex"
+    - "ai data center"
+    - "ai data centers"
+    - "ai data centre"
+    - "ai data centres"
+    - "ai buying spree"
+    - "ai supply chain"
+    - "ai capacity"
+    - "chip boom"
+    - "ai trade"
+    - "ai rally"
+    - "ai selloff"
+    - "ai sell-off"
+    - "ai bubble"
+    - "ai valuation"
+    - "ai valuations"
+    - "ai stock"
+    - "ai stocks"
+    - "ai leverage"
+    - "ai automation"
+    - "ai-driven automation"
+    - "ai-powered automation"
   exclusions:
     - "AI girlfriend"
     - "AI boyfriend"
@@ -152,7 +199,9 @@ keywords:
     - "ASI"
     - "AI safety"
     - "AI ethics"
-    - "AI bubble"
+    # "AI bubble" moved to inclusions 2026-06-30 (recall widen) -- it is now an
+    # AI-trade financial signal Mando wants admitted, not hype noise. "AI mania"
+    # stays excluded (not in the admit list; bubble/mania asymmetry flagged).
     - "AI mania"
     - "AI killed"
     - "AI replaces"
