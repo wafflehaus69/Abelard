@@ -45,6 +45,10 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from news_watch_daemon.fullbrief.brief import FullBriefEnvelope  # noqa: E402
+from news_watch_daemon.fullbrief.pdf import (  # noqa: E402
+    PdfRenderError,
+    render_full_brief_pdf,
+)
 from news_watch_daemon.fullbrief.render import render_full_brief  # noqa: E402
 
 
@@ -56,6 +60,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "path",
         type=str,
         help="Path to a Full Brief envelope JSON artifact. ~ is expanded.",
+    )
+    parser.add_argument(
+        "--pdf",
+        metavar="OUT.pdf",
+        help="Render to a PDF at this path (ReportLab, Unicode-safe) instead "
+             "of text to stdout. Fails loud; never a zero-byte PDF.",
     )
     return parser.parse_args(argv)
 
@@ -81,6 +91,15 @@ def main(argv: list[str] | None = None) -> int:
         # The message itself is the diagnostic.
         print(f"error: not a FullBriefEnvelope ({path}): {exc}", file=sys.stderr)
         return 1
+
+    if args.pdf:
+        try:
+            written = render_full_brief_pdf(envelope, args.pdf)
+        except PdfRenderError as exc:
+            print(f"error: PDF render failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote PDF: {written} ({written.stat().st_size} bytes)")
+        return 0
 
     print(render_full_brief(envelope))
     return 0

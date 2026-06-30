@@ -90,6 +90,7 @@ from .synthesize.synthesize import (
 from .fullbrief.brief import FullBriefEnvelope
 from .fullbrief.loader import FullBriefLoadError, load_full_brief_from_path
 from .fullbrief.orchestrator import assemble_full_brief
+from .fullbrief.pdf import PdfRenderError, render_full_brief_pdf
 from .fullbrief.render import render_full_brief
 from .synthesize.llm_client import SynthesisLLMError
 from .synthesize.trigger import TriggerHeadline, evaluate_gate
@@ -233,6 +234,15 @@ def build_parser() -> argparse.ArgumentParser:
             "(nwd-fullbrief-*.json). Validated against the FullBriefEnvelope "
             "schema before rendering; malformed / wrong-type / missing files "
             "fail loudly with a nonzero exit."
+        ),
+    )
+    p_read_brief.add_argument(
+        "--pdf",
+        metavar="OUT.pdf",
+        help=(
+            "Render the brief to a PDF at this path (ReportLab) instead of text "
+            "to stdout. Same structured FullBriefEnvelope, Unicode-safe fonts. "
+            "Fails loud on render error; never emits a zero-byte PDF."
         ),
     )
 
@@ -2235,6 +2245,19 @@ def _handle_read_brief(args: argparse.Namespace, cfg: Config) -> int:
         sys.stderr.write(f"ERROR: read-brief failed: {exc}\n")
         sys.stderr.flush()
         return 1
+
+    # --pdf: render to a PDF file (fail-loud) instead of text to stdout.
+    pdf_out = getattr(args, "pdf", None)
+    if pdf_out:
+        try:
+            written = render_full_brief_pdf(envelope, pdf_out)
+        except PdfRenderError as exc:
+            sys.stderr.write(f"ERROR: read-brief --pdf failed: {exc}\n")
+            sys.stderr.flush()
+            return 1
+        sys.stdout.write(f"Wrote PDF: {written} ({written.stat().st_size} bytes)\n")
+        sys.stdout.flush()
+        return 0
 
     sys.stdout.write(render_full_brief(envelope))
     sys.stdout.write("\n")
