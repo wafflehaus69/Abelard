@@ -40,3 +40,6 @@ graphify-out/
 
 # Linux venv variant that the .venv/ rule above does not match (bare name = any depth)
 .venv-linux/
+
+# Claude Code machine-local settings (per-host permission grants, not portable)
+.claude/settings.local.json
