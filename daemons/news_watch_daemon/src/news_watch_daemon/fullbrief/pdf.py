@@ -47,7 +47,6 @@ _RULE = "#bbbbbb"
 _HEAD_BG = "#e8eaf0"
 
 _NEARMISS_CAP = 40  # near-miss rows in the PDF; the full list lives in the JSON
-_SUMMARY_EXCERPT = 240
 
 _FONT = "NWUni"
 _FONT_B = "NWUni-Bold"
@@ -134,13 +133,6 @@ def _styles() -> dict[str, Any]:
     }
 
 
-def _excerpt(text: str | None, cap: int = _SUMMARY_EXCERPT) -> str:
-    if not text:
-        return ""
-    flat = " ".join(text.split())
-    return flat[:cap].rstrip() + "..." if len(flat) > cap else flat
-
-
 def render_full_brief_pdf(envelope: FullBriefEnvelope, out_path: Path | str) -> Path:
     """Render a `FullBriefEnvelope` to a PDF at `out_path`. Returns the path.
 
@@ -211,11 +203,18 @@ def render_full_brief_pdf(envelope: FullBriefEnvelope, out_path: Path | str) -> 
     if orphans:
         story.append(Paragraph("Orphan Attention Crossings &mdash; review first", S["H2"]))
         for c in orphans:
+            # Term + freq/shape on its own bold line, then the FULL llm_read_summary
+            # wrapped below. These are the highest-priority "review first" items;
+            # truncating their summary defeats the purpose. The summary is already
+            # envelope-bounded (~280 chars) so it renders in full without clipping.
             story.append(Paragraph(
                 f"<b>{escape(c.term)}</b> ({c.freq_window}/{c.freq_prior}, "
-                f"{escape(c.shape)}) &mdash; {escape(_excerpt(c.llm_read_summary))}",
-                S["Body"],
+                f"{escape(c.shape)})",
+                S["Band"],
             ))
+            summary = " ".join((c.llm_read_summary or "").split())
+            if summary:
+                story.append(Paragraph(escape(summary), S["Body"]))
 
     # --- theme-event synthesis, banded by theme ---
     story.append(Paragraph("Theme-Event Synthesis (Pass C)", S["H2"]))
