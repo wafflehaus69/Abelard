@@ -667,3 +667,42 @@ def test_cost_total_rendered_with_model_and_rates():
     assert "$0.081" in out   # 0.0808 rounded for display
     assert "claude-sonnet-4-6" in out
     assert "2026-05-28" in out   # rates_as_of
+
+
+def test_theme_segments_section_renders_active_quiet_and_hot_dropped():
+    """Theme-segments section: active-first ordering, the hot-but-dropped
+    flag for an active theme outside Pass C scope, and the quiet tag."""
+    from news_watch_daemon.fullbrief.brief import ThemeSegment, ThemeSegmentsSection
+    from news_watch_daemon.fullbrief.render import _render_theme_segments
+
+    section = ThemeSegmentsSection(
+        status="ok",
+        segments=[
+            ThemeSegment(
+                theme_id="russia_ukraine_war", display_name="Russia Ukraine War",
+                status="active", tagged_headline_count=47, in_pass_c_scope=False,
+                summary="Heavy strikes on Kyiv dominate the window.",
+                convergence_terms=["russian"],
+            ),
+            ThemeSegment(
+                theme_id="china_us_decoupling", display_name="China US Decoupling",
+                status="quiet", tagged_headline_count=3, in_pass_c_scope=False,
+                summary="Routine chip-policy chatter, nothing new.",
+            ),
+        ],
+    )
+    out = _render_theme_segments(section)
+    assert "THEME SEGMENTS" in out
+    assert "[ACTIVE] Russia Ukraine War" in out
+    assert "hot — outside Pass C scope" in out          # the dropped-theme flag
+    assert "Heavy strikes on Kyiv" in out
+    assert "attention: russian" in out
+    assert "[quiet ] China US Decoupling" in out
+    # Active ordered before quiet.
+    assert out.index("Russia Ukraine War") < out.index("China US Decoupling")
+
+
+def test_theme_segments_skipped_renders_nothing():
+    from news_watch_daemon.fullbrief.brief import ThemeSegmentsSection
+    from news_watch_daemon.fullbrief.render import _render_theme_segments
+    assert _render_theme_segments(ThemeSegmentsSection(status="skipped")) == ""

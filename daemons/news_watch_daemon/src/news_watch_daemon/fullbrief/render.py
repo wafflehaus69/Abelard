@@ -39,6 +39,7 @@ from .brief import (
     FullBriefEnvelopeHealth,
     PassFFootprint,
     ThemeEventDigest,
+    ThemeSegmentsSection,
     ThemeSynthesisSection,
 )
 
@@ -89,6 +90,11 @@ def render_full_brief(envelope: FullBriefEnvelope) -> str:
     orphan_section = _render_orphan_section(envelope.attention_synthesis)
     if orphan_section:
         parts.append(orphan_section)
+        parts.append("")
+
+    theme_segments_section = _render_theme_segments(envelope.theme_segments)
+    if theme_segments_section:
+        parts.append(theme_segments_section)
         parts.append("")
 
     parts.append(_render_theme_synthesis(envelope.theme_synthesis))
@@ -189,6 +195,48 @@ def _first_line_excerpt(text: str, max_chars: int = 200) -> str:
     if len(flat) > max_chars:
         return flat[:max_chars].rstrip() + "..."
     return flat
+
+
+# ---------------------------------------------------------------------------
+# Theme segments — guaranteed per-theme coverage (every tracked theme)
+# ---------------------------------------------------------------------------
+
+
+def _render_theme_segments(section: ThemeSegmentsSection) -> str:
+    """Every-tracked-theme roll-up. Active segments first (by tag count),
+    then quiet. A theme that is active but fell outside Pass C scope is
+    flagged — that's the hot-but-dropped signal this section exists to
+    surface. Returns empty string when the section is skipped/empty."""
+    if section.status == "skipped" or not section.segments:
+        return ""
+
+    header = "THEME SEGMENTS — every tracked theme"
+    if section.status == "failed":
+        header = f"{header}  |  DEGRADED ({section.failure_reason or 'unknown'})"
+    elif section.llm_degraded:
+        header = f"{header}  |  summaries degraded to templates"
+
+    lines: list[str] = [_LIGHT_DIVIDER, header, _LIGHT_DIVIDER]
+
+    ordered = sorted(
+        section.segments,
+        key=lambda s: (s.status != "active", -s.tagged_headline_count, s.theme_id),
+    )
+    for seg in ordered:
+        tag = "ACTIVE" if seg.status == "active" else "quiet "
+        flag = ""
+        if seg.status == "active" and not seg.in_pass_c_scope:
+            flag = "  (hot — outside Pass C scope)"
+        lines.append(
+            f"  [{tag}] {seg.display_name} ({seg.theme_id}) — "
+            f"{seg.tagged_headline_count} tagged{flag}"
+        )
+        summary = _first_line_excerpt(seg.summary, max_chars=320)
+        if summary:
+            lines.append(f"    {summary}")
+        if seg.convergence_terms:
+            lines.append(f"    attention: {', '.join(seg.convergence_terms)}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

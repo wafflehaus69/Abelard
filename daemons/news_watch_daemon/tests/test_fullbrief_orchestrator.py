@@ -63,6 +63,11 @@ def _make_cfg(tmp_path: Path) -> Config:
         "raw_source TEXT, headline TEXT, headline_en TEXT, url TEXT, language TEXT, "
         "published_at_unix INTEGER, fetched_at_unix INTEGER)"
     )
+    # Theme-segments Step 6.5 joins this for per-theme tag counts.
+    conn.execute(
+        "CREATE TABLE headline_theme_tags (headline_id TEXT, theme_id TEXT, "
+        "PRIMARY KEY (headline_id, theme_id))"
+    )
     conn.execute(
         "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT)"
     )
@@ -241,7 +246,11 @@ class _Patches:
         )
         self.load_all_themes = patch(
             "news_watch_daemon.fullbrief.orchestrator.load_all_themes",
-            return_value=[MagicMock(theme_id="us_iran_escalation", status="active")],
+            return_value=[MagicMock(
+                theme_id="us_iran_escalation",
+                display_name="US-Iran Escalation",
+                status="active",
+            )],
         )
         self.build_anthropic_client = patch(
             "news_watch_daemon.fullbrief.orchestrator.build_anthropic_client",

@@ -117,6 +117,64 @@ class ThemeSynthesisSection(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Theme segments section — guaranteed per-theme coverage (2026-06-30)
+# ---------------------------------------------------------------------------
+
+
+class ThemeSegment(BaseModel):
+    """One tracked theme's guaranteed per-brief segment.
+
+    Pass C only synthesizes themes that land in the trigger's scope (the
+    first firing signal's themes), so a theme with many tagged headlines
+    can be dropped from the brief entirely if it wasn't the first signal
+    (the russia(47)/iran(20)/fed(17)-dropped finding, 2026-06-30). This
+    section guarantees EVERY tracked theme surfaces every brief.
+
+    status:
+      - "active": in Pass C scope OR tagged-headline count over the
+        activity threshold — gets a 2-3 sentence synthesis.
+      - "quiet": tracked but below threshold and out of scope — gets a
+        single "why it's hot" one-liner.
+
+    `summary` is the batched-LLM line (one Sonnet call covers all themes).
+    On LLM failure it degrades to a deterministic template line so the
+    segment still renders. `convergence_terms` are attention-crossing
+    terms that appear in this theme's window headlines.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    theme_id: str
+    display_name: str
+    status: Literal["active", "quiet"]
+    tagged_headline_count: int = Field(ge=0)
+    in_pass_c_scope: bool
+    summary: str
+    convergence_terms: list[str] = Field(default_factory=list)
+
+
+class ThemeSegmentsSection(BaseModel):
+    """Guaranteed-coverage roll-up: one ThemeSegment per tracked theme.
+
+    status:
+      - "ok": segments assembled (LLM summaries or degraded templates).
+      - "skipped": no themes / feature not run (default at envelope init).
+      - "failed": the step itself could not assemble segments.
+
+    `llm_degraded` flags that the batched summary call failed and the
+    summaries are deterministic templates — surfaced so the operator
+    knows the lines are counts, not interpretation.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ok", "skipped", "failed"]
+    segments: list[ThemeSegment] = Field(default_factory=list)
+    llm_degraded: bool = False
+    failure_reason: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
 # Attention synthesis section (Pass E)
 # ---------------------------------------------------------------------------
 
@@ -358,6 +416,11 @@ class CostEnvelope(BaseModel):
     pass_c: Optional[CostPerBrief] = None
     pass_e_briefs: list[CostPerAttentionBrief] = Field(default_factory=list)
     pass_e_total_usd: float = Field(ge=0.0)
+    # Single batched theme-segments call (2026-06-30). None when the step
+    # did not run (no key / skipped); a zero-cost object would wrongly imply
+    # "ran but free," so None is the honest not-run signal (same discipline
+    # as pass_c above).
+    theme_segments: Optional[CostPerBrief] = None
     total_usd: float = Field(ge=0.0)
     model: str
     rates_as_of: str
@@ -408,6 +471,11 @@ class FullBriefEnvelope(BaseModel):
     window: WindowSection
     executive_summary: ExecutiveSummary
     theme_synthesis: ThemeSynthesisSection
+    # Defaulted so existing constructors/round-trips stay valid; the
+    # orchestrator always populates it explicitly at Step 6.5.
+    theme_segments: ThemeSegmentsSection = Field(
+        default_factory=lambda: ThemeSegmentsSection(status="skipped"),
+    )
     attention_synthesis: AttentionSynthesisSection
     frequency_diagnostic: FrequencyDiagnosticSection
     pass_f_footprint: PassFFootprint
@@ -450,6 +518,8 @@ __all__ = [
     "PassFailure",
     "StepHealth",
     "ThemeEventDigest",
+    "ThemeSegment",
+    "ThemeSegmentsSection",
     "ThemeSynthesisSection",
     "WindowSection",
 ]

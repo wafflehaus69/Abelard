@@ -147,11 +147,13 @@ def test_assemble_cost_envelope_full_shape_per_adjustment_4():
         model="claude-sonnet-4-6",
     )
 
-    # Top-level schema
+    # Top-level schema (theme_segments added 2026-06-30; None when the
+    # batched call didn't run — as here, no theme_segments_metadata passed).
     assert set(env.keys()) == {
         "pass_c", "pass_e_briefs", "pass_e_total_usd",
-        "total_usd", "model", "rates_as_of",
+        "theme_segments", "total_usd", "model", "rates_as_of",
     }
+    assert env["theme_segments"] is None
     assert env["model"] == "claude-sonnet-4-6"
     assert env["rates_as_of"] == "2026-05-28"
 
@@ -300,3 +302,24 @@ def test_rates_as_of_matches_envelope_field():
         model="claude-sonnet-4-6",
     )
     assert env["rates_as_of"] == RATES_AS_OF
+
+
+def test_theme_segments_cost_included_when_metadata_passed():
+    """The batched theme-segments call surfaces its own cost section and
+    rolls into total_usd (2026-06-30)."""
+    seg_md = _FakeMetadata(
+        input_tokens=1500, output_tokens=300,
+        cache_creation_input_tokens=0, cache_read_input_tokens=0,
+    )
+    env = assemble_cost_envelope(
+        pass_c_metadata=None,
+        pass_e_brief_metadata=[],
+        model="claude-sonnet-4-6",
+        theme_segments_metadata=seg_md,
+    )
+    assert env["theme_segments"] is not None
+    assert env["theme_segments"]["input_tokens"] == 1500
+    assert env["theme_segments"]["output_tokens"] == 300
+    # theme-segments usd is the sole contributor to total here.
+    assert env["theme_segments"]["usd"] > 0
+    assert env["total_usd"] == pytest.approx(env["theme_segments"]["usd"])

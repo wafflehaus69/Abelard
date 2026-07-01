@@ -81,12 +81,21 @@ from .brief import (
     PassFailure,
     StepHealth,
     ThemeEventDigest,
+    ThemeSegment,
+    ThemeSegmentsSection,
     ThemeSynthesisSection,
     WindowSection,
 )
 from .convergence import analyze_convergence
 from .cost import assemble_cost_envelope
 from .frequency_diagnostic import assemble_near_misses
+from .theme_segments import (
+    SAMPLE_HEADLINES_PER_THEME,
+    ThemeSegmentInput,
+    ThemeSegmentsError,
+    synthesize_theme_segments,
+    template_summary,
+)
 
 
 _LOG = logging.getLogger("news_watch_daemon.fullbrief.orchestrator")
@@ -718,6 +727,154 @@ def _build_frequency_diagnostic(
 
 
 # ---------------------------------------------------------------------------
+# Step 6.5 — dedicated theme segments (guaranteed per-theme coverage)
+# ---------------------------------------------------------------------------
+
+
+def _gather_theme_inputs(
+    conn: sqlite3.Connection,
+    *,
+    active_theme_ids: list[str],
+    display_names: dict[str, str],
+    window_since_unix: int,
+    window_until_unix: int,
+    themes_in_scope: set[str],
+    crossing_terms: list[str],
+) -> list[ThemeSegmentInput]:
+    """DB-gather per-theme tag counts + sample headlines, derive convergence.
+
+    Per-theme-distinct: one headline_theme_tags row per (headline, theme).
+    Sample headlines are the most-recent SAMPLE_HEADLINES_PER_THEME in
+    window. Convergence terms = crossing terms that ASCII-substring-appear
+    in a theme's sample headlines (bounded, sample-based approximation).
+    """
+    rows = conn.execute(
+        "SELECT t.theme_id, COALESCE(h.headline_en, h.headline) AS headline "
+        "FROM headline_theme_tags t "
+        "JOIN headlines h ON t.headline_id = h.headline_id "
+        "WHERE h.published_at_unix > ? AND h.published_at_unix <= ? "
+        "ORDER BY h.published_at_unix DESC",
+        (window_since_unix, window_until_unix),
+    ).fetchall()
+
+    counts: dict[str, int] = {}
+    samples: dict[str, list[str]] = {}
+    for theme_id, headline in rows:
+        counts[theme_id] = counts.get(theme_id, 0) + 1
+        bucket = samples.setdefault(theme_id, [])
+        if len(bucket) < SAMPLE_HEADLINES_PER_THEME and headline:
+            bucket.append(" ".join(headline.split()))
+
+    lowered_terms = [(t, t.lower()) for t in crossing_terms]
+    inputs: list[ThemeSegmentInput] = []
+    for tid in active_theme_ids:
+        sample = samples.get(tid, [])
+        hay = " ".join(sample).lower()
+        conv = [orig for orig, low in lowered_terms if low and low in hay]
+        inputs.append(ThemeSegmentInput(
+            theme_id=tid,
+            display_name=display_names.get(tid, tid),
+            tag_count=counts.get(tid, 0),
+            in_scope=tid in themes_in_scope,
+            sample_headlines=sample,
+            convergence_terms=conv,
+        ))
+    return inputs
+
+
+def _build_theme_segments(
+    conn: sqlite3.Connection,
+    *,
+    cfg: Config,
+    window_since_unix: int,
+    window_until_unix: int,
+    themes_covered: list[str],
+    crossings: list[AttentionCrossing],
+    model: str = "claude-sonnet-4-6",
+    max_tokens: int = 1500,
+) -> tuple[ThemeSegmentsSection, Any | None]:
+    """Step 6.5: one guaranteed segment per tracked theme.
+
+    Returns (section, batched_call_metadata_or_None). Never raises —
+    every failure mode degrades to template summaries so the section
+    always renders (guaranteed-coverage is the whole point). The metadata
+    is None unless the batched Sonnet call actually completed.
+    """
+    try:
+        all_themes = load_all_themes(cfg.themes_dir)
+    except ThemeLoadError as exc:
+        return (
+            ThemeSegmentsSection(status="failed", failure_reason=f"theme load failed: {exc}"),
+            None,
+        )
+    active = [t for t in all_themes if t.status == "active"]
+    if not active:
+        return ThemeSegmentsSection(status="skipped"), None
+
+    display_names = {t.theme_id: t.display_name for t in active}
+    try:
+        inputs = _gather_theme_inputs(
+            conn,
+            active_theme_ids=[t.theme_id for t in active],
+            display_names=display_names,
+            window_since_unix=window_since_unix,
+            window_until_unix=window_until_unix,
+            themes_in_scope=set(themes_covered),
+            crossing_terms=[c.term for c in crossings],
+        )
+    except Exception as exc:  # noqa: BLE001 — DB gather failure degrades, never aborts the brief
+        return (
+            ThemeSegmentsSection(status="failed", failure_reason=f"tag-count query failed: {exc}"),
+            None,
+        )
+
+    # Batched LLM summaries — degrade to templates on any failure.
+    summaries: dict[str, str] = {}
+    metadata: Any | None = None
+    degraded_reason: str | None = None
+    if not cfg.anthropic_api_key:
+        degraded_reason = "ANTHROPIC_API_KEY not set"
+    else:
+        try:
+            client = build_anthropic_client(cfg.anthropic_api_key)
+            summaries, metadata = synthesize_theme_segments(
+                client=client, model=model, max_tokens=max_tokens, inputs=inputs,
+            )
+        except (ThemeSegmentsError, SynthesisError) as exc:
+            degraded_reason = f"segment call failed: {exc}"
+        except Exception as exc:  # noqa: BLE001 — SDK/network errors degrade, never abort the brief
+            degraded_reason = f"segment call errored: {exc}"
+
+    segments: list[ThemeSegment] = []
+    missing_summary = False
+    for inp in inputs:
+        summary = summaries.get(inp.theme_id)
+        if not summary:
+            summary = template_summary(inp)
+            missing_summary = True
+        segments.append(ThemeSegment(
+            theme_id=inp.theme_id,
+            display_name=inp.display_name,
+            status=inp.status(),  # type: ignore[arg-type]
+            tagged_headline_count=inp.tag_count,
+            in_pass_c_scope=inp.in_scope,
+            summary=summary,
+            convergence_terms=inp.convergence_terms,
+        ))
+
+    llm_degraded = degraded_reason is not None or missing_summary
+    return (
+        ThemeSegmentsSection(
+            status="ok",
+            segments=segments,
+            llm_degraded=llm_degraded,
+            failure_reason=degraded_reason,
+        ),
+        metadata,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Step 7 helper — executive summary
 # ---------------------------------------------------------------------------
 
@@ -1121,6 +1278,24 @@ def assemble_full_brief(
                 recovered=True,
             ))
 
+        # Step 6.5: Dedicated theme segments (guaranteed per-theme coverage).
+        # Window-aligned to canonical_now_unix (same discipline as Step 6).
+        # Never raises — degrades to template summaries internally.
+        theme_segments_section, theme_segments_metadata = _build_theme_segments(
+            conn,
+            cfg=cfg,
+            window_since_unix=canonical_now_unix - window_hours * 3600,
+            window_until_unix=canonical_now_unix,
+            themes_covered=list(theme_synthesis.themes_covered),
+            crossings=crossings,
+        )
+        if theme_segments_section.status == "failed":
+            pass_failures.append(PassFailure(
+                step="theme_segments",
+                reason=theme_segments_section.failure_reason or "unknown",
+                recovered=True,
+            ))
+
         # Step 7: Envelope assembly.
         # Stage 2a-ii-B: pass_f_footprint populated via DB queries with
         # window-alignment discipline (same canonical_now_unix as Step 6).
@@ -1153,6 +1328,7 @@ def assemble_full_brief(
             pass_c_metadata=synth_metadata,
             pass_e_brief_metadata=pass_e_brief_metadata,
             model="claude-sonnet-4-6",
+            theme_segments_metadata=theme_segments_metadata,
         )
         cost = CostEnvelope.model_validate(cost_envelope_dict)
 
@@ -1166,6 +1342,7 @@ def assemble_full_brief(
             window=window_section,
             executive_summary=exec_summary,
             theme_synthesis=theme_synthesis,
+            theme_segments=theme_segments_section,
             attention_synthesis=attention_synthesis,
             frequency_diagnostic=freq_diagnostic,
             pass_f_footprint=pass_f_footprint,

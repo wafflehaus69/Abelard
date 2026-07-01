@@ -103,6 +103,7 @@ def assemble_cost_envelope(
     pass_c_metadata: Any | None,
     pass_e_brief_metadata: list[tuple[str, Any]],
     model: str,
+    theme_segments_metadata: Any | None = None,
 ) -> dict[str, Any]:
     """Compose the Full Brief envelope's `cost` section per Adjustment 4.
 
@@ -162,11 +163,28 @@ def assemble_cost_envelope(
         })
         pass_e_total += bc.usd
 
+    # Single batched theme-segments call (2026-06-30). None when it didn't
+    # run (no key / degraded / skipped) — a zero object would falsely read
+    # as "ran but free."
+    theme_segments_section: dict[str, Any] | None = None
+    theme_segments_usd = 0.0
+    if theme_segments_metadata is not None:
+        bc = estimate_brief_cost(theme_segments_metadata)
+        theme_segments_section = {
+            "input_tokens": bc.input_tokens,
+            "output_tokens": bc.output_tokens,
+            "cache_creation_tokens": bc.cache_creation_tokens,
+            "cache_read_tokens": bc.cache_read_tokens,
+            "usd": bc.usd,
+        }
+        theme_segments_usd = bc.usd
+
     return {
         "pass_c": pass_c_section,
         "pass_e_briefs": pass_e_section,
         "pass_e_total_usd": round(pass_e_total, 4),
-        "total_usd": round(pass_c_usd + pass_e_total, 4),
+        "theme_segments": theme_segments_section,
+        "total_usd": round(pass_c_usd + pass_e_total + theme_segments_usd, 4),
         "model": model,
         "rates_as_of": RATES_AS_OF,
     }
