@@ -216,6 +216,40 @@ def render_full_brief_pdf(envelope: FullBriefEnvelope, out_path: Path | str) -> 
             if summary:
                 story.append(Paragraph(escape(summary), S["Body"]))
 
+    # --- theme segments (guaranteed per-theme coverage) ---
+    tseg = envelope.theme_segments
+    if tseg.status != "skipped" and tseg.segments:
+        story.append(Paragraph("Theme Segments &mdash; every tracked theme", S["H2"]))
+        if tseg.status == "failed" or tseg.llm_degraded:
+            note = tseg.failure_reason or "summaries degraded to templates"
+            story.append(Paragraph(f"(degraded: {escape(note)})", S["Foot"]))
+        ordered = sorted(
+            tseg.segments,
+            key=lambda s: (s.status != "active", -s.tagged_headline_count, s.theme_id),
+        )
+        for seg in ordered:
+            tag = "ACTIVE" if seg.status == "active" else "quiet"
+            flag = (
+                f'{sep}<i>hot &mdash; outside Pass C scope</i>'
+                if (seg.status == "active" and not seg.in_pass_c_scope) else ""
+            )
+            head = (
+                f'<b>[{tag}]</b> {escape(seg.display_name)} '
+                f'<font color="{_MUTED}">({escape(seg.theme_id)}){sep}'
+                f'{seg.tagged_headline_count} tagged</font>{flag}'
+            )
+            body = escape(" ".join((seg.summary or "").split()))
+            if seg.convergence_terms:
+                body += (
+                    f'<br/><font color="{_MUTED}">attention: '
+                    f'{escape(", ".join(seg.convergence_terms))}</font>'
+                )
+            story.append(KeepTogether([
+                Paragraph(head, S["Band"]),
+                Paragraph(body, S["Body"]),
+                Spacer(1, 3),
+            ]))
+
     # --- theme-event synthesis, banded by theme ---
     story.append(Paragraph("Theme-Event Synthesis (Pass C)", S["H2"]))
     if ts.status == "no_trigger":
