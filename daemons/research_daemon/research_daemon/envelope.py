@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 Status = Literal["ok", "error", "rate_limited", "not_found"]
-Source = Literal["edgar", "finnhub"]
+Source = Literal["edgar", "finnhub", "yahoo"]
 
 # "complete"      — all fields this capability normally returns are populated
 # "partial"       — one or more fields null/degraded; see warnings for which

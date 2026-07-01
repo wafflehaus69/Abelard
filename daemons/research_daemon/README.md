@@ -93,7 +93,7 @@ alias research-daemon='~/.venvs/research_daemon/bin/research-daemon'
   "status":            "ok" | "error" | "rate_limited" | "not_found",
   "data_completeness": "complete" | "partial" | "metadata_only" | "none",
   "data":              { ...capability-specific... } | null,
-  "source":            "finnhub" | "edgar",
+  "source":            "finnhub" | "edgar" | "yahoo",
   "timestamp":         "2026-04-24T18:04:05Z",
   "error_detail":      null | "human-readable string",
   "warnings": [
@@ -128,15 +128,23 @@ Extend in `research_daemon/envelope.py` when a new capability needs it.
 pytest
 ```
 
-All tests hermetic: HTTP mocked via `requests-mock`, no network. 279 tests as of this writing.
+All tests hermetic: HTTP mocked via `requests-mock`, yfinance patched at `yf.Ticker`. 266 tests as of this writing.
 
 ## Known limitations
 
 **Volume is not returned by `fetch-quote`.** Finnhub free-tier `/quote` doesn't include it, and `/stock/candle` is restricted for US equities. Standing warning (`reason: not_available_on_free_tier`) always present. Options when we revisit: upgrade Finnhub, add a secondary source, or accept the gap.
 
+**Institutional holdings use Yahoo/yfinance, not Finnhub.** Finnhub's `/institutional/ownership` endpoint is Enterprise-tier and 403s on free-tier keys. The daemon uses yfinance's `institutional_holders` + `mutualfund_holders` DataFrames instead. Consequences:
+- `cik` is null on every holder (yfinance doesn't expose CIK).
+- `portfolio_percent` (% of the holder's portfolio) is unavailable. `percent_of_shares_held` (% of the float held by this holder) is populated instead — different metric, don't conflate.
+- `num_quarters >= 2` is rejected — yfinance returns only the current snapshot.
+- Per-holder `qoq_pct_change` + derived `shares_change_qoq` come from yfinance's `pctChange` column and give real QoQ signal.
+
 **13F data is stale by design.** Filings are due ~45 days after quarter-end; `as_of_quarter` + `reported_at` + `latest_filed_at` let Abelard weight staleness.
 
-**Top-100 cap on `detect-institutional-changes`.** Holders outside the top-100 in either quarter are invisible to the diff. Acceptable for monitoring; use the deep-read `fetch-institutional-holdings` on a specific ticker if a miss is suspected.
+**`detect-institutional-changes` cannot detect `new_positions` or `closed_positions`.** The Yahoo snapshot doesn't include prior-quarter holders, so a fully-exited holder is invisible and a genuinely-new holder can't be distinguished from "always held, just moved into the top-100". Standing `insufficient_history` warning documents this. `increased_positions` and `reduced_positions` work fine via per-holder pctChange. Persistent snapshot storage would fix this — deliberately not implemented.
+
+**Top-100 cap on `detect-institutional-changes`.** Holders outside the top-100 in yfinance's return are invisible to the diff. Acceptable for monitoring; use the deep-read `fetch-institutional-holdings` on a specific ticker if a miss is suspected.
 
 **No section-specific extraction on `fetch-sec-filing`.** 10-K HTML is too heterogeneous for reliable anchor detection. Use `--offset-chars` + `--max-body-chars` for byte-level pagination; Abelard locates sections within the returned text.
 

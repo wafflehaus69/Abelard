@@ -69,7 +69,7 @@ Every invocation emits one JSON envelope on stdout:
   "status":            "ok" | "error" | "rate_limited" | "not_found",
   "data_completeness": "complete" | "partial" | "metadata_only" | "none",
   "data":              { ... } | null,
-  "source":            "finnhub" | "edgar",
+  "source":            "finnhub" | "edgar" | "yahoo",
   "timestamp":         "2026-04-24T18:04:05Z",
   "error_detail":      null | "string",
   "warnings": [
@@ -115,14 +115,19 @@ Returns an array of trades with `{insider_name, insider_role, transaction_code, 
 ### Institutional holdings (13F)
 
 ```bash
-# Flat shape — single most-recent quarter, top-10 holders.
+# Merged institutional + mutual-fund top holders, current snapshot.
 research-daemon fetch-institutional-holdings AAPL --top-n 10
-
-# List shape — last 2 quarters for QoQ comparison. Quarters ordered most-recent-first.
-research-daemon fetch-institutional-holdings AAPL --top-n 10 --num-quarters 2
 ```
 
-13F filings are due ~45 days after quarter-end; `as_of_quarter`, `reported_at`, and `latest_filed_at` let you weight staleness. Small-cap tickers often return `holders_returned: 0` — that's `data_completeness: "complete"`, not a failure.
+Data source is **Yahoo Finance (via yfinance)** — Finnhub's 13F endpoint is Enterprise-tier and 403s on free-tier keys. Consequences:
+
+- Every holder has `holder_type: "institution" | "mutual_fund"` — Yahoo separates them.
+- `cik` is always `null` (Yahoo doesn't expose CIK).
+- `portfolio_percent` is always `null`. Use `percent_of_shares_held` (fraction of the stock's float this holder owns) — different metric than what Finnhub's field meant.
+- `qoq_pct_change` and `shares_change_qoq` come from Yahoo's `pctChange` column — real per-holder QoQ signal.
+- `--num-quarters` must be 1 — Yahoo returns only the current snapshot.
+- 13F filings are due ~45 days after quarter-end; `as_of_quarter` and `reported_at` let you weight staleness.
+- Small-cap tickers often return `holders_returned: 0` — that's `data_completeness: "complete"`, not a failure.
 
 ### SEC filings
 
@@ -151,9 +156,11 @@ Use these for regular portfolio-watching sweeps. They're thin filters on top of 
 research-daemon detect-institutional-changes AAPL MSFT GOOG NVDA --min-change-pct 10
 ```
 
-For each ticker, classifies holders into `new_positions`, `closed_positions`, `increased_positions`, `reduced_positions` based on the two most recent quarters. Changes are computed from the two snapshots (not from Finnhub's per-holder `change` field) for self-consistency. Only positions changing by ≥ `--min-change-pct` are included in increased/reduced.
+For each ticker, classifies holders into `increased_positions` and `reduced_positions` based on per-holder `pctChange` from the current Yahoo snapshot. Only positions changing by ≥ `--min-change-pct` are included.
 
-**Top-100 cap:** holders outside the top-100 in either quarter are invisible. Acceptable tradeoff for monitoring — if you suspect a miss, call `fetch-institutional-holdings` on that specific ticker.
+**`new_positions` and `closed_positions` are ALWAYS EMPTY** on this source — Yahoo returns only the current top-holder snapshot, so a fully-exited holder is invisible and a genuinely-new holder can't be distinguished from "always held, just moved into top-N". Envelope carries a standing `insufficient_history` warning; `data.source_supports.new_and_closed_detection: false` makes it programmatically checkable. Empty new/closed buckets do NOT mean "no new/closed activity" — they mean the source doesn't reveal it.
+
+**Top-100 cap:** holders outside the top-100 in Yahoo's return are invisible. Acceptable tradeoff for monitoring — if you suspect a miss, call `fetch-institutional-holdings` on that specific ticker.
 
 ### Material insider buys
 
@@ -214,8 +221,8 @@ research-daemon fetch-sec-filing NVDA 10-K --limit 1 --include-body --max-body-c
 # 2. Recent 8-Ks for material events.
 research-daemon fetch-sec-filing NVDA 8-K --limit 10
 
-# 3. Full 13F roll across 3 quarters for trend.
-research-daemon fetch-institutional-holdings NVDA --top-n 25 --num-quarters 3
+# 3. Current top holders + per-holder QoQ deltas.
+research-daemon fetch-institutional-holdings NVDA --top-n 25
 
 # 4. Insider activity over the last quarter.
 research-daemon fetch-insider-transactions NVDA --days 90

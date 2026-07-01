@@ -191,7 +191,11 @@ def main(argv: list[str] | None = None) -> int:
 def _source_for_command(cmd: str) -> str:
     # Every subcommand currently resolves to exactly one upstream. Update
     # this mapping if a subcommand gains a multi-source shape.
-    return "edgar" if cmd == "fetch-sec-filing" else "finnhub"
+    if cmd == "fetch-sec-filing":
+        return "edgar"
+    if cmd in ("fetch-institutional-holdings", "detect-institutional-changes"):
+        return "yahoo"
+    return "finnhub"
 
 
 def _emit_envelope(envelope: dict[str, Any]) -> None:

@@ -1,34 +1,22 @@
-"""detect_institutional_changes — QoQ position diff across a ticker list.
+"""detect_institutional_changes — QoQ position deltas across a ticker list.
 
-Thin wrapper on `fetch_institutional_holdings(num_quarters=2)`. For each
-ticker, pulls the two most recent quarters' top-100 holders, set-diffs
-them on (name, cik), and classifies holder activity into four buckets:
+Thin wrapper on `fetch_institutional_holdings(num_quarters=1)`. For each
+ticker, iterates the top-100 holders and uses per-holder `qoq_pct_change`
+(derived from yfinance's `pctChange` column) to classify positions as
+`increased_positions` or `reduced_positions` above `min_change_pct`.
 
-  new_positions       — holder present in current quarter, absent in prior
-  closed_positions    — holder present in prior quarter, absent in current
-  increased_positions — holder in both; shares grew by >= min_change_pct
-  reduced_positions   — holder in both; shares shrank by >= min_change_pct
+**`new_positions` and `closed_positions` are ALWAYS EMPTY** on this data
+source. yfinance returns a snapshot of the current top holders only; a
+fully-exited holder is invisible, and a genuinely-new holder can't be
+distinguished from "always held, just moved into top-N". The envelope
+carries a standing `insufficient_history` warning so Abelard doesn't
+misread the empty buckets as "no new or closed activity". If real
+new/closed detection is needed, the daemon would need to persist snapshot
+history — deliberately not done for now.
 
-Changes are computed from the two snapshots we hold, NOT from Finnhub's
-per-holder `shares_change_qoq` field. This keeps the classification self-
-consistent with the data we return.
-
-Top-100 cap caveat: any holder outside top-100 in either quarter is
-invisible to this function. A holder who was position 105 in Q3 and
-position 80 in Q4 would be classified as `new` (not in our Q3 slice),
-even though they actually just moved up. Acceptable tradeoff given the
-monitoring role — the long tail is noise anyway. Abelard can call the
-deep-read `fetch_institutional_holdings` for a specific ticker if he
-suspects a miss.
-
-Partial-failure handling: per-ticker `error: {reason, detail} | null`.
-When any ticker fails, envelope `data_completeness="partial"` plus a
-single aggregate `upstream_error` warning. Succeeded tickers still return
-their full bucket data alongside the failures.
-
-Empty-result semantics: a ticker with zero changes above threshold is
-NOT an error — it's a clean `error: null` entry with all four buckets
-empty. Small-caps legitimately have no 13F activity most quarters.
+Partial-failure handling: per-ticker `error: {reason, detail} | None`.
+When any ticker fails, envelope carries an aggregate `upstream_error`
+warning alongside the standing `insufficient_history` warning.
 """
 
 from __future__ import annotations
@@ -46,7 +34,7 @@ MIN_TICKERS = 1
 MAX_TICKERS = 100
 MIN_CHANGE_PCT = 1
 MAX_CHANGE_PCT = 1000
-_MONITORING_TOP_N = 100  # widest net within fetch_institutional_holdings' cap
+_MONITORING_TOP_N = 100
 
 _log = logging.getLogger("research_daemon.detect_institutional_changes")
 
@@ -58,34 +46,34 @@ def detect_institutional_changes(
     config: Config | None = None,
     client: HttpClient | None = None,
 ) -> dict[str, Any]:
-    """Scan tickers for QoQ position changes above `min_change_pct`."""
+    """Scan tickers for per-holder QoQ position changes above `min_change_pct`."""
     if not isinstance(tickers, list):
         return build_error(
-            status="error", source="finnhub", detail="tickers must be a list of strings"
+            status="error", source="yahoo", detail="tickers must be a list of strings"
         )
     if len(tickers) < MIN_TICKERS or len(tickers) > MAX_TICKERS:
         return build_error(
             status="error",
-            source="finnhub",
+            source="yahoo",
             detail=f"tickers count must be between {MIN_TICKERS} and {MAX_TICKERS}",
         )
     for t in tickers:
         if not isinstance(t, str) or not t.strip():
             return build_error(
                 status="error",
-                source="finnhub",
+                source="yahoo",
                 detail="every ticker must be a non-empty string",
             )
     if not isinstance(min_change_pct, int) or isinstance(min_change_pct, bool):
         return build_error(
             status="error",
-            source="finnhub",
+            source="yahoo",
             detail="min_change_pct must be an integer",
         )
     if min_change_pct < MIN_CHANGE_PCT or min_change_pct > MAX_CHANGE_PCT:
         return build_error(
             status="error",
-            source="finnhub",
+            source="yahoo",
             detail=(
                 f"min_change_pct must be between {MIN_CHANGE_PCT} and {MAX_CHANGE_PCT}"
             ),
@@ -94,11 +82,13 @@ def detect_institutional_changes(
     cfg = config or Config.from_env()
     http = client or HttpClient(user_agent=cfg.edgar_user_agent)
 
+    threshold_fraction = min_change_pct / 100.0
+
     per_ticker: list[dict[str, Any]] = []
     failed = 0
     for raw_ticker in tickers:
         symbol = raw_ticker.strip().upper()
-        result = _analyze_ticker(symbol, min_change_pct, cfg, http)
+        result = _analyze_ticker(symbol, threshold_fraction, cfg, http)
         per_ticker.append(result)
         if result["error"] is not None:
             failed += 1
@@ -108,11 +98,29 @@ def detect_institutional_changes(
         "tickers_analyzed": len(tickers) - failed,
         "tickers_failed": failed,
         "min_change_pct": min_change_pct,
+        "source_supports": {
+            "new_and_closed_detection": False,
+            "increased_and_reduced_detection": True,
+        },
         "per_ticker": per_ticker,
     }
 
-    warnings: list[dict[str, Any]] = []
-    completeness = "complete"
+    # Standing warning: inherent to yfinance, applies to every response.
+    # Envelope is always at least partial for this capability.
+    warnings: list[dict[str, Any]] = [
+        make_warning(
+            field="per_ticker.new_positions,per_ticker.closed_positions",
+            reason="insufficient_history",
+            source="yahoo",
+            suggestion=(
+                "yfinance returns only current-snapshot top holders. new/closed "
+                "position detection requires persistent snapshot history — not "
+                "provided by this source. increased/reduced buckets are populated."
+            ),
+        ),
+    ]
+
+    completeness = "partial"
     if failed > 0:
         _log.warning(
             "detect_institutional_changes: %d of %d tickers failed", failed, len(tickers)
@@ -121,18 +129,17 @@ def detect_institutional_changes(
             make_warning(
                 field="per_ticker",
                 reason="upstream_error",
-                source="finnhub",
+                source="yahoo",
                 suggestion=(
                     f"{failed} of {len(tickers)} ticker(s) failed; "
                     "see each per_ticker.error for reason"
                 ),
             )
         )
-        completeness = "partial"
 
     return build_ok(
         data,
-        source="finnhub",
+        source="yahoo",
         data_completeness=completeness,  # type: ignore[arg-type]
         warnings=warnings,
     )
@@ -140,14 +147,14 @@ def detect_institutional_changes(
 
 def _analyze_ticker(
     symbol: str,
-    min_change_pct: int,
+    threshold_fraction: float,
     cfg: Config,
     http: HttpClient,
 ) -> dict[str, Any]:
     env = fetch_institutional_holdings(
         symbol,
         top_n=_MONITORING_TOP_N,
-        num_quarters=2,
+        num_quarters=1,
         config=cfg,
         client=http,
     )
@@ -161,70 +168,29 @@ def _analyze_ticker(
             },
         )
 
-    quarters = env["data"].get("quarters", [])
-    if len(quarters) < 2:
-        return _empty_ticker_result(
-            symbol=symbol,
-            current_quarter=(quarters[0]["as_of_quarter"] if quarters else None),
-            error={
-                "reason": "insufficient_history",
-                "detail": (
-                    f"{symbol}: prior quarter unavailable "
-                    f"(got {len(quarters)} of 2 quarters)"
-                ),
-            },
-        )
-
-    current, prior = quarters[0], quarters[1]
-
-    current_by_key = {_holder_key(h): h for h in current["holders"]}
-    prior_by_key = {_holder_key(h): h for h in prior["holders"]}
-
-    new_keys = current_by_key.keys() - prior_by_key.keys()
-    closed_keys = prior_by_key.keys() - current_by_key.keys()
-    common_keys = current_by_key.keys() & prior_by_key.keys()
-
-    new_positions = [
-        {
-            "name": current_by_key[k]["name"],
-            "cik": current_by_key[k]["cik"],
-            "shares": current_by_key[k]["shares"],
-            "portfolio_percent": current_by_key[k]["portfolio_percent"],
-        }
-        for k in new_keys
-    ]
-    new_positions.sort(key=lambda e: e["shares"], reverse=True)
-
-    closed_positions = [
-        {
-            "name": prior_by_key[k]["name"],
-            "cik": prior_by_key[k]["cik"],
-            "prior_shares": prior_by_key[k]["shares"],
-        }
-        for k in closed_keys
-    ]
-    closed_positions.sort(key=lambda e: e["prior_shares"], reverse=True)
+    d = env["data"]
+    current_quarter = d.get("as_of_quarter")
+    holders = d.get("holders") or []
 
     increased_positions: list[dict[str, Any]] = []
     reduced_positions: list[dict[str, Any]] = []
-    for k in common_keys:
-        p = prior_by_key[k]
-        c = current_by_key[k]
-        if p["shares"] <= 0:
-            # Can't compute pct change against a non-positive base. Data oddity.
+
+    for h in holders:
+        pct = h.get("qoq_pct_change")
+        if pct is None:
+            continue  # no delta signal for this holder
+        if abs(pct) < threshold_fraction:
             continue
-        delta = c["shares"] - p["shares"]
-        change_pct = (delta / p["shares"]) * 100
-        if abs(change_pct) < min_change_pct:
-            continue
+
         entry = {
-            "name": c["name"],
-            "cik": c["cik"],
-            "prior_shares": p["shares"],
-            "current_shares": c["shares"],
-            "change_pct": round(change_pct, 2),
+            "name": h["name"],
+            "cik": h["cik"],
+            "holder_type": h["holder_type"],
+            "current_shares": h["shares"],
+            "shares_change_qoq": h["shares_change_qoq"],
+            "change_pct": round(pct * 100, 2),
         }
-        if delta > 0:
+        if pct > 0:
             increased_positions.append(entry)
         else:
             reduced_positions.append(entry)
@@ -234,19 +200,14 @@ def _analyze_ticker(
 
     return {
         "ticker": symbol,
-        "current_quarter": current["as_of_quarter"],
-        "prior_quarter": prior["as_of_quarter"],
-        "new_positions": new_positions,
-        "closed_positions": closed_positions,
+        "current_quarter": current_quarter,
+        "prior_quarter": None,  # yfinance doesn't expose the prior quarter as a distinct object
+        "new_positions": [],
+        "closed_positions": [],
         "increased_positions": increased_positions,
         "reduced_positions": reduced_positions,
         "error": None,
     }
-
-
-def _holder_key(h: dict[str, Any]) -> tuple[str, str | None]:
-    """Dedup key for a holder. Prefer CIK when present (name variants exist)."""
-    return (h["name"], h["cik"])
 
 
 def _empty_ticker_result(

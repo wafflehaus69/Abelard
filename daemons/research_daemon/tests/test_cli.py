@@ -12,9 +12,7 @@ import pytest
 import requests_mock
 
 from research_daemon.cli import build_parser, main
-from research_daemon.fetch_institutional_holdings import (
-    FINNHUB_BASE as HOLDINGS_BASE,
-)
+from research_daemon.fetch_insider_transactions import FINNHUB_BASE as INSIDER_BASE
 from research_daemon.fetch_news import FINNHUB_BASE as NEWS_BASE
 from research_daemon.fetch_quote import FINNHUB_BASE as QUOTE_BASE
 from research_daemon.fetch_sec_filing import EDGAR_BROWSE_URL
@@ -23,7 +21,7 @@ from research_daemon.fetch_sec_filing import EDGAR_BROWSE_URL
 QUOTE_URL = f"{QUOTE_BASE}/quote"
 METRIC_URL = f"{QUOTE_BASE}/stock/metric"
 NEWS_URL = f"{NEWS_BASE}/company-news"
-OWNERSHIP_URL = f"{HOLDINGS_BASE}/institutional/ownership"
+INSIDER_URL = f"{INSIDER_BASE}/stock/insider-transactions"
 
 
 _QUOTE_OK = {
@@ -207,20 +205,28 @@ def test_fetch_news_passes_days_param(env, capsys):
     assert envelope["data"]["window_days"] == 14
 
 
-def test_fetch_institutional_holdings_multi_quarter(env, capsys):
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json={"symbol": "AAPL", "cusip": "", "ownership": []})
-        main(["fetch-institutional-holdings", "AAPL", "--num-quarters", "2"])
+def test_fetch_institutional_holdings_num_quarters_two_rejected(env, capsys):
+    """yfinance backend doesn't expose multi-quarter history; --num-quarters 2 must error."""
+    exit_code = main(["fetch-institutional-holdings", "AAPL", "--num-quarters", "2"])
     envelope = _read_stdout_envelope(capsys)
-    assert envelope["data"]["num_quarters_requested"] == 2
-    assert "quarters" in envelope["data"]
+    assert envelope["status"] == "error"
+    assert "num_quarters" in envelope["error_detail"]
+    assert exit_code == 1
 
 
-def test_detect_institutional_changes_accepts_multiple_tickers(env, capsys):
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json={"symbol": "x", "cusip": "", "ownership": []})
-        main(["detect-institutional-changes", "AAPL", "MSFT", "GOOG",
-              "--min-change-pct", "20"])
+def test_detect_institutional_changes_accepts_multiple_tickers(env, capsys, monkeypatch):
+    from unittest.mock import MagicMock
+    from research_daemon import fetch_institutional_holdings as fih_module
+
+    def router(_symbol):
+        inst = MagicMock()
+        inst.institutional_holders = None
+        inst.mutualfund_holders = None
+        return inst
+    monkeypatch.setattr(fih_module.yf, "Ticker", router)
+
+    main(["detect-institutional-changes", "AAPL", "MSFT", "GOOG",
+          "--min-change-pct", "20"])
     envelope = _read_stdout_envelope(capsys)
     assert envelope["data"]["ticker_count"] == 3
     assert envelope["data"]["min_change_pct"] == 20
@@ -229,7 +235,7 @@ def test_detect_institutional_changes_accepts_multiple_tickers(env, capsys):
 def test_detect_insider_activity_no_first_time_flag(env, capsys):
     """`--no-first-time-detection` via BooleanOptionalAction."""
     with requests_mock.Mocker() as m:
-        m.get(f"{HOLDINGS_BASE}/stock/insider-transactions",
+        m.get(f"{INSIDER_BASE}/stock/insider-transactions",
               json={"symbol": "AAPL", "data": []})
         main(["detect-insider-activity", "AAPL", "--no-first-time-detection"])
     envelope = _read_stdout_envelope(capsys)

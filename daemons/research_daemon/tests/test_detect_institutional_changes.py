@@ -1,181 +1,216 @@
-"""detect_institutional_changes behaviour — set-diff, thresholds, partial failures."""
+"""detect_institutional_changes behaviour — yfinance-backed QoQ deltas."""
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime
+from unittest.mock import MagicMock
 
 import pytest
-import requests_mock
 
 from research_daemon import fetch_institutional_holdings as fih_module
 from research_daemon.config import Config
 from research_daemon.detect_institutional_changes import detect_institutional_changes
-from research_daemon.fetch_institutional_holdings import FINNHUB_BASE
 from research_daemon.http_client import HttpClient
 
 
-OWNERSHIP_URL = f"{FINNHUB_BASE}/institutional/ownership"
-_FIXED_TODAY = date(2026, 4, 24)
-
-
-@pytest.fixture(autouse=True)
-def fix_today(monkeypatch):
-    monkeypatch.setattr(fih_module, "_today_utc", lambda: _FIXED_TODAY)
-
-
-def _holder(
+def _row(
     *,
-    name="Vanguard Group Inc",
-    cik="0000102909",
-    share=1_000_000,
-    change=0,
-    portfolio_percent=1.0,
-    report_date="2025-12-31",
-    filing_date="2026-02-14",
+    holder="Vanguard Group Inc",
+    date_reported="2026-03-31",
+    shares=1_000_000,
+    pct_held=0.05,
+    pct_change=0.02,
+    value=200_000_000,
 ):
     return {
-        "name": name, "cik": cik, "share": share, "change": change,
-        "filingDate": filing_date, "reportDate": report_date,
-        "portfolioPercent": portfolio_percent,
+        "Date Reported": datetime.fromisoformat(date_reported),
+        "Holder": holder,
+        "pctHeld": pct_held,
+        "Shares": shares,
+        "Value": value,
+        "pctChange": pct_change,
     }
 
 
-def _resp(holders, symbol="AAPL"):
-    return {"symbol": symbol, "cusip": "", "ownership": holders}
+class _TickerRouter:
+    """Route yf.Ticker(symbol) to per-symbol (inst, mf) payloads."""
+    def __init__(self, payloads: dict[str, tuple[list | None, list | None]]):
+        self.payloads = payloads
+
+    def __call__(self, symbol: str):
+        inst, mf = self.payloads.get(symbol.upper(), (None, None))
+        instance = MagicMock()
+        instance.institutional_holders = inst
+        instance.mutualfund_holders = mf
+        return instance
 
 
-# Matcher helper that routes all ownership calls to one payload keyed by
-# the `symbol` query param — simulates multi-ticker behaviour.
-def _ticker_response_map(payloads: dict[str, dict]):
-    def matcher(request, context):
-        sym = request.qs.get("symbol", [""])[0].upper()
-        if sym in payloads:
-            return payloads[sym]
-        context.status_code = 404
-        return {}
-    return matcher
+@pytest.fixture
+def route_tickers(monkeypatch):
+    def _apply(payloads):
+        router = _TickerRouter(payloads)
+        monkeypatch.setattr(fih_module.yf, "Ticker", router)
+    return _apply
 
 
 # ---------- happy path ----------
 
 
-def test_single_ticker_with_mix_of_change_types(cfg: Config, client: HttpClient):
-    # Q4 holders: Vanguard (up 20%), BlackRock (flat), Fidelity (NEW), no State Street (CLOSED).
-    # Q3 holders: Vanguard (smaller), BlackRock (same), State Street (will close).
-    q4 = [
-        _holder(name="Vanguard", cik="V", share=1_200_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="BlackRock", cik="B", share=1_000_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="Fidelity", cik="F", share=500_000, report_date="2025-12-31", filing_date="2026-02-12"),
-    ]
-    q3 = [
-        _holder(name="Vanguard", cik="V", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-        _holder(name="BlackRock", cik="B", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-        _holder(name="State Street", cik="S", share=800_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ]
-
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp(q4 + q3))
-        env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
+def test_increased_and_reduced_buckets_populated(cfg: Config, client: HttpClient, route_tickers):
+    route_tickers({
+        "AAPL": (
+            [
+                _row(holder="BigBuyer", shares=1_200_000, pct_change=0.20),   # +20%
+                _row(holder="SmallBuyer", shares=1_050_000, pct_change=0.05),  # +5%, below default
+                _row(holder="BigSeller", shares=800_000, pct_change=-0.20),   # -20%
+                _row(holder="Steady", shares=1_000_000, pct_change=0.001),    # ~0%
+            ],
+            None,
+        ),
+    })
+    env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
 
     assert env["status"] == "ok"
-    assert env["data_completeness"] == "complete"
-    assert env["warnings"] == []
-
-    data = env["data"]
-    assert data["ticker_count"] == 1
-    assert data["tickers_analyzed"] == 1
-    assert data["tickers_failed"] == 0
-
-    pt = data["per_ticker"][0]
-    assert pt["ticker"] == "AAPL"
-    assert pt["current_quarter"] == "2025Q4"
-    assert pt["prior_quarter"] == "2025Q3"
+    pt = env["data"]["per_ticker"][0]
     assert pt["error"] is None
+    assert pt["current_quarter"] == "2026Q1"
+    assert pt["prior_quarter"] is None
 
-    # New position: Fidelity
-    assert len(pt["new_positions"]) == 1
-    assert pt["new_positions"][0]["name"] == "Fidelity"
-
-    # Closed: State Street
-    assert len(pt["closed_positions"]) == 1
-    assert pt["closed_positions"][0]["name"] == "State Street"
-    assert pt["closed_positions"][0]["prior_shares"] == 800_000
-
-    # Increased: Vanguard (+20%)
-    assert len(pt["increased_positions"]) == 1
-    assert pt["increased_positions"][0]["name"] == "Vanguard"
+    inc_names = [e["name"] for e in pt["increased_positions"]]
+    red_names = [e["name"] for e in pt["reduced_positions"]]
+    assert inc_names == ["BigBuyer"]
+    assert red_names == ["BigSeller"]
     assert pt["increased_positions"][0]["change_pct"] == 20.0
-    assert pt["increased_positions"][0]["prior_shares"] == 1_000_000
-    assert pt["increased_positions"][0]["current_shares"] == 1_200_000
-
-    # BlackRock unchanged → not in any bucket.
-    assert all("BlackRock" not in str(e) for e in pt["increased_positions"] + pt["reduced_positions"])
-    assert len(pt["reduced_positions"]) == 0
+    assert pt["reduced_positions"][0]["change_pct"] == -20.0
 
 
-def test_min_change_pct_filter(cfg: Config, client: HttpClient):
-    # Vanguard: +11% — just above default 10. Passes at 10, fails at 15.
-    q4 = [
-        _holder(name="Vanguard", cik="V", share=1_110_000, report_date="2025-12-31", filing_date="2026-02-10"),
-    ]
-    q3 = [
-        _holder(name="Vanguard", cik="V", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ]
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp(q4 + q3))
-        env10 = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp(q4 + q3))
-        env15 = detect_institutional_changes(["AAPL"], min_change_pct=15, config=cfg, client=client)
-
-    assert len(env10["data"]["per_ticker"][0]["increased_positions"]) == 1
-    assert len(env15["data"]["per_ticker"][0]["increased_positions"]) == 0
-
-
-def test_reduced_position_captured(cfg: Config, client: HttpClient):
-    q4 = [_holder(name="Seller", cik="S", share=600_000, report_date="2025-12-31", filing_date="2026-02-10")]
-    q3 = [_holder(name="Seller", cik="S", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10")]
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp(q4 + q3))
-        env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
+def test_new_and_closed_always_empty(cfg: Config, client: HttpClient, route_tickers):
+    """No matter what the data looks like, new/closed can't be derived from yfinance."""
+    route_tickers({
+        "AAPL": (
+            [_row(holder="Anyone", shares=500_000, pct_change=0.50)],
+            None,
+        ),
+    })
+    env = detect_institutional_changes(["AAPL"], config=cfg, client=client)
     pt = env["data"]["per_ticker"][0]
-    assert len(pt["reduced_positions"]) == 1
-    assert pt["reduced_positions"][0]["change_pct"] == -40.0
-
-
-def test_no_changes_above_threshold_returns_empty_buckets_without_error(
-    cfg: Config, client: HttpClient
-):
-    q4 = [_holder(name="Steady", cik="S", share=1_050_000, report_date="2025-12-31", filing_date="2026-02-10")]
-    q3 = [_holder(name="Steady", cik="S", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10")]
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp(q4 + q3))
-        env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
-    pt = env["data"]["per_ticker"][0]
-    assert pt["error"] is None
     assert pt["new_positions"] == []
     assert pt["closed_positions"] == []
+
+
+def test_standing_insufficient_history_warning_always_present(
+    cfg: Config, client: HttpClient, route_tickers
+):
+    route_tickers({
+        "AAPL": ([_row(pct_change=0.30)], None),
+    })
+    env = detect_institutional_changes(["AAPL"], config=cfg, client=client)
+    insuff = [w for w in env["warnings"] if w["reason"] == "insufficient_history"]
+    assert len(insuff) == 1
+    assert "new_positions" in insuff[0]["field"]
+    assert "closed_positions" in insuff[0]["field"]
+    assert env["data"]["source_supports"]["new_and_closed_detection"] is False
+    assert env["data"]["source_supports"]["increased_and_reduced_detection"] is True
+
+
+def test_completeness_is_partial_by_design(cfg: Config, client: HttpClient, route_tickers):
+    """Even in a fully-successful call, completeness is partial because the
+    new/closed buckets are inherently unfilled by this source."""
+    route_tickers({"AAPL": ([_row(pct_change=0.20)], None)})
+    env = detect_institutional_changes(["AAPL"], config=cfg, client=client)
+    assert env["data_completeness"] == "partial"
+
+
+# ---------- threshold ----------
+
+
+def test_min_change_pct_boundary(cfg: Config, client: HttpClient, route_tickers):
+    route_tickers({
+        "AAPL": (
+            [
+                _row(holder="A", pct_change=0.10),   # exactly 10%; abs >= threshold
+                _row(holder="B", pct_change=0.099),  # 9.9%; below
+            ],
+            None,
+        ),
+    })
+    env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
+    pt = env["data"]["per_ticker"][0]
+    names = [e["name"] for e in pt["increased_positions"]]
+    assert names == ["A"]
+
+
+def test_higher_threshold_filters_more(cfg: Config, client: HttpClient, route_tickers):
+    route_tickers({
+        "AAPL": (
+            [
+                _row(holder="Moderate", pct_change=0.15),
+                _row(holder="Aggressive", pct_change=0.50),
+            ],
+            None,
+        ),
+    })
+    env = detect_institutional_changes(
+        ["AAPL"], min_change_pct=25, config=cfg, client=client,
+    )
+    pt = env["data"]["per_ticker"][0]
+    names = [e["name"] for e in pt["increased_positions"]]
+    assert names == ["Aggressive"]
+
+
+def test_holders_missing_pct_change_are_skipped(cfg: Config, client: HttpClient, route_tickers):
+    row = _row()
+    row.pop("pctChange")
+    route_tickers({"AAPL": ([row], None)})
+    env = detect_institutional_changes(["AAPL"], config=cfg, client=client)
+    pt = env["data"]["per_ticker"][0]
     assert pt["increased_positions"] == []
     assert pt["reduced_positions"] == []
-    assert env["data_completeness"] == "complete"
+
+
+# ---------- sort order ----------
+
+
+def test_increased_sorted_by_change_pct_desc(cfg: Config, client: HttpClient, route_tickers):
+    route_tickers({
+        "AAPL": (
+            [
+                _row(holder="Small", pct_change=0.15),
+                _row(holder="Big",   pct_change=0.50),
+                _row(holder="Med",   pct_change=0.30),
+            ],
+            None,
+        ),
+    })
+    env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
+    names = [e["name"] for e in env["data"]["per_ticker"][0]["increased_positions"]]
+    assert names == ["Big", "Med", "Small"]
+
+
+def test_reduced_sorted_most_negative_first(cfg: Config, client: HttpClient, route_tickers):
+    route_tickers({
+        "AAPL": (
+            [
+                _row(holder="LightCut", pct_change=-0.15),
+                _row(holder="HeavyCut", pct_change=-0.60),
+            ],
+            None,
+        ),
+    })
+    env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
+    names = [e["name"] for e in env["data"]["per_ticker"][0]["reduced_positions"]]
+    assert names == ["HeavyCut", "LightCut"]
 
 
 # ---------- multi-ticker ----------
 
 
-def test_multi_ticker_all_succeed(cfg: Config, client: HttpClient):
-    aapl_payload = _resp([
-        _holder(name="V", cik="V", share=1_200_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="V", cik="V", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ])
-    msft_payload = _resp([
-        _holder(name="B", cik="B", share=2_400_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="B", cik="B", share=2_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ])
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_ticker_response_map({"AAPL": aapl_payload, "MSFT": msft_payload}))
-        env = detect_institutional_changes(["AAPL", "MSFT"], min_change_pct=10, config=cfg, client=client)
-
+def test_multi_ticker_all_succeed(cfg: Config, client: HttpClient, route_tickers):
+    route_tickers({
+        "AAPL": ([_row(holder="A", pct_change=0.20)], None),
+        "MSFT": ([_row(holder="M", pct_change=0.30)], None),
+    })
+    env = detect_institutional_changes(["AAPL", "MSFT"], config=cfg, client=client)
     assert env["data"]["tickers_analyzed"] == 2
     assert env["data"]["tickers_failed"] == 0
     tickers = {pt["ticker"] for pt in env["data"]["per_ticker"]}
@@ -185,19 +220,20 @@ def test_multi_ticker_all_succeed(cfg: Config, client: HttpClient):
         assert len(pt["increased_positions"]) == 1
 
 
-def test_multi_ticker_partial_failure(cfg: Config, client: HttpClient):
-    aapl_payload = _resp([
-        _holder(name="V", cik="V", share=1_200_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="V", cik="V", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ])
-    # BADTKR missing from map → 404
+def test_multi_ticker_partial_failure(cfg: Config, client: HttpClient, monkeypatch):
+    """One ticker's yf.Ticker call raises; the other succeeds."""
+    def router(symbol):
+        if symbol.upper() == "BADTKR":
+            raise ConnectionError("Yahoo blocked")
+        instance = MagicMock()
+        instance.institutional_holders = [_row(holder="G", pct_change=0.20)]
+        instance.mutualfund_holders = None
+        return instance
+    monkeypatch.setattr(fih_module.yf, "Ticker", router)
 
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_ticker_response_map({"AAPL": aapl_payload}))
-        env = detect_institutional_changes(
-            ["AAPL", "BADTKR"], min_change_pct=10, config=cfg, client=client,
-        )
-
+    env = detect_institutional_changes(
+        ["AAPL", "BADTKR"], config=cfg, client=client,
+    )
     assert env["status"] == "ok"
     assert env["data_completeness"] == "partial"
     assert env["data"]["tickers_analyzed"] == 1
@@ -206,100 +242,61 @@ def test_multi_ticker_partial_failure(cfg: Config, client: HttpClient):
     by_ticker = {pt["ticker"]: pt for pt in env["data"]["per_ticker"]}
     assert by_ticker["AAPL"]["error"] is None
     assert by_ticker["BADTKR"]["error"] is not None
-    assert by_ticker["BADTKR"]["error"]["reason"] == "not_found"
-    # Failed ticker still has the shell shape.
-    assert by_ticker["BADTKR"]["new_positions"] == []
-    assert by_ticker["BADTKR"]["current_quarter"] is None
+    assert by_ticker["BADTKR"]["error"]["reason"] == "error"
+    assert "Yahoo blocked" in by_ticker["BADTKR"]["error"]["detail"]
 
-    # Envelope aggregate warning.
-    assert len(env["warnings"]) == 1
-    w = env["warnings"][0]
-    assert w["field"] == "per_ticker"
-    assert w["reason"] == "upstream_error"
-
-
-def test_ticker_with_only_one_quarter_is_insufficient_history(cfg: Config, client: HttpClient):
-    # Only Q4 data present, no Q3 holders.
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp([
-            _holder(report_date="2025-12-31", filing_date="2026-02-10"),
-        ]))
-        env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
-
-    assert env["data_completeness"] == "partial"
-    pt = env["data"]["per_ticker"][0]
-    assert pt["error"]["reason"] == "insufficient_history"
-    assert pt["current_quarter"] == "2025Q4"  # still surfaced when known
-    assert pt["prior_quarter"] is None
-    assert pt["new_positions"] == []
-
-
-def test_ticker_with_zero_holdings_is_insufficient_history(cfg: Config, client: HttpClient):
-    """Small-cap: empty ownership array → insufficient_history, not clean success."""
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp([]))
-        env = detect_institutional_changes(["ARRN"], min_change_pct=10, config=cfg, client=client)
-    pt = env["data"]["per_ticker"][0]
-    assert pt["error"]["reason"] == "insufficient_history"
+    upstream_warnings = [w for w in env["warnings"] if w["reason"] == "upstream_error"]
+    assert len(upstream_warnings) == 1
 
 
 # ---------- schema stability ----------
 
 
-def test_per_ticker_shape_stable_across_success_and_failure(cfg: Config, client: HttpClient):
+def test_per_ticker_shape_stable_across_success_and_failure(
+    cfg: Config, client: HttpClient, monkeypatch
+):
     expected = {
         "ticker", "current_quarter", "prior_quarter",
         "new_positions", "closed_positions",
         "increased_positions", "reduced_positions",
         "error",
     }
-    aapl_payload = _resp([
-        _holder(name="V", cik="V", share=1_200_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="V", cik="V", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ])
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_ticker_response_map({"AAPL": aapl_payload}))
-        env = detect_institutional_changes(["AAPL", "BADTKR"], config=cfg, client=client)
+
+    def router(symbol):
+        if symbol.upper() == "BADTKR":
+            raise ConnectionError("boom")
+        inst = MagicMock()
+        inst.institutional_holders = [_row(pct_change=0.20)]
+        inst.mutualfund_holders = None
+        return inst
+    monkeypatch.setattr(fih_module.yf, "Ticker", router)
+
+    env = detect_institutional_changes(["AAPL", "BADTKR"], config=cfg, client=client)
     for pt in env["data"]["per_ticker"]:
         assert set(pt.keys()) == expected
 
 
-# ---------- sort order ----------
+def test_entry_schema(cfg: Config, client: HttpClient, route_tickers):
+    expected = {"name", "cik", "holder_type", "current_shares",
+                "shares_change_qoq", "change_pct"}
+    route_tickers({"AAPL": ([_row(pct_change=0.20)], None)})
+    env = detect_institutional_changes(["AAPL"], config=cfg, client=client)
+    entry = env["data"]["per_ticker"][0]["increased_positions"][0]
+    assert set(entry.keys()) == expected
 
 
-def test_increased_sorted_by_change_pct_desc(cfg: Config, client: HttpClient):
-    q4 = [
-        _holder(name="Small", cik="S", share=150_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="Big",   cik="B", share=1_200_000, report_date="2025-12-31", filing_date="2026-02-10"),
-    ]
-    q3 = [
-        _holder(name="Small", cik="S", share=100_000, report_date="2025-09-30", filing_date="2025-11-10"),
-        _holder(name="Big",   cik="B", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ]
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp(q4 + q3))
-        env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
-    # Small grew 50%, Big grew 20%. Small should come first.
+# ---------- ticker with zero activity ----------
+
+
+def test_ticker_with_no_holders_is_clean_success(
+    cfg: Config, client: HttpClient, route_tickers
+):
+    route_tickers({"ARRN": (None, None)})
+    env = detect_institutional_changes(["ARRN"], config=cfg, client=client)
     pt = env["data"]["per_ticker"][0]
-    names = [e["name"] for e in pt["increased_positions"]]
-    assert names == ["Small", "Big"]
-
-
-def test_reduced_sorted_most_negative_first(cfg: Config, client: HttpClient):
-    q4 = [
-        _holder(name="LightCut", cik="L", share=850_000, report_date="2025-12-31", filing_date="2026-02-10"),
-        _holder(name="HeavyCut", cik="H", share=200_000, report_date="2025-12-31", filing_date="2026-02-10"),
-    ]
-    q3 = [
-        _holder(name="LightCut", cik="L", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-        _holder(name="HeavyCut", cik="H", share=1_000_000, report_date="2025-09-30", filing_date="2025-11-10"),
-    ]
-    with requests_mock.Mocker() as m:
-        m.get(OWNERSHIP_URL, json=_resp(q4 + q3))
-        env = detect_institutional_changes(["AAPL"], min_change_pct=10, config=cfg, client=client)
-    pt = env["data"]["per_ticker"][0]
-    names = [e["name"] for e in pt["reduced_positions"]]
-    assert names == ["HeavyCut", "LightCut"]  # -80% before -15%
+    assert pt["error"] is None
+    assert pt["increased_positions"] == []
+    assert pt["reduced_positions"] == []
 
 
 # ---------- input validation ----------
