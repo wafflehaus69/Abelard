@@ -38,25 +38,37 @@ the actual wire-up to Abelard happen on the Mac mini after migration.
 
 ## Setup
 
+The daemon runs WSL-native. Source lives in the Abelard monorepo on the
+Windows-mounted drive; venv and `.env` live on ext4 for speed and real
+POSIX permissions.
+
 ```bash
-cd C:\Users\mdiba\Code\OpenClaw\research_daemon
+# Source (in the monorepo, no move needed):
+SRC=/mnt/c/Users/mdiba/Code/Abelard/daemons/research_daemon
 
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS / Linux
+# 1. Native venv on ext4 (faster imports than /mnt/c-hosted venv).
+python3.12 -m venv ~/.venvs/research_daemon
+~/.venvs/research_daemon/bin/pip install -e "$SRC[dev]"
 
-pip install -e ".[dev]"
-
-copy .env.example .env          # Windows
-# cp .env.example .env          # macOS / Linux
-# Fill in FINNHUB_API_KEY and EDGAR_USER_AGENT, then export into the shell.
+# 2. Credentials on ext4 (mode 600, off the NTFS mount).
+mkdir -p ~/.openclaw/research_daemon
+cp "$SRC/.env.example" ~/.openclaw/research_daemon/.env
+chmod 600 ~/.openclaw/research_daemon/.env
+# Edit ~/.openclaw/research_daemon/.env — fill FINNHUB_API_KEY and EDGAR_USER_AGENT.
 ```
 
 Verify:
 
 ```bash
-research-daemon --help
-research-daemon fetch-quote AAPL
+set -a; source ~/.openclaw/research_daemon/.env; set +a
+~/.venvs/research_daemon/bin/research-daemon --help
+~/.venvs/research_daemon/bin/research-daemon fetch-quote AAPL
+```
+
+For convenience, add a shell alias:
+
+```bash
+alias research-daemon='~/.venvs/research_daemon/bin/research-daemon'
 ```
 
 ## Environment variables
