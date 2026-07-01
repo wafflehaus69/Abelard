@@ -130,6 +130,25 @@ def test_multiple_entries(cfg: Config, client: HttpClient):
     assert dates == ["2025-10-31T00:00:00Z", "2024-11-01T00:00:00Z"]
 
 
+def test_limit_slices_when_edgar_returns_more(cfg: Config, client: HttpClient):
+    """EDGAR's browse-edgar endpoint often ignores the count param and
+    returns its own page size. `limit` must still be a real contract —
+    observed live against AAPL/10-K, where count=2 returned 10 entries."""
+    entries = [
+        _atom_entry(
+            accession=f"OVERFLOW-{i:02d}",
+            filing_date=f"2025-{max(12 - i, 1):02d}-01",
+        )
+        for i in range(10)
+    ]
+    with requests_mock.Mocker() as m:
+        m.get(EDGAR_BROWSE_URL, text=_atom(entries))
+        env = fetch_sec_filing("AAPL", "10-K", limit=2, config=cfg, client=client)
+    assert env["data"]["item_count"] == 2
+    accessions = [it["accession_number"] for it in env["data"]["items"]]
+    assert accessions == ["OVERFLOW-00", "OVERFLOW-01"]
+
+
 def test_empty_feed_is_complete_with_zero_items(cfg: Config, client: HttpClient):
     with requests_mock.Mocker() as m:
         m.get(EDGAR_BROWSE_URL, text=_atom([]))

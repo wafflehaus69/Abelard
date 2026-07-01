@@ -156,7 +156,10 @@ def fetch_sec_filing(
                            detail=f"failed to parse EDGAR atom feed: {exc}")
 
     cik = _extract_cik(root)
-    entries = root.findall("atom:entry", ATOM_NS)
+    # EDGAR's browse-edgar endpoint honours `count` inconsistently — it will
+    # frequently return its own default page (often 10 or 40) regardless of
+    # what we ask for. Slice defensively so `limit` is a real contract.
+    entries = root.findall("atom:entry", ATOM_NS)[:limit]
 
     items: list[dict[str, Any]] = []
     dropped = 0
