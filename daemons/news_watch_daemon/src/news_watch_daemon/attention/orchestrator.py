@@ -51,7 +51,7 @@ from ..synthesize.config import SynthesisConfigError, load_synthesis_config
 from ..synthesize.synthesize import SynthesisError, build_anthropic_client
 from .brief_schema import AttentionBrief, AttentionShape
 from .cluster import ClusterHeadline, cluster_for_term
-from .counter import TermCounts, count_terms
+from .counter import TermCounts, count_terms_collapsed
 from .prompt import build_messages_payload
 from .stopwords import StopwordsError, load_stopwords
 from .threshold import CandidateTerm, CrossingTerm, evaluate_threshold, top_candidates
@@ -332,7 +332,7 @@ def run_attention(
     else:
         when = when.astimezone(timezone.utc)
 
-    counts: TermCounts = count_terms(
+    counts: TermCounts = count_terms_collapsed(
         conn,
         now_unix=now_unix,
         stopwords=stopwords,
@@ -661,7 +661,7 @@ def run_attention_cycle(
     # 2. Dry-run short-circuits before any LLM construction.
     if dry_run:
         now_unix_dry = int(__import__("time").time())
-        counts = count_terms(conn, now_unix=now_unix_dry, stopwords=stopwords)
+        counts = count_terms_collapsed(conn, now_unix=now_unix_dry, stopwords=stopwords)
         crossings = evaluate_threshold(counts)
         headlines_in_window = conn.execute(
             "SELECT COUNT(*) FROM headlines WHERE published_at_unix >= ? AND published_at_unix <= ?",

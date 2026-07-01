@@ -164,11 +164,84 @@ def count_terms(
     )
 
 
+def count_terms_collapsed(
+    conn: sqlite3.Connection,
+    *,
+    now_unix: int,
+    stopwords: frozenset[str],
+    window_hours: int = 24,
+) -> TermCounts:
+    """Bigram-collapsed variant of `count_terms` (Order: adjacency map).
+
+    Fetches the same two windows as `count_terms` but routes the raw
+    headlines through `attention.adjacency.build_attention_list`, which
+    counts adjacent bigrams and collapses a promoted pair's two constituent
+    unigrams into the single pair. The returned `TermCounts` is keyed by the
+    COLLAPSED term text ("supreme court" as one key; "birthright citizenship"
+    as one key) rather than fragmented unigrams.
+
+    This is the single seam that makes the whole Pass E surface — the
+    threshold gate, the near-miss table, and convergence — operate on
+    collapsed terms, so a multi-word story crosses ONCE (one attention
+    brief) instead of firing a redundant brief per constituent word.
+
+    `prior_counts` carries the prior-window count for each surviving term
+    (bigram-vs-bigram, unigram-vs-unigram), which is exactly what the gate's
+    prior<3 novelty test consumes. Window math is identical to `count_terms`
+    (window inclusive both ends; prior inclusive lower, exclusive upper).
+    """
+    if not WINDOW_HOURS_MIN <= window_hours <= WINDOW_HOURS_MAX:
+        raise ValueError(
+            f"window_hours must be in [{WINDOW_HOURS_MIN}, {WINDOW_HOURS_MAX}]; "
+            f"got {window_hours}"
+        )
+    window_seconds = window_hours * 3600
+    window_since = now_unix - window_seconds
+    window_until = now_unix
+    prior_since = now_unix - 2 * window_seconds
+    prior_until = window_since
+
+    window_heads = [
+        row[0]
+        for row in conn.execute(
+            "SELECT COALESCE(headline_en, headline) AS headline FROM headlines "
+            "WHERE published_at_unix >= ? AND published_at_unix <= ?",
+            (window_since, window_until),
+        ).fetchall()
+    ]
+    prior_heads = [
+        row[0]
+        for row in conn.execute(
+            "SELECT COALESCE(headline_en, headline) AS headline FROM headlines "
+            "WHERE published_at_unix >= ? AND published_at_unix < ?",
+            (prior_since, prior_until),
+        ).fetchall()
+    ]
+
+    # Local import avoids a module-load cycle risk and keeps counter.py's
+    # foundational surface import-light; adjacency imports nothing from here.
+    from .adjacency import build_attention_list
+
+    terms = build_attention_list(window_heads, prior_heads, stopwords)
+    window_counts = {t.text: t.window_count for t in terms}
+    prior_counts = {t.text: t.prior_count for t in terms}
+
+    return TermCounts(
+        window_counts=window_counts,
+        prior_counts=prior_counts,
+        window_since_unix=window_since,
+        window_until_unix=window_until,
+        prior_since_unix=prior_since,
+        prior_until_unix=prior_until,
+    )
+
+
 __all__ = [
     "TermCounts",
     "WINDOW_HOURS_MAX",
     "WINDOW_HOURS_MIN",
     "WINDOW_SECONDS",
     "count_terms",
+    "count_terms_collapsed",
     "tokenize",
 ]

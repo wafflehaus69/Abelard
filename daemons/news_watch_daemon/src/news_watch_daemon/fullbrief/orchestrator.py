@@ -45,7 +45,7 @@ from typing import Any, Callable
 from ..alert.sink import AlertSink
 from ..attention.brief_schema import AttentionBrief
 from ..attention.cluster import cluster_for_term
-from ..attention.counter import count_terms
+from ..attention.counter import count_terms_collapsed
 from ..attention.orchestrator import run_attention_cycle
 from ..attention.stopwords import StopwordsError, load_stopwords
 from ..config import Config
@@ -658,7 +658,7 @@ def _build_frequency_diagnostic(
         )
 
     try:
-        term_counts = count_terms(
+        term_counts = count_terms_collapsed(
             conn,
             now_unix=now_unix,
             stopwords=stopwords,

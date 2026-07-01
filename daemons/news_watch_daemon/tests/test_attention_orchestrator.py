@@ -118,23 +118,31 @@ _VALID_LLM_RESPONSE = json.dumps({
 
 
 def test_run_attention_no_crossings_returns_candidates(tmp_path):
-    """Zero crossings → empty per_term, top-K candidates surfaced."""
+    """Zero crossings → empty per_term, top-K candidates surfaced.
+
+    Under the adjacency collapse, the adjacent pair 'chemicals incident'
+    recurs 8x and is promoted to a single bigram candidate — the two
+    constituent unigrams are replaced by the pair rather than surfacing
+    as two competing near-misses.
+    """
     conn = _make_conn()
-    # 8 headlines = below the 10 floor but above the 5 candidate floor
+    # 8 headlines = below the 10 floor but above the 5 candidate floor.
+    # 'here' is a stopword (breaks adjacency after 'incident').
     for i in range(8):
-        _insert(conn, hid=f"h{i}", headline=f"news about chemicals incident {i}", ts=NOW - 100 - i)
+        _insert(conn, hid=f"h{i}", headline=f"chemicals incident here {i}", ts=NOW - 100 - i)
 
     result = run_attention(
-        conn=conn, now_unix=NOW, stopwords=frozenset(),
+        conn=conn, now_unix=NOW, stopwords=frozenset({"here"}),
         anthropic_client=None, model="claude-sonnet-4-6", max_tokens=2048,
         archive_root=tmp_path / "archive", sink=None,
     )
     assert result.crossings_evaluated == 0
     assert result.per_term == []
-    # 'chemicals' and 'incident' both appear 8 times — should surface as candidates
+    # The adjacent pair collapses to one bigram candidate; the fragments do not surface.
     cand_terms = {c.term for c in result.candidates}
-    assert "chemicals" in cand_terms
-    assert "incident" in cand_terms
+    assert "chemicals incident" in cand_terms
+    assert "chemicals" not in cand_terms
+    assert "incident" not in cand_terms
 
 
 def test_run_attention_one_crossing_calls_llm_and_archives(tmp_path):

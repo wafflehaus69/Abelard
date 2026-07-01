@@ -251,8 +251,8 @@ class _Patches:
             "news_watch_daemon.fullbrief.orchestrator.load_stopwords",
             return_value=frozenset({"the", "a"}),
         )
-        self.count_terms = patch(
-            "news_watch_daemon.fullbrief.orchestrator.count_terms",
+        self.count_terms_collapsed = patch(
+            "news_watch_daemon.fullbrief.orchestrator.count_terms_collapsed",
             return_value=_make_term_counts(),
         )
         self.read_brief = patch(
@@ -266,7 +266,7 @@ class _Patches:
         self.load_all_themes.__enter__()
         self.build_anthropic_client.__enter__()
         self.load_stopwords.__enter__()
-        self.count_terms.__enter__()
+        self.count_terms_collapsed.__enter__()
         self.read_brief.__enter__()
         return self
 
@@ -276,7 +276,7 @@ class _Patches:
         self.load_all_themes.__exit__(*args)
         self.build_anthropic_client.__exit__(*args)
         self.load_stopwords.__exit__(*args)
-        self.count_terms.__exit__(*args)
+        self.count_terms_collapsed.__exit__(*args)
         self.read_brief.__exit__(*args)
 
 
@@ -1032,7 +1032,7 @@ def test_count_terms_re_run_uses_scrape_attention_window_when_available(tmp_path
             )
         # Verify the count_terms re-run received the SCRAPE'S window_until_unix
         # rather than the orchestrator's own now_unix.
-        count_terms_mock = p.count_terms.target.count_terms
+        count_terms_mock = p.count_terms_collapsed.target.count_terms_collapsed
         # The mock was registered via patch.object/patch at module level;
         # inspect the most recent call's kwargs.
         assert count_terms_mock.called
@@ -1061,7 +1061,7 @@ def test_count_terms_re_run_falls_back_to_now_unix_when_no_scrape(tmp_path):
             cfg=cfg, no_scrape=True,
             now=datetime(2026, 5, 29, 14, 32, 47, tzinfo=timezone.utc),
         )
-        count_terms_mock = p.count_terms.target.count_terms
+        count_terms_mock = p.count_terms_collapsed.target.count_terms_collapsed
         last_call_kwargs = count_terms_mock.call_args.kwargs
         assert last_call_kwargs["now_unix"] == expected_now_unix
 
