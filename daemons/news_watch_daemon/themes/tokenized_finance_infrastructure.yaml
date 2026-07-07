@@ -200,6 +200,18 @@ rss_feeds:
     feed_id: bloomberg_markets
   - url: https://feeds.bloomberg.com/economics/news.rss
     feed_id: bloomberg_economics
+  # Cointelegraph tag feeds — wired 2026-07-07 (source-finishing order), the
+  # dedicated plumbing/policy feedstock that ends this theme's starvation
+  # (previously ~2 tags/cycle on bloomberg + chainlinkbreadcrumbs alone).
+  # Content-verified in the 2026-07-06 recon: both keyless, ~30 items, and
+  # weighted to RWA/settlement/payments-rails and crypto legislation rather
+  # than BTC/ETH price action. The theme's existing price-exclusion keywords
+  # strip the occasional (1-2/30) SOL/BTC price bleed. Tagging is global, so
+  # these also feed any other theme a headline genuinely matches.
+  - url: https://cointelegraph.com/rss/tag/tokenization
+    feed_id: cointelegraph_tokenization
+  - url: https://cointelegraph.com/rss/tag/regulation
+    feed_id: cointelegraph_regulation
 
 telegram_channels:
   - username: CIG_telegram
