@@ -152,7 +152,18 @@ alerts:
     - telegram
     - abelard_queue
 
-rss_feeds: []
+rss_feeds:
+  # Breaking Defense — wired 2026-07-07 (source-finishing PHASE 2), PRE-STAGING for the
+  # future defense_industrial leg (which does not exist yet). Content-verified 2026-07-06:
+  # keyless, ~15 items, procurement / programs / M&A / industry — excludes battlefield
+  # (Defense News was rejected for mixing battlefield). Homed here as the fetch anchor
+  # ONLY: feeds are collected globally (factory.build_sources dedups by feed_id) and
+  # tagging is global, so this is NOT scoped to russia_ukraine_war — its NATO/Ukraine-
+  # defense items tag where genuinely relevant, and the rest accumulates untagged until
+  # the defense_industrial leg is built, at which point it migrates there and db retag
+  # backfills the accumulated corpus.
+  - url: https://breakingdefense.com/feed/
+    feed_id: breaking_defense
 
 telegram_channels:
   - username: CIG_telegram
