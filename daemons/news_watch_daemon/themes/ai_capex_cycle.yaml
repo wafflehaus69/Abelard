@@ -409,5 +409,6 @@ telegram_channels:
     cadence_minutes: 15
   # bloomberg removed 2026-05-27 — confirmed dormant since 2026-03-12
   # via raw Telethon (50 most-recent messages dated 2025-09 to 2026-03).
-  - username: trading
-    cadence_minutes: 30
+  # trading removed 2026-07-06 — forex/gold "VIP signals" spam (XAU pips,
+  # tradingview promo links, enrollment CTAs); 183 msgs (~2.7% of corpus),
+  # no genuine signal, and the source of the "pips" attention-table noise.

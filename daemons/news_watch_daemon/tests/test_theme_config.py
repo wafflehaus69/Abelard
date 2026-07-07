@@ -336,7 +336,7 @@ def test_config_hash_changes_when_rss_feeds_change():
 
 
 def test_seed_theme_registers_core_telegram_channels():
-    """The seed theme always declares the core CIG/trading/Ateobreaking trio.
+    """The seed theme always declares the core CIG/Ateobreaking channels.
 
     Channel-list-agnostic beyond that core set — themes evolve. History:
 
@@ -346,15 +346,17 @@ def test_seed_theme_registers_core_telegram_channels():
         dormant since 2026-03-12 via raw Telethon probe.
       - 2026-05-27 (Task 36): Ateobreaking added — bilingual Russian
         wire channel surfaces international-press framing.
+      - 2026-07-06: trading dropped — forex/gold "VIP signals" spam with
+        no genuine signal (source of the "pips" attention noise).
     """
     theme = load_theme(SEED_THEME)
     usernames = {c.username for c in theme.telegram_channels}
-    core = {"CIG_telegram", "trading", "Ateobreaking"}
+    core = {"CIG_telegram", "Ateobreaking"}
     assert core.issubset(usernames)
-    # Cadences for the core trio are stable
+    assert "trading" not in usernames   # dropped 2026-07-06
+    # Cadences for the core channels are stable
     by_username = {c.username: c for c in theme.telegram_channels}
     assert by_username["CIG_telegram"].cadence_minutes == 15
-    assert by_username["trading"].cadence_minutes == 30
     assert by_username["Ateobreaking"].cadence_minutes == 15
 
 
