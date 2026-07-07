@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
@@ -51,6 +51,7 @@ from .brief import (
 )
 from .cluster import Cluster, ClusterInput, cluster_headlines
 from .config import SynthesisDaemonConfig
+from .magnitude import Magnitude, extract_magnitudes
 from .llm_client import (
     SynthesisLLMError,
     SynthesisResponse,
@@ -159,6 +160,36 @@ def _validate_events(
     return validated
 
 
+def enrich_clusters_with_magnitudes(clusters: list[Cluster]) -> list[Cluster]:
+    """Attach mechanically-extracted stated magnitudes to each cluster.
+
+    Runs the pure `extract_magnitudes` extractor over each member's
+    `headline` — the SAME field `_format_cluster` renders — so the prompt's
+    magnitude line matches the shown headline. Each member is rebuilt with
+    its per-headline magnitudes; the cluster carries the leader-first,
+    (value, unit, kind)-deduped aggregate. No LLM, no I/O, no DB write —
+    ephemeral enrichment recomputed per brief from the stored verbatim text.
+    """
+    enriched: list[Cluster] = []
+    for cluster in clusters:
+        new_members = tuple(
+            replace(member, stated_magnitudes=extract_magnitudes(member.headline))
+            for member in cluster.members
+        )
+        aggregate: list[Magnitude] = []
+        seen: set[tuple[float, str, str]] = set()
+        for member in new_members:  # members are leader-first
+            for mag in member.stated_magnitudes:
+                key = (mag.value, mag.unit, mag.kind)
+                if key not in seen:
+                    seen.add(key)
+                    aggregate.append(mag)
+        enriched.append(
+            replace(cluster, members=new_members, stated_magnitudes=tuple(aggregate))
+        )
+    return enriched
+
+
 def synthesize_brief(
     *,
     client: Any,
@@ -205,6 +236,11 @@ def synthesize_brief(
     theses_text, theses_available, theses_warning = _load_theses_doc(theses_path)
     if theses_warning:
         _LOG.warning(theses_warning)
+
+    # Magnitude-awareness (2026-07-07): enrich clusters with mechanically-
+    # extracted stated magnitudes just before prompt-building, so the prompt
+    # surfaces them explicitly. Scripts-first — no LLM in the extractor.
+    clusters = enrich_clusters_with_magnitudes(clusters)
 
     payload = build_messages_payload(
         trigger=trigger,

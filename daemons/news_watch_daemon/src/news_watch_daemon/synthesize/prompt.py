@@ -134,6 +134,12 @@ should move Mando's portfolio-level reasoning.
              sentiment, generic war-fatigue pieces, price-action
              stories without new fundamentals.
 
+When a cluster shows a "[stated magnitudes: ...]" line, those figures were
+mechanically extracted from the headline text — weigh them against the
+magnitude cutoffs above (e.g. the $1B procurement / 15% tariff anchors). A
+larger stated magnitude in-theme is a reason to score higher, all else equal;
+a small one is not inflated by the mere presence of a number.
+
 Default behavior: score conservatively. False positives at high
 materiality blow up Mando's day with noise alerts. False negatives
 just mean a single missed alert.
@@ -251,6 +257,13 @@ def _format_cluster(cluster: Cluster, index: int) -> str:
                 f"  - {mpub} | {_iso_from_unix(member.published_at_unix)} | "
                 f"{murl} | {member.headline}"
             )
+    # Magnitude-awareness (2026-07-07): one mechanically-extracted line,
+    # only when the cluster carries magnitudes. Render the verbatim source
+    # spans (raw_span), not the normalized floats — the model reads the real
+    # article language. Omitted entirely for magnitude-free clusters.
+    if cluster.stated_magnitudes:
+        spans = ", ".join(m.raw_span for m in cluster.stated_magnitudes)
+        out.append(f"  [stated magnitudes: {spans}]")
     return "\n".join(out)
 
 

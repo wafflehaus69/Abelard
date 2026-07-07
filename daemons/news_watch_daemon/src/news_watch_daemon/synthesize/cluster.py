@@ -41,6 +41,8 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
+from .magnitude import Magnitude
+
 
 DEFAULT_JACCARD_THRESHOLD = 0.4
 DEFAULT_TIME_WINDOW_S: int | None = None  # publisher+time signal OFF by default; see module docstring
@@ -79,6 +81,10 @@ class ClusterInput:
     url: str | None
     publisher: str | None
     published_at_unix: int
+    # Mechanically-extracted stated magnitudes from `headline` (2026-07-07).
+    # Default empty so all existing construction sites stay valid; the
+    # enrichment pass in synthesize.py populates it before prompt-building.
+    stated_magnitudes: tuple[Magnitude, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -93,6 +99,10 @@ class Cluster:
 
     headline_ids: tuple[str, ...]
     members: tuple[ClusterInput, ...]
+    # Cluster-level aggregate of member magnitudes (leader-first, deduped by
+    # (value, unit, kind)). List only — deliberately NO derived size flag /
+    # threshold; the LLM judges magnitude against the calibration anchors.
+    stated_magnitudes: tuple[Magnitude, ...] = ()
 
     @property
     def size(self) -> int:
