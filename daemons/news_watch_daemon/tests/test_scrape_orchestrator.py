@@ -427,7 +427,9 @@ def test_source_health_ok_resets_counter_and_advances_last_success(conn):
         "SELECT * FROM source_health WHERE source = 'finnhub:general'"
     ).fetchone()
     assert row["last_status"] == "ok"
-    assert row["last_successful_fetch_unix"] == FIXED_NOW
+    # Watermark advances to the newest INGESTED item's published_at
+    # (FIXED_NOW - 3600), NOT to `now` (2026-07-07 footgun #1 fix).
+    assert row["last_successful_fetch_unix"] == FIXED_NOW - 3600
     assert row["last_attempt_unix"] == FIXED_NOW
     assert row["consecutive_failure_count"] == 0
 
@@ -443,8 +445,8 @@ def test_source_health_error_increments_counter_preserves_prior_success(conn):
     ).fetchone()
     assert row["last_status"] == "error"
     assert row["consecutive_failure_count"] == 1
-    # Prior success timestamp preserved (advancing only on status=ok).
-    assert row["last_successful_fetch_unix"] == FIXED_NOW
+    # Prior success timestamp preserved (the ingested item's ts, not now).
+    assert row["last_successful_fetch_unix"] == FIXED_NOW - 3600
     assert row["last_attempt_unix"] == FIXED_NOW + 100
 
 
@@ -494,8 +496,68 @@ def test_since_unix_uses_last_successful_when_known(conn):
     run_scrape(conn, [ok], [theme], now_unix=FIXED_NOW)
     again = _fake_source("finnhub:general", items=[])
     run_scrape(conn, [again], [theme], now_unix=FIXED_NOW + 3600)
-    # Second call should use FIXED_NOW (the last_successful_fetch_unix from first run)
-    again.fetch.assert_called_once_with(FIXED_NOW)
+    # Second call uses the watermark = the first run's newest ingested item ts
+    # (FIXED_NOW - 3600), not `now`.
+    again.fetch.assert_called_once_with(FIXED_NOW - 3600)
+
+
+# ---------- watermark advance discipline (footgun #1, 2026-07-07) ----------
+
+
+def test_ok_empty_fetch_does_not_advance_watermark(conn):
+    """An ok fetch that ingested 0 items must NOT advance the watermark — the
+    silent-skip footgun. A later empty ok fetch preserves the prior real-item ts."""
+    theme = _seed_theme()
+    ok = _fake_source("finnhub:general", items=[_item("Iran tests new missile")])
+    run_scrape(conn, [ok], [theme], now_unix=FIXED_NOW)
+    empty = _fake_source("finnhub:general", items=[], status="ok")
+    run_scrape(conn, [empty], [theme], now_unix=FIXED_NOW + 7200)
+    row = conn.execute(
+        "SELECT * FROM source_health WHERE source='finnhub:general'"
+    ).fetchone()
+    assert row["last_status"] == "ok"
+    assert row["last_successful_fetch_unix"] == FIXED_NOW - 3600  # PRESERVED, not now
+    assert row["last_attempt_unix"] == FIXED_NOW + 7200           # attempt still recorded
+
+
+def test_watermark_advances_to_newest_item_not_now(conn):
+    """With multiple items the watermark advances to the MAX published_at."""
+    theme = _seed_theme()
+    items = [
+        _item("Iran older", published=FIXED_NOW - 5000),
+        _item("Iran newest", published=FIXED_NOW - 1000),
+        _item("Iran middle", published=FIXED_NOW - 3000),
+    ]
+    run_scrape(conn, [_fake_source("finnhub:general", items=items)], [theme], now_unix=FIXED_NOW)
+    row = conn.execute(
+        "SELECT last_successful_fetch_unix FROM source_health WHERE source='finnhub:general'"
+    ).fetchone()
+    assert row[0] == FIXED_NOW - 1000  # the newest item, not FIXED_NOW
+
+
+def test_quiet_then_active_source_resumes(conn):
+    """Stuck-watermark guard: a source that goes quiet keeps its last real-item
+    ts, resumes from it when content reappears, and then advances."""
+    theme = _seed_theme()
+    run_scrape(conn, [_fake_source("finnhub:general", items=[_item("Iran a")])],
+               [theme], now_unix=FIXED_NOW)
+    # Quiet: 0 items — watermark held.
+    run_scrape(conn, [_fake_source("finnhub:general", items=[])],
+               [theme], now_unix=FIXED_NOW + 100_000)
+    held = conn.execute(
+        "SELECT last_successful_fetch_unix FROM source_health WHERE source='finnhub:general'"
+    ).fetchone()[0]
+    assert held == FIXED_NOW - 3600
+    # New content — resumes from the held watermark and advances to the new item.
+    active = _fake_source(
+        "finnhub:general", items=[_item("Iran b", published=FIXED_NOW + 200_000)]
+    )
+    run_scrape(conn, [active], [theme], now_unix=FIXED_NOW + 300_000)
+    active.fetch.assert_called_once_with(FIXED_NOW - 3600)   # resumed from held watermark
+    row = conn.execute(
+        "SELECT last_successful_fetch_unix FROM source_health WHERE source='finnhub:general'"
+    ).fetchone()
+    assert row[0] == FIXED_NOW + 200_000                     # advanced to the new item
 
 
 # ---------- result-shape contract ----------

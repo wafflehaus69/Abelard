@@ -311,16 +311,32 @@ def _update_source_health(
     error_detail: str | None,
     now_unix: int,
     now_iso: str,
+    ingested_high_watermark_unix: int | None = None,
 ) -> None:
     """Upsert source_health row according to the failure-counter rules.
 
     Counter policy (Pass A flag #5):
-      - ok:           update last_successful + last_attempt; counter=0
-      - partial:      update last_attempt only; counter=0
-      - error/rate_limited: update last_attempt only; counter++
+      - ok WITH ingested items: advance last_successful_fetch to the NEWEST
+        ingested item's published_at (`ingested_high_watermark_unix`), not to
+        `now`; update last_attempt; counter=0
+      - ok with 0 items:  last_attempt only, watermark PRESERVED; counter=0
+      - partial:          last_attempt only, watermark preserved; counter=0
+      - error/rate_limited: last_attempt only, watermark preserved; counter++
+
+    Watermark discipline (2026-07-07 footgun #1): the fetch watermark
+    (`last_successful_fetch_unix`, read back by `_since_unix_for_source`)
+    advances ONLY on an ok fetch that actually ingested content, and only to
+    the newest ingested item's timestamp. Advancing on an empty ok fetch
+    (a non-bozo empty/malformed body still returns status="ok" with 0 items)
+    would push the watermark past a window that had real content -> permanent
+    silent skip. Advancing to `now` on a non-empty fetch could likewise skip
+    content published after the newest item but not yet in the feed. A quiet
+    source keeps its last real-item timestamp (not stuck: the 72h dedup layer
+    stops re-ingest of already-seen items, and the next real item advances it).
     """
     is_success = status == "ok"
     resets_counter = status in ("ok", "partial")
+    advance_watermark = is_success and ingested_high_watermark_unix is not None
     existing = conn.execute(
         "SELECT consecutive_failure_count FROM source_health WHERE source = ?",
         (source_name,),
@@ -328,12 +344,12 @@ def _update_source_health(
     prior_count = existing["consecutive_failure_count"] if existing else 0
     new_count = 0 if resets_counter else (prior_count + 1)
 
-    # Compose the success columns: only updated on status=ok.
-    if is_success:
-        last_success_unix: int | None = now_unix
-        last_success_iso: str | None = now_iso
+    # Advance the watermark only on ok-with-ingestion, to the newest item's
+    # published_at. Otherwise (ok-but-empty, or any non-ok) preserve prior.
+    if advance_watermark:
+        last_success_unix: int | None = ingested_high_watermark_unix
+        last_success_iso: str | None = _iso_from_unix(ingested_high_watermark_unix)
     else:
-        # Preserve prior values if any
         prior = conn.execute(
             "SELECT last_successful_fetch_unix, last_successful_fetch "
             "FROM source_health WHERE source = ?",
@@ -826,6 +842,12 @@ def run_scrape(
             theme_tags_inserted_total += tx_tags
             headlines_inserted_total += tx_inserts
 
+        # Newest published_at among the items this fetch returned (already
+        # since-filtered by the source). None when 0 items -> watermark holds.
+        ingested_high_watermark_unix = max(
+            (it.published_at_unix for it in fetch_result.items),
+            default=None,
+        )
         _update_source_health(
             conn,
             source_name=source.name,
@@ -833,6 +855,7 @@ def run_scrape(
             error_detail=fetch_result.error_detail,
             now_unix=start_unix,
             now_iso=start_iso,
+            ingested_high_watermark_unix=ingested_high_watermark_unix,
         )
 
         per_source.append(PerSourceResult(
