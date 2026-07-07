@@ -93,9 +93,14 @@ _SOURCE_NAME_TOKENS = frozenset({
 # Tier B — soft-stopwords. Generic words that surface as noisy standalone
 # near-misses but carry signal inside a pair. Suppressed from the unigram
 # list; retained in the sequence so "world cup" / "new york" still form.
+# million/billion/trillion added 2026-07-07 (footgun #2): bare magnitude
+# denominators topped the attention list ("million 16/2") while carrying no
+# standalone signal. Tier B (not stopwords.yaml) so "X million barrels"-style
+# pairs still form — a yaml entry would forbid the term as a bigram member.
 _SOFT_STOPWORDS = frozenset({
     "are", "new", "use", "since", "people", "world", "years",
     "low", "strong", "post", "media", "information", "service",
+    "million", "billion", "trillion",
 })
 
 # Tier A — the intrinsic hard-drop set (fragments + source names). Folded

@@ -152,3 +152,28 @@ def test_prior_counts_feed_delta_ratio():
     promoted = [t for t in terms.values() if t.kind == "bigram"]
     assert promoted, "expected at least one promoted bigram"
     assert all(p.prior_count == 2 for p in promoted)
+
+
+# ---------- Tier-B magnitude denominators (footgun #2, 2026-07-07) ----------
+
+def test_bare_million_billion_trillion_suppressed_as_unigrams():
+    # Each flanked by unique words so no pair promotes; as Tier-B soft words
+    # they must not surface as standalone attention terms.
+    win = [
+        "alpha million beta", "gamma billion delta", "epsilon trillion zeta",
+        "eta million theta", "iota billion kappa", "lambda trillion mu",
+        "nu million xi", "omicron billion pi",
+    ]
+    terms = _terms_by_text(build_attention_list(win, [], _SW))
+    assert "million" not in terms
+    assert "billion" not in terms
+    assert "trillion" not in terms
+
+
+def test_million_still_forms_inside_a_bigram():
+    # "million barrels" context must survive — Tier-B allows bigram membership.
+    win = ["iran exports million barrels"] * 6
+    terms = _terms_by_text(build_attention_list(win, [], _SW))
+    assert "million barrels" in terms          # the pair forms
+    assert terms["million barrels"].kind == "bigram"
+    assert "million" not in terms              # but bare "million" stays suppressed
