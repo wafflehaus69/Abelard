@@ -1,0 +1,145 @@
+theme_id: currency
+display_name: Currency — FX & Monetary Geopolitics
+status: active
+created_at: 2026-07-08
+
+brief: |
+  Tracks significant events in fiat currencies through a geopolitics-of-money
+  lens: not routine intraday FX noise, but the events that reprice a currency
+  or the monetary order around it — central-bank interventions and
+  devaluations, peg breaks, capital controls, currency crises, dedollarization
+  and reserve-currency shifts, and the weaponization of money (frozen reserves,
+  currency sanctions).
+
+  The thesis is that currency is where geopolitics and macro meet the balance
+  of payments: a devaluation or peg break signals a sovereign losing control of
+  its external position; a central-bank intervention marks a defended line; a
+  reserve-diversification or dedollarization move is a slow tectonic shift in
+  the monetary order that reprices safe-haven flows, commodity invoicing, and
+  sanctions leverage. Reserve majors (USD, EUR, JPY, GBP, CNY, CHF) set the
+  gravity; EM crisis currencies (lira, peso, ruble, rupee, real, etc.) are
+  where the breaks happen first.
+
+  Material signals: FX interventions and their size; devaluations and peg
+  breaks; capital-control impositions or removals; sharp EM currency crises;
+  reserve-currency composition shifts, dedollarization / local-currency-trade
+  arrangements, BRICS/currency-bloc moves; frozen-reserve or currency-sanction
+  actions; yuan-fixing and internationalization steps; named-principal FX
+  statements (Treasury, ECB, BOJ, PBOC, EM finance ministries).
+
+  Noise: routine daily FX-level recaps without a policy or crisis catalyst,
+  equity price-action about currency-exposed companies (downstream), and
+  non-currency senses of the keywords (Eurovision, the "Euros" football, a
+  "yen for" something). Rate decisions themselves live in Fed Policy Path —
+  this theme is the currency/BOP consequence, which will often co-tag.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  primary:
+    # FX-event vocabulary — the "significant events" signal (Mando-chosen
+    # 2026-07-08: majors + EM + FX-event vocab, NOT bare dollar/currency).
+    - "devaluation"
+    - "devalue"
+    - "devalued"
+    - "devalues"
+    - "devaluing"
+    - "exchange rate"
+    - "currency peg"
+    - "dollar peg"
+    - "capital controls"
+    - "currency crisis"
+    - "currency war"
+    - "reserve currency"
+    - "dedollarization"
+    - "de-dollarization"
+    - "FX reserves"
+    - "foreign exchange reserves"
+    - "currency intervention"
+  secondary:
+    # Reserve majors (qualified / low-noise forms — bare dollar/euro omitted)
+    - "greenback"
+    - "dollar index"
+    - "DXY"
+    - "US dollar"
+    - "euro"
+    - "yen"
+    - "sterling"
+    - "pound sterling"
+    - "Swiss franc"
+    - "yuan"
+    - "renminbi"
+    - "yuan fixing"
+    # EM / crisis currencies (unambiguous, or phrase-qualified)
+    - "ruble"
+    - "rouble"
+    - "lira"
+    - "peso"
+    - "rupee"
+    - "Brazilian real"
+    - "Korean won"
+    - "South African rand"
+    - "naira"
+    - "hryvnia"
+    - "forint"
+    - "zloty"
+    # FX-mechanism vocabulary
+    - "FX intervention"
+    - "currency board"
+    - "safe-haven currency"
+    - "reserve diversification"
+    - "local currency trade"
+    - "frozen reserves"
+    - "currency sanctions"
+  exclusions:
+    # Non-currency senses of the broad-ish names.
+    - "Eurovision"
+    - "energy drink"
+    # Equity price-action about currency-exposed SHARES (downstream). NOT
+    # excluding "tumbles"/"rallies" — a currency can genuinely tumble/rally.
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+
+tracked_entities:
+  countries:
+    - United States
+    - China
+    - Japan
+    - United Kingdom
+    - Switzerland
+    - Turkey
+    - Argentina
+    - Russia
+    - India
+    - Brazil
+  people:
+    - Scott Bessent
+    - Christine Lagarde
+    - Kazuo Ueda
+    - Andrew Bailey
+  commodities:
+    - gold
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # Moderate volume — event-driven FX, between Energy (broad) and a rare tracker.
+  velocity_baseline_headlines_per_day: 15.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+# No dedicated feeds — FX is densely covered by the existing Bloomberg /
+# wire feeds; global tagging surfaces it.
+rss_feeds: []
+telegram_channels: []
