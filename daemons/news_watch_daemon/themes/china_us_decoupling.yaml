@@ -29,12 +29,16 @@ brief: |
   capex announcements tied to onshoring, outbound-investment restriction
   news, port and shipping disruptions tied to trade tension, and
   statements from named principals (USTR, SecCommerce, MOFCOM, Wang
-  Wentao, Xi Jinping on economic policy).
+  Wentao, Xi Jinping on economic policy). Scope expanded 2026-07-07 to
+  the EU-China trade dimension: WTO complaints involving China, EU
+  anti-dumping / anti-subsidy / countervailing probes (e.g. the EV
+  anti-subsidy case), and the EU anti-coercion instrument are in-scope
+  decoupling signals alongside the US-China track.
 
   Noise: routine bilateral commentary, anniversary recaps without new
   facts, think-tank op-eds absent fresh reporting, retail sentiment
   about TikTok or specific consumer brands, China-domestic political
-  news with no U.S. dimension, generic "tensions rise" framing absent
+  news with no U.S. or EU dimension, generic "tensions rise" framing absent
   specific policy or industrial substance, and especially: cross-asset
   price-action stories (those are downstream effects tracked separately
   from price data, not signal for this theme).
@@ -81,6 +85,21 @@ keywords:
     - "Wang Wentao"
     - "Janet Yellen"
     - "Gina Raimondo"
+    # EU-China trade-dispute vocabulary — added 2026-07-07 (scope expansion
+    # from US-China to US/EU-China decoupling, Mando-authorized). Trade-remedy
+    # + WTO-case language that catches EU-China disputes (EV anti-subsidy
+    # probes, WTO complaints, the EU anti-coercion instrument) the US-centric
+    # keyword set missed. These terms are country-agnostic, so the occasional
+    # non-China trade case may tag; Pass C synthesis contextualizes it against
+    # the theme brief (which now admits the EU dimension).
+    - "WTO"
+    - "World Trade Organization"
+    - "anti-dumping"
+    - "antidumping"
+    - "anti-subsidy"
+    - "countervailing duty"
+    - "countervailing duties"
+    - "anti-coercion"
   exclusions:
     - "Chinese cuisine"
     - "Chinese New Year"
