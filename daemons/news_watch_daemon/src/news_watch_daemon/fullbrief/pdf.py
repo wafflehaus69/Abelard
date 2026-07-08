@@ -45,6 +45,9 @@ _THEME_BG = "#33475b"
 _WARN_BG = "#9a6700"
 _RULE = "#bbbbbb"
 _HEAD_BG = "#e8eaf0"
+# Theme-segment title colors (bold): deep red for ACTIVE, deep yellow for quiet.
+_SEG_ACTIVE = "#b00020"
+_SEG_QUIET = "#9a6700"
 
 _NEARMISS_CAP = 40  # near-miss rows in the PDF; the full list lives in the JSON
 
@@ -229,12 +232,13 @@ def render_full_brief_pdf(envelope: FullBriefEnvelope, out_path: Path | str) -> 
         )
         for seg in ordered:
             tag = "ACTIVE" if seg.status == "active" else "quiet"
+            title_color = _SEG_ACTIVE if seg.status == "active" else _SEG_QUIET
             flag = (
                 f'{sep}<i>hot &mdash; outside Pass C scope</i>'
                 if (seg.status == "active" and not seg.in_pass_c_scope) else ""
             )
             head = (
-                f'<b>[{tag}]</b> {escape(seg.display_name)} '
+                f'<font color="{title_color}"><b>[{tag}] {escape(seg.display_name)}</b></font> '
                 f'<font color="{_MUTED}">({escape(seg.theme_id)}){sep}'
                 f'{seg.tagged_headline_count} tagged</font>{flag}'
             )
