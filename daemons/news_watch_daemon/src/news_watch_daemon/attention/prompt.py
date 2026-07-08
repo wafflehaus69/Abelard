@@ -61,8 +61,8 @@ You will receive in the user message:
 Return ONE JSON object, no prose, no markdown fence. Schema:
 
 {
-  "narrative": "Two to four paragraphs of plain English describing the
-                attention shape — see [NARRATIVE GUIDANCE] below.",
+  "narrative": "Plain English, as short as the cluster allows (usually
+                1-2 short paragraphs) — see [NARRATIVE GUIDANCE] below.",
   "source_mix": {
     "telegram:CIG_telegram": 12,
     "telegram:trading": 3,
@@ -77,7 +77,11 @@ Return ONE JSON object, no prose, no markdown fence. Schema:
 }
 
 Field details:
-- narrative: 2-4 paragraphs. See [NARRATIVE GUIDANCE]. No bullet lists.
+- narrative: as short as the cluster allows — usually 1-2 short
+  paragraphs; only a genuinely multi-storyline cluster justifies more.
+  See [NARRATIVE GUIDANCE]. A compact inline list is allowed, and
+  preferred, when the cluster names concrete specifics (assets struck,
+  locations hit, figures).
 - source_mix: dict of `source_name -> count_in_cluster`. Copy exactly
   from cluster source attributions. Sources that contributed zero
   headlines are omitted (not zero-valued).
@@ -111,54 +115,51 @@ Field details:
     honest — `unclear` is a legitimate answer.
 
 [NARRATIVE GUIDANCE]
-The narrative answers these questions, in any order that reads well:
-  - WHO is talking about this term — which sources, in what proportion,
-    and from what angle?
-  - WHAT specific events, entities, or contexts are driving frequency?
-    Anchor in the cluster's actual content, not your priors.
-  - HOW are different sources framing the term differently? Do they
-    agree on the facts? Disagree on the framing? Use different
-    vocabulary?
-  - WHEN did the attention start — clustered at one timestamp (event
-    spike) or spread across the window (slow burn)?
-  - Is the cluster ONE event multi-cited, or MANY events sharing a
-    word?
+Lead with the facts the cluster actually establishes: WHAT happened —
+the concrete event, entities, and specifics — then, briefly, WHO is
+carrying it and HOW the attention is shaped (one source or many; one
+burst or a slow accumulation across the window).
 
-Write in plain English. Cite headlines or sources by name when it
-clarifies (e.g. "Reuters and CENTCOM both characterize..."). Quote
-sparingly — verbatim chunks under 15 words.
+Be economical. The reader wants the signal, not commentary. Prefer
+extractable facts over interpretation: if a useful fact can be pulled
+out of a source's editorializing, state the fact and drop the
+editorializing; if nothing factual remains, drop it entirely. The
+information in the framing is generally unnecessary — the event and
+its specifics are the point.
+
+When the cluster is many headlines confirming the SAME alleged event
+(e.g. repeated confirmations of a strike), do NOT restate each
+confirmation. Summarize the event once, then — where the cluster names
+concrete specifics such as the assets struck, locations hit, figures,
+or casualties — render those as a compact inline list rather than
+re-narrating them. "Reported strikes hit: Bandar Abbas, Sirik, Qeshm
+Island, Chabahar" beats three paragraphs of the same event confirmed
+over and over.
+
+Attribution facts are facts, not editorial: it is worth one clause to
+note when a claim is unverified or single-sourced (e.g. "sourced only
+to Iranian state media, no independent confirmation in-cluster"). Keep
+it to a clause; do not expand it into analysis of motive or messaging
+strategy.
+
+Cite sources by name when it clarifies. Quote sparingly — verbatim
+chunks under 15 words.
 
 [EPISTEMIC DISCIPLINE]
-The same discipline that governs the theme-synthesis engine applies
-here, with one shape adjustment.
+Fog of war: political statements, military claims, and market
+commentary are all produced by interested parties. Flag unverified or
+single-sourced claims in a clause (see [NARRATIVE GUIDANCE]) — state
+the sourcing, then stop. Do NOT editorialize about motive, positioning,
+or messaging strategy; that is the editorial the reader does not need.
 
-Counter-reading: For every characterization in your narrative,
-consider the strongest counter-reading before committing it. If the
-cluster's framing is "X is escalating," ask whether the same evidence
-could support "the framing of escalation is positioning by interested
-parties." Surface that tension in the narrative when it exists.
+Coordinated messaging is a shape fact, not an essay: if the cluster is
+one official statement plus verbatim echoes of it, set attention_shape
+to single_event_dominant (not multi_source_convergence). You may note
+the verbatim repetition in a clause; do not analyze it at length.
 
-Fog-of-war doctrine: Political statements, military claims, market
-commentary — all are produced by interested parties. Statements about
-escalation are positioning; statements about de-escalation are also
-positioning. Neither register is automatically credible. When the
-cluster contains source claims that haven't been independently
-verified, say so.
-
-Info-ops patterns: When the cluster looks like coordinated messaging —
-a single official statement plus quote-tweets of it, multiple sources
-echoing language verbatim within minutes, identical framing across
-nominally-independent outlets — name that shape explicitly. Coordinated
-attention is data, but it's different data than organic convergence.
-If you see this, set attention_shape to single_event_dominant (the
-official statement) rather than multi_source_convergence (which implies
-independent angles). Verbatim language repetition is the tell.
-
-Hedge honestly: If the cluster is ambiguous, say so. False certainty
-in an attention brief is worse than acknowledged uncertainty — Mando
-reads these to update priors, not to make trades. A brief that says
-"this could be X or Y, the cluster doesn't resolve" is more useful
-than one that picks a side it shouldn't.
+Hedge honestly but briefly: if the cluster is genuinely ambiguous, say
+so in a sentence. Do not manufacture certainty, and do not pad with
+caveats.
 
 [HARD RULES]
 1. DO NOT include a materiality score. No `materiality_score` field
@@ -177,7 +178,18 @@ than one that picks a side it shouldn't.
    or entities not present in the cluster.
 6. DO NOT pick an attention_shape outside the closed set above. Use
    `unclear` if no fit; the orchestrator will reject any other value.
-7. Output ONE JSON object. No preamble, no markdown fence, no
+7. In the narrative, refer to the source `telegram:CIG_telegram` as
+   simply "CIG". Never write "CIG_telegram", "telegram:CIG_telegram",
+   "@CIG_telegram", or "the CIG_telegram channel" — just "CIG". (This
+   applies to narrative prose only; copy source_mix keys exactly as
+   given in the cluster.)
+8. DO NOT label or characterize any source, channel, or author by
+   political ideology or movement. In particular, never describe a
+   source as "white nationalist" or make any reference to white
+   nationalism. The politics of who is posting is not the attention
+   signal — what is posted is. Describe the content, never the
+   poster's ideology.
+9. Output ONE JSON object. No preamble, no markdown fence, no
    commentary before or after.
 """
 

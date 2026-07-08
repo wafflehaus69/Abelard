@@ -65,10 +65,22 @@ def test_system_prompt_forbids_materiality_and_thesis():
 
 
 def test_system_prompt_info_ops_paragraph_forces_single_event_dominant():
-    """Mando-added rule: verbatim language repetition forces
-    attention_shape = single_event_dominant, not multi_source_convergence."""
-    assert "Verbatim language repetition is the tell" in SYSTEM_PROMPT
-    assert "set attention_shape to single_event_dominant" in SYSTEM_PROMPT
+    """Mando-added rule: coordinated verbatim echoes force
+    attention_shape = single_event_dominant, not multi_source_convergence.
+    (Wording compressed 2026-07-08 in the editorial-reduction pass; the
+    single_event_dominant instruction must survive.)"""
+    assert "verbatim echoes" in SYSTEM_PROMPT
+    assert "single_event_dominant" in SYSTEM_PROMPT
+    assert "not multi_source_convergence" in SYSTEM_PROMPT
+
+
+def test_system_prompt_cig_naming_and_no_ideology_labeling():
+    """Mando editorial rules (2026-07-08): the CIG source is named "CIG"
+    in narrative, and no source is labeled by political ideology / white
+    nationalism."""
+    assert 'refer to the source `telegram:CIG_telegram` as' in SYSTEM_PROMPT
+    assert '"white nationalist"' in SYSTEM_PROMPT
+    assert "political ideology" in SYSTEM_PROMPT
 
 
 # ---------- user prompt ----------
