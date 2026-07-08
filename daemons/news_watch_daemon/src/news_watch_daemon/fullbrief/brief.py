@@ -199,9 +199,10 @@ class AttentionCrossing(BaseModel):
 
     Carries denormalized data needed for rendering + the link to the
     underlying AttentionBrief artifact (attention_brief_id + path).
-    `llm_read_summary` is the first ~280 chars of the brief's narrative
-    for inline context — avoids forcing the operator to open the linked
-    brief for a quick read.
+    `llm_read_summary` is the brief's full narrative, denormalized here for
+    inline context — avoids forcing the operator to open the linked brief for
+    a quick read. (Previously capped at ~280 chars; uncapped 2026-07-08 so the
+    orphan "review first" readout is complete in the brief itself.)
     """
 
     model_config = ConfigDict(extra="forbid")

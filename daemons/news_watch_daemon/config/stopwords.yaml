@@ -218,6 +218,11 @@ news_domain:
   - net
   - www
   - status
+  # `mx` — added 2026-07-08. Same class as the tokens above: a URL
+  # query-param artifact (`?mx=2`) leaking from CIG Telegram link markdown
+  # into headline text, where it crossed the attention threshold as a pure
+  # orphan (10/0) with no editorial meaning.
+  - mx
   # Publisher-name attribution tokens — added 2026-05-29 (Full Brief Commit B)
   # in response to cross-cycle ATTENTION near-miss evidence:
   #   - Cycle 1 (2026-05-28): `reuters` at 20/21 in the near-miss table

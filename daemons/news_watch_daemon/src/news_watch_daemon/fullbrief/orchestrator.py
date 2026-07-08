@@ -602,7 +602,10 @@ def _build_attention_synthesis_with_convergence(
         )
 
         delta_ratio = ab.term_frequency_window / max(ab.term_frequency_prior, 1)
-        llm_read_summary = ab.narrative[:280] if ab.narrative else ""
+        # Full attention-brief narrative (was capped at 280 chars) — the orphan
+        # crossings are the "review first" items; the operator wants the whole
+        # LLM read, not a teaser (2026-07-08).
+        llm_read_summary = ab.narrative or ""
         crossings.append(AttentionCrossing(
             term=ab.triggering_term,
             freq_window=ab.term_frequency_window,

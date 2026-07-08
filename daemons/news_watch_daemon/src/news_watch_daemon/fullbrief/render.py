@@ -180,10 +180,12 @@ def _render_orphan_section(attention: AttentionSynthesisSection) -> str:
         lines.append(
             f"  {c.term} ({c.freq_window}/{c.freq_prior}, {c.shape})"
         )
-        # First sentence of llm_read_summary as inline context.
-        summary_line = _first_line_excerpt(c.llm_read_summary)
-        if summary_line:
-            lines.append(f"    {summary_line}")
+        # Full llm_read_summary (whitespace-flattened) — the orphans are the
+        # "review first" items, so the operator wants the whole LLM read here,
+        # not a one-line teaser (2026-07-08).
+        summary = " ".join((c.llm_read_summary or "").split())
+        if summary:
+            lines.append(f"    {summary}")
     return "\n".join(lines)
 
 

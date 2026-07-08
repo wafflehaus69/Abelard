@@ -208,8 +208,9 @@ def render_full_brief_pdf(envelope: FullBriefEnvelope, out_path: Path | str) -> 
         for c in orphans:
             # Term + freq/shape on its own bold line, then the FULL llm_read_summary
             # wrapped below. These are the highest-priority "review first" items;
-            # truncating their summary defeats the purpose. The summary is already
-            # envelope-bounded (~280 chars) so it renders in full without clipping.
+            # truncating their summary defeats the purpose. As of 2026-07-08 the
+            # summary carries the whole attention-brief narrative (previously capped
+            # at 280 chars upstream); ReportLab wraps it across lines/pages as needed.
             story.append(Paragraph(
                 f"<b>{escape(c.term)}</b> ({c.freq_window}/{c.freq_prior}, "
                 f"{escape(c.shape)})",
