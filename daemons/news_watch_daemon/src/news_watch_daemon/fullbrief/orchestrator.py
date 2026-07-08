@@ -675,7 +675,7 @@ def _build_frequency_diagnostic(
         )
     except Exception as exc:  # noqa: BLE001 — surface any counter failure
         return (
-            StepHealth(status="failed", reason=f"count_terms failed: {exc}"),
+            StepHealth(status="failed", reason=f"count_terms_collapsed failed: {exc}"),
             FrequencyDiagnosticSection(
                 threshold_note=threshold_note,
                 crossings=[],
