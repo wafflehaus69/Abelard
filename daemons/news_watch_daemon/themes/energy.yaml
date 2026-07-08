@@ -1,0 +1,217 @@
+theme_id: energy
+display_name: Energy — Supply & Geopolitics
+status: active
+created_at: 2026-07-08
+
+brief: |
+  Tracks the geopolitics and supply security of the ENERGY complex — crude
+  oil, natural gas / LNG, nuclear (fuel + generation), power / grid, coal,
+  and the strategic-minerals edge of renewables. This is a supply /
+  geopolitics lens, NOT an equity or broad-market lens: the signal is what
+  moves molecules and electrons and the political constraints on them, plus
+  the price moves that reprice supply risk.
+
+  The thesis is that energy is the fastest-transmitting geopolitical cascade
+  in Mando's book. A Strait of Hormuz threat, a refinery or pipeline strike,
+  an OPEC+ output decision, a tightening of the Russian oil price cap, an LNG
+  supply shock, a nuclear-plant seizure (Zaporizhzhia), or a grid failure
+  reprices energy within hours and ripples into inflation, defense-industrial
+  and datacenter power demand, and the fiscal position of petrostates. Supply
+  is the axis; price is the readout.
+
+  Material signals: Strait of Hormuz threats or transit disruption; strikes
+  on refineries, pipelines (Druzhba, Nord Stream), export terminals, tankers,
+  or LNG facilities; OPEC / OPEC+ production decisions and compliance; Russian
+  crude sanctions, the G7 price cap, and shadow-fleet enforcement; natural-gas
+  / LNG supply shocks and storage; nuclear reactor builds, uranium supply and
+  enrichment, Rosatom / IAEA developments, Zaporizhzhia; SPR releases/refills;
+  Iranian / Venezuelan sanctions and waivers; power-grid failures and capacity
+  additions; named-principal statements (Novak, Saudi energy ministry, OPEC
+  secretariat, Aramco, IAEA); Brent / WTI / gas price moves on a supply or
+  geopolitical catalyst.
+
+  Noise: equity price-action about energy-company SHARES (downstream, not
+  supply signal), non-energy senses of the keywords (olive/cooking/palm oil,
+  oil paintings, tear gas, energy drinks), routine demand-forecast recaps
+  without a supply or policy catalyst, and generic "energy transition" op-eds
+  absent a fresh supply, capacity, or policy fact.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  primary:
+    # Broad core across the complex (Mando-chosen breadth, 2026-07-08). The
+    # supply/geopolitics framing is enforced by the brief + exclusions, not
+    # by keyword tightness. Lowercase = case-insensitive; OPEC/WTI/LNG are
+    # case-sensitive acronyms by the matcher's rule.
+    - "energy"
+    - "oil"
+    - "crude"
+    - "Brent"
+    - "WTI"
+    - "OPEC"
+    - "petroleum"
+    - "natural gas"
+    - "LNG"
+    - "nuclear"
+    - "uranium"
+    - "electricity"
+  secondary:
+    # Oil supply / logistics
+    - "Strait of Hormuz"
+    - "Hormuz"
+    - "price cap"
+    - "shadow fleet"
+    - "tanker"
+    - "tankers"
+    - "refinery"
+    - "refineries"
+    - "pipeline"
+    - "Druzhba"
+    - "barrel"
+    - "barrels"
+    - "bpd"
+    - "oil export"
+    - "oil exports"
+    - "oil sanctions"
+    - "oil embargo"
+    - "SPR"
+    - "Strategic Petroleum Reserve"
+    - "Urals"
+    - "diesel"
+    - "gasoline"
+    - "Aramco"
+    - "Novak"
+    # Gas / LNG
+    - "Nord Stream"
+    - "Henry Hub"
+    - "gas pipeline"
+    - "gas export"
+    - "gas exports"
+    - "gas field"
+    - "Gazprom"
+    - "regasification"
+    # Nuclear
+    - "reactor"
+    - "reactors"
+    - "enrichment"
+    - "small modular reactor"
+    - "SMR"
+    - "Rosatom"
+    - "IAEA"
+    - "Zaporizhzhia"
+    - "nuclear plant"
+    - "spent fuel"
+    - "centrifuge"
+    # Power / grid / coal / renewables edge
+    - "power grid"
+    - "power plant"
+    - "blackout"
+    - "grid failure"
+    - "megawatt"
+    - "gigawatt"
+    - "coal"
+    - "thermal coal"
+    - "solar"
+    - "offshore wind"
+    - "hydrogen"
+    - "energy security"
+    - "energy crisis"
+  exclusions:
+    # Non-energy senses of the broad keywords.
+    - "oil painting"
+    - "olive oil"
+    - "essential oil"
+    - "cooking oil"
+    - "snake oil"
+    - "palm oil"
+    - "tear gas"
+    - "laughing gas"
+    - "energy drink"
+    - "energy healing"
+    - "renewable energy certificate"
+    # Equity price-action about energy-company SHARES — downstream, not
+    # supply. Deliberately NOT excluding "rallies"/"tumbles"/"hits record" —
+    # those catch COMMODITY / power-price moves, which ARE supply signal here.
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+
+tracked_entities:
+  tickers:
+    - XOM
+    - CVX
+    - COP
+    - OXY
+    - SLB
+    - BP
+    - SHEL
+    - TTE
+    - CEG
+    - VST
+    - CCJ
+    - URA
+    - LNG
+  companies:
+    - ExxonMobil
+    - Chevron
+    - Saudi Aramco
+    - Rosneft
+    - Gazprom
+    - Shell
+    - TotalEnergies
+    - Constellation Energy
+    - Cameco
+    - Rosatom
+    - Cheniere
+  countries:
+    - Saudi Arabia
+    - Russia
+    - Iran
+    - United States
+    - United Arab Emirates
+    - Iraq
+    - Venezuela
+    - Qatar
+    - Norway
+    - France
+  commodities:
+    - crude oil
+    - Brent
+    - WTI
+    - natural gas
+    - LNG
+    - uranium
+    - diesel
+    - gasoline
+    - coal
+    - electricity
+  people:
+    - Alexander Novak
+    - Abdulaziz bin Salman
+    - Haitham al-Ghais
+    - Rafael Grossi
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # Broad keywords across the whole energy complex => high baseline volume.
+  velocity_baseline_headlines_per_day: 40.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+# No dedicated feeds — energy is densely covered by the existing Bloomberg /
+# CIG / wire feeds; global tagging surfaces it. A dedicated energy wire can
+# be added later if warranted.
+rss_feeds: []
+telegram_channels: []
