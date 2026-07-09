@@ -12,10 +12,11 @@ from .base import Source
 from .finnhub_news import FinnhubNewsSource
 from .smg import SmgSource
 from .stocktwits import StockTwitsSource
+from .twitter import TwitterSource
 
 
 def build_sources(cfg: Config) -> list[Source]:
-    return [
+    sources: list[Source] = [
         FinnhubNewsSource(
             api_key=cfg.finnhub_api_key,
             user_agent=cfg.user_agent,
@@ -47,3 +48,21 @@ def build_sources(cfg: Config) -> list[Source]:
             haiku_enabled=cfg.stocktwits_haiku_enabled,
         ),
     ]
+    # Twitter/X cashtag source (Order 17) — the first subprocess source. Gated OFF by
+    # default (cfg.twitter_enabled); flip CHATTER_TWITTER_ENABLED=1 after a live cert on
+    # the host that has the `twitter` CLI. Absent from the fan-out entirely when off, so
+    # zero behavior change to existing scans.
+    if cfg.twitter_enabled:
+        sources.append(
+            TwitterSource(
+                binary=cfg.twitter_binary,
+                timeout_s=cfg.twitter_timeout_s,
+                window_hours=cfg.twitter_window_hours,
+                max_per_ticker=cfg.twitter_max_per_ticker,
+                min_tweets_haiku=cfg.twitter_min_tweets_haiku,
+                min_likes=cfg.twitter_min_likes,
+                anthropic_api_key=cfg.anthropic_api_key,
+                haiku_model=cfg.haiku_model_id,
+            )
+        )
+    return sources

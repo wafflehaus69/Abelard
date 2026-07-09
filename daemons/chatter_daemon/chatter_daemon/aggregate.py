@@ -110,6 +110,7 @@ def build_aggregate(
                     sentiment=rec.sentiment,
                     st_aggregate=rec.st_aggregate,
                     news_summary=rec.news_summary,
+                    observed_window=rec.observed_window,
                     matched_by=rec.matched_by,
                     flags=rec.flags,
                     anomaly=anomaly,

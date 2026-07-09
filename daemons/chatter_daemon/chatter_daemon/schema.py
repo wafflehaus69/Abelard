@@ -28,7 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field
 SCHEMA_VERSION = "1"
 
 # Closed contract vocabularies. A value outside these is a validation error.
-SourceName = Literal["stocktwits", "smg", "finnhub_news", "google_trends"]
+SourceName = Literal["stocktwits", "smg", "finnhub_news", "google_trends", "twitter"]
 ScanMode = Literal["watchlist", "attention"]
 MatchedBy = Literal["symbol", "cashtag", "name"]
 SentimentMethod = Literal["native", "haiku", "none"]
@@ -42,6 +42,19 @@ class Window(BaseModel):
     start: str
     end: str
     label: str  # "24h" | "7d" | "monthly"
+
+
+class ObservedWindow(BaseModel):
+    """The ACTUAL span of the tweets that survived filtering for a ticker (Twitter
+    source, Order 17): `earliest`/`latest` = min/max of their createdAt. Distinct from
+    `Window` (the scan's nominal 24h/7d/monthly window) — this is the real observed
+    range of the surviving evidence. A record's `observed_window` is None when zero
+    tweets survived (an honest absence, never a fabricated span)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    earliest: str  # ISO-8601 — min createdAt of survivors
+    latest: str  # ISO-8601 — max createdAt of survivors
 
 
 class Headline(BaseModel):
@@ -143,6 +156,9 @@ class NormalizedRecord(BaseModel):
     # Haiku one-paragraph summary of the NAMED news (Order 15) — Finnhub records only; the
     # factual "why", distinct from the source's method=none count contract.
     news_summary: str | None = None
+    # The actual span of surviving tweets (Twitter source, Order 17) — None when zero
+    # tweets survived filtering. Round-trips to stdout via SourceSignal.
+    observed_window: ObservedWindow | None = None
     flags: list[str] = Field(default_factory=list)
 
 
@@ -241,6 +257,7 @@ class SourceSignal(BaseModel):
     sentiment: Sentiment
     st_aggregate: StockTwitsAggregate | None = None  # StockTwits sentiment-API (Order 12)
     news_summary: str | None = None  # Finnhub named-news Haiku summary (Order 15)
+    observed_window: ObservedWindow | None = None  # Twitter survivor span (Order 17)
     matched_by: list[MatchedBy] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     anomaly: Anomaly

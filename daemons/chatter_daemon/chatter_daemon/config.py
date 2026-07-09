@@ -122,6 +122,19 @@ DEFAULT_STOCKTWITS_HAIKU = False
 # — generous (typical ~$0.10-0.25); a fail-loud guard, not a routine limiter.
 DEFAULT_SUMMARY_COST_CAP_USD = 1.0
 
+# Order 17 — Twitter/X cashtag source (subprocess `twitter` CLI). OFF by default until a
+# live cert on the host that HAS the CLI (the build host does not). MIN_TWEETS_HAIKU=3 for
+# parity with DEFAULT_SENTIMENT_MIN_MENTIONS; MIN_LIKES is a low positive floor (raw
+# `latest` search is ~80% zero-engagement spam). WINDOW_HOURS is enforced PRECISELY
+# in-process — the CLI's --since is only date-granular.
+DEFAULT_TWITTER_ENABLED = False
+DEFAULT_TWITTER_WINDOW_HOURS = 24
+DEFAULT_TWITTER_MAX_PER_TICKER = 50
+DEFAULT_TWITTER_MIN_TWEETS_HAIKU = 3  # parity with DEFAULT_SENTIMENT_MIN_MENTIONS
+DEFAULT_TWITTER_MIN_LIKES = 2  # low positive floor — drops zero-engagement spam
+DEFAULT_TWITTER_BINARY = "twitter"
+DEFAULT_TWITTER_TIMEOUT_S = 30.0
+
 # Order 7 — baseline store, archive, anomaly tunables.
 DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
 DEFAULT_BASELINE_MIN_OBS = 5  # N_min before a z-score is meaningful (else `building`)
@@ -166,6 +179,14 @@ class Config:
     sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
     stocktwits_haiku_enabled: bool = DEFAULT_STOCKTWITS_HAIKU
     news_summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD
+    # Order 17 — Twitter/X cashtag source (gated OFF by default).
+    twitter_enabled: bool = DEFAULT_TWITTER_ENABLED
+    twitter_window_hours: int = DEFAULT_TWITTER_WINDOW_HOURS
+    twitter_max_per_ticker: int = DEFAULT_TWITTER_MAX_PER_TICKER
+    twitter_min_tweets_haiku: int = DEFAULT_TWITTER_MIN_TWEETS_HAIKU
+    twitter_min_likes: int = DEFAULT_TWITTER_MIN_LIKES
+    twitter_binary: str = DEFAULT_TWITTER_BINARY
+    twitter_timeout_s: float = DEFAULT_TWITTER_TIMEOUT_S
     # Order 7 — baseline store, run archive, anomaly tunables.
     baseline_db_path: Path = field(default_factory=_default_baseline_db_path)
     archive_root: Path = field(default_factory=_default_archive_root)
@@ -220,6 +241,20 @@ class Config:
             news_summary_cost_cap_usd=_env_float(
                 "CHATTER_SUMMARY_COST_CAP", DEFAULT_SUMMARY_COST_CAP_USD
             ),
+            twitter_enabled=_env_bool("CHATTER_TWITTER_ENABLED", DEFAULT_TWITTER_ENABLED),
+            twitter_window_hours=_env_int(
+                "CHATTER_TWITTER_WINDOW_HOURS", DEFAULT_TWITTER_WINDOW_HOURS
+            ),
+            twitter_max_per_ticker=_env_int(
+                "CHATTER_TWITTER_MAX_PER_TICKER", DEFAULT_TWITTER_MAX_PER_TICKER
+            ),
+            twitter_min_tweets_haiku=_env_int(
+                "CHATTER_TWITTER_MIN_TWEETS_HAIKU", DEFAULT_TWITTER_MIN_TWEETS_HAIKU
+            ),
+            twitter_min_likes=_env_int("CHATTER_TWITTER_MIN_LIKES", DEFAULT_TWITTER_MIN_LIKES),
+            twitter_binary=os.environ.get("CHATTER_TWITTER_BINARY", "").strip()
+            or DEFAULT_TWITTER_BINARY,
+            twitter_timeout_s=_env_float("CHATTER_TWITTER_TIMEOUT", DEFAULT_TWITTER_TIMEOUT_S),
             baseline_db_path=_env_path("CHATTER_BASELINE_DB", _default_baseline_db_path()),
             archive_root=_env_path("CHATTER_ARCHIVE_ROOT", _default_archive_root()),
             baseline_window=_env_int("CHATTER_BASELINE_WINDOW", DEFAULT_BASELINE_WINDOW),

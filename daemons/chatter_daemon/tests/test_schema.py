@@ -45,7 +45,7 @@ def test_record_rejects_unknown_field():
 
 def test_record_rejects_unknown_source():
     with pytest.raises(ValidationError):
-        NormalizedRecord.model_validate(_record(source="twitter"))
+        NormalizedRecord.model_validate(_record(source="facebook"))  # not a SourceName
 
 
 def test_record_rejects_unknown_matched_by():
