@@ -335,6 +335,7 @@ class StockTwitsSource:
         records: list[NormalizedRecord] = []
         warnings: list[str] = []
         blocked: list[str] = []
+        raw_items: list[str] = []  # Order 19: message bodies for the history dump
         cost = CostTelemetry()
         actives = watchlist.active_tickers
 
@@ -355,6 +356,12 @@ class StockTwitsSource:
                 messages = client.symbol_stream(sym)
             except StockTwitsBlocked as exc:
                 self._log.warning("stocktwits stream blocked for %s: %s", sym, exc)
+            if messages:
+                raw_items.extend(
+                    f"{sym}\t{m['body']}"
+                    for m in messages
+                    if isinstance(m.get("body"), str) and m["body"].strip()
+                )
             if agg is None and messages is None:
                 # BOTH paths dead -> honest "unread"; the surface degrades, others ship.
                 blocked.append(sym)
@@ -373,7 +380,8 @@ class StockTwitsSource:
             else None
         )
         return SourceResult(
-            source=SOURCE_NAME, records=records, warnings=warnings, error=error, cost=cost
+            source=SOURCE_NAME, records=records, warnings=warnings, error=error, cost=cost,
+            raw_items=raw_items,
         )
 
     def _build_record(self, watchlist, context, window, symbol, agg, messages, warnings, cost):

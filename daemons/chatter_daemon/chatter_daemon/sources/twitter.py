@@ -20,19 +20,19 @@ real subprocess/network in the suite.
     is a loud `TwitterCliError` from the one-time startup smoke — the orchestrator
     isolates it (never a silent skip, never a crash of the whole scan).
 
-TODO(cert): the `twitter` CLI is ABSENT on the build host, so every flag spelling and
-every `--json` field name below is UNVERIFIED — taken from the build order's
-transcription. They are ALL isolated in the `_CLI` / `_FIELDS_*` constants + a defensive
-multi-name parser, so the first live certification (on the host that HAS the CLI) is a
-one-constant fix, not a rewrite. Confirm against `twitter search --help` and one real
-`--json` object before flipping `CHATTER_TWITTER_ENABLED=1`.
+CERT 2026-07-09 (twitter-cli v0.8.5, WSL, authed as @WaffleHausen): every argv flag in
+the transcription matched the real CLI EXACTLY. The `--json` success envelope is
+`{"ok": true, "data": [...tweets...]}` (handled by `_parse_tweets`); `id` / `text` /
+`createdAtISO` matched; the ONE correction was likes, which live under `metrics.likes`
+(nested) — now read by `_tweet_likes`. `--since` is date-granular (precise window stays
+in-process). The flag/field constants below remain the single edit point if the CLI's
+JSON ever changes.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import random
 import re
 import subprocess
 import time
@@ -41,15 +41,25 @@ from typing import Any, Callable
 
 from ..config import (
     DEFAULT_SENTIMENT_MIN_MENTIONS,
+    DEFAULT_SUMMARY_COST_CAP_USD,
+    DEFAULT_SUMMARY_MODEL,
     DEFAULT_TWITTER_BINARY,
+    DEFAULT_TWITTER_DROP_PROMO,
     DEFAULT_TWITTER_MAX_PER_TICKER,
     DEFAULT_TWITTER_MIN_LIKES,
+    DEFAULT_TWITTER_PACE_S,
     DEFAULT_TWITTER_TIMEOUT_S,
     DEFAULT_TWITTER_WINDOW_HOURS,
     HAIKU_MODEL_ID,
 )
 from ..schema import CostTelemetry, Metrics, NormalizedRecord, ObservedWindow, Sentiment
-from ..sentiment import AnthropicProvider, SentimentError, classify_stance
+from ..sentiment import (
+    AnthropicProvider,
+    SentimentError,
+    classify_stance,
+    summarize_tweets,
+    summary_cost_usd,
+)
 from ..watchlist import WatchlistConfig
 from ..windows import iso_z
 from .base import ScanContext, SourceResult
@@ -57,8 +67,8 @@ from .base import ScanContext, SourceResult
 SOURCE_NAME = "twitter"
 WINDOW_LABEL = "24h"  # the record's nominal window; observed_window carries the real span
 
-# --- CLI CONTRACT (TODO(cert): UNVERIFIED — isolated for a one-line fix) ---------------
-# Flags, per the build order's transcription of:
+# --- CLI CONTRACT (CERT 2026-07-09 — verified EXACT vs twitter-cli v0.8.5) --------------
+# Flags (confirmed against `twitter search --help`):
 #   twitter search "$SYM" -t latest --since <YYYY-MM-DD> --exclude links
 #     --min-likes <N> -n <MAX> --json
 _SEARCH_SUBCMD = "search"
@@ -73,19 +83,38 @@ _FLAG_VERSION = "--version"
 _FIELDS_ID = ("id", "id_str", "tweetId", "rest_id")
 _FIELDS_TEXT = ("text", "fullText", "full_text", "rawContent", "content")
 _FIELDS_CREATED = ("createdAtISO", "createdAt", "created_at", "date", "timestamp")
+# NB: v0.8.5 nests likes under `metrics.likes` — read via `_tweet_likes`, not top-level.
 _FIELDS_LIKES = ("likes", "likeCount", "favoriteCount", "favorite_count", "favorites")
-# Startup-smoke version gate. None = lenient (must run + emit a parseable version, which
-# is logged); set to an int to hard-require that major. TODO(cert): set once known.
-_EXPECTED_MAJOR: int | None = None
+# Startup-smoke version gate: require this major. twitter-cli is v0.8.5 (cert 2026-07-09)
+# -> major 0; a bump to 1.x fails the smoke loud, forcing a re-cert on a breaking change.
+_EXPECTED_MAJOR: int | None = 0
 
-# Courtesy delay between per-ticker subprocess calls (jittered; injected as a no-op in
-# tests). A subprocess search is heavier than an HTTP GET — be a polite client.
-COURTESY_MIN_S = 0.3
-COURTESY_MAX_S = 0.8
+# Max surviving tweets fed to the <=3-sentence commentary summary (bounds the prompt).
+_SUMMARY_TWEET_CAP = 25
 
 _URL_RE = re.compile(r"https?://\S+")
 _NONWORD_RE = re.compile(r"[^a-z0-9]+")
 _VERSION_RE = re.compile(r"(\d+)(?:\.\d+)*")
+
+# Order 19: promotional / follow-bait / spam patterns dropped before stance + summary
+# (raw `latest` is ~80% promo). Match a follow/join/link cue, OR >= 5 distinct cashtags.
+_PROMO_RE = re.compile(
+    r"\bgo follow\b|\bfollow (?:him|her|us|me|for|@)|@\w+ delivers\b|\blink in bio\b"
+    r"|\bdm (?:me|us|for)\b|\bjoin (?:my|our|the) (?:group|channel|discord|telegram|server)"
+    r"|\bfree (?:signals?|alerts?|picks?)\b|\bguaranteed\b|wa\.me/|t\.me/|chat\.whatsapp"
+    r"|discord\.gg|\U0001F517",
+    re.IGNORECASE,
+)
+_CASHTAG_RE = re.compile(r"\$[A-Za-z]{1,6}\b")
+_PROMO_CASHTAG_MAX = 5
+
+
+def _is_promo(text: str) -> bool:
+    """Order 19: a promotional / follow-bait / cashtag-stuffed tweet? Match a follow/join/
+    link cue, OR >= 5 distinct cashtags in one tweet (ticker-spam)."""
+    if _PROMO_RE.search(text):
+        return True
+    return len({m.lower() for m in _CASHTAG_RE.findall(text)}) >= _PROMO_CASHTAG_MAX
 
 
 class TwitterBlocked(RuntimeError):
@@ -98,10 +127,6 @@ class TwitterCliError(RuntimeError):
     """Hard startup failure: the `twitter` binary is absent or reports a wrong/unparseable
     version. Raised loudly by the one-time smoke — NOT a silent skip. The orchestrator
     isolates it (source ok=False + degraded), so it never crashes the whole scan."""
-
-
-def _courtesy_sleep() -> None:
-    time.sleep(random.uniform(COURTESY_MIN_S, COURTESY_MAX_S))
 
 
 def _subprocess_runner(argv: list[str], timeout: float) -> tuple[int, bytes]:
@@ -121,6 +146,17 @@ def _first_field(obj: dict[str, Any], names: tuple[str, ...]) -> Any:
         if v is not None:
             return v
     return None
+
+
+def _tweet_likes(tw: dict[str, Any]) -> Any:
+    """Likes count. twitter-cli v0.8.5 nests it as `metrics.likes` (cert 2026-07-09); fall
+    back to top-level candidate names defensively if the shape ever changes."""
+    metrics = tw.get("metrics")
+    if isinstance(metrics, dict):
+        v = _first_field(metrics, _FIELDS_LIKES)
+        if v is not None:
+            return v
+    return _first_field(tw, _FIELDS_LIKES)
 
 
 def _parse_iso_unix(s: Any) -> int | None:
@@ -277,12 +313,16 @@ class TwitterSource:
         *,
         binary: str = DEFAULT_TWITTER_BINARY,
         timeout_s: float = DEFAULT_TWITTER_TIMEOUT_S,
+        pace_s: float = DEFAULT_TWITTER_PACE_S,
         window_hours: int = DEFAULT_TWITTER_WINDOW_HOURS,
         max_per_ticker: int = DEFAULT_TWITTER_MAX_PER_TICKER,
         min_tweets_haiku: int = DEFAULT_SENTIMENT_MIN_MENTIONS,
         min_likes: int = DEFAULT_TWITTER_MIN_LIKES,
         anthropic_api_key: str | None = None,
         haiku_model: str = HAIKU_MODEL_ID,
+        summary_model: str = DEFAULT_SUMMARY_MODEL,
+        summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD,
+        drop_promo: bool = DEFAULT_TWITTER_DROP_PROMO,
         client: TwitterClient | None = None,
         anthropic_client: Any | None = None,
         sleep: Callable[[], None] | None = None,
@@ -291,6 +331,7 @@ class TwitterSource:
         self._log = logger or logging.getLogger("chatter_daemon.twitter")
         self._binary = binary
         self._timeout = timeout_s
+        self._pace_s = pace_s
         self._window_hours = window_hours
         self._max_per_ticker = max_per_ticker
         self._min_tweets_haiku = min_tweets_haiku
@@ -300,7 +341,12 @@ class TwitterSource:
             api_key=anthropic_api_key, client=anthropic_client, logger=self._log
         )
         self._haiku_model = haiku_model
-        self._sleep = sleep if sleep is not None else _courtesy_sleep
+        self._summary_model = summary_model  # Order 19: Sonnet for the prose summary
+        self._summary_cost_cap = summary_cost_cap_usd
+        self._drop_promo = drop_promo  # Order 19: strip promo/spam before stance + summary
+        # PACE between per-ticker searches — X rate-limits fast bursts (Order 18). Default
+        # sleeps `pace_s`; tests inject a no-op.
+        self._sleep = sleep if sleep is not None else (lambda: time.sleep(self._pace_s))
 
     def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
         client = self._client or TwitterClient(
@@ -320,6 +366,7 @@ class TwitterSource:
         records: list[NormalizedRecord] = []
         warnings: list[str] = []
         blocked: list[str] = []
+        raw_items: list[str] = []  # Order 19: survivor tweets for the history dump
         cost = CostTelemetry()
         actives = watchlist.active_tickers
 
@@ -339,7 +386,9 @@ class TwitterSource:
                 blocked.append(sym)
                 continue
             records.append(
-                self._build_record(watchlist, context, window, sym, cutoff_unix, raw, cost, warnings)
+                self._build_record(
+                    watchlist, context, window, sym, cutoff_unix, raw, cost, warnings, raw_items
+                )
             )
 
         # A ticker whose search was unreadable degrades the surface (ok=False flips the
@@ -352,11 +401,13 @@ class TwitterSource:
             else None
         )
         return SourceResult(
-            source=SOURCE_NAME, records=records, warnings=warnings, error=error, cost=cost
+            source=SOURCE_NAME, records=records, warnings=warnings, error=error, cost=cost,
+            raw_items=raw_items,
         )
 
-    def _build_record(self, watchlist, context, window, symbol, cutoff_unix, raw, cost, warnings):
+    def _build_record(self, watchlist, context, window, symbol, cutoff_unix, raw, cost, warnings, raw_items):
         survivors = self._filter(raw, cutoff_unix)
+        raw_items.extend(f"{symbol}\t{s['text']}" for s in survivors)  # Order 19: history dump
         if len(raw) >= 5 and not survivors:
             # Loud hint: a substantial result that ALL got filtered often means a cert
             # field-name mismatch (createdAt/likes), not a genuinely-empty ticker.
@@ -377,6 +428,7 @@ class TwitterSource:
             if s["text"].strip()
         ]
         sentiment = self._classify(symbol, posts, cost, warnings)
+        twitter_summary = self._summarize(symbol, posts, cost, warnings)
 
         return NormalizedRecord(
             watchlist=watchlist.name,
@@ -389,6 +441,7 @@ class TwitterSource:
             metrics=Metrics(mention_count=len(survivors)),
             sentiment=sentiment,
             observed_window=observed,
+            twitter_summary=twitter_summary,
             flags=[],
         )
 
@@ -410,12 +463,14 @@ class TwitterSource:
             created_unix = _parse_iso_unix(created_iso)
             if created_unix is None or created_unix < cutoff_unix:
                 continue  # out of window or unparseable stamp
-            likes = _first_field(tw, _FIELDS_LIKES)
+            likes = _tweet_likes(tw)
             if isinstance(likes, (int, float)) and likes < self._min_likes:
                 continue  # below floor (None = unknown -> keep, trust the CLI)
             text = _first_field(tw, _FIELDS_TEXT) or ""
             if not isinstance(text, str):
                 text = str(text)
+            if self._drop_promo and _is_promo(text):
+                continue  # Order 19: promotional / follow-bait / cashtag-spam
             key = _dedupe_key(text)
             if key and key in seen:
                 continue  # near-identical duplicate
@@ -456,6 +511,37 @@ class TwitterSource:
             bearish=int(t.get("bearish", 0)),
             neutral=int(t.get("neutral", 0)),
         )
+
+    def _summarize(self, symbol, posts, cost, warnings) -> str | None:
+        """Haiku <=3-sentence summary of the Twitter COMMENTARY (Order 18), gated like the
+        stance (>= MIN_TWEETS_HAIKU survivors + an Anthropic key) and cost-capped against
+        the same summary budget. Degrade-clean: over-cap or a Haiku failure -> None (never
+        blocks the record; the count + stance still ship)."""
+        if len(posts) < self._min_tweets_haiku:
+            return None
+        anthropic = self._anthropic.get()
+        if anthropic is None:
+            return None
+        if summary_cost_usd(cost) >= self._summary_cost_cap:
+            warnings.append(
+                f"{symbol}: twitter summary skipped — scan cost cap ${self._summary_cost_cap:.2f}"
+            )
+            return None
+        try:
+            return (
+                summarize_tweets(
+                    texts=[p["text"] for p in posts[:_SUMMARY_TWEET_CAP]],
+                    ticker=symbol,
+                    client=anthropic,
+                    model=self._summary_model,
+                    cost=cost,
+                )
+                or None
+            )
+        except SentimentError as exc:
+            self._log.warning("twitter summary failed for %s: %s", symbol, exc)
+            warnings.append(f"{symbol}: twitter summary failed ({exc})")
+            return None
 
 
 __all__ = [

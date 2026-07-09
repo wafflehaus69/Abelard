@@ -40,8 +40,9 @@ def _iso(unix: int) -> str:
 
 
 def _tweet(tid, text, *, ago_h, likes=10):
-    """A tweet dict using the transcription's primary field names (createdAtISO/likes)."""
-    return {"id": tid, "text": text, "createdAtISO": _iso(FIXED - int(ago_h * 3600)), "likes": likes}
+    """A tweet dict in twitter-cli v0.8.5's real shape — likes nested under `metrics` (cert 2026-07-09)."""
+    return {"id": tid, "text": text, "createdAtISO": _iso(FIXED - int(ago_h * 3600)),
+            "metrics": {"likes": likes}}
 
 
 # --- fakes ---------------------------------------------------------------------------
@@ -51,7 +52,7 @@ class _FakeRunner:
     """Injected into a REAL TwitterClient — returns (rc, stdout_bytes) or raises, keyed on
     whether argv is the --version smoke or a search. Records every argv."""
 
-    def __init__(self, *, version=(0, b"twitter 2.1.0\n"), search=(0, b"[]"),
+    def __init__(self, *, version=(0, b"twitter, version 0.8.5\n"), search=(0, b"[]"),
                  version_exc=None, search_exc=None):
         self._version = version
         self._search = search
@@ -118,19 +119,23 @@ class _Resp:
 
 
 class _FakeMessages:
-    def __init__(self, text, stop):
-        self._text = text
+    def __init__(self, stance_text, summary_text, stop):
+        self._stance = stance_text
+        self._summary = summary_text
         self._stop = stop
         self.calls: list[dict] = []
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        return _Resp(self._text, self._stop)
+        # Stance calls carry output_config (json_schema); the tweet-summary call does not.
+        text = self._stance if "output_config" in kwargs else self._summary
+        return _Resp(text, self._stop)
 
 
 class _FakeAnthropic:
-    def __init__(self, text='{"classifications":[]}', stop="end_turn"):
-        self.messages = _FakeMessages(text, stop)
+    def __init__(self, text='{"classifications":[]}', summary="The crowd is chatting about it.",
+                 stop="end_turn"):
+        self.messages = _FakeMessages(text, summary, stop)
 
 
 def _client(**kw):
@@ -141,7 +146,13 @@ def _client(**kw):
 
 
 def test_smoke_ok_returns_version():
-    assert TwitterClient(runner=_FakeRunner(version=(0, b"twitter 2.1.0\n"))).smoke() == "twitter 2.1.0"
+    assert TwitterClient(runner=_FakeRunner(version=(0, b"twitter, version 0.8.5\n"))).smoke() == "twitter, version 0.8.5"
+
+
+def test_smoke_wrong_major_fails_loud():
+    # _EXPECTED_MAJOR=0 (v0.8.x, cert 2026-07-09); a 1.x bump must fail the smoke loud.
+    with pytest.raises(TwitterCliError):
+        TwitterClient(runner=_FakeRunner(version=(0, b"twitter, version 1.0.0\n"))).smoke()
 
 
 def test_smoke_binary_absent_fails_loud():
@@ -298,7 +309,8 @@ def test_haiku_on_above_floor_classifies_no_native():
     assert nvda.sentiment.method == "haiku"
     assert (nvda.sentiment.bullish, nvda.sentiment.bearish, nvda.sentiment.neutral) == (2, 1, 1)
     assert nvda.sentiment.native is None  # Twitter has no native stance (mirror /smg/)
-    assert res.cost.haiku_calls == 1
+    assert nvda.twitter_summary == "The crowd is chatting about it."  # Order 18 summary ran
+    assert res.cost.haiku_calls == 2  # stance + the <=3-sentence commentary summary
 
 
 def test_haiku_below_floor_method_none():
@@ -335,8 +347,78 @@ def test_cost_accumulated_on_haiku_path():
         client=fake, min_tweets_haiku=3,
         anthropic_client=_FakeAnthropic(text='{"classifications":[]}'), sleep=lambda: None,
     ).fetch(WL, context=_ctx())
-    assert res.cost.haiku_calls == 1
-    assert res.cost.input_tokens == 10 and res.cost.output_tokens == 5  # accumulated (doctrine #8)
+    assert res.cost.haiku_calls == 2  # stance + summary, both accumulated (doctrine #8)
+    assert res.cost.input_tokens == 20 and res.cost.output_tokens == 10  # 2 x _Usage(10, 5)
+
+
+# --- Order 18: Twitter commentary summary (<=3 sentences, gated + cost-capped) ---------
+
+
+def test_summary_set_above_floor_with_key():
+    tweets = [_tweet(str(i), f"nvda take {i}", ago_h=1) for i in range(1, 5)]  # 4 >= floor
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3,
+        anthropic_client=_FakeAnthropic(summary="Traders debate valuation vs AI demand."),
+        sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    assert {r.ticker: r for r in res.records}["NVDA"].twitter_summary == "Traders debate valuation vs AI demand."
+
+
+def test_summary_none_below_floor():
+    tweets = [_tweet("1", "a", ago_h=1), _tweet("2", "b", ago_h=1)]  # 2 < floor 3
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3, anthropic_client=_FakeAnthropic(), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    assert {r.ticker: r for r in res.records}["NVDA"].twitter_summary is None
+
+
+def test_summary_none_without_key():
+    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(client=fake, min_tweets_haiku=3, sleep=lambda: None).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.twitter_summary is None and res.cost.haiku_calls == 0
+
+
+def test_summary_cost_cap_skips_and_warns():
+    # The stance call spends ~$0.000035 (_Usage 10/5); a cap below that trips before the
+    # summary call, so the summary is skipped (stance already ran).
+    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3, summary_cost_cap_usd=0.00001,
+        anthropic_client=_FakeAnthropic(), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.twitter_summary is None                 # over cap -> skipped
+    assert nvda.sentiment.method == "haiku"              # stance still ran (before the cap check)
+    assert any("NVDA" in w and "cost cap" in w for w in res.warnings)
+
+
+def test_summary_degrades_on_failure():
+    class _Boom:
+        def __init__(self):
+            self.messages = self
+            self._n = 0
+
+        def create(self, **kwargs):
+            # stance (output_config) succeeds; the summary call raises.
+            if "output_config" in kwargs:
+                return _Resp('{"classifications":[]}', "end_turn")
+            raise RuntimeError("api down")
+
+    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3, anthropic_client=_Boom(), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.twitter_summary is None                  # degraded to None
+    assert nvda.sentiment.method == "haiku"              # stance unaffected
+    assert nvda.metrics.mention_count == 4               # record still ships
+    assert any("NVDA" in w and "summary failed" in w for w in res.warnings)
 
 
 def test_observed_window_round_trips_through_aggregate_to_json(tmp_path):
@@ -369,3 +451,45 @@ def test_observed_window_round_trips_through_aggregate_to_json(tmp_path):
         "earliest": iso_z(FIXED - 3 * 3600),
         "latest": iso_z(FIXED - 1 * 3600),
     }
+
+
+# --- Order 19: promo filter + Sonnet summary model + raw-item collection ---------------
+
+
+def test_promo_tweets_dropped():
+    tweets = [
+        _tweet("1", "solid nvda thesis on data-center demand", ago_h=1),     # keep
+        _tweet("2", "go follow @guru for free signals", ago_h=1),            # follow-bait -> drop
+        _tweet("3", "$NVDA $AMD $TSLA $META $AAPL $MSFT rocket", ago_h=1),    # 6 cashtags -> drop
+    ]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(client=fake, sleep=lambda: None).fetch(WL, context=_ctx())
+    assert {r.ticker: r for r in res.records}["NVDA"].metrics.mention_count == 1  # only the thesis
+
+
+def test_promo_filter_off_keeps_all():
+    tweets = [_tweet("1", "go follow @guru", ago_h=1), _tweet("2", "real take on nvda", ago_h=1)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(client=fake, drop_promo=False, sleep=lambda: None).fetch(WL, context=_ctx())
+    assert {r.ticker: r for r in res.records}["NVDA"].metrics.mention_count == 2
+
+
+def test_summary_runs_on_sonnet_stance_stays_on_haiku():
+    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
+    anthropic = _FakeAnthropic()
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    TwitterSource(
+        client=fake, min_tweets_haiku=3, summary_model="claude-sonnet-4-6",
+        anthropic_client=anthropic, sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    # stance calls carry output_config (json_schema); the prose summary call does not.
+    by = {("stance" if "output_config" in c else "summary"): c["model"] for c in anthropic.messages.calls}
+    assert by["summary"] == "claude-sonnet-4-6"  # Order 19: prose on Sonnet
+    assert by["stance"] == "claude-haiku-4-5"     # tally stays on Haiku
+
+
+def test_raw_items_collect_survivor_tweets():
+    tweets = [_tweet("1", "nvda alpha", ago_h=1), _tweet("2", "nvda beta", ago_h=1)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(client=fake, sleep=lambda: None).fetch(WL, context=_ctx())
+    assert "NVDA\tnvda alpha" in res.raw_items and "NVDA\tnvda beta" in res.raw_items

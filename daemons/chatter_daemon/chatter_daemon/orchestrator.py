@@ -56,6 +56,7 @@ def run_scan(
     records: list[NormalizedRecord] = []
     errors: list[str] = []
     sources_status: list[SourceStatus] = []
+    raw_items: list[str] = []  # Order 19: source-prefixed raw scrape lines for the history dump
     cost = CostTelemetry()  # LLM cost, folded in before the envelope is returned
 
     # Source fan-out with per-source failure isolation: a source that raises (or
@@ -75,6 +76,7 @@ def run_scan(
                 break  # stop this source's remaining watchlists; others continue
             src_records.extend(result.records)
             errors.extend(result.warnings)
+            raw_items.extend(f"{result.source}\t{item}" for item in result.raw_items)
             if result.cost is not None:
                 cost.haiku_calls += result.cost.haiku_calls
                 cost.input_tokens += result.cost.input_tokens
@@ -111,4 +113,5 @@ def run_scan(
         cost=cost,
         degraded=degraded,
         errors=errors,
+        raw_items=raw_items,
     )

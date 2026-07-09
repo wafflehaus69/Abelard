@@ -161,6 +161,23 @@ def _cmd_scan(args: argparse.Namespace, cfg: Config, log: logging.Logger) -> int
         result.errors.append(f"archive: {exc}")
         rc = 1
 
+    # Order 19: raw-scrape history dump (headlines / StockTwits / Twitter) beside the
+    # archive. Best-effort — a failure warns but never fails the scan.
+    if envelope.raw_items:
+        try:
+            from .history import write_history
+
+            hpath = write_history(
+                cfg.history_root,
+                envelope.raw_items,
+                scan_id=scan_id,
+                canonical_ts=envelope.canonical_ts,
+            )
+            log.info("raw history: %s", hpath)
+        except Exception as exc:  # never fail the scan over the side dump
+            log.warning("history dump failed: %s", exc)
+            result.errors.append(f"history: {exc}")
+
     _emit(result.model_dump(mode="json"))
 
     # Total-source-failure rule: sources attempted, every one errored, zero records.

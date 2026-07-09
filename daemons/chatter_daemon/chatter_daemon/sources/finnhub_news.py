@@ -25,7 +25,12 @@ from typing import Any
 from abelard_common.company_aliases import load_name_map
 from abelard_common.http_client import HttpClient, NotFound
 
-from ..config import DEFAULT_SUMMARY_COST_CAP_USD, DEFAULT_USER_AGENT, HAIKU_MODEL_ID
+from ..config import (
+    DEFAULT_SUMMARY_COST_CAP_USD,
+    DEFAULT_SUMMARY_MODEL,
+    DEFAULT_USER_AGENT,
+    HAIKU_MODEL_ID,
+)
 from ..errors import ChatterDaemonError
 from ..matching import build_name_map, title_mentions_ticker
 from ..schema import CostTelemetry, Headline, Metrics, NormalizedRecord, Sentiment
@@ -57,6 +62,7 @@ class FinnhubNewsSource:
         company_names_path: str | Path | None = None,
         anthropic_api_key: str | None = None,
         haiku_model: str = HAIKU_MODEL_ID,
+        summary_model: str = DEFAULT_SUMMARY_MODEL,
         summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD,
         client: HttpClient | None = None,
         anthropic_client: Any | None = None,
@@ -73,6 +79,7 @@ class FinnhubNewsSource:
             api_key=anthropic_api_key, client=anthropic_client, logger=self._log
         )
         self._haiku_model = haiku_model
+        self._summary_model = summary_model  # Order 19: Sonnet for the prose summary
         self._cost_cap = summary_cost_cap_usd
         self._shared_map = load_name_map(Path(company_names_path)) if company_names_path else {}
 
@@ -92,6 +99,7 @@ class FinnhubNewsSource:
         warnings: list[str] = []
 
         records: list[NormalizedRecord] = []
+        raw_items: list[str] = []  # Order 19: headlines for the history dump
         for spec in watchlist.active_tickers:
             try:
                 payload = self.client.get_json(
@@ -115,6 +123,7 @@ class FinnhubNewsSource:
                 )
 
             heads = _parse_headlines(payload)
+            raw_items.extend(f"{spec.symbol}\t{h.title}" for h in heads)
             summary = self._summarize(spec.symbol, heads, aliases, anthropic, cost, warnings)
             records.append(
                 NormalizedRecord(
@@ -131,7 +140,9 @@ class FinnhubNewsSource:
                     flags=[],
                 )
             )
-        return SourceResult(source=SOURCE_NAME, records=records, warnings=warnings, cost=cost)
+        return SourceResult(
+            source=SOURCE_NAME, records=records, warnings=warnings, cost=cost, raw_items=raw_items
+        )
 
     def _aliases(self, watchlist: WatchlistConfig) -> dict[str, list[str]]:
         """`{SYMBOL: [name words]}` from the shared company-name map — the SAME map the
@@ -164,7 +175,7 @@ class FinnhubNewsSource:
                     ticker=symbol,
                     company=company,
                     client=anthropic,
-                    model=self._haiku_model,
+                    model=self._summary_model,
                     cost=cost,
                 )
                 or None

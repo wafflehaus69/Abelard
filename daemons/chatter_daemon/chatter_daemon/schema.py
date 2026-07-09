@@ -159,6 +159,9 @@ class NormalizedRecord(BaseModel):
     # The actual span of surviving tweets (Twitter source, Order 17) — None when zero
     # tweets survived filtering. Round-trips to stdout via SourceSignal.
     observed_window: ObservedWindow | None = None
+    # Haiku <=3-sentence summary of the Twitter commentary (Order 18) — Twitter records
+    # only; the crowd's "what they're saying", distinct from the bull/bear stance tally.
+    twitter_summary: str | None = None
     flags: list[str] = Field(default_factory=list)
 
 
@@ -216,6 +219,9 @@ class ScanEnvelope(BaseModel):
     # disambiguates: total source failure (zero records, all failed) -> exit 1.
     degraded: bool = False
     errors: list[str] = Field(default_factory=list)
+    # Order 19: raw scraped text ("source\tTICKER\ttext"), for the history dump only —
+    # NOT carried into the persisted AggregatedScanResult.
+    raw_items: list[str] = Field(default_factory=list)
 
 
 # --- Order 7: aggregation layer (separate from the plugin NormalizedRecord) -------
@@ -258,6 +264,7 @@ class SourceSignal(BaseModel):
     st_aggregate: StockTwitsAggregate | None = None  # StockTwits sentiment-API (Order 12)
     news_summary: str | None = None  # Finnhub named-news Haiku summary (Order 15)
     observed_window: ObservedWindow | None = None  # Twitter survivor span (Order 17)
+    twitter_summary: str | None = None  # Twitter commentary Haiku summary (Order 18)
     matched_by: list[MatchedBy] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     anomaly: Anomaly

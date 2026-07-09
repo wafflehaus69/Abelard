@@ -111,6 +111,7 @@ def build_aggregate(
                     st_aggregate=rec.st_aggregate,
                     news_summary=rec.news_summary,
                     observed_window=rec.observed_window,
+                    twitter_summary=rec.twitter_summary,
                     matched_by=rec.matched_by,
                     flags=rec.flags,
                     anomaly=anomaly,

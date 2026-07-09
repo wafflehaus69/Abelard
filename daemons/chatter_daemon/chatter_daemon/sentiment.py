@@ -282,6 +282,49 @@ def summarize_news(*, titles, ticker, company, client, model, cost) -> str:
     return text
 
 
+# --- Order 18: Twitter commentary summary (<=3 sentences, crowd talk, no stance) --------
+
+_TWEET_SUMMARY_SYSTEM = (
+    "You summarize retail-investor commentary from Twitter/X for a financial-attention "
+    "sensor. Given a US-equity ticker and a set of recent cashtag tweets about it, write "
+    "ONE short paragraph of AT MOST THREE SENTENCES on what the crowd is talking about and "
+    "the prevailing tone.\n"
+    "Rules:\n"
+    "- Summarize the COMMENTARY (themes, claims, mood), not your own view.\n"
+    "- AT MOST 3 sentences, one paragraph. No preamble, no bullet points, no hashtags.\n"
+    "- NO price prediction, NO buy/sell/hold advice.\n"
+    "- Ignore obvious promo / follow-bait / spam; focus on substantive talk. If the tweets "
+    "are thin or purely promotional, say so briefly."
+)
+_TWEET_SUMMARY_MAX_TOKENS = 256
+
+
+def summarize_tweets(*, texts, ticker, client, model, cost) -> str:
+    """One Haiku call -> a <=3-sentence, one-paragraph summary of the Twitter COMMENTARY for
+    a ticker (what the crowd is saying + the tone) — distinct from the bull/bear stance
+    tally, no price view. Accumulates token usage into `cost` immediately after the response
+    (doctrine #8). Raises SentimentError on a transport / empty-response failure — the caller
+    degrades to None + a warning."""
+    if not texts:
+        return ""
+    user = f"Ticker: {ticker}\n\nTweets:\n" + "\n".join(f"- {t}" for t in texts)
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=_TWEET_SUMMARY_MAX_TOKENS,
+            system=[{"type": "text", "text": _TWEET_SUMMARY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user}],
+        )
+    except Exception as exc:  # SDK / transport — degrade to None, never fabricate.
+        raise SentimentError(f"tweet summary call failed: {exc}") from exc
+    cost.haiku_calls += 1
+    _accumulate_usage(getattr(response, "usage", None), cost)
+    text = _first_text(response)
+    if not text:
+        raise SentimentError("tweet summary returned no text")
+    return text
+
+
 def summary_cost_usd(cost) -> float:
     """Haiku-4.5 USD estimate from accumulated tokens (~$1/M input, ~$5/M output); all
     input-side counted at the input rate — slightly conservative for the cost-cap guard."""

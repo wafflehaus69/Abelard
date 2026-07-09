@@ -78,6 +78,10 @@ class SourceResult:
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
     cost: CostTelemetry | None = None  # LLM cost (StockTwits/Haiku only); folded into the envelope
+    # Order 19: raw scraped text for the history dump — one "TICKER\ttext" line per item
+    # (headlines / StockTwits messages / tweets). Collected by the orchestrator, written to
+    # history/<ts>.txt by the CLI, NEVER persisted in the scan JSON.
+    raw_items: list[str] = field(default_factory=list)
 
 
 @runtime_checkable

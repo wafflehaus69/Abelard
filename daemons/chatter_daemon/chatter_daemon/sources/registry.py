@@ -25,6 +25,7 @@ def build_sources(cfg: Config) -> list[Source]:
             company_names_path=cfg.company_names_path,
             anthropic_api_key=cfg.anthropic_api_key,
             haiku_model=cfg.haiku_model_id,
+            summary_model=cfg.summary_model,
             summary_cost_cap_usd=cfg.news_summary_cost_cap_usd,
         ),
         SmgSource(
@@ -57,12 +58,16 @@ def build_sources(cfg: Config) -> list[Source]:
             TwitterSource(
                 binary=cfg.twitter_binary,
                 timeout_s=cfg.twitter_timeout_s,
+                pace_s=cfg.twitter_pace_s,
                 window_hours=cfg.twitter_window_hours,
                 max_per_ticker=cfg.twitter_max_per_ticker,
                 min_tweets_haiku=cfg.twitter_min_tweets_haiku,
                 min_likes=cfg.twitter_min_likes,
                 anthropic_api_key=cfg.anthropic_api_key,
                 haiku_model=cfg.haiku_model_id,
+                summary_model=cfg.summary_model,
+                summary_cost_cap_usd=cfg.news_summary_cost_cap_usd,
+                drop_promo=cfg.twitter_drop_promo,
             )
         )
     return sources

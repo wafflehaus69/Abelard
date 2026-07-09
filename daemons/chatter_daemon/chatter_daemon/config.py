@@ -73,6 +73,11 @@ def _default_archive_root() -> Path:
     return _DAEMON_ROOT / "archive"
 
 
+def _default_history_root() -> Path:
+    # Raw-scrape text dumps (Order 19) — headlines / StockTwits / Twitter per scan, gitignored.
+    return _DAEMON_ROOT / "history"
+
+
 def _env_path(name: str, default: Path) -> Path:
     raw = os.environ.get(name, "").strip()
     return Path(raw) if raw else default
@@ -114,13 +119,19 @@ DEFAULT_WORD_TICKER_ALLOWLIST = frozenset({"NOW", "META", "CORN"})
 # Haiku sentiment (repointed from Reddit comments to StockTwits message bodies,
 # Order 9). Model id pinned here, verified live via the claude-api skill at build time.
 HAIKU_MODEL_ID = "claude-haiku-4-5"
+# Order 19: the prose SUMMARIES (Finnhub named-news + Twitter commentary) run on Sonnet for
+# sharper synthesis of specific figures/catalysts; stance/classification stays on Haiku
+# (structured tally, cheaper). ~3x the summary cost (~+$0.18/scan). Model id via claude-api.
+DEFAULT_SUMMARY_MODEL = "claude-sonnet-4-6"
 DEFAULT_SENTIMENT_MIN_MENTIONS = 3
 # Order 12: Haiku-on-StockTwits-bodies DEMOTED — OFF by default (the free sentiment-API
 # aggregate supersedes it). Opt in for corroboration only; Haiku stays ON for /smg/.
 DEFAULT_STOCKTWITS_HAIKU = False
-# Order 15: per-ticker named-news summary (Finnhub interpretation). Per-scan cost backstop
-# — generous (typical ~$0.10-0.25); a fail-loud guard, not a routine limiter.
-DEFAULT_SUMMARY_COST_CAP_USD = 1.0
+# Per-source summary cost backstop (Finnhub named-news + Twitter commentary). Set to $2 on
+# 2026-07-09 (Mando: $5 a little high, $2 an acceptable ceiling) — typical spend is
+# ~$0.10-0.30/source (higher on Sonnet), so this stays pure headroom: a runaway-bug guard,
+# NOT a routine limiter. Env-tunable via CHATTER_SUMMARY_COST_CAP.
+DEFAULT_SUMMARY_COST_CAP_USD = 2.0
 
 # Order 17 — Twitter/X cashtag source (subprocess `twitter` CLI). OFF by default until a
 # live cert on the host that HAS the CLI (the build host does not). MIN_TWEETS_HAIKU=3 for
@@ -133,7 +144,17 @@ DEFAULT_TWITTER_MAX_PER_TICKER = 50
 DEFAULT_TWITTER_MIN_TWEETS_HAIKU = 3  # parity with DEFAULT_SENTIMENT_MIN_MENTIONS
 DEFAULT_TWITTER_MIN_LIKES = 2  # low positive floor — drops zero-engagement spam
 DEFAULT_TWITTER_BINARY = "twitter"
-DEFAULT_TWITTER_TIMEOUT_S = 30.0
+# Per-search subprocess timeout. LOWERED 30 -> 8s on 2026-07-09: X throttles a 45-ticker
+# scan by slow-walking ~30% of searches to the timeout; a real search returns in ~2-5s, so
+# 8s fail-fasts the throttled ones (they'd yield junk anyway) instead of hanging 30s each —
+# cuts a full scan ~20min -> ~15min. Env-tunable (CHATTER_TWITTER_TIMEOUT).
+DEFAULT_TWITTER_TIMEOUT_S = 8.0
+# Seconds between per-ticker searches — X rate-limits fast bursts. CALIBRATED 2026-07-09:
+# 12/12 clean at 5s vs ~25/45 unpaced; 45 tickers ~= a 4-min Twitter phase. Env-tunable.
+DEFAULT_TWITTER_PACE_S = 5.0
+# Order 19: drop promotional / follow-bait / cashtag-stuffed tweets before stance + summary
+# (raw `latest` is ~80% promo). ON by default; env CHATTER_TWITTER_DROP_PROMO=0 to keep raw.
+DEFAULT_TWITTER_DROP_PROMO = True
 
 # Order 7 — baseline store, archive, anomaly tunables.
 DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
@@ -176,6 +197,7 @@ class Config:
     # Haiku sentiment (StockTwits bodies, Order 9). Key optional at load, required at fetch.
     anthropic_api_key: str | None = None
     haiku_model_id: str = HAIKU_MODEL_ID
+    summary_model: str = DEFAULT_SUMMARY_MODEL  # Order 19: Sonnet for the prose summaries
     sentiment_min_mentions: int = DEFAULT_SENTIMENT_MIN_MENTIONS
     stocktwits_haiku_enabled: bool = DEFAULT_STOCKTWITS_HAIKU
     news_summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD
@@ -187,7 +209,10 @@ class Config:
     twitter_min_likes: int = DEFAULT_TWITTER_MIN_LIKES
     twitter_binary: str = DEFAULT_TWITTER_BINARY
     twitter_timeout_s: float = DEFAULT_TWITTER_TIMEOUT_S
+    twitter_pace_s: float = DEFAULT_TWITTER_PACE_S
+    twitter_drop_promo: bool = DEFAULT_TWITTER_DROP_PROMO  # Order 19: strip promo/spam
     # Order 7 — baseline store, run archive, anomaly tunables.
+    history_root: Path = field(default_factory=_default_history_root)  # Order 19: raw dumps
     baseline_db_path: Path = field(default_factory=_default_baseline_db_path)
     archive_root: Path = field(default_factory=_default_archive_root)
     baseline_window: int = DEFAULT_BASELINE_WINDOW
@@ -255,8 +280,12 @@ class Config:
             twitter_binary=os.environ.get("CHATTER_TWITTER_BINARY", "").strip()
             or DEFAULT_TWITTER_BINARY,
             twitter_timeout_s=_env_float("CHATTER_TWITTER_TIMEOUT", DEFAULT_TWITTER_TIMEOUT_S),
+            twitter_pace_s=_env_float("CHATTER_TWITTER_PACE", DEFAULT_TWITTER_PACE_S),
+            twitter_drop_promo=_env_bool("CHATTER_TWITTER_DROP_PROMO", DEFAULT_TWITTER_DROP_PROMO),
+            summary_model=os.environ.get("CHATTER_SUMMARY_MODEL", "").strip() or DEFAULT_SUMMARY_MODEL,
             baseline_db_path=_env_path("CHATTER_BASELINE_DB", _default_baseline_db_path()),
             archive_root=_env_path("CHATTER_ARCHIVE_ROOT", _default_archive_root()),
+            history_root=_env_path("CHATTER_HISTORY_ROOT", _default_history_root()),
             baseline_window=_env_int("CHATTER_BASELINE_WINDOW", DEFAULT_BASELINE_WINDOW),
             baseline_min_obs=_env_int("CHATTER_BASELINE_MIN_OBS", DEFAULT_BASELINE_MIN_OBS),
             spike_z_threshold=_env_float("CHATTER_SPIKE_Z", DEFAULT_SPIKE_Z),

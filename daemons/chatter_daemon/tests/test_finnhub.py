@@ -260,3 +260,15 @@ def test_end_to_end_via_run_scan():
     assert env.sources[0].record_count == 2
     assert len(env.records) == 2
     assert all(r.schema_version == "1" for r in env.records)
+
+
+def test_summary_on_sonnet_and_headlines_collected():
+    # Order 19: prose summary runs on Sonnet by default; headlines flow to the raw history.
+    fake = _FakeAnthropic(text="NVDA strong data-center demand.")
+    client = _FakeClient([
+        [{"headline": "NVDA jumps on earnings", "url": "http://x"}],  # named -> summary
+        [],  # ITA honest zero
+    ])
+    res = _finnhub(client, anthropic=fake).fetch(WL, context=_ctx())
+    assert "NVDA\tNVDA jumps on earnings" in res.raw_items          # headlines -> history dump
+    assert fake.messages.calls[0]["model"] == "claude-sonnet-4-6"  # summary on Sonnet

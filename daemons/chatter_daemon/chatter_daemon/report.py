@@ -253,6 +253,7 @@ _RED = "#b00020"     # bearish / danger
 _MUTED = "#666666"   # neutral / secondary meta
 _DANGER = "#b00020"  # confidence / pump / thin warning flags
 _SHADE = "#f0f0f2"   # social-band background tint
+_TWITTER_SHADE = "#eaf1fb"  # Twitter band tint (Order 18) — distinct from the StockTwits band
 _RULE = "#bbbbbb"    # divider / box rule
 
 
@@ -366,6 +367,34 @@ def _social_band_html(s) -> str | None:
         col = _dir_color_counts(sent.bullish, sent.bearish)
         return f'<b>STOCKTWITS</b>  <font color="{col}">native {sent.bullish} bull / {sent.bearish} bear</font>'
     return None
+
+
+def _twitter_band_html(s) -> str | None:
+    """The Twitter band (Order 18), rendered UNDER the StockTwits band: the crowd read
+    (N tweets + bull/bear/neutral stance colored by direction + the surviving-tweet time
+    span) then the <=3-sentence commentary summary. None when Twitter has no signal here."""
+    if s is None:
+        return None
+    n = s.metrics.mention_count
+    summary = getattr(s, "twitter_summary", None)
+    if n == 0 and not summary:
+        return None
+    sent = s.sentiment
+    if sent is not None and sent.method == "haiku":
+        col = _dir_color_counts(sent.bullish, sent.bearish)
+        head = (
+            f'<b>TWITTER</b>  {n} tweets  '
+            f'<font color="{col}">{sent.bullish} bull / {sent.bearish} bear / '
+            f'{sent.neutral} neutral</font>'
+        )
+    else:
+        head = f'<b>TWITTER</b>  {n} tweets'
+    ow = getattr(s, "observed_window", None)
+    if ow is not None:
+        head += f'  <font color="{_MUTED}">[{ow.earliest[11:16]}-{ow.latest[11:16]} UTC]</font>'
+    if summary:
+        head += f'<br/><font color="{_MUTED}">commentary &middot;</font> {escape(summary)}'
+    return head
 
 
 def _stocktwits_extras(signal) -> str:
@@ -483,6 +512,15 @@ def _ticker_table(ticker, aliases, st):
         style += [
             ("SPAN", (0, row), (1, row)),
             ("BACKGROUND", (0, row), (1, row), colors.HexColor(_SHADE)),
+            ("LINEABOVE", (0, row), (1, row), 0.5, colors.HexColor(_RULE)),
+        ]
+        row += 1
+    twit = _twitter_band_html(_src(ticker, "twitter"))
+    if twit:
+        data.append([Paragraph(twit, st["Band"]), ""])
+        style += [
+            ("SPAN", (0, row), (1, row)),
+            ("BACKGROUND", (0, row), (1, row), colors.HexColor(_TWITTER_SHADE)),
             ("LINEABOVE", (0, row), (1, row), 0.5, colors.HexColor(_RULE)),
         ]
         row += 1

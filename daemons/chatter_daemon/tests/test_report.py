@@ -33,13 +33,15 @@ from chatter_daemon.schema import (
 )
 
 
-def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None, news_summary=None):
+def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None, news_summary=None, observed_window=None, twitter_summary=None):
     return SourceSignal(
         source=source,
         metrics=Metrics(mention_count=count, interest_24h=i24, interest_7d=i7, interest_monthly=im, headlines=headlines),
         sentiment=sentiment or Sentiment(method="none"),
         st_aggregate=st_aggregate,
         news_summary=news_summary,
+        observed_window=observed_window,
+        twitter_summary=twitter_summary,
         anomaly=Anomaly(kind="trend" if source == "google_trends" else "count", state=state),
     )
 
@@ -446,6 +448,29 @@ def test_social_band_pump_flag_danger_tone_on_bullish():
     html = _social_band_html(_wsig("stocktwits", st_aggregate=agg))
     assert _GREEN in html                                # bullish read = green
     assert _DANGER in html and "possible pump" in html   # warning: danger tone AND words (grayscale-safe)
+
+
+def test_twitter_band_renders_stance_and_summary():
+    from chatter_daemon.report import _twitter_band_html
+    from chatter_daemon.schema import ObservedWindow
+
+    s = _wsig(
+        "twitter", count=39,
+        sentiment=_sent(method="haiku", b=17, r=3, n=19),
+        observed_window=ObservedWindow(earliest="2026-07-09T02:11:00+00:00", latest="2026-07-09T12:51:00+00:00"),
+        twitter_summary="Bulls tout AI demand; a few flag valuation.",
+    )
+    html = _twitter_band_html(s)
+    assert "TWITTER" in html and "39 tweets" in html
+    assert "17 bull / 3 bear / 19 neutral" in html                 # stance in the band
+    assert "commentary" in html and "Bulls tout AI demand" in html  # the <=3-sentence summary
+    assert "02:11-12:51 UTC" in html                                # observed span
+
+
+def test_twitter_band_none_when_no_signal():
+    from chatter_daemon.report import _twitter_band_html
+    assert _twitter_band_html(_wsig("twitter", count=0)) is None  # no tweets + no summary -> omitted
+    assert _twitter_band_html(None) is None
 
 
 def test_banded_pdf_renders_valid(tmp_path):
