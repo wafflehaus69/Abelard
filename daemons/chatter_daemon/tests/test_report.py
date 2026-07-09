@@ -473,6 +473,40 @@ def test_twitter_band_none_when_no_signal():
     assert _twitter_band_html(None) is None
 
 
+def test_twitter_sequestered_to_detail_not_digest():
+    """Order 20: Twitter is Detail-only. It renders in the per-ticker band but never in
+    the Digest — no volume phrase, no stance phrase, and it does not set the rank."""
+    from chatter_daemon.report import (
+        _stance_phrase,
+        _twitter_band_html,
+        _watchlist_digest,
+        _watchlist_phrase,
+        watchlist_peak,
+    )
+    from chatter_daemon.schema import ObservedWindow
+
+    tw = _wsig(
+        "twitter", count=25,
+        sentiment=_sent(method="haiku", b=17, r=3, n=5),
+        observed_window=ObservedWindow(earliest="2026-07-09T02:11:00+00:00", latest="2026-07-09T12:51:00+00:00"),
+        twitter_summary="Bulls tout AI demand; a couple flag valuation.",
+    )
+    aapl = _wt("AAPL", [
+        _wsig("finnhub_news", count=38, headlines=[Headline(title="AAPL ships M6", url="http://x")]),
+        tw,
+    ], 2)
+    # the Twitter feed is absent from the digest TEXT ...
+    digest = " ".join(_watchlist_digest(_wresult([aapl])))
+    assert "twitter" not in digest.lower()
+    assert "25 mentions" not in digest and "25 tweets" not in digest and "17 bull" not in digest
+    # ... its phrase builders return None, and its count does NOT set the ranking peak ...
+    assert _watchlist_phrase(tw, "AAPL") is None and _stance_phrase(tw) is None
+    assert watchlist_peak(aapl) == 38.0  # Finnhub's 38 sets the peak; Twitter's 25 is ignored
+    # ... but the Detail band still renders it in full.
+    band = _twitter_band_html(tw)
+    assert "TWITTER" in band and "25 tweets" in band and "Bulls tout AI demand" in band
+
+
 def test_banded_pdf_renders_valid(tmp_path):
     mu = _wt("MU", [
         _wsig("finnhub_news", count=40, state="spike", headlines=[Headline(title="Micron MU", url="http://x")]),

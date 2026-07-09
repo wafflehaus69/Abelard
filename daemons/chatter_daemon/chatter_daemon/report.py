@@ -60,12 +60,13 @@ def friendly_source(source: str) -> str:
 
 def watchlist_peak(ticker) -> float:
     """Peak single-source magnitude — the largest real count across count-sources, or
-    the 24h Trends interest. The ranking key (loudest-on-any-source wins). StockTwits is
-    EXCLUDED: its count is a constant 30-message page, not volume, so it never sets the
-    rank — StockTwits contributes stance, not magnitude."""
+    the 24h Trends interest. The ranking key (loudest-on-any-source wins). StockTwits and
+    Twitter are EXCLUDED: StockTwits' count is a constant 30-message page (not volume),
+    and Twitter is a Detail-only social read (Order 20) — both contribute stance, not
+    rank. Ranking is driven by the true volume sources (Finnhub, /smg/) + Trends interest."""
     peak = 0.0
     for s in ticker.sources:
-        if s.source == "stocktwits":
+        if s.source in ("stocktwits", "twitter"):
             continue
         if s.source == "google_trends":
             peak = max(peak, s.metrics.interest_24h or 0.0)
@@ -122,6 +123,8 @@ def _watchlist_phrase(s, ticker_symbol: str = "", aliases=None) -> str | None:
         return f"interest {i}{extra}"
     if s.source == "stocktwits":
         return None  # page-size count is noise; stance carries StockTwits (see below)
+    if s.source == "twitter":
+        return None  # Order 20: Twitter is Detail-only — no volume phrase in the digest
     n = s.metrics.mention_count
     if n <= 0:
         return None
@@ -215,6 +218,8 @@ def _stance_phrase(s) -> str | None:
         if agg:
             return agg
         # gateway down -> fall back to the native tag read below
+    if s.source == "twitter":
+        return None  # Order 20: Twitter is Detail-only — its stance lives in the band, not the digest
     d = _net_dir(s.sentiment)
     if d is None:
         return None
