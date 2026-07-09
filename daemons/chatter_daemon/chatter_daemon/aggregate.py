@@ -7,15 +7,14 @@ so a scan never sits in its own baseline. We do it in two passes: read+compute f
 all (ticker, source) pairs, then append. (`read_baseline` already excludes `< now`,
 so the two-pass split is belt-and-suspenders, but it keeps the invariant obvious.)
 
-Trends carries no store — its anomaly is within-record elevation, computed and never
-appended. The plugin `NormalizedRecord` is untouched; this builds a separate type.
+The plugin `NormalizedRecord` is untouched; this builds a separate type.
 """
 
 from __future__ import annotations
 
 import sqlite3
 
-from .anomaly import compute_count_anomaly, compute_trend_anomaly
+from .anomaly import compute_count_anomaly
 from .baseline import append_observation, read_baseline
 from .schema import (
     AggregatedScanResult,
@@ -25,12 +24,10 @@ from .schema import (
     SourceSignal,
 )
 
-# Sources whose signal is a count z-scored against the baseline store. Trends is the
-# odd one out (relative interest, within-record elevation, no store); StockTwits is left
-# OUT (Order 12) — its velocity is the aggregate's now-vs-24h gap, not a rolling count,
-# so it never touches the rolling store.
+# Sources whose signal is a count z-scored against the baseline store. StockTwits is
+# left OUT (Order 12) — its velocity is the aggregate's now-vs-24h gap, not a rolling
+# count, so it never touches the rolling store.
 COUNT_SOURCES = frozenset({"finnhub_news", "smg"})
-TREND_SOURCE = "google_trends"
 STOCKTWITS_SOURCE = "stocktwits"
 ST_GAP_SPIKE = 15  # |now - 24h| sentiment points that flags an igniting/cooling name
 
@@ -54,7 +51,6 @@ def build_aggregate(
     baseline_window: int,
     baseline_min_obs: int,
     spike_z_threshold: float,
-    trend_spike_ratio: float,
     now: int,
     max_age_s: int | None = None,
 ) -> AggregatedScanResult:
@@ -79,18 +75,7 @@ def build_aggregate(
         signals: list[SourceSignal] = []
         diversity = 0
         for rec in by_ticker[(wl, ticker)]:
-            if rec.source == TREND_SOURCE:
-                anomaly = compute_trend_anomaly(
-                    interest_24h=rec.metrics.interest_24h,
-                    interest_7d=rec.metrics.interest_7d,
-                    interest_monthly=rec.metrics.interest_monthly,
-                    noisy="noisy_query" in rec.flags,
-                    ratio_threshold=trend_spike_ratio,
-                )
-                signaled = (
-                    rec.metrics.interest_24h is not None and rec.metrics.interest_24h > 0
-                )
-            elif rec.source == STOCKTWITS_SOURCE:
+            if rec.source == STOCKTWITS_SOURCE:
                 # Order 12: velocity = the aggregate's now-vs-24h gap (no rolling store).
                 # Presence of an aggregate read = signal (the page-size count is retired).
                 anomaly = _stocktwits_gap_anomaly(rec.st_aggregate)
@@ -156,4 +141,4 @@ def build_aggregate(
     )
 
 
-__all__ = ["COUNT_SOURCES", "TREND_SOURCE", "build_aggregate"]
+__all__ = ["COUNT_SOURCES", "build_aggregate"]

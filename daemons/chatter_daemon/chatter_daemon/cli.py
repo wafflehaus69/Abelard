@@ -140,7 +140,6 @@ def _cmd_scan(args: argparse.Namespace, cfg: Config, log: logging.Logger) -> int
             baseline_window=cfg.baseline_window,
             baseline_min_obs=cfg.baseline_min_obs,
             spike_z_threshold=cfg.spike_z_threshold,
-            trend_spike_ratio=cfg.trend_spike_ratio,
             now=now,
         )
         conn.close()

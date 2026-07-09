@@ -1,12 +1,11 @@
 [project]
 name = "chatter-daemon"
 version = "0.1.0"
-description = "Multi-source retail-chatter sensor for OpenClaw. Extracts US-equity ticker mentions, counts distinct-post salience, and classifies stance across StockTwits / Google Trends / Finnhub news / 4chan /smg/, against named watchlists. The daemon is dumb; Abelard judges."
+description = "Multi-source retail-chatter sensor for OpenClaw. Extracts US-equity ticker mentions, counts distinct-post salience, and classifies stance across StockTwits / Finnhub news / 4chan /smg/, against named watchlists. The daemon is dumb; Abelard judges."
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.0",
     "python-dotenv>=1.0",
-    "pytrends>=4.9",
     "anthropic>=0.40,<2.0",
     "reportlab>=4.0",
     "curl_cffi>=0.7",  # StockTwits transport: impersonate a browser TLS fp past CloudFlare

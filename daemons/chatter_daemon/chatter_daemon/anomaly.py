@@ -1,9 +1,8 @@
-"""Anomaly computation (Order 7) — two mechanical modes (Abelard interprets).
+"""Anomaly computation (Order 7) — the mechanical count read (Abelard interprets).
 
 Count sources (Finnhub / /smg/ / StockTwits): z-score the current count
 against the trailing baseline, gated by a per-source min-volume floor and a minimum
-history depth. Trends: within-record elevation of interest_24h over its own trailing
-windows — no store, since Trends already returns relative interest.
+history depth.
 
 Pure functions over a `Baseline` (already read, current scan excluded) — the store
 read/append + per-source floor selection live in the aggregation layer. States:
@@ -68,40 +67,4 @@ def compute_count_anomaly(
     )
 
 
-def compute_trend_anomaly(
-    *,
-    interest_24h: float | None,
-    interest_7d: float | None,
-    interest_monthly: float | None,
-    noisy: bool,
-    ratio_threshold: float,
-) -> Anomaly:
-    """Trends anomaly — interest_24h elevation over the higher of its trailing
-    windows. Null 24h (ETF/no-name) → `none`. `noisy_query` results compute but are
-    marked `discounted` (Abelard discounts them)."""
-    if interest_24h is None:
-        return Anomaly(kind="trend", state="none", discounted=noisy, note="no interest")
-    trailing = [v for v in (interest_7d, interest_monthly) if v is not None]
-    if not trailing:
-        return Anomaly(
-            kind="trend", state="building", discounted=noisy, note="no trailing windows"
-        )
-    base = max(trailing)
-    if base <= 0:
-        # Elevation off a ~zero trailing baseline: real but ratio is undefined.
-        return Anomaly(
-            kind="trend",
-            state="spike" if interest_24h > 0 else "ok",
-            discounted=noisy,
-            note="trailing ~0",
-        )
-    ratio = round(interest_24h / base, 4)
-    return Anomaly(
-        kind="trend",
-        state="spike" if ratio >= ratio_threshold else "ok",
-        ratio=ratio,
-        discounted=noisy,
-    )
-
-
-__all__ = ["compute_count_anomaly", "compute_trend_anomaly"]
+__all__ = ["compute_count_anomaly"]

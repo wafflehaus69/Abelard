@@ -10,7 +10,6 @@ from __future__ import annotations
 from ..config import Config
 from .base import Source
 from .finnhub_news import FinnhubNewsSource
-from .google_trends import GoogleTrendsSource
 from .smg import SmgSource
 from .stocktwits import StockTwitsSource
 
@@ -38,7 +37,6 @@ def build_sources(cfg: Config) -> list[Source]:
             haiku_model=cfg.haiku_model_id,
             sentiment_min_mentions=cfg.sentiment_min_mentions,
         ),
-        GoogleTrendsSource(company_names_path=cfg.company_names_path),
         # StockTwits (Order 12): PRIMARY = the sentiment-API aggregate (now-primary live
         # read, real volume, participation); native tags from the stream; Haiku-on-bodies
         # OFF by default (the free aggregate supersedes it).

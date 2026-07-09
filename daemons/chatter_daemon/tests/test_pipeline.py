@@ -55,7 +55,6 @@ def _run(conn, count, ts, *, min_obs=5, floor=5, z=2.0):
         baseline_window=20,
         baseline_min_obs=min_obs,
         spike_z_threshold=z,
-        trend_spike_ratio=1.5,
         now=ts,
     )
 

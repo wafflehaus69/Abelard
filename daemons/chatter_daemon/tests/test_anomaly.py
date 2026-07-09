@@ -1,9 +1,8 @@
-"""Anomaly compute — count modes (building/thin/spike/ok + sigma=0 guard, guard
-ordering) and Trends within-record elevation (spike/ok/null-none/noisy-discounted)."""
+"""Anomaly compute — count modes (building/thin/spike/ok + sigma=0 guard, guard ordering)."""
 
 from __future__ import annotations
 
-from chatter_daemon.anomaly import compute_count_anomaly, compute_trend_anomaly
+from chatter_daemon.anomaly import compute_count_anomaly
 from chatter_daemon.baseline import Baseline
 
 
@@ -48,38 +47,3 @@ def test_thin_precedes_z():
     # below floor wins over a would-be spike (stops noise z-scoring huge).
     a = _count(10, 1.0, 0.5, count=2, floor=3)  # z would be 2 but count<floor
     assert a.state == "thin"
-
-
-def test_trend_spike():
-    a = compute_trend_anomaly(
-        interest_24h=90.0, interest_7d=40.0, interest_monthly=30.0, noisy=False, ratio_threshold=1.5
-    )
-    assert a.state == "spike" and a.ratio == 2.25  # 90 / max(40,30)
-
-
-def test_trend_ok():
-    a = compute_trend_anomaly(
-        interest_24h=45.0, interest_7d=40.0, interest_monthly=30.0, noisy=False, ratio_threshold=1.5
-    )
-    assert a.state == "ok" and a.ratio == 1.125
-
-
-def test_trend_null_is_none():
-    a = compute_trend_anomaly(
-        interest_24h=None, interest_7d=None, interest_monthly=None, noisy=False, ratio_threshold=1.5
-    )
-    assert a.state == "none" and a.ratio is None
-
-
-def test_trend_noisy_discounted():
-    a = compute_trend_anomaly(
-        interest_24h=90.0, interest_7d=40.0, interest_monthly=30.0, noisy=True, ratio_threshold=1.5
-    )
-    assert a.state == "spike" and a.discounted is True
-
-
-def test_trend_elevation_off_zero_trailing():
-    a = compute_trend_anomaly(
-        interest_24h=12.0, interest_7d=0.0, interest_monthly=0.0, noisy=False, ratio_threshold=1.5
-    )
-    assert a.state == "spike" and "trailing ~0" in a.note

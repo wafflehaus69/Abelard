@@ -83,7 +83,7 @@ critical_deps() {
   # import) — the ones that drift declared-but-absent, and that the daemon lazy-imports
   # (so a plain package import would NOT catch them). Empty = rely on the package import.
   case "$1" in
-    chatter_daemon) echo "curl_cffi pytrends anthropic reportlab" ;;
+    chatter_daemon) echo "curl_cffi anthropic reportlab" ;;
     *) echo "" ;;
   esac
 }

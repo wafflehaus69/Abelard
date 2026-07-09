@@ -126,7 +126,6 @@ DEFAULT_SUMMARY_COST_CAP_USD = 1.0
 DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
 DEFAULT_BASELINE_MIN_OBS = 5  # N_min before a z-score is meaningful (else `building`)
 DEFAULT_SPIKE_Z = 2.0  # count-source spike threshold (z-score)
-DEFAULT_TREND_SPIKE_RATIO = 1.5  # Trends: interest_24h vs its trailing windows
 # Per-source min-volume floors: low-magnitude sources (Finnhub headlines, /smg/)
 # need low floors or a 2->8 jump on a quiet name z-scores huge off noise.
 # All tunable at live smoke.
@@ -173,7 +172,6 @@ class Config:
     baseline_window: int = DEFAULT_BASELINE_WINDOW
     baseline_min_obs: int = DEFAULT_BASELINE_MIN_OBS
     spike_z_threshold: float = DEFAULT_SPIKE_Z
-    trend_spike_ratio: float = DEFAULT_TREND_SPIKE_RATIO
     source_floors: dict[str, int] = field(
         default_factory=lambda: dict(DEFAULT_SOURCE_FLOORS)
     )
@@ -227,7 +225,6 @@ class Config:
             baseline_window=_env_int("CHATTER_BASELINE_WINDOW", DEFAULT_BASELINE_WINDOW),
             baseline_min_obs=_env_int("CHATTER_BASELINE_MIN_OBS", DEFAULT_BASELINE_MIN_OBS),
             spike_z_threshold=_env_float("CHATTER_SPIKE_Z", DEFAULT_SPIKE_Z),
-            trend_spike_ratio=_env_float("CHATTER_TREND_RATIO", DEFAULT_TREND_SPIKE_RATIO),
             universe_cache_ttl_s=_env_int("CHATTER_UNIVERSE_TTL", DEFAULT_UNIVERSE_TTL_S),
             symbol_fallback_path=(
                 Path(os.environ["CHATTER_SYMBOL_FALLBACK"].strip())
