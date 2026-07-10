@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from news_watch_daemon.config import (
     REDACTED,
     _RedactingFilter,
     configure_logging,
+    load_env_file,
 )
 
 
@@ -71,6 +73,74 @@ def test_from_env_empty_db_path_raises(monkeypatch):
     monkeypatch.setenv("NEWS_WATCH_DB_PATH", "   ")
     with pytest.raises(ConfigError, match="NEWS_WATCH_DB_PATH"):
         Config.from_env()
+
+
+# ---------- load_env_file (.env in-process loader) ----------
+
+
+def _write_env(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / ".env"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_load_env_file_sets_unset_keys(monkeypatch, tmp_path):
+    # The suite's autouse fixture sets NEWS_WATCH_NO_ENV_FILE; clear it to
+    # exercise the loader itself.
+    monkeypatch.delenv("NEWS_WATCH_NO_ENV_FILE", raising=False)
+    monkeypatch.delenv("NWD_TEST_A", raising=False)
+    monkeypatch.delenv("NWD_TEST_B", raising=False)
+    env = _write_env(tmp_path, "NWD_TEST_A=alpha\nNWD_TEST_B=beta\n")
+    applied = load_env_file(env)
+    assert set(applied) == {"NWD_TEST_A", "NWD_TEST_B"}
+    assert os.environ["NWD_TEST_A"] == "alpha"
+    assert os.environ["NWD_TEST_B"] == "beta"
+
+
+def test_load_env_file_real_env_wins(monkeypatch, tmp_path):
+    monkeypatch.delenv("NEWS_WATCH_NO_ENV_FILE", raising=False)
+    monkeypatch.setenv("NWD_TEST_A", "from_environ")
+    env = _write_env(tmp_path, "NWD_TEST_A=from_file\n")
+    applied = load_env_file(env)
+    assert "NWD_TEST_A" not in applied
+    assert os.environ["NWD_TEST_A"] == "from_environ"
+
+
+def test_load_env_file_parses_quotes_export_comments_crlf(monkeypatch, tmp_path):
+    monkeypatch.delenv("NEWS_WATCH_NO_ENV_FILE", raising=False)
+    for k in ("NWD_Q1", "NWD_Q2", "NWD_EXP", "NWD_CRLF"):
+        monkeypatch.delenv(k, raising=False)
+    body = (
+        "# a comment line\n"
+        "\n"
+        'NWD_Q1="double"\n'
+        "NWD_Q2='single'\n"
+        "export NWD_EXP=exported\n"
+        "NWD_CRLF=windows\r\n"
+        "MALFORMED_NO_EQUALS\n"
+    )
+    env = _write_env(tmp_path, body)
+    applied = load_env_file(env)
+    assert os.environ["NWD_Q1"] == "double"
+    assert os.environ["NWD_Q2"] == "single"
+    assert os.environ["NWD_EXP"] == "exported"
+    assert os.environ["NWD_CRLF"] == "windows"
+    assert "MALFORMED_NO_EQUALS" not in applied
+
+
+def test_load_env_file_disable_hatch(monkeypatch, tmp_path):
+    monkeypatch.setenv("NEWS_WATCH_NO_ENV_FILE", "1")
+    monkeypatch.delenv("NWD_TEST_A", raising=False)
+    env = _write_env(tmp_path, "NWD_TEST_A=alpha\n")
+    applied = load_env_file(env)
+    assert applied == []
+    assert "NWD_TEST_A" not in os.environ
+
+
+def test_load_env_file_missing_file_is_noop(monkeypatch, tmp_path):
+    monkeypatch.delenv("NEWS_WATCH_NO_ENV_FILE", raising=False)
+    applied = load_env_file(tmp_path / "does_not_exist.env")
+    assert applied == []
 
 
 def test_from_env_relative_db_path_raises(monkeypatch):

@@ -17,6 +17,17 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _disable_dotenv_autoload(monkeypatch):
+    """Keep the suite hermetic: main() auto-loads `<repo_root>/.env` in
+    production (see config.load_env_file), and the repo carries a real `.env`
+    with the developer's DB path + secrets. Without this guard, any test that
+    invokes main() would silently pick up those values — masking, e.g., the
+    missing-NEWS_WATCH_DB_PATH config-error path. The NEWS_WATCH_NO_ENV_FILE
+    escape hatch disables the auto-load for every test."""
+    monkeypatch.setenv("NEWS_WATCH_NO_ENV_FILE", "1")
+
+
+@pytest.fixture(autouse=True)
 def _reset_daemon_logger():
     yield
     logger = logging.getLogger("news_watch_daemon")

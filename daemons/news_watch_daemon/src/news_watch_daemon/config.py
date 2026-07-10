@@ -91,6 +91,84 @@ class ConfigError(RuntimeError):
     """Raised when required configuration is missing or invalid."""
 
 
+# ---------- in-process .env loading (2026-07-10) ----------
+#
+# Config.from_env() reads os.environ only. Historically operators had to
+# export vars via a shell wrapper that hand-parsed `.env` (the nwd_envonly.sh
+# dance, replicated brittlely across three temp scripts). load_env_file()
+# below folds that parsing into the daemon so a bare `news-watch-daemon <cmd>`
+# picks up `.env` with no wrapper. Kept OUT of from_env() so unit tests that
+# build Config from a monkeypatched environ stay hermetic; main() calls it.
+
+
+def _find_env_file() -> Path | None:
+    """Locate the `.env` the CLI entrypoint should auto-load.
+
+    Precedence: `NEWS_WATCH_ENV_FILE` (explicit override) → `<repo_root>/.env`
+    (adjacent to the package — the bundled dev/deploy location). Returns None
+    if neither exists.
+    """
+    explicit = os.environ.get("NEWS_WATCH_ENV_FILE", "").strip()
+    if explicit:
+        p = Path(explicit).expanduser()
+        return p if p.is_file() else None
+    repo_env = Path(__file__).resolve().parent.parent.parent / ".env"
+    return repo_env if repo_env.is_file() else None
+
+
+def load_env_file(path: Path | None = None, *, override: bool = False) -> list[str]:
+    """Best-effort loader that populates os.environ from a KEY=VALUE `.env`.
+
+    Called once from the CLI entrypoint (see cli.main) so operators no longer
+    need a shell wrapper that hand-parses `.env`.
+
+    Semantics (standard dotenv):
+      - The real environment WINS: an already-set key is not overwritten
+        (override=False), so an explicitly-exported var beats the file.
+      - Blank lines and `#` comments are skipped; a leading `export ` is
+        tolerated; the value is split on the first `=`; surrounding single
+        or double quotes are stripped; a trailing `\\r` (Windows CRLF) is
+        stripped by the `.strip()`. Malformed lines are skipped, not fatal.
+      - Never raises: a missing/unreadable file is a silent no-op, so it can
+        never block `--help` or a fully-exported run. Setting
+        `NEWS_WATCH_NO_ENV_FILE=1` disables loading entirely (the test suite
+        sets this so the developer's real `.env` never leaks in).
+
+    Returns the list of KEY names it set — names only, safe to log. Values may
+    be secrets and must never be logged.
+    """
+    if os.environ.get("NEWS_WATCH_NO_ENV_FILE", "").strip():
+        return []
+    target = path if path is not None else _find_env_file()
+    if target is None:
+        return []
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    applied: list[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, sep, val = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        if not key:
+            continue
+        val = val.strip()
+        if len(val) >= 2 and val[0] == val[-1] and val[0] in ("'", '"'):
+            val = val[1:-1]
+        if not override and key in os.environ:
+            continue
+        os.environ[key] = val
+        applied.append(key)
+    return applied
+
+
 def _default_themes_dir() -> Path:
     """Resolve `<repo_root>/themes` from this file's install location.
 

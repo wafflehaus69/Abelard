@@ -47,6 +47,7 @@ ALL_LEAVES = {
     "briefs show",
     "alert-sink test",
     "trigger-log tail",
+    "doctor",
 }
 
 
@@ -82,6 +83,10 @@ def test_parser_has_all_top_level_commands():
         "full-brief",
         # read-brief: reload + render a persisted Full Brief artifact.
         "read-brief",
+        # Operational smoothing (2026-07-10): one-pass run cycle +
+        # env/deps/DB preflight.
+        "run",
+        "doctor",
     }
 
 
@@ -394,3 +399,39 @@ def test_missing_db_path_env_emits_error_envelope(monkeypatch, capsys):
     envelope = _read_envelope(capsys)
     assert envelope["status"] == "error"
     assert "NEWS_WATCH_DB_PATH" in envelope["error_detail"]
+
+
+# ---------- doctor (preflight) ----------------------------------------
+
+
+def _doctor_env(monkeypatch, tmp_path):
+    """Point doctor's writable-dir checks at tmp so it never touches ~/.openclaw."""
+    monkeypatch.setenv("NEWS_WATCH_BRIEF_ARCHIVE", str(tmp_path / "briefs"))
+    monkeypatch.setenv("NEWS_WATCH_TRIGGER_LOG", str(tmp_path / "trigger.jsonl"))
+    monkeypatch.setenv("NEWS_WATCH_CROSS_SOURCE_LOG", str(tmp_path / "cross.jsonl"))
+
+
+def test_doctor_blocks_when_schema_absent(env, monkeypatch, tmp_path, capsys):
+    _doctor_env(monkeypatch, tmp_path)
+    rc = main(["doctor"])
+    assert rc == 1
+    envelope = _read_envelope(capsys)
+    assert envelope["status"] == "error"
+    checks = {c["name"]: c["status"] for c in envelope["data"]["checks"]}
+    assert checks["database"] == "error"
+
+
+def test_doctor_ok_after_init_and_themes_load(env, monkeypatch, tmp_path, capsys):
+    _doctor_env(monkeypatch, tmp_path)
+    assert main(["db", "init"]) == 0
+    capsys.readouterr()
+    assert main(["themes", "load"]) == 0
+    capsys.readouterr()
+    rc = main(["doctor"])
+    envelope = _read_envelope(capsys)
+    # No BLOCKING errors — warnings (missing secrets / signal-cli) are exit 0.
+    assert envelope["data"]["summary"]["error"] == 0
+    assert rc == 0
+    checks = {c["name"]: c["status"] for c in envelope["data"]["checks"]}
+    assert checks["database"] == "ok"
+    assert checks["active_themes"] == "ok"

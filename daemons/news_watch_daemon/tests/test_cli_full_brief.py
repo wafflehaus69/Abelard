@@ -324,3 +324,106 @@ def test_main_returns_1_when_orchestrator_raises(env, capsys):
     captured = capsys.readouterr()
     assert "Full Brief assembly failed" in captured.err
     assert "simulated DB connection lost" in captured.err
+
+
+# ---------- one-pass extras: --pdf / --out / full artifact path (2026-07-10) ----
+
+
+def test_pdf_flag_renders_pdf_in_one_pass(env, capsys, tmp_path):
+    """--pdf renders a real PDF from the just-assembled envelope, no read-brief."""
+    canned = _make_canned_envelope()
+    out_pdf = tmp_path / "brief.pdf"
+    with patch("news_watch_daemon.cli.assemble_full_brief", return_value=canned):
+        rc = main(["full-brief", "--quiet", "--pdf", str(out_pdf)])
+    assert rc == 0
+    assert out_pdf.exists() and out_pdf.stat().st_size > 0
+    assert "Wrote PDF:" in capsys.readouterr().err
+
+
+def test_out_flag_writes_json_copy(env, capsys, tmp_path):
+    """--out lands a JSON copy at a predictable path in the same pass."""
+    canned = _make_canned_envelope()
+    out_json = tmp_path / "copy.json"
+    with patch("news_watch_daemon.cli.assemble_full_brief", return_value=canned):
+        rc = main(["full-brief", "--quiet", "--out", str(out_json)])
+    assert rc == 0
+    parsed = json.loads(out_json.read_text(encoding="utf-8"))
+    assert parsed["brief_id"] == canned.brief_id
+
+
+def test_full_artifact_path_reported_on_stderr(env, capsys):
+    """The full archive path (not just the bare filename) is surfaced so the
+    operator never has to hunt for the just-written JSON."""
+    canned = _make_canned_envelope()
+    with patch("news_watch_daemon.cli.assemble_full_brief", return_value=canned):
+        rc = main(["full-brief", "--quiet"])
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "Artifact (JSON):" in err
+    assert canned.brief_id in err
+
+
+def test_pdf_flag_does_not_pollute_json_only_stdout(env, capsys, tmp_path):
+    """--pdf writes its confirmation to stderr, so --json-only stdout stays
+    a single clean JSON document."""
+    canned = _make_canned_envelope()
+    out_pdf = tmp_path / "brief.pdf"
+    with patch("news_watch_daemon.cli.assemble_full_brief", return_value=canned):
+        rc = main(["full-brief", "--json-only", "--pdf", str(out_pdf)])
+    assert rc == 0
+    parsed = json.loads(capsys.readouterr().out)  # stdout still pure JSON
+    assert parsed["brief_id"] == canned.brief_id
+    assert out_pdf.exists()
+
+
+# ---------- run (one-pass operating cycle) ----------
+
+_SEED_THEMES = Path(__file__).resolve().parent.parent / "themes"
+
+
+def _run_env(tmp_path, monkeypatch):
+    """Fresh DB (no schema yet) + real seed themes — a genuine cold start."""
+    monkeypatch.setenv("NEWS_WATCH_DB_PATH", str(tmp_path / "state.db"))
+    monkeypatch.setenv("NEWS_WATCH_THEMES_DIR", str(_SEED_THEMES))
+    monkeypatch.setenv("NEWS_WATCH_BRIEF_ARCHIVE", str(tmp_path / "briefs"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+
+
+def test_run_cold_start_initializes_then_delegates(tmp_path, monkeypatch):
+    """`run` on a fresh DB applies schema, loads themes, then assembles —
+    the assemble delegate is reached only if both ensure steps succeeded."""
+    _run_env(tmp_path, monkeypatch)
+    canned = _make_canned_envelope()
+    with patch(
+        "news_watch_daemon.cli.assemble_full_brief", return_value=canned,
+    ) as mock_assemble:
+        rc = main(["run", "--quiet"])
+    assert rc == 0
+    mock_assemble.assert_called_once()
+    assert (tmp_path / "state.db").exists()
+
+
+def test_run_forwards_pdf_flag(tmp_path, monkeypatch):
+    """`run --pdf` produces the PDF in the same pass, proving output flags
+    thread through the run wrapper to full-brief."""
+    _run_env(tmp_path, monkeypatch)
+    canned = _make_canned_envelope()
+    out_pdf = tmp_path / "run.pdf"
+    with patch("news_watch_daemon.cli.assemble_full_brief", return_value=canned):
+        rc = main(["run", "--quiet", "--pdf", str(out_pdf)])
+    assert rc == 0
+    assert out_pdf.exists() and out_pdf.stat().st_size > 0
+
+
+def test_run_aborts_before_assembly_on_ensure_failure(tmp_path, monkeypatch, capsys):
+    """If ensure-themes fails, run exits 1 BEFORE any scrape/LLM spend."""
+    _run_env(tmp_path, monkeypatch)
+    err_env = {"status": "error", "error_detail": "boom", "data": None}
+    with patch(
+        "news_watch_daemon.cli._handle_themes_load", return_value=err_env,
+    ), patch("news_watch_daemon.cli.assemble_full_brief") as mock_assemble:
+        rc = main(["run", "--quiet"])
+    assert rc == 1
+    mock_assemble.assert_not_called()
+    assert "run aborted at ensure-themes" in capsys.readouterr().err

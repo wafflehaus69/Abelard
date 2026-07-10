@@ -102,6 +102,17 @@ def _partition_dir(archive_root: Path, brief_id: str) -> Path:
     return archive_root / _month_partition(brief_id)
 
 
+def brief_path(archive_root: Path, brief_id: str) -> Path:
+    """Return the on-disk path a brief with this id is (or would be) written to.
+
+    Pure path computation — does NOT touch the filesystem. Mirrors exactly
+    where write_brief() places the artifact, so callers (e.g. the full-brief
+    CLI) can report the full path without a directory scan or recomputing the
+    YYYY-MM partition logic.
+    """
+    return _partition_dir(archive_root, brief_id) / f"{brief_id}.json"
+
+
 def write_brief(archive_root: Path, brief: ArchivableBrief) -> Path:
     """Persist a Brief or AttentionBrief atomically. Returns the final file path.
 
@@ -217,6 +228,7 @@ def _looks_like_partition(name: str) -> bool:
 __all__ = [
     "ArchivableBrief",
     "ArchiveError",
+    "brief_path",
     "list_brief_ids",
     "read_brief",
     "write_brief",

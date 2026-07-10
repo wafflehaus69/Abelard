@@ -17,6 +17,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import shutil
 import sqlite3
 import sys
 import time
@@ -25,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .config import Config, ConfigError, configure_logging
+from .config import Config, ConfigError, configure_logging, load_env_file
 from .db import (
     connect,
     init_db,
@@ -56,7 +58,7 @@ from .translation import (
     load_translation_config,
     run_translation_pass,
 )
-from .synthesize.archive import ArchiveError, list_brief_ids, read_brief, write_brief
+from .synthesize.archive import ArchiveError, brief_path, list_brief_ids, read_brief, write_brief
 from .synthesize.brief import (
     Brief,
     Dispatch,
@@ -107,6 +109,68 @@ from .attention.stopwords import StopwordsError, load_stopwords
 
 
 # ---------- parser ------------------------------------------------------
+
+
+def _add_brief_output_args(p: argparse.ArgumentParser) -> None:
+    """Shared assembly + output args for `full-brief` and `run`.
+
+    Kept in one place so the two commands never drift: both assemble the same
+    envelope and offer the same output surface (window, scrape toggle, PDF/JSON
+    side-writes, and the mutually-exclusive stdout mode). `run` layers the
+    ensure-schema + ensure-themes steps on top; the assembly/output is identical.
+    """
+    p.add_argument(
+        "--window-hours", type=int, default=24,
+        help=(
+            "Hours back to scan for Pass C + Pass E (1..168). Default 24. "
+            "At non-24 values the FREQUENCY DIAGNOSTIC section surfaces a "
+            "threshold-tuning warning per Adjustment 2."
+        ),
+    )
+    p.add_argument(
+        "--no-scrape", action="store_true",
+        help=(
+            "Skip the scrape step; run Pass C + Pass E against existing DB "
+            "state. Default: scrape first. Useful for testing + re-running "
+            "analysis on the same window."
+        ),
+    )
+    p.add_argument(
+        "--pdf",
+        metavar="OUT.pdf",
+        help=(
+            "Also render the assembled brief to a PDF at this path (ReportLab), "
+            "in the SAME pass — no separate read-brief call, no hunting for the "
+            "artifact. Orthogonal to the stdout mode below. Fails loud (exit 1) "
+            "on render error; never emits a zero-byte PDF."
+        ),
+    )
+    p.add_argument(
+        "--out",
+        metavar="OUT.json",
+        help=(
+            "Also write the JSON envelope to this path, in addition to the "
+            "archive. Convenience for landing the artifact somewhere "
+            "predictable. Fails loud (exit 1) on write error."
+        ),
+    )
+    # --quiet and --json-only are mutually exclusive per Q7 resolution.
+    output_group = p.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--quiet", action="store_true",
+        help=(
+            "Suppress human-readable stdout rendering; only write the JSON "
+            "artifact to disk. Mutually exclusive with --json-only."
+        ),
+    )
+    output_group.add_argument(
+        "--json-only", action="store_true",
+        help=(
+            "Print the JSON artifact to stdout instead of human-readable "
+            "rendering. For downstream tooling consumption. Mutually "
+            "exclusive with --quiet."
+        ),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -183,39 +247,20 @@ def build_parser() -> argparse.ArgumentParser:
             "renders human-readable to stdout by default."
         ),
     )
-    p_fb.add_argument(
-        "--window-hours", type=int, default=24,
+    _add_brief_output_args(p_fb)
+
+    # ---- run (one-pass operating cycle: ensure + full-brief, 2026-07-10) ----
+
+    p_run = top.add_parser(
+        "run",
         help=(
-            "Hours back to scan for Pass C + Pass E (1..168). Default 24. "
-            "At non-24 values the FREQUENCY DIAGNOSTIC section surfaces a "
-            "threshold-tuning warning per Adjustment 2."
+            "One-pass operating cycle: ensure schema + themes (both idempotent), "
+            "then assemble a full brief (scrape + attention + synthesis) and "
+            "optionally render a PDF — the single command a cron or operator runs "
+            "cold-start. Accepts the same output flags as full-brief."
         ),
     )
-    p_fb.add_argument(
-        "--no-scrape", action="store_true",
-        help=(
-            "Skip the scrape step; run Pass C + Pass E against existing DB "
-            "state. Default: scrape first. Useful for testing + re-running "
-            "analysis on the same window."
-        ),
-    )
-    # --quiet and --json-only are mutually exclusive per Q7 resolution.
-    _fb_output_group = p_fb.add_mutually_exclusive_group()
-    _fb_output_group.add_argument(
-        "--quiet", action="store_true",
-        help=(
-            "Suppress human-readable stdout rendering; only write the JSON "
-            "artifact to disk. Mutually exclusive with --json-only."
-        ),
-    )
-    _fb_output_group.add_argument(
-        "--json-only", action="store_true",
-        help=(
-            "Print the JSON artifact to stdout instead of human-readable "
-            "rendering. For downstream tooling consumption. Mutually "
-            "exclusive with --quiet."
-        ),
-    )
+    _add_brief_output_args(p_run)
 
     # ---- read-brief (reload + render a persisted Full Brief artifact) ----
 
@@ -279,6 +324,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     top.add_parser("status", help="Report daemon component heartbeats and schema version.")
+
+    top.add_parser(
+        "doctor",
+        help=(
+            "Preflight-check env, paths, external deps, and DB state before a "
+            "run. Read-only; surfaces every problem at once. Exit 1 if anything "
+            "BLOCKS a run (no schema, no active themes, missing config, "
+            "unwritable output dir); exit 0 if only non-blocking warnings."
+        ),
+    )
 
     # ---- themes (registry) ----
 
@@ -2010,6 +2065,108 @@ def _handle_proposals_reject(args: argparse.Namespace, cfg: Config) -> dict[str,
     )
 
 
+def _check_writable_dir(path: Path) -> tuple[bool, str]:
+    """Best-effort: ensure `path` exists (create if needed) and is writable."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return False, f"{path} — cannot create ({exc})"
+    if not os.access(path, os.W_OK):
+        return False, f"{path} — not writable"
+    return True, str(path)
+
+
+def _handle_doctor(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
+    """Preflight: validate env, paths, external deps, and DB state before a run.
+
+    Read-only. Config is already known-valid (main() built it before dispatch);
+    this surfaces the problems Config does NOT catch — missing bundled config
+    files, unwritable output dirs, absent secrets/binaries, and an
+    uninitialized DB. Exit 1 iff a check BLOCKS a run; warnings alone are exit 0.
+    """
+    checks: list[dict[str, str]] = []
+
+    def add(name: str, status: str, detail: str) -> None:
+        checks.append({"name": name, "status": status, "detail": detail})
+
+    # --- secrets / credentials (non-blocking; each degrades one capability) ---
+    add("anthropic_api_key", "ok" if cfg.anthropic_api_key else "warn",
+        "set" if cfg.anthropic_api_key
+        else "unset — synthesize hard-fails; attention/full-brief skip the LLM step")
+    add("finnhub_api_key", "ok" if cfg.finnhub_api_key else "warn",
+        "set" if cfg.finnhub_api_key
+        else "unset — the Finnhub source errors cleanly and is skipped")
+    add("telegram_credentials", "ok" if cfg.telegram_creds_complete else "warn",
+        "complete" if cfg.telegram_creds_complete
+        else "incomplete — Telegram sources are skipped (RSS + Finnhub only)")
+    add("theses_doc", "ok" if cfg.theses_path else "warn",
+        str(cfg.theses_path) if cfg.theses_path
+        else "unset — synthesis runs the no-theses prompt variant")
+
+    # --- bundled config files must exist (blocking) ---
+    for label, p in (
+        ("themes_dir", cfg.themes_dir),
+        ("synthesis_config", cfg.synthesis_config_path),
+        ("stopwords", cfg.stopwords_path),
+        ("translation_config", cfg.translation_config_path),
+        ("tracked_tickers", cfg.tracked_tickers_path),
+    ):
+        exists = p.exists()
+        add(f"path:{label}", "ok" if exists else "error",
+            str(p) if exists else f"{p} — MISSING")
+    if cfg.theses_path is not None and not cfg.theses_path.exists():
+        add("path:theses", "warn",
+            f"{cfg.theses_path} — set but missing; no-theses variant will run")
+
+    # --- output dirs must be writable (blocking) ---
+    for label, p in (
+        ("brief_archive", cfg.brief_archive_path),
+        ("trigger_log_dir", cfg.trigger_log_path.parent),
+        ("cross_source_log_dir", cfg.cross_source_log_path.parent),
+    ):
+        ok, detail = _check_writable_dir(p)
+        add(f"writable:{label}", "ok" if ok else "error", detail)
+
+    # --- external binaries (non-blocking; only alert dispatch depends on them) ---
+    sig = shutil.which("signal-cli")
+    add("signal-cli", "ok" if sig else "warn",
+        sig or "not on PATH — alert dispatch fails (briefs still archived)")
+    jav = shutil.which("java")
+    add("java", "ok" if jav else "warn",
+        jav or "not on PATH — signal-cli needs a Java runtime")
+
+    # --- DB schema + active themes (blocking) ---
+    conn = connect(cfg.db_path)
+    try:
+        ver = schema_version(conn)
+        if ver == 0:
+            add("database", "error",
+                f"{cfg.db_path} — no schema applied; run `news-watch-daemon db init`")
+        else:
+            add("database", "ok", f"{cfg.db_path} — schema v{ver}")
+            active = [e for e in list_themes(conn) if e.status == "active"]
+            add("active_themes", "ok" if active else "error",
+                f"{len(active)} active" if active
+                else "none — run `news-watch-daemon themes load`")
+    finally:
+        conn.close()
+
+    summary = {
+        "ok": sum(1 for c in checks if c["status"] == "ok"),
+        "warn": sum(1 for c in checks if c["status"] == "warn"),
+        "error": sum(1 for c in checks if c["status"] == "error"),
+    }
+    payload = {"db_path": str(cfg.db_path), "summary": summary, "checks": checks}
+    if summary["error"]:
+        return build_error(
+            status="error", source="internal",
+            detail=f"doctor found {summary['error']} blocking problem(s); see data.checks",
+            data=payload,
+        )
+    completeness = "partial" if summary["warn"] else "complete"
+    return build_ok(payload, source="internal", data_completeness=completeness)
+
+
 def _handle_status(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
     """Show schema version, daemon heartbeats, and per-source health.
 
@@ -2067,6 +2224,7 @@ HANDLERS: dict[str, Handler] = {
     "themes load": _handle_themes_load,
     "themes list": _handle_themes_list,
     "status": _handle_status,
+    "doctor": _handle_doctor,
     "scrape": _handle_scrape,
     "proposals list": _handle_proposals_list,
     "proposals show": _handle_proposals_show,
@@ -2193,7 +2351,97 @@ def _handle_full_brief(args: argparse.Namespace, cfg: Config) -> int:
         sys.stdout.write("\n")
         sys.stdout.flush()
 
+    # --- one-pass extras (2026-07-10): full artifact path + optional JSON
+    # copy + in-process PDF. These write to STDERR (and their own files) so
+    # they never pollute the stdout contract of --json-only. Collapses the
+    # old two-command dance: full-brief then locate-JSON then read-brief --pdf.
+    try:
+        artifact_path = brief_path(cfg.brief_archive_path, envelope.brief_id)
+        sys.stderr.write(f"Artifact (JSON): {artifact_path}\n")
+        sys.stderr.flush()
+    except ArchiveError:
+        # A malformed brief_id shouldn't sink an otherwise-good run; the
+        # render footer still names the file.
+        pass
+
+    if args.out:
+        try:
+            out_path = Path(args.out)
+            if out_path.parent:
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
+                json.dumps(
+                    envelope.model_dump(mode="json"),
+                    indent=2, ensure_ascii=False, default=str,
+                ),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            sys.stderr.write(f"ERROR: full-brief --out write failed: {exc}\n")
+            sys.stderr.flush()
+            return 1
+        sys.stderr.write(f"Wrote JSON: {out_path}\n")
+        sys.stderr.flush()
+
+    if args.pdf:
+        try:
+            written = render_full_brief_pdf(envelope, args.pdf)
+        except PdfRenderError as exc:
+            sys.stderr.write(f"ERROR: full-brief --pdf failed: {exc}\n")
+            sys.stderr.flush()
+            return 1
+        sys.stderr.write(
+            f"Wrote PDF: {written} ({written.stat().st_size} bytes)\n"
+        )
+        sys.stderr.flush()
+
     return _compute_full_brief_exit_code(envelope)
+
+
+# ---------- run subcommand (one-pass operating cycle, 2026-07-10) -----------
+#
+# `run` is the single cold-start-safe command: ensure schema + themes, then
+# assemble a full brief and optionally render a PDF. It shares full-brief's
+# stdout-render semantics + exit codes, so main() special-cases it too.
+
+
+def _handle_run(args: argparse.Namespace, cfg: Config) -> int:
+    """One-pass operating cycle. Returns an exit code directly (like full-brief).
+
+    Steps, each idempotent and cheap to repeat:
+      1. ensure schema (db init == migrate) — cold-start needs no prior setup
+      2. ensure themes loaded (idempotent upsert from themes_dir)
+      3. assemble the full brief + emit output (delegates to _handle_full_brief,
+         honoring --window-hours/--no-scrape/--pdf/--out/--quiet/--json-only)
+
+    A failure in step 1 or 2 aborts with a clear stderr message and exit 1
+    BEFORE any scrape/LLM spend. Progress is logged to stderr so stdout stays
+    the brief render (or JSON) byte-identical to what `full-brief` produces.
+    """
+    log = logging.getLogger("news_watch_daemon.cli")
+
+    init_env = _handle_db_init(args, cfg)
+    if init_env["status"] != "ok":
+        sys.stderr.write(
+            f"ERROR: run aborted at ensure-schema: {init_env['error_detail']}\n"
+        )
+        sys.stderr.flush()
+        return 1
+    log.info("run: schema ready (v%s)", init_env["data"].get("schema_version"))
+
+    themes_env = _handle_themes_load(args, cfg)
+    if themes_env["status"] != "ok":
+        sys.stderr.write(
+            f"ERROR: run aborted at ensure-themes: {themes_env['error_detail']}\n"
+        )
+        sys.stderr.flush()
+        return 1
+    log.info(
+        "run: %s theme(s) loaded from %s",
+        themes_env["data"].get("loaded_count"), cfg.themes_dir,
+    )
+
+    return _handle_full_brief(args, cfg)
 
 
 # ---------- read-brief subcommand (reload + render persisted artifact) -------
@@ -2298,9 +2546,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     log = logging.getLogger("news_watch_daemon.cli")
 
+    # Fold `.env` into the process env before building Config, so a bare
+    # `news-watch-daemon <cmd>` works without a shell wrapper. Real env vars
+    # win; disabled under tests via NEWS_WATCH_NO_ENV_FILE. Key NAMES only are
+    # logged (at DEBUG) — never values, which may be secrets.
+    loaded_env_keys = load_env_file()
+
     try:
         cfg = Config.from_env()
         configure_logging(cfg)
+        if loaded_env_keys:
+            log.debug(
+                ".env loaded %d key(s): %s",
+                len(loaded_env_keys), ", ".join(sorted(loaded_env_keys)),
+            )
     except ConfigError as exc:
         log.error("configuration error: %s", exc)
         envelope = build_error(
@@ -2310,6 +2569,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         _emit_envelope(envelope)
         return 1
+
+    # run subcommand: one-pass ensure-schema + ensure-themes + full-brief.
+    # Shares full-brief's stdout-render semantics + exit codes, so it bypasses
+    # the standard dispatch -> _emit_envelope -> 0/1 flow just like full-brief.
+    if command_path(args) == "run":
+        try:
+            return _handle_run(args, cfg)
+        except Exception as exc:  # noqa: BLE001 — CLI boundary
+            log.exception("unhandled error in run")
+            sys.stderr.write(f"ERROR: unhandled exception in run: {exc}\n")
+            sys.stderr.flush()
+            return 1
 
     # full-brief subcommand has unique output semantics (rendered text vs
     # JSON vs silent) and a third exit code (2) per spec Section 3. Bypass
