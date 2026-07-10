@@ -154,6 +154,16 @@ english:
   - once
   - here
   - there
+  # Generic filler verbs — `continue` added 2026-07-10 after the live
+  # scrape surfaced it as a threshold-crosser (window>=10, prior<3).
+  # Same class as `about` above: ordinary verb filler ("protests
+  # continue", Telegram "Continue reading" link markdown), not a topic;
+  # Sonnet would only ever classify the cluster as cross_topic_recurrence
+  # noise. Inflections added alongside so a sibling can't cross next week.
+  - continue
+  - continues
+  - continued
+  - continuing
 
 news_domain:
   # Attribution verbs
