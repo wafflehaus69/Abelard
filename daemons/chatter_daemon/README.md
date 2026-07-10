@@ -77,5 +77,24 @@ they expire — refresh when searches start failing). X meters authenticated sea
 ~25 requests/rolling-window per account, so per-ticker searches beyond ~25 time out.
 Set `CHATTER_TWITTER_PRIORITY` (must-have names — searched first, always land) and
 `CHATTER_TWITTER_MAX_TICKERS` (cap to the top-N that fit the quota; the rest are
-skipped that scan, logged). Order the portfolio by conviction and the cap keeps your
-top-N. See [.env.example](.env.example).
+skipped that scan, logged). Twitter also ranks the queue by **Finnhub news volume**, so
+the noisiest names win the budget first. See [.env.example](.env.example).
+
+## Portfolios (watchlists)
+
+A watchlist lives in `watchlists/` as either `{name}.json` or a human-editable
+`{name}.csv` (one format per name — having both is ambiguous and fails loud).
+`barber_growth` ships as **CSV**, so you can edit the portfolio in any spreadsheet:
+
+| column | meaning |
+|---|---|
+| `symbol` | ticker (1–5 uppercase letters, optional `.CLASS`) |
+| `names` | company-name aliases, pipe-separated (free-text matching + the Trends query) |
+| `name_match` | `true`/`false` — match the name in free text (`false` for collision words: MU, NOW, CAT…) |
+| `is_etf` | `true`/`false` — documents expected news/chatter silence |
+| `enabled` | `true`/`false` — `false` excludes the row from scanning |
+| `ambiguous_name` | `true`/`false` — the Trends query term is ambiguous |
+| `notes` | free-text annotation (commas allowed; the CSV quotes them) |
+
+Add / remove / reorder rows to change the portfolio — no code change. To trim which
+names Twitter covers, shorten the list or lower `CHATTER_TWITTER_MAX_TICKERS`.

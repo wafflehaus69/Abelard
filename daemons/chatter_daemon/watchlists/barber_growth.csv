@@ -1,0 +1,47 @@
+symbol,names,name_match,is_etf,enabled,ambiguous_name,notes
+AAPL,Apple,false,false,true,true,ticker-only in free text ('Apple' collides with the fruit); Trends queries 'Apple' but it's an ambiguous search term -> noisy_query
+ABBV,,true,false,true,false,
+AMAT,,true,false,true,false,
+AMD,,true,false,true,false,
+AMZN,,true,false,true,false,
+APP,AppLovin,false,false,true,false,ticker-only in free text (collision-word); 'AppLovin' is a distinctive Trends search term
+AVGO,,true,false,true,false,
+BAI,,false,true,true,false,ETF — no clean consumer search term; Trends stays null
+CACI,CACI International,true,false,true,false,
+CAT,Caterpillar,false,false,true,true,ticker-only in free text; Trends queries 'Caterpillar' but it collides with the insect -> noisy_query
+CRWD,,true,false,true,false,
+DE,John Deere,false,false,true,false,ticker-only in free text (Deere collides); 'John Deere' is a distinctive Trends search term
+DRS,Leonardo DRS,true,false,true,false,full phrase only — 'Leonardo' alone collides (da Vinci / DiCaprio / Leonardo AI)
+DUK,Duke Energy,true,false,true,false,
+EME,EMCOR,true,false,true,false,
+FTNT,,true,false,true,false,
+GD,,true,false,true,false,
+GOOGL,,true,false,true,false,
+ITA,,false,true,true,false,ETF (iShares aerospace & defense) — no clean consumer search term; Trends stays null
+JPM,,true,false,true,false,
+LHX,L3Harris|L3 Harris,true,false,true,false,
+LMT,,true,false,true,false,
+MELI,MercadoLibre|Mercado Libre,true,false,true,false,
+META,,true,false,true,false,
+MSFT,,true,false,true,false,
+MU,Micron,false,false,true,false,ticker-only in free text (collision-word); 'Micron' is a distinctive Trends search term
+NOC,,true,false,true,false,
+NOW,ServiceNow,false,false,true,false,ticker-only in free text (collision-word); 'ServiceNow' is a distinctive Trends search term
+NVDA,,true,false,true,false,
+ORCL,Oracle,false,false,true,true,ticker-only in free text; Trends queries 'Oracle' but it collides with the database / Oracle of Omaha -> noisy_query
+PLMR,Palomar,false,false,true,true,ticker-only in free text; Trends queries 'Palomar' but it collides with the observatory / college / health system -> noisy_query
+PLTR,,true,false,true,false,
+PNW,Pinnacle West,true,false,true,false,full phrase only — 'PNW' alone collides with Pacific Northwest
+PSN,Parsons,false,false,true,true,ticker-only in free text; Trends queries 'Parsons' but it's a common surname -> noisy_query
+P,,false,false,false,false,TODO: confirm symbol — source sheet says 'Everpure Inc A'; excluded from scanning until verified
+RTX,,true,false,true,false,
+SHOP,Shopify,true,false,true,false,
+SNPS,,true,false,true,false,
+TECK,Teck Resources,true,false,true,false,"full phrase only; 'Teck' alone is borderline, omitted"
+TFC,Truist|Truist Financial,true,false,true,false,
+TSM,Taiwan Semiconductor|TSMC|Taiwan Semi,true,false,true,false,
+TTWO,Take-Two Interactive|Take-Two,true,false,true,false,hyphenated only — exclude 'Take Two' (phrase collision)
+VGT,,false,true,true,false,ETF (Vanguard Information Technology) — no clean consumer search term; Trends stays null
+VRTX,Vertex Pharmaceuticals,true,false,true,false,full name only — exclude bare 'Vertex' (multiple Vertex cos + math term)
+WFC,,true,false,true,false,
+WMT,,true,false,true,false,
