@@ -19,12 +19,13 @@ Behavior:
 
   - Note-to-Self via signal-cli's `--note-to-self` flag. The flag's
     availability is detected via `signal-cli send --help` on first
-    use and cached. If the installed signal-cli lacks the flag,
-    dispatch fails loud with a CRITICAL log telling the operator to
-    upgrade signal-cli or manually configure a self-only group per
-    SETUP.md. No runtime fallback to group sending is implemented —
-    the destination-validation gate's single-value comparison
-    requires one canonical destination.
+    use and cached. Detection distinguishes a missing binary (install
+    signal-cli) from a present-but-old binary (upgrade signal-cli) and
+    caches the specific reason; if support can't be confirmed, dispatch
+    fails loud with a CRITICAL log carrying that reason. No runtime
+    fallback to group sending is implemented — the destination-
+    validation gate's single-value comparison requires one canonical
+    destination.
 
   - Subprocess failures (non-zero exit, timeout, signal-cli not
     found) return DispatchResult(success=False). Single retry with
@@ -134,6 +135,10 @@ class SignalSink:
     destination: str
     timeout_s: float
     _supports_note_to_self: Optional[bool] = field(default=None, repr=False)
+    # Specific reason support could not be confirmed (binary-missing vs
+    # flag-missing vs probe-error), cached alongside the bool so dispatch()
+    # can surface an accurate message instead of a one-size-fits-all string.
+    _note_to_self_error: Optional[str] = field(default=None, repr=False)
 
     @property
     def channel_name(self) -> str:
@@ -162,9 +167,9 @@ class SignalSink:
         #    to send — operator must upgrade signal-cli or configure a
         #    self-only group manually per SETUP.md.
         if not self._detect_note_to_self_support():
-            err = (
-                "signal-cli on this host lacks --note-to-self; upgrade "
-                "or configure a self-only group manually per SETUP.md"
+            err = self._note_to_self_error or (
+                "signal-cli lacks --note-to-self support; upgrade signal-cli "
+                "or configure a self-only destination manually"
             )
             _LOG.critical(err)
             return DispatchResult(
@@ -234,7 +239,17 @@ class SignalSink:
         )
 
     def _detect_note_to_self_support(self) -> bool:
-        """Run `signal-cli send --help` once; cache `--note-to-self` presence."""
+        """Run `signal-cli send --help` once; cache `--note-to-self` presence.
+
+        Distinguishes the failure modes so dispatch() can report an accurate
+        reason — a missing binary is NOT a missing flag, and conflating them
+        (the pre-2026-07-10 behavior) sent the operator chasing the wrong
+        problem and a nonexistent SETUP.md:
+          - binary absent (FileNotFoundError) -> install signal-cli
+          - binary present but flag absent    -> upgrade signal-cli
+          - probe error (timeout/OSError)     -> transient/host issue
+        The specific reason is cached in `_note_to_self_error`.
+        """
         if self._supports_note_to_self is not None:
             return self._supports_note_to_self
         try:
@@ -244,11 +259,36 @@ class SignalSink:
                 timeout=DEFAULT_HELP_TIMEOUT_S,
                 check=False,
             )
-            haystack = (result.stdout or "") + (result.stderr or "")
-            self._supports_note_to_self = "--note-to-self" in haystack
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
-            _LOG.warning("signal-cli --help probe failed: %s", exc)
+        except FileNotFoundError:
+            self._note_to_self_error = (
+                f"signal-cli not found at {self.cli_path!r}: install signal-cli "
+                "(and its Java runtime) and register a Signal account, then set "
+                "alert.signal.cli_path. This is NOT a --note-to-self flag issue."
+            )
+            _LOG.warning(self._note_to_self_error)
             self._supports_note_to_self = False
+            return False
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            self._note_to_self_error = (
+                f"signal-cli --help probe failed ({exc}); cannot confirm "
+                "--note-to-self support on this host"
+            )
+            _LOG.warning(self._note_to_self_error)
+            self._supports_note_to_self = False
+            return False
+
+        haystack = (result.stdout or "") + (result.stderr or "")
+        if "--note-to-self" in haystack:
+            self._supports_note_to_self = True
+            self._note_to_self_error = None
+        else:
+            self._supports_note_to_self = False
+            self._note_to_self_error = (
+                f"signal-cli at {self.cli_path!r} is installed but its `send` "
+                "command lacks --note-to-self; upgrade signal-cli to a version "
+                "that supports it."
+            )
+            _LOG.warning(self._note_to_self_error)
         return self._supports_note_to_self
 
 
