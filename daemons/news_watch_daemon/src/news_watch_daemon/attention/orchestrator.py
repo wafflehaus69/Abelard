@@ -539,8 +539,15 @@ def _process_one_term(
             )})
         try:
             write_brief(archive_root, brief)
-        except Exception:  # noqa: BLE001 — non-fatal second write
-            pass
+        except Exception as rewrite_exc:  # noqa: BLE001 — non-fatal second write
+            # The alert WAS sent; only the on-disk dispatch-outcome patch
+            # failed, so the archived brief's dispatch.alerted may disagree
+            # with reality. Surface it rather than silently diverging.
+            logging.getLogger("news_watch_daemon.attention.orchestrator").warning(
+                "failed to re-write attention brief %s with dispatch outcome "
+                "(alert was sent; archived dispatch state may be stale): %s: %s",
+                brief.brief_id, type(rewrite_exc).__name__, rewrite_exc,
+            )
 
     return PerTermOutcome(
         term=crossing.term,

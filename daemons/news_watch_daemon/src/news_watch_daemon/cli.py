@@ -45,6 +45,7 @@ from .scrape.factory import build_sources
 from .scrape.orchestrator import (
     PerSourceResult,
     ScrapeResult,
+    _parse_telegram_msg_id,
     scrape_cycle,
 )
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
@@ -846,7 +847,7 @@ def _run_translation_subcommand(
             channel = src[len("telegram:"):]
             entries: list[tuple[int, str]] = []
             for r in srcrows:
-                msg_id = _parse_msg_id_from_url(r["url"])
+                msg_id = _parse_telegram_msg_id(r["url"])
                 if msg_id is None:
                     continue
                 entries.append((msg_id, r["headline"]))
@@ -961,18 +962,6 @@ def _run_translation_subcommand(
         )
     finally:
         conn.close()
-
-
-def _parse_msg_id_from_url(url: str | None) -> int | None:
-    """Parse the integer msg_id from a Telegram URL like
-    `https://t.me/<channel>/<msg_id>`. Returns None if shape doesn't match."""
-    if not url or "t.me/" not in url:
-        return None
-    try:
-        tail = url.rstrip("/").rsplit("/", 1)[-1]
-        return int(tail)
-    except (ValueError, IndexError):
-        return None
 
 
 def _handle_db_backfill_translation(
@@ -1485,8 +1474,8 @@ def _load_synthesis_config_for_cli(
 ) -> tuple[SynthesisDaemonConfig | None, dict[str, Any] | None]:
     """Load synthesis_config.yaml. On failure, return (None, error_envelope).
 
-    Helper used by `alert-sink test`, `synthesize`, and `trigger-log
-    tail` — all three need the same config + error-envelope discipline.
+    Helper used by `synthesize` and `alert-sink test` — both need the same
+    config load + error-envelope discipline.
     """
     try:
         synth_cfg = load_synthesis_config(cfg.synthesis_config_path)

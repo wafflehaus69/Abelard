@@ -1010,8 +1010,11 @@ def scrape_cycle(
     except Exception as exc:  # noqa: BLE001 — capture all orchestration errors
         try:
             write_heartbeat(conn, status="error", duration_ms=0, error_detail=str(exc))
-        except Exception:  # noqa: BLE001 — heartbeat itself can fail on DB issue
-            pass
+        except Exception as hb_exc:  # noqa: BLE001 — heartbeat itself can fail on DB issue
+            logging.getLogger("news_watch_daemon.scrape.orchestrator").warning(
+                "failed to write error heartbeat after scrape failure: %s: %s",
+                type(hb_exc).__name__, hb_exc,
+            )
         return ScrapeCycleResult(
             status="scrape_failed",
             started_at_unix=started_at_unix,
@@ -1024,8 +1027,11 @@ def scrape_cycle(
             conn, status="ok",
             duration_ms=result.duration_ms, error_detail=None,
         )
-    except Exception:  # noqa: BLE001 — heartbeat failure is non-fatal
-        pass
+    except Exception as hb_exc:  # noqa: BLE001 — heartbeat failure is non-fatal
+        logging.getLogger("news_watch_daemon.scrape.orchestrator").warning(
+            "failed to write ok heartbeat after scrape: %s: %s",
+            type(hb_exc).__name__, hb_exc,
+        )
 
     # Optional auto-attention follow-on (Pass E chain inside scrape).
     attention_outcome: dict[str, Any] | None = None
