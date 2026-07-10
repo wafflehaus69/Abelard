@@ -591,11 +591,13 @@ GOOGL 100 · MOG.A 50 · MU 20 · NOW · ONDS · SNOW 100 · TSLA · XE 1300.
 
 ## NON-QUALIFIED — CURRENT HOLDINGS
 
-**Current roster (updated 2026-07-10):** CRWV · LINK · MU 20.
+**Current roster (updated 2026-07-10):** CRWV · LINK · MU 20 · Physical Gold ·
+Physical Silver.
 
 > New this update — MU (see the AI Race thesis) and CRWV (also held in the
 > Inherited IRA). MU shares shown are the total across accounts unless split
-> out separately.
+> out separately. Physical gold and silver are long-held hard-asset positions
+> (retained).
 
 ### LINK — Chainlink (Non-Qualified)
 
@@ -630,6 +632,49 @@ GOOGL 100 · MOG.A 50 · MU 20 · NOW · ONDS · SNOW 100 · TSLA · XE 1300.
   value accrual timeline is legitimate analytical question, not
   irrational anxiety. Address the CCIP-fee-to-LINK-demand question
   when relevant, not reflexively.
+
+### Physical Gold — Non-Qualified
+
+- **Category:** Macro — Hard Asset Outside the System
+- **Position Status:** HELD (Non-Qualified)
+- **Thesis:** Physical gold serves a distinct function from GLD. Paper
+  gold is counterparty-risk-exposed in extreme scenarios (system-level
+  financial stress, capital controls, digital infrastructure
+  disruption). Physical gold in personal possession is the
+  system-outside-the-system hedge.
+- **Evidence:**
+  - Historical role of gold in regime transitions
+  - Current Dalio Big Cycle framework supports hard-asset hedging
+  - GLD and physical gold are not the same asset in tail scenarios
+- **Catalyst:** n/a — this is tail-risk insurance, not a performance
+  position.
+- **Thesis-Breaker:** n/a — physical gold doesn't "break" as a thesis;
+  it is or isn't useful depending on regime.
+- **Narrative Status:** Macro expression
+- **Conviction:** Insurance-level holding
+- **Last Reviewed:** 2026-04-21
+- **Notes:** Do not optimize, do not trade, do not tactically size.
+  This is outside the active portfolio.
+
+### Physical Silver — Non-Qualified
+
+- **Category:** Macro — Hard Asset with Industrial Demand
+- **Position Status:** HELD (Non-Qualified)
+- **Thesis:** Silver shares the monetary-asset characteristics of gold
+  but adds industrial demand exposure (solar, electronics, defense).
+  Tighter supply dynamics than gold given mine-supply constraints and
+  structural industrial draw.
+- **Evidence:**
+  - Industrial demand growing (solar buildout, EV electronics)
+  - Mine supply constrained
+  - Historical monetary role
+- **Catalyst:** n/a — held for duration.
+- **Thesis-Breaker:** n/a — same as physical gold.
+- **Narrative Status:** Macro expression
+- **Conviction:** Insurance-level holding
+- **Last Reviewed:** 2026-04-21
+- **Notes:** Same handling as physical gold — outside the active
+  portfolio.
 
 ---
 
@@ -719,8 +764,6 @@ this commit.
 - **BTC — Bitcoin (direct)** · Crypto macro · neutral monetary asset (see IBIT).
 - **MSTR — MicroStrategy** · Levered BTC · highest-beta BTC expression in the
   book.
-- **Physical Gold** · Hard-asset insurance outside the system.
-- **Physical Silver** · Hard asset + industrial demand.
 - **MPJPY — Metaplanet ADR** · Levered BTC (Japan) · was 4,600 sh (IRA 2,000 /
   Non-Qual 2,000 / Roth 600) · Japanese MicroStrategy, tax-arb premium.
 - **SPCE — Virgin Galactic** · Speculative narrative-flow trade · was 600 sh
