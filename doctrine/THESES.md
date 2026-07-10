@@ -84,31 +84,6 @@ in usefulness faster than stale news.
   2026. The train left; the seneschal-lesson is to stop evaluating the
   parent and wait for the IPO to present a fresh pre-narrative window.
 
-### WOLF — Wolfspeed
-
-- **Category:** Defense Industrial Base — Chokepoint Monopoly
-- **Position Status:** WATCH
-- **Thesis:** SiC semiconductors for defense power electronics —
-  radar, hypersonics, directed energy. Structural demand from DoD is
-  real regardless of EV demand weakness.
-- **Evidence:**
-  - SiC is non-substitutable for high-power defense applications
-  - Wolfspeed is one of the few Western scale producers
-  - EV weakness has crushed the stock while defense demand is
-    structurally growing
-- **Catalyst:** Balance sheet resolution (restructuring or equity raise),
-  OR named defense contract specifying SiC power electronics.
-- **Thesis-Breaker:** Liquidity event forces dilutive recapitalization
-  that wipes equity, OR Chinese SiC producers achieve defense-grade
-  certification and enter the market at scale.
-- **Narrative Status:** PRE-NARRATIVE on defense thesis; ALREADY RAN
-  (in the wrong direction) on the EV thesis
-- **Conviction:** WATCH
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Balance sheet risk means size carefully when entry is clear.
-  This is a thesis where being early by six months is much better than
-  being late by six weeks.
-
 ---
 
 ## UKRAINE RECONSTRUCTION
@@ -383,62 +358,147 @@ in usefulness faster than stale news.
 
 ---
 
+## TECHNOLOGY RACE — US vs CHINA
+
+### AI Race — US vs China
+
+- **Category:** Technology Race — Macro Thesis (US vs China)
+- **Position Status:** THEMATIC — expressed via held names (XE, GFS, MU) plus a
+  landscape watchlist
+- **Core Claim:** Not one race, two divergent bets. US = frontier/AGI +
+  compute-maximalism (win by scaling capital + chips). China = efficiency +
+  adoption + embodiment — "GAI" not AGI, leveraging AI as a general-purpose
+  technology to turbocharge manufacturing/health/services rather than chasing a
+  human-level turning point. Model quality has converged; the US moat is now
+  almost purely capital → more flush-exposed, not less.
+- **Bottleneck nodes** (own-the-chokepoint, ordered by how far below the model
+  they sit — where the alpha and the daemon's highest-signal news live):
+  1. **Compute / chips — US LEAD INTACT.** Huawei's Ascend 950 is ~H200-
+     comparable on paper, but even vastly exceeding targets it makes only ~4%
+     of Nvidia's aggregate compute, and its 2026 roadmap chip is weaker than
+     its best today. HBM is the chokepoint. H200-into-China is a live policy
+     binary — no revenue yet, imports uncertain. Domestic chips hit ~41% of
+     China's own market in 2025; Huawei scaling Ascend 950PR toward 750k units,
+     Cambricon ~500k. Names: NVDA / AVGO / AMD / MU (yours) / TSM.
+     **Daemon:** HBM-to-China relaxation or SMIC yield breakthrough =
+     China-confirm; tighter HBM/SME controls = China-break.
+  2. **Power — THE binding constraint** (idle GPUs waiting on electricity, not
+     demand). Reactors: XE (yours) / OKLO / SMR / NNE; fuel/enrichment LEU /
+     CCJ; grid & turbines GEV / VRT. Fusion is the long-tail node — CFS targets
+     net energy on SPARC in 2027 (ENI offtake), Helion contracted for 50MW to
+     Microsoft by 2028; the geopolitical tell is scale: China's public fusion
+     spend ~$1.5B/yr vs US DOE ~$790M, plus a new China Fusion Energy Co. with
+     ~$2.1B registered capital (2.5x the US DOE fusion budget). First public
+     pure-play via the TAE–TMTG merger expected mid-2026.
+     **Daemon:** SMR CPAs/NRC approvals + hyperscaler nuclear PPAs = US-confirm;
+     any private-fusion net-energy print = supply-chain-wide catalyst.
+  3. **Interconnect / photonics / CPO — CROSSED INTO VOLUME H1'26.** TSMC's
+     COUPE silicon-photonics platform entered mass production April 2026;
+     Broadcom Tomahawk-6 Davisson (102.4 Tb/s) and Nvidia Quantum-X shipping;
+     Ayar Labs closed a $500M Series E; Lightmatter Passage L200/L200X entering
+     customer integration; Nvidia committed >$4B to Lumentum and Coherent
+     (treats the optical supply chain as critical and vulnerable). Both Ayar and
+     Lightmatter joined NVLink Fusion June 2026. Names: LITE / COHR / POET /
+     ALAB / CRDO / GFS (yours, CPO packaging).
+  4. **Quantum — US industrial-policy FLOOR installed.** DoC put ~$2B into nine
+     US quantum firms, taking minority non-controlling equity — Atom, D-Wave,
+     Infleqtion, PsiQuantum, Quantinuum, Rigetti up to $100M each, Diraq ~$38M.
+     China parallel: Origin Quantum, Quantum CTEK (superconducting), USTC's
+     Jiuzhang (photonic), quantum atop the 15th Five-Year-Plan priority list.
+     IONQ: ~$130M 2025 sales, 2026 guide $225–245M, ~95x sales, unprofitable —
+     story-DCF, not a multiple. Sleeve moves 10-15% on no news with repeated
+     50%+ drawdowns → small-option sizing only. IONQ / RGTI / QBTS / QUBT;
+     big-cap optionality IBM / GOOGL / MSFT.
+  5. **AGI / frontier (headline race) — quality gap ~closed, US marginally
+     ahead + on capital.** Talent flows both ways — a former OpenAI researcher
+     is now Tencent's chief AI scientist aiming at AGI; Alibaba/ByteDance hiring
+     from Google DeepMind. Mostly private (OpenAI / Anthropic / xAI / Google);
+     public expression is hyperscaler capex + the four layers above.
+- **Catalysts the daemon flags:** late-July hyperscaler capex guides
+  (MSFT/META/GOOGL/AMZN); any H200/HBM policy move; new Chinese frontier drops
+  (DeepSeek/Qwen/Kimi/MiniMax) that re-open or re-close the gap; the Nov 9–10
+  rare-earth + tariff-détente cliff as the hard-tech supply lever.
+- **Book link / daemon rule:** US side of this race = flush-exposed holdings
+  (XE, GFS, MU-runner). A bullish-China-AI event is usually bearish your US
+  names AND confirming your flush macro — flag both directions on the same
+  headline.
+- **Conviction:** HIGH (thematic)
+- **Last Reviewed:** 2026-07-10
+
+### Robotics Race — US vs China
+
+- **Category:** Technology Race — Macro Thesis (US vs China)
+- **Position Status:** THEMATIC — expressed via MOG.A (component layer) plus a
+  landscape watchlist
+- **Core Claim:** Same split as AI but more lopsided. China owns volume +
+  supply chain; the US owns software/autonomy + capital. Chinese makers —
+  AgiBot ~5,168 and Unitree ~5,500 units — were ~85–90% of 2025 global humanoid
+  shipments; Tesla, Figure, and Agility each shipped ~150. Cost is the moat, and
+  it's structural: Morgan Stanley estimates building a humanoid without Chinese
+  parts triples the actuator line from ~$22k to ~$58k, and sourcing Optimus's
+  supply chain without China costs almost 3x. The "muscle" bottleneck is
+  Chinese.
+- **Demand-floor node (most thesis-relevant):** China's MIIT and SASAC issued a
+  direct instruction this June — 10,000 humanoids actively working (not
+  demoing) in factories/warehouses/hospitals by Dec 31 2026, local-government
+  deployment plans due end-June, progress reports in November — framed as a
+  requirement, not a goal. A state guaranteeing the customer: the robotics
+  analog of a demand floor / offtake backstop.
+- **Nodes:**
+  1. **Component / actuator (own-this):** MOG.A (yours) — the dual missile +
+     humanoid-actuator crossover, ~47x, Jul 24 print; magnets MP + Niron
+     (rare-earth-free) via MOG.A. China owns the reducer/harmonic layer
+     (Leaderdrive, Laifual). China owning actuators is bad for US robot-maker
+     margins, good for the US-domestic component plays the government is
+     underwriting.
+  2. **Robot-maker / OEM:** US — Tesla's Optimus line taking shape at Fremont,
+     ramping from dozens/week (June) toward ~1,000/week by September, but 2026
+     units are internal-testing only, true mass production waits on a Texas line
+     in 2027 (Musk: initial production extremely slow); Figure highest private
+     valuation at $39B; Agility/AGLT; Boston Dynamics (Hyundai); 1X (NEO,
+     OpenAI-backed). China — Unitree STAR Market IPO CSRC-approved July 2,
+     post-IPO valuation above ~$14.7B, though Q1'26 revenue growth decelerated
+     to 68% YoY (from 332% FY25); UBTECH booked 13,000+ orders in a month,
+     deploying on BYD and NIO lines; AgiBot; XPENG IRON; BYD (20k-unit '26
+     target).
+  3. **Software / VLA (the US edge):** Figure Helix, Google DeepMind, Tesla —
+     the real gap between a Unitree G1 and a Figure 03 is the model: Helix maps
+     vision directly to motor action end-to-end, while the G1 needs explicit
+     programming per task. China is closing it via open weights (Unitree
+     UnifoLM-VLA-0). **Daemon:** VLA generalization benchmarks + real paid-
+     deployment hours (Digit at Toyota/GXO) = US-edge confirm.
+  4. **US govt backstop (next wave):** Lutnick meeting robotics CEOs, EO
+     expected 2026 (TER/SYM/TSLA flagged). **Daemon:** any robotics EO or DoD
+     robotics offtake = US demand-floor installing.
+- **Forward-metric note:** public pure-play humanoid exposure is thin and
+  story-priced — UBTECH (HK, unprofitable), Unitree (pending STAR listing),
+  AGLT (pre-close SPAC, de-SPAC + H1'27 lockup risk). No clean fwd-PE; these
+  trade on unit-ramp + scarcity. The cash-flowing expression is the component
+  layer (MOG.A).
+- **Book link / daemon rule:** A China-volume milestone confirms the
+  component-bottleneck thesis (bullish MOG.A read-through) but pressures US
+  robot-maker margins (bearish AGLT read-through). Flag both.
+- **Conviction:** HIGH (thematic)
+- **Last Reviewed:** 2026-07-10
+
+---
+
 ## INHERITED IRA — CURRENT HOLDINGS
 
-### CRCL — Circle Internet Financial
+**Current roster (updated 2026-07-10):** CCXI 1000 · CRWV · GFS 300 ·
+GOOGL 100 · MOG.A 50 · MU 20 · NOW · ONDS · SNOW 100 · TSLA · XE 1300.
 
-- **Category:** Crypto / Stablecoin Infrastructure — Macro Expression
-- **Position Status:** HELD (Inherited IRA) — 200 shares @ $118.67
-- **Thesis:** USDC reserve income is a durable, rates-sensitive earnings
-  stream. Stablecoin issuers are becoming perpetual Treasury buyers as
-  USD demand for stablecoins grows — filling part of the Treasury demand
-  gap as foreign CBs reduce US debt holdings. CRCL is the cleanest public
-  expression of this.
-- **Evidence:**
-  - USDC holds tens of billions in short-duration Treasuries as reserve
-  - Interest income on reserves is a direct beneficiary of elevated rates
-  - Stablecoin-issuer-as-Treasury-buyer is structurally new demand source
-  - US policy treatment of stablecoins increasingly supportive
-- **Catalyst:** Federal stablecoin legislation passage (ongoing), OR
-  continued USDC supply expansion visible in reserves disclosures.
-- **Thesis-Breaker:** Rate cuts reduce reserve income materially, OR
-  regulatory shift treats stablecoin issuers as banks (requiring capital
-  reserves that crush margin), OR USDC loses meaningful share to Tether
-  or a CBDC.
-- **Narrative Status:** PARTIALLY DISCOVERED
-- **Conviction:** HIGH
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Event risk — consider trim on war/geopolitical escalation that
-  triggers broad risk-off crypto selloff.
-
-### COIN — Coinbase Global
-
-- **Category:** Crypto — Macro Expression / Sentiment Proxy
-- **Position Status:** HELD (Inherited IRA) — 100 shares @ $197.87
-- **Thesis:** Largest US regulated crypto exchange. Trading revenue is
-  cyclical on crypto volumes; subscription/services (staking, custody,
-  USDC distribution via Circle partnership) provide durable floor.
-- **Evidence:**
-  - Dominant US exchange market share
-  - Revenue share arrangement with Circle on USDC
-  - Custody business benefits from institutional adoption
-  - Regulatory moat from US licensing
-- **Catalyst:** Sustained crypto volume expansion, OR Bitcoin/ETH ETF
-  inflows continuing, OR institutional custody adoption milestone.
-- **Thesis-Breaker:** Regulatory capture by a CEX competitor, OR
-  DeFi/on-chain volume migration accelerates past CEX model (Hyperliquid
-  pattern at scale), OR trading volumes collapse in an extended crypto
-  bear.
-- **Narrative Status:** PARTIALLY DISCOVERED
-- **Conviction:** MEDIUM-HIGH
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Consider trim on geopolitical escalation — COIN is
-  high-beta to crypto sentiment and risk-off hits it first.
+> New this update — CCXI, GFS, GOOGL, MOG.A, MU, SNOW, XE. Held as
+> positions; the tech-race names (GFS, GOOGL, MOG.A, MU, XE) are covered
+> under the **Technology Race** theses above. **CCXI** is Churchill Capital
+> Corp — the SPAC de-SPACing **Agility Robotics (AGLT)**; it reuses the old
+> ChemoCentryx ticker. SNOW and GOOGL carry no standalone thesis record yet.
 
 ### CRWV — CoreWeave
 
 - **Category:** AI Infrastructure — Growth Multiple
-- **Position Status:** HELD (Inherited IRA) — 200 shares @ $87.80
+- **Position Status:** HELD (Inherited IRA — 200 shares @ $87.80; also
+  Non-Qualified — shares TBD) — updated 2026-07-10
 - **Thesis:** Specialized AI compute provider with concentrated customer
   base (Microsoft, Meta, others). Benefits directly from the
   AI-infrastructure-as-flow-absorbing-asset thesis. Growth multiple is
@@ -459,48 +519,6 @@ in usefulness faster than stale news.
 - **Notes:** Most risk-off sensitive holding in the IRA. Consider trim
   on escalation. Growth multiples get crushed first in geopolitical
   risk-off.
-
-### META — Meta Platforms
-
-- **Category:** AI Infrastructure — Mature Platform
-- **Position Status:** HELD (Inherited IRA) — 35 shares @ $620 — TRIM TARGET
-- **Thesis:** Mature AI-application layer play. Llama open-source strategy
-  and ad-tech AI integration are the earnings levers. Position is at trim
-  target — proceeds redeployed to pre-narrative positions (ACM, COP, NEU).
-- **Evidence:**
-  - Advertising revenue growth re-accelerated via AI targeting
-  - Llama model family open-source leadership
-  - Infrastructure capex aligned with AI compute demand
-- **Catalyst:** None specific — this is a trim decision, not an add
-  decision. Rebalancing from mature to pre-narrative.
-- **Thesis-Breaker:** n/a — exiting on strength, not on thesis break.
-- **Narrative Status:** ALREADY RAN (consensus long, widely held)
-- **Conviction:** Action status — TRIM
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Proceeds → ACM, COP, NEU per the stated deployment plan.
-
-### IBIT — iShares Bitcoin Trust
-
-- **Category:** Crypto — Macro Expression
-- **Position Status:** HELD (Inherited IRA) — 830 shares @ $43.09
-- **Thesis:** Bitcoin exposure in the IRA wrapper. Long-term thesis is
-  Bitcoin as neutral monetary asset absorbing global Treasury-flight
-  demand. BTC grows structurally as stablecoin-issuer Treasury buying and
-  foreign CB gold buying signal the same trend: reserve diversification
-  away from USD.
-- **Evidence:**
-  - Spot ETF approval and institutional adoption
-  - Foreign CB gold buying at record levels — directional signal
-  - Stablecoin issuers as Treasury buyers structurally new
-- **Catalyst:** n/a — this is a regime bet held for duration, not a
-  named-catalyst trade.
-- **Thesis-Breaker:** Sustained institutional outflows, OR regulatory
-  shift that materially restricts spot ETF operations, OR a successful
-  Bitcoin-killer (no credible candidate currently).
-- **Narrative Status:** Macro expression — not applicable
-- **Conviction:** HIGH (structural)
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Hold — this is long-duration exposure, not tactical.
 
 ### ONDS — Ondas Holdings
 
@@ -549,29 +567,6 @@ in usefulness faster than stale news.
 - **Conviction:** MEDIUM-HIGH (hold)
 - **Last Reviewed:** 2026-04-21
 
-### GLD — SPDR Gold Shares
-
-- **Category:** Macro — Dalio Big Cycle Hedge + Hormuz Inflation Play
-- **Position Status:** HELD (Inherited IRA) — 100 shares @ $426.79 —
-  already profitable
-- **Thesis:** Gold as neutral monetary asset benefits as foreign CBs
-  diversify reserves away from US Treasuries. Hormuz-driven inflation
-  adds near-term tailwind. Long-duration hold — not a trade.
-- **Evidence:**
-  - Foreign CB gold buying at record levels
-  - Physical gold flows from West to East (London to Shanghai)
-  - Dalio Big Cycle framework points to hard asset outperformance in
-    current regime
-  - Hormuz cascade is inflationary in near term
-- **Catalyst:** n/a — structural hold, not catalyst-driven.
-- **Thesis-Breaker:** Meaningful and sustained US Treasury demand recovery
-  from foreign CBs (no signal of this), OR real rates rising materially
-  (possible if monetary tightening returns).
-- **Narrative Status:** Macro expression
-- **Conviction:** HIGH (structural)
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Position is already profitable. Hold and add on dips.
-
 ### TSLA — Tesla
 
 - **Category:** AI/Robotics — Optionality
@@ -592,71 +587,15 @@ in usefulness faster than stale news.
 - **Conviction:** Optionality — not conviction, do not size up
 - **Last Reviewed:** 2026-04-21
 
-### ETH — Ethereum
-
-- **Category:** Crypto — Macro Expression
-- **Position Status:** HELD (Inherited IRA)
-- **Thesis:** Smart-contract base layer exposure. ETH benefits from
-  stablecoin issuance, on-chain financial infrastructure growth, and
-  the staking yield as adoption matures. Complementary to BTC (IBIT)
-  but distinct thesis — ETH is the platform, BTC is the asset.
-- **Evidence:**
-  - Dominant smart-contract platform by TVL and developer activity
-  - Stablecoin supply largely issued on Ethereum
-  - Staking yield provides income component
-- **Catalyst:** n/a — structural hold.
-- **Thesis-Breaker:** Solana or another L1 takes durable share from ETH
-  in the smart-contract platform category (watch user counts, not just
-  hype), OR a protocol-level failure erodes confidence.
-- **Narrative Status:** Macro expression
-- **Conviction:** HIGH (structural)
-- **Last Reviewed:** 2026-04-21
-
-### BTC — Bitcoin (direct holding in IRA)
-
-- **Category:** Crypto — Macro Expression
-- **Position Status:** HELD (Inherited IRA)
-- **Thesis:** Same thesis as IBIT — Bitcoin as neutral monetary asset.
-  Direct holding provides non-wrapper exposure. Overall Bitcoin exposure
-  comes from both BTC direct and IBIT combined.
-- **Evidence / Catalyst / Thesis-Breaker:** See IBIT.
-- **Narrative Status:** Macro expression
-- **Conviction:** HIGH (structural)
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Consider whether to consolidate BTC and IBIT into a single
-  exposure form (IBIT wrapper for IRA simplicity, or direct BTC for
-  non-custodial exposure). Current dual-holding is probably legacy.
-
 ---
 
 ## NON-QUALIFIED — CURRENT HOLDINGS
 
-### MSTR — MicroStrategy
+**Current roster (updated 2026-07-10):** CRWV · LINK · MU 20.
 
-- **Category:** Crypto — Treasury-Crypto Levered Expression
-- **Position Status:** HELD (Non-Qualified)
-- **Thesis:** MSTR is a levered Bitcoin holding vehicle. The company has
-  transformed its balance sheet into a BTC accumulation engine financed
-  through equity issuance and convertible debt. When BTC rises, MSTR
-  rises more. When BTC falls, MSTR falls more. The position is a
-  volatility-amplified BTC expression.
-- **Evidence:**
-  - Significant BTC holdings on balance sheet
-  - Ongoing BTC accumulation strategy publicly stated
-  - Equity-issuance flywheel adds BTC per share over time (in BTC
-    bull markets)
-- **Catalyst:** Same as BTC itself — stablecoin-issuer demand, foreign
-  CB diversification, institutional adoption milestones.
-- **Thesis-Breaker:** Extended BTC bear market that forces convertible
-  debt dilution at weak prices, OR regulatory action targeting
-  treasury-crypto corporate structures, OR Saylor's strategic
-  commitment wavers.
-- **Narrative Status:** PARTIALLY DISCOVERED
-- **Conviction:** HIGH
-- **Last Reviewed:** 2026-04-21
-- **Notes:** This is the highest-beta BTC expression in the book.
-  Sizing must account for MSTR dropping 2-3x more than BTC on
-  drawdowns.
+> New this update — MU (see the AI Race thesis) and CRWV (also held in the
+> Inherited IRA). MU shares shown are the total across accounts unless split
+> out separately.
 
 ### LINK — Chainlink (Non-Qualified)
 
@@ -692,48 +631,16 @@ in usefulness faster than stale news.
   irrational anxiety. Address the CCIP-fee-to-LINK-demand question
   when relevant, not reflexively.
 
-### Physical Gold — Non-Qualified
+---
 
-- **Category:** Macro — Hard Asset Outside the System
-- **Position Status:** HELD (Non-Qualified)
-- **Thesis:** Physical gold serves a distinct function from GLD. Paper
-  gold is counterparty-risk-exposed in extreme scenarios (system-level
-  financial stress, capital controls, digital infrastructure
-  disruption). Physical gold in personal possession is the
-  system-outside-the-system hedge.
-- **Evidence:**
-  - Historical role of gold in regime transitions
-  - Current Dalio Big Cycle framework supports hard-asset hedging
-  - GLD and physical gold are not the same asset in tail scenarios
-- **Catalyst:** n/a — this is tail-risk insurance, not a performance
-  position.
-- **Thesis-Breaker:** n/a — physical gold doesn't "break" as a thesis;
-  it is or isn't useful depending on regime.
-- **Narrative Status:** Macro expression
-- **Conviction:** Insurance-level holding
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Do not optimize, do not trade, do not tactically size.
-  This is outside the active portfolio.
+## ROTH IRA — CURRENT HOLDINGS
 
-### Physical Silver — Non-Qualified
+**Current roster (updated 2026-07-10):** CCXI 1000 · XE 1300.
 
-- **Category:** Macro — Hard Asset with Industrial Demand
-- **Position Status:** HELD (Non-Qualified)
-- **Thesis:** Silver shares the monetary-asset characteristics of gold
-  but adds industrial demand exposure (solar, electronics, defense).
-  Tighter supply dynamics than gold given mine-supply constraints and
-  structural industrial draw.
-- **Evidence:**
-  - Industrial demand growing (solar buildout, EV electronics)
-  - Mine supply constrained
-  - Historical monetary role
-- **Catalyst:** n/a — held for duration.
-- **Thesis-Breaker:** n/a — same as physical gold.
-- **Narrative Status:** Macro expression
-- **Conviction:** Insurance-level holding
-- **Last Reviewed:** 2026-04-21
-- **Notes:** Same handling as physical gold — outside the active
-  portfolio.
+> Both new this update. CCXI = Churchill Capital Corp (SPAC → Agility
+> Robotics / AGLT; see the Robotics Race thesis). XE is covered under the AI
+> Race power node. Share counts are the total across the Inherited IRA + Roth
+> unless split out separately.
 
 ---
 
@@ -774,145 +681,47 @@ in this file — it's a belief, not a thesis.
 
 ---
 
-## CROSS-ACCOUNT POSITIONS (added 2026-04-22)
+## CROSS-ACCOUNT POSITIONS
 
-### MPJPY — Metaplanet (Sponsored ADR of TSE:3350)
+### MU — Micron Technology
 
-- **Category:** Crypto — Treasury-Crypto Levered Expression (Japan)
-- **Position Status:** HELD across all three accounts — 4,600 shares total
-  - Inherited IRA: 2,000 shares
-  - Individual (Non-Qualified): 2,000 shares
-  - Roth IRA: 600 shares
-  - CUSIP: 59141L109
-- **Thesis:** Metaplanet is the Japanese MicroStrategy — a publicly-traded
-  company accumulating Bitcoin on its balance sheet. The thesis is the same
-  reflexive leveraged-BTC expression as MSTR, but with a structural tax
-  arbitrage in Japan that supports a higher historical premium ceiling
-  and a distinct flow pattern from US markets.
-- **Evidence:**
-  - 35,102 BTC held as of Feb 2026, average cost basis $107,607/BTC
-  - Target: 100,000 BTC by end of 2026, 210,000 BTC by end of 2027
-  - Current mNAV ~1.1x EV (vs. MSTR ~1.2x EV — cheaper on proper comparable)
-  - Historical mNAV range: 0.85x (recent trough) to 7.23x (Nov 2024 peak)
-  - Peak mNAV ceiling is meaningfully higher than MSTR's 3.89x
-  - Japan tax structure: direct BTC ownership taxed up to 55% (miscellaneous
-    income); equity gains taxed ~20%. This 35-point wedge creates structural
-    Japanese retail demand for Metaplanet equity as a tax-efficient BTC
-    proxy.
-  - Moving Strike Warrant structure with mNAV clause mathematically ensures
-    every share issued increases BTC per share rather than diluting —
-    structurally superior to MSTR's abandoned issuance discipline
-  - MPJPY is the sponsored Level I ADR (Deutsche Bank depositary, MUFG
-    custodian) launched Dec 2025, replacing the older unsponsored MTPLF
-  - MPJPY unlocks institutional access that MTPLF could not support
-  - $500M BTC-collateralized credit facility, ~$280M drawn
-- **Catalyst:**
-  - Resumed BTC accumulation (purchases halted September 2025 — first
-    re-accumulation announcement reactivates the reflexive machine)
-  - FTSE Japan and All-World mid-cap inclusion (forced institutional buying)
-  - SpaceX IPO window (June-July 2026) drives retail space/crypto risk-on
-    adjacent to this
-  - Japanese retail piling back in during a BTC ATH leg (5-7x mNAV tail)
-  - Institutional ADR flow now that sponsored structure is operational
-- **Thesis-Breaker:**
-  - Extended BTC bear market with Metaplanet at $107K cost basis —
-    confidence erodes, Japanese retail slower to return
-  - Gerovich strategic commitment wavers or dilutive issuance at weak mNAV
-  - BoJ rate policy reverses — stronger yen compresses JPY-denominated BTC
-    returns and reduces Japanese tax-arbitrage demand
-  - Japanese copycat treasury companies fragment the premium pool
-  - Regulatory shift in Japan treating treasury-crypto structures as banks
-- **Narrative Status:** PARTIALLY DISCOVERED — MSTR's success has brought
-  attention to the treasury-crypto category, but Metaplanet specifically
-  is still trading at MSTR-parity or cheaper on EV mNAV while having a
-  structurally higher historical ceiling. The Japan tax-arbitrage moat
-  is recognized by specialists but not fully priced by broader market.
-- **Conviction:** HIGH
-- **Last Reviewed:** 2026-04-22
-- **Notes:**
-  - MPJPY > MTPLF for any position — sponsored ADR has lower fees, better
-    settlement, institutional-grade infrastructure. MTPLF is the legacy
-    wrapper.
-  - 3350 (Tokyo direct) is the cleanest expression if broker access
-    supports it (IBKR, Fidelity International). MPJPY is the correct
-    US-accessible vehicle.
-  - Watch MPJPY vs. 3350 spread — sustained premium means US institutional
-    flow arriving (bullish confirmation). Discount means US selling
-    pressure or Japan-side momentum that hasn't crossed yet.
-  - Exit framework (parallel to MSTR but wider range given Metaplanet's
-    higher historical ceiling):
-    - 50% trim at 2x mNAV
-    - Additional 30% at 3x mNAV
-    - 20% runner for 4x+ Japan-euphoria tail
-    - Sequence trims: Individual first (least tax-efficient), Inherited
-      IRA second, Roth last (let tax-free gains compound into the tail)
-  - Red flag to monitor: BTC purchases stalled since September 2025.
-    Current holdings (35,102) vs. 2026 target (100,000) — gap widening.
-    Management discipline (not issuing below accretive mNAV) is defensible,
-    but the BTC-per-share growth engine is idling until purchases resume.
+- **Category:** AI Race — Compute / HBM (Technology Race → AI Race thesis)
+- **Position Status:** HELD across accounts — 20 shares total (Inherited IRA +
+  Non-Qualified; per-account split TBD)
+- **Thesis / catalysts / daemon rules:** covered under **AI Race — US vs China**,
+  node ① Compute / chips. MU is the HBM-chokepoint expression; HBM-to-China
+  policy relaxation is the live China-confirm binary, tighter HBM/SME controls
+  the China-break.
+- **Conviction:** HIGH (thematic — runner)
+- **Last Reviewed:** 2026-07-10
 
-### SPCE — Virgin Galactic
+---
 
-- **Category:** Speculative / Narrative-Flow Trade
-- **Position Status:** HELD (Roth IRA) — 600 shares
-- **Thesis:** SPCE is not held on fundamentals — fundamentals are bad.
-  It is held as a time-bounded narrative-flow trade keyed to the SpaceX
-  IPO window (June-July 2026). Retail capital unable to access SpaceX at
-  IPO will flow into public space proxies; SPCE has the highest retail
-  brand recognition among space names after SpaceX itself. Branson's
-  April 2026 ticket-sale reboot at $750K (up from $600K) is a capital
-  markets move front-running the rally, which is the signal that
-  sophisticated operators see the same setup.
-- **Evidence:**
-  - SpaceX confidential S-1 filed April 1, 2026
-  - SpaceX roadshow confirmed week of June 8, 2026; ~$2T valuation range
-  - 30% retail allocation at SpaceX IPO (vs. 10% Wall Street standard)
-  - SpaceX IPO will reprice the entire space sector (Morgan Stanley
-    60-company proxy list)
-  - SPCE ticket sales reopened at $750K in April 2026
-  - SPCE has rallied historically on execution news even at depressed
-    base (23.8% move on ticket reopening per single data point)
-  - Delta Class test flights targeted Q3 2026 — secondary fundamental
-    catalyst
-  - Historically elevated short interest — squeeze fuel in a momentum
-    rally
-- **Catalyst:**
-  - Primary: SpaceX IPO narrative window, peak around roadshow (week of
-    June 8, 2026)
-  - Secondary: Delta Class test flight in Q3 2026 (binary event)
-  - Tertiary: Any SPCE-specific positive news during the April-July
-    window amplifies through the sector rally
-- **Thesis-Breaker:**
-  - Branson dilutes shareholders during the rally (ATM, secondary
-    offering, convertible restructuring) — expected behavior, signals
-    exit
-  - SpaceX IPO delayed beyond July 2026 — narrative window closes,
-    sector rally stalls
-  - Delta Class test flight slips to 2027 — fundamental catalyst pushed
-    out beyond Roth-runner horizon
-  - Cash runway runs out before commercial service generates meaningful
-    revenue (currently <$300M cash, burning $80-100M/quarter)
-- **Narrative Status:** PRE-NARRATIVE on the SpaceX-IPO-flow thesis
-  (analyst consensus is Reduce/$3.45 on fundamentals — they're missing
-  the flow dynamic). Fundamentals themselves are fully discovered and
-  bearish.
-- **Conviction:** Speculative — lottery-ticket sizing appropriate
-- **Last Reviewed:** 2026-04-22
-- **Notes:**
-  - This is explicitly a narrative trade, not a thesis hold. Exit
-    framework matters more than entry:
-    - Trim into strength during May (pre-roadshow narrative build)
-    - Peak exit window: week of June 8-11 (SpaceX roadshow)
-    - Watch for 8-K dilution announcements during the rally — that's
-      Branson harvesting, treat as exit trigger regardless of price
-    - Keep a small runner (~200 shares) for Q3 Delta Class test flight
-      binary — tax-free upside if they fly
-  - Placed in Roth on a "small position, high-upside, tax-free" basis
-    rather than deliberate architecture. Original sizing was circumstantial
-    (what the Roth had room for).
-  - Branson's incentive structure: the rally is exactly when he dilutes.
-    Watch the tape and the filings, not each other.
-  - Adjacent position linkage: SpaceX IPO narrative also benefits AI
-    compute names (IREN, APLD, CORZ, HIVE) on the orbital data center
-    angle. Sector flows may concentrate across multiple holdings
-    simultaneously.
+## CLOSED / NO LONGER HELD (exited 2026-07-10)
+
+Positions exited in the 2026-07-10 portfolio refresh. Condensed to a register
+here; the full prior thesis records remain in this file's git history before
+this commit.
+
+- **WOLF — Wolfspeed** · Defense chokepoint (SiC power electronics) · was WATCH,
+  not held · dropped — balance-sheet risk, EV thesis ran the wrong way.
+- **CRCL — Circle** · Crypto / stablecoin infra · was 200 sh @ $118.67 · USDC
+  reserve income / stablecoin-issuer-as-Treasury-buyer.
+- **COIN — Coinbase** · Crypto exchange · was 100 sh @ $197.87 · largest US
+  regulated exchange; services floor.
+- **META — Meta Platforms** · AI mature platform · was 35 sh @ $620 (trim
+  target) · Llama + ad-tech AI; proceeds earmarked ACM/COP/NEU.
+- **IBIT — iShares Bitcoin Trust** · Crypto macro · was 830 sh @ $43.09 · BTC as
+  neutral monetary asset (IRA wrapper).
+- **GLD — SPDR Gold** · Macro hedge · was 100 sh @ $426.79 · gold on
+  reserve-diversification + Hormuz inflation.
+- **ETH — Ethereum** · Crypto macro · smart-contract base layer.
+- **BTC — Bitcoin (direct)** · Crypto macro · neutral monetary asset (see IBIT).
+- **MSTR — MicroStrategy** · Levered BTC · highest-beta BTC expression in the
+  book.
+- **Physical Gold** · Hard-asset insurance outside the system.
+- **Physical Silver** · Hard asset + industrial demand.
+- **MPJPY — Metaplanet ADR** · Levered BTC (Japan) · was 4,600 sh (IRA 2,000 /
+  Non-Qual 2,000 / Roth 600) · Japanese MicroStrategy, tax-arb premium.
+- **SPCE — Virgin Galactic** · Speculative narrative-flow trade · was 600 sh
+  (Roth) · SpaceX-IPO-window flow trade.
