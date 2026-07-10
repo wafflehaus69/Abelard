@@ -1,9 +1,8 @@
-"""CLI tests — argparse plumbing, stub envelopes, and real-handler smoke tests.
+"""CLI tests — argparse plumbing and real-handler smoke tests.
 
 These cover the boundary contract: stdout/stderr discipline, exit codes,
-and the leaf-path dispatch table. The brief mandates a stub envelope on
-all not-yet-implemented commands; everything in `_STUB_DETAILS` should
-exercise that path.
+and the leaf-path dispatch table. Every parser-advertised leaf must map to
+a real handler (the not-implemented stub surface was retired 2026-07-10).
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ import pytest
 
 from news_watch_daemon.cli import (
     HANDLERS,
-    _STUB_DETAILS,
     build_parser,
     command_path,
     main,
@@ -29,14 +27,10 @@ SEED_THEME_DIR = REPO_ROOT / "themes"
 ALL_LEAVES = {
     "scrape",
     "synthesize",
-    "alert-check",
     "status",
     "themes list",
     "themes load",
-    "theme show",
-    "theme history",
     "headlines recent",
-    "alerts recent",
     "db init",
     "db migrate",
     "proposals list",
@@ -71,8 +65,8 @@ def test_parser_has_all_top_level_commands():
     parser = build_parser()
     sub_action = next(a for a in parser._actions if a.dest == "command")
     assert set(sub_action.choices.keys()) == {
-        "scrape", "synthesize", "alert-check", "status",
-        "themes", "theme", "headlines", "alerts", "db",
+        "scrape", "synthesize", "status",
+        "themes", "headlines", "db",
         "proposals", "briefs", "alert-sink", "trigger-log",
         "attention",
         # Pass F (2026-05-28): manual translation subcommand. The
@@ -114,27 +108,15 @@ def test_db_requires_action():
         parser.parse_args(["db"])
 
 
-def test_theme_show_requires_theme_id():
-    parser = build_parser()
-    with pytest.raises(SystemExit):
-        parser.parse_args(["theme", "show"])
-
-
 @pytest.mark.parametrize("argv,expected_leaf", [
     (["scrape"], "scrape"),
     (["synthesize"], "synthesize"),
     (["synthesize", "--theme", "us_iran_escalation"], "synthesize"),
-    (["alert-check"], "alert-check"),
     (["status"], "status"),
     (["themes", "list"], "themes list"),
     (["themes", "load"], "themes load"),
-    (["theme", "show", "x"], "theme show"),
-    (["theme", "history", "x"], "theme history"),
-    (["theme", "history", "x", "--days", "60"], "theme history"),
     (["headlines", "recent"], "headlines recent"),
     (["headlines", "recent", "--theme", "x", "--hours", "12"], "headlines recent"),
-    (["alerts", "recent"], "alerts recent"),
-    (["alerts", "recent", "--days", "30"], "alerts recent"),
     (["db", "init"], "db init"),
     (["db", "migrate"], "db migrate"),
 ])
@@ -144,45 +126,14 @@ def test_all_subcommands_parse_to_expected_leaf(argv, expected_leaf):
     assert command_path(args) == expected_leaf
 
 
-def test_every_known_leaf_is_either_real_or_stub():
-    """No leaf may silently fall through to a generic 'unmapped' error."""
+def test_every_known_leaf_maps_to_a_real_handler():
+    """No leaf may silently fall through to a generic 'unmapped' error —
+    and, since the stub surface was retired, every one must be a REAL handler."""
     for leaf in ALL_LEAVES:
-        assert leaf in HANDLERS or leaf in _STUB_DETAILS, (
-            f"leaf {leaf!r} is neither in HANDLERS nor _STUB_DETAILS — "
-            f"users would see an 'unmapped leaf' error"
+        assert leaf in HANDLERS, (
+            f"leaf {leaf!r} is not in HANDLERS — users would hit the "
+            f"internal 'no handler mapped' error"
         )
-
-
-# ---------- envelope discipline (stubs) -------------------------------
-
-
-@pytest.mark.parametrize("argv", [
-    ["alert-check"],
-    ["theme", "show", "us_iran_escalation"],
-    ["theme", "history", "us_iran_escalation"],
-    ["alerts", "recent"],
-])
-def test_stub_commands_emit_not_implemented_envelope(env, capsys, argv):
-    rc = main(argv)
-    assert rc == 1
-    envelope = _read_envelope(capsys)
-    assert envelope["status"] == "error"
-    assert envelope["data_completeness"] == "none"
-    assert envelope["data"] is None
-    assert envelope["source"] == "internal"
-    assert envelope["warnings"], "stubs must carry at least one warning"
-    assert envelope["warnings"][0]["reason"] == "not_implemented"
-
-
-def test_stub_writes_nothing_else_to_stdout(env, capsys):
-    """Pick any still-stubbed leaf — `alert-check` is the cleanest one
-    that doesn't depend on theme YAML state."""
-    main(["alert-check"])
-    captured = capsys.readouterr()
-    # One trailing newline after the JSON envelope is acceptable.
-    out = captured.out.rstrip("\n")
-    # No prose before or after — must parse cleanly as a single JSON document.
-    json.loads(out)
 
 
 # ---------- envelope discipline (real commands) -----------------------

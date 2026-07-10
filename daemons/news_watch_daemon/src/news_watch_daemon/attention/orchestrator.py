@@ -34,7 +34,7 @@ import json
 import logging
 import re
 import sqlite3
-import uuid
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -660,7 +660,7 @@ def run_attention_cycle(
 
     # 2. Dry-run short-circuits before any LLM construction.
     if dry_run:
-        now_unix_dry = int(__import__("time").time())
+        now_unix_dry = int(time.time())
         counts = count_terms_collapsed(conn, now_unix=now_unix_dry, stopwords=stopwords)
         crossings = evaluate_threshold(counts)
         headlines_in_window = conn.execute(
@@ -724,7 +724,7 @@ def run_attention_cycle(
         _log.warning("attention dispatch sink construction failed: %s", exc)
         sink = None  # archives will still write; dispatch silently skips
 
-    now_unix = int(__import__("time").time())
+    now_unix = int(time.time())
     result = run_attention(
         conn=conn,
         now_unix=now_unix,

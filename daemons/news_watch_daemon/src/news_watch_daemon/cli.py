@@ -38,17 +38,14 @@ from .db import (
     transaction,
     upsert_themes,
 )
-from .envelope import Source, build_error, build_ok, make_warning
+from .envelope import build_error, build_ok, make_warning
 from .lang import classify_language
 from .http_client import HttpClient
 from .scrape.factory import build_sources
 from .scrape.orchestrator import (
     PerSourceResult,
-    ScrapeCycleResult,
     ScrapeResult,
-    run_scrape,
     scrape_cycle,
-    write_heartbeat,
 )
 from .scrape.ticker_extract import TickerExtractError, load_tracked_tickers
 from .alert.factory import AlertSinkFactoryError, build_alert_sink
@@ -58,7 +55,7 @@ from .translation import (
     load_translation_config,
     run_translation_pass,
 )
-from .synthesize.archive import ArchiveError, brief_path, list_brief_ids, read_brief, write_brief
+from .synthesize.archive import ArchiveError, brief_path, list_brief_ids, read_brief
 from .synthesize.brief import (
     Brief,
     Dispatch,
@@ -79,13 +76,10 @@ from .synthesize.proposals_store import (
     remove_proposal,
 )
 from .synthesize.theme_mutator import ThemeMutationError, apply_proposal_to_theme
-from .synthesize.cluster import ClusterInput, cluster_headlines
-from .synthesize.materiality import evaluate_materiality
 from .synthesize.synthesize import (
     SynthesisError,
     SynthesizeResult,
     build_anthropic_client,
-    synthesize_brief,
     synthesize_window,
 )
 # Full Brief Stage 2b-ii: orchestrator + render for the full-brief subcommand.
@@ -94,18 +88,9 @@ from .fullbrief.loader import FullBriefLoadError, load_full_brief_from_path
 from .fullbrief.orchestrator import assemble_full_brief
 from .fullbrief.pdf import PdfRenderError, render_full_brief_pdf
 from .fullbrief.render import render_full_brief
-from .synthesize.llm_client import SynthesisLLMError
-from .synthesize.trigger import TriggerHeadline, evaluate_gate
 from .synthesize.trigger_log import read_last_n as read_trigger_log_last_n
-from .synthesize.trigger_log import write_entry as write_trigger_log_entry
 from .theme_config import ThemeLoadError, load_all_themes
-from .attention.orchestrator import (
-    AttentionRunResult,
-    PerTermOutcome,
-    run_attention,
-    run_attention_cycle,
-)
-from .attention.stopwords import StopwordsError, load_stopwords
+from .attention.orchestrator import run_attention_cycle
 
 
 # ---------- parser ------------------------------------------------------
@@ -291,8 +276,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    top.add_parser("alert-check", help="Re-evaluate alert conditions across themes.")
-
     # ---- alert-sink (sink verification) ----
 
     p_alert_sink = top.add_parser(
@@ -345,19 +328,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Parse YAML theme files and upsert them into the registry.",
     )
 
-    # ---- theme (singular: one-theme inspection) ----
-
-    p_theme = top.add_parser("theme", help="Inspect a single theme.")
-    theme_sub = p_theme.add_subparsers(dest="theme_action", required=True)
-    p_show = theme_sub.add_parser("show", help="Show the latest narrative for a theme.")
-    p_show.add_argument("theme_id")
-    p_history = theme_sub.add_parser("history", help="Show narrative history for a theme.")
-    p_history.add_argument("theme_id")
-    p_history.add_argument(
-        "--days", type=int, default=30,
-        help="Days of narrative history to return (1..365). Default 30.",
-    )
-
     # ---- headlines ----
 
     p_headlines = top.add_parser("headlines", help="Inspect ingested headlines.")
@@ -395,16 +365,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_b_show = briefs_sub.add_parser("show", help="Show one brief's full payload.")
     p_b_show.add_argument("brief_id")
-
-    # ---- alerts ----
-
-    p_alerts = top.add_parser("alerts", help="Inspect alert history.")
-    alerts_sub = p_alerts.add_subparsers(dest="alerts_action", required=True)
-    p_a_recent = alerts_sub.add_parser("recent", help="Recent alerts across all themes.")
-    p_a_recent.add_argument(
-        "--days", type=int, default=7,
-        help="Days back to look (1..90). Default 7.",
-    )
 
     # ---- proposals (drift watcher review) ----
 
@@ -510,9 +470,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 _NESTED_DEST = {
     "themes": "themes_action",
-    "theme": "theme_action",
     "headlines": "headlines_action",
-    "alerts": "alerts_action",
     "proposals": "proposals_action",
     "briefs": "briefs_action",
     "alert-sink": "alert_sink_action",
@@ -530,34 +488,20 @@ def command_path(args: argparse.Namespace) -> str:
     return f"{top} {getattr(args, nested)}"
 
 
-# ---------- handlers: stubs -------------------------------------------
-
-
-def _stub_envelope(leaf: str, detail: str) -> dict[str, Any]:
-    return build_error(
-        status="error",
-        source="internal",
-        detail=f"{leaf}: not implemented in foundation pass",
-        warnings=[
-            make_warning(
-                field=leaf,
-                reason="not_implemented",
-                source="internal",
-                detail=detail,
-            )
-        ],
-    )
-
-
-_STUB_DETAILS: dict[str, str] = {
-    "alert-check": "implemented in alert brief",
-    "theme show": "implemented in synthesis brief (depends on narrative storage)",
-    "theme history": "implemented in synthesis brief",
-    "alerts recent": "implemented in alert brief",
-}
-
-
 # ---------- handlers: real --------------------------------------------
+
+
+def _schema_not_ready(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """Shared schema guard: the canonical 'no schema applied' error envelope if
+    the DB is unmigrated, else None. Single source of truth for the message that
+    seven handlers previously copy-pasted verbatim."""
+    if schema_version(conn) == 0:
+        return build_error(
+            status="error",
+            source="internal",
+            detail="database has no schema applied. Run `news-watch-daemon db init` first.",
+        )
+    return None
 
 
 def _handle_db_init(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
@@ -1072,12 +1016,9 @@ def _handle_themes_load(args: argparse.Namespace, cfg: Config) -> dict[str, Any]
         )
     conn = connect(cfg.db_path)
     try:
-        if schema_version(conn) == 0:
-            return build_error(
-                status="error",
-                source="internal",
-                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
-            )
+        err = _schema_not_ready(conn)
+        if err is not None:
+            return err
         counts = upsert_themes(conn, themes)
     finally:
         conn.close()
@@ -1095,12 +1036,9 @@ def _handle_themes_load(args: argparse.Namespace, cfg: Config) -> dict[str, Any]
 def _handle_themes_list(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
     conn = connect(cfg.db_path)
     try:
-        if schema_version(conn) == 0:
-            return build_error(
-                status="error",
-                source="internal",
-                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
-            )
+        err = _schema_not_ready(conn)
+        if err is not None:
+            return err
         entries = list_themes(conn)
     finally:
         conn.close()
@@ -1123,12 +1061,9 @@ def _handle_scrape(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
     """
     conn = connect(cfg.db_path)
     try:
-        if schema_version(conn) == 0:
-            return build_error(
-                status="error",
-                source="internal",
-                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
-            )
+        err = _schema_not_ready(conn)
+        if err is not None:
+            return err
 
         registered = list_themes(conn)
         active_ids = {e.theme_id for e in registered if e.status == "active"}
@@ -1307,12 +1242,9 @@ def _handle_attention(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
     """
     conn = connect(cfg.db_path)
     try:
-        if schema_version(conn) == 0:
-            return build_error(
-                status="error",
-                source="internal",
-                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
-            )
+        err = _schema_not_ready(conn)
+        if err is not None:
+            return err
         outcome = run_attention_cycle(
             cfg=cfg,
             conn=conn,
@@ -1814,12 +1746,9 @@ def _handle_headlines_recent(args: argparse.Namespace, cfg: Config) -> dict[str,
 
     conn = connect(cfg.db_path)
     try:
-        if schema_version(conn) == 0:
-            return build_error(
-                status="error",
-                source="internal",
-                detail="database has no schema applied. Run `news-watch-daemon db init` first.",
-            )
+        err = _schema_not_ready(conn)
+        if err is not None:
+            return err
         rows = conn.execute(sql, params).fetchall()
         # Pull theme tags per headline in one extra round trip; cheaper
         # than N+1 selects, simple enough not to need a separate index.
@@ -2518,8 +2447,14 @@ def dispatch(args: argparse.Namespace, *, cfg: Config) -> dict[str, Any]:
     handler = HANDLERS.get(leaf)
     if handler is not None:
         return handler(args, cfg)
-    detail = _STUB_DETAILS.get(leaf, f"unmapped leaf: {leaf}")
-    return _stub_envelope(leaf, detail)
+    # Every parser-advertised leaf is mapped in HANDLERS (or special-cased in
+    # main() for run/full-brief/read-brief). A miss here is a wiring bug, not a
+    # user error — surface it loudly rather than as a silent "not implemented".
+    return build_error(
+        status="error",
+        source="internal",
+        detail=f"internal error: no handler mapped for leaf {leaf!r}",
+    )
 
 
 # ---------- envelope emission -----------------------------------------
