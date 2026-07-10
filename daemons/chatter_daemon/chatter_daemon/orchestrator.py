@@ -68,7 +68,11 @@ def run_scan(
         src_error: str | None = None
         for watchlist in watchlists:
             try:
-                result = source.fetch(watchlist, context=context)
+                # prior_records = every earlier source's records this run; a source may rank
+                # by them (Twitter -> Finnhub news volume). Snapshot so a source can't mutate it.
+                result = source.fetch(
+                    watchlist, context=context, prior_records=list(records)
+                )
             except Exception as exc:  # one dead source never sinks the scan
                 src_error = str(exc)
                 _log.warning("source %r failed: %s", source.name, exc)

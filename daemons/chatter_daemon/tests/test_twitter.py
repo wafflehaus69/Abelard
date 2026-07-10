@@ -1,7 +1,8 @@
-"""Twitter/X cashtag source (Order 17) — the first subprocess source. Transport (smoke,
-argv, JSON/NDJSON parse, degrade-clean blocking, UTF-8 decode) via a fake runner; source
-(per-ticker loop, precise-window + min-likes + dedupe filter stack, Haiku-or-none, cost,
-observed_window) via a fake TwitterClient. Fully hermetic — no real subprocess/network.
+"""Twitter/X cashtag source (Order 17) — the first subprocess source; priority-first queue +
+top-N cap (Order 21). Transport (smoke, argv, JSON/NDJSON parse, degrade-clean blocking, UTF-8
+decode) via a fake runner; source (per-ticker loop, priority order, max-tickers cap, the
+precise-window + min-likes + promo + dedupe filter stack, Haiku-or-none, cost, observed_window)
+via a fake TwitterClient. Fully hermetic — no real subprocess/network.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import subprocess
 
 import pytest
 
-from chatter_daemon.sources.base import ScanContext
+from chatter_daemon.sources.base import ScanContext, SourceResult
 from chatter_daemon.sources.twitter import (
     TwitterBlocked,
     TwitterClient,
@@ -45,6 +46,18 @@ def _tweet(tid, text, *, ago_h, likes=10):
             "metrics": {"likes": likes}}
 
 
+def _fin_record(sym, n):
+    """A minimal finnhub_news record carrying a headline count — the prior-source signal
+    Twitter ranks its per-account-quota queue by (Order 21)."""
+    from chatter_daemon.schema import Metrics, NormalizedRecord, Sentiment
+    return NormalizedRecord(
+        watchlist="w", scan_mode="watchlist", canonical_ts=iso_z(FIXED),
+        window=derive_windows(FIXED)["24h"], source="finnhub_news", ticker=sym,
+        matched_by=["symbol"], metrics=Metrics(mention_count=n),
+        sentiment=Sentiment(method="none"), flags=[],
+    )
+
+
 # --- fakes ---------------------------------------------------------------------------
 
 
@@ -73,8 +86,8 @@ class _FakeRunner:
 
 class _FakeTwitter:
     """Injected into TwitterSource — canned per-symbol search results (or "BLOCK"), and a
-    trivial smoke. Records the args each ticker was searched with (to prove `since` is
-    derived from the run context, not the clock)."""
+    trivial smoke. Records the args each ticker was searched with, IN ORDER (to prove `since`
+    is derived from the run context, and that priority/cap reorder + trim the queue)."""
 
     def __init__(self, *, searches=None, smoke_version="fake 1.0", smoke_exc=None):
         self._searches = searches or {}
@@ -229,7 +242,7 @@ def test_search_stdout_utf8_decoded():
     assert out[0]["text"] == "café déjà — señor NVDA"
 
 
-# --- source: loop, filter stack, sentiment, observed_window, degrade, cost ----------
+# --- source: loop, priority + cap, filter stack, sentiment, observed_window, degrade -
 
 
 def test_source_happy_path_counts_survivors():
@@ -243,6 +256,91 @@ def test_source_happy_path_counts_survivors():
     assert by["AMC"].metrics.mention_count == 0  # readable-but-empty -> honest zero
     assert res.error is None and res.cost.haiku_calls == 0  # no key -> no Haiku
     assert fake.smoked == 1  # startup smoke ran once
+
+
+def test_priority_symbols_lead_the_queue():
+    # Order 21: priority names are searched FIRST (front of the queue) despite file order, so
+    # they always land within X's per-account quota. Case-insensitive.
+    syms = ["AAA", "BBB", "MU"]
+    wl = WatchlistConfig(name="w", tickers=[{"symbol": s} for s in syms])
+    fake = _FakeTwitter(searches={s: [] for s in syms})
+    TwitterSource(client=fake, priority=("mu",), sleep=lambda: None).fetch(wl, context=_ctx())
+    assert [c[0] for c in fake.search_calls] == ["MU", "AAA", "BBB"]  # MU first despite file order
+
+
+def test_max_tickers_caps_top_n_and_warns():
+    # Order 21: the cap trims to the top-N in priority order; skipped names are logged, not silent.
+    syms = ["AAA", "BBB", "CCC"]
+    wl = WatchlistConfig(name="w", tickers=[{"symbol": s} for s in syms])
+    fake = _FakeTwitter(searches={s: [] for s in syms})
+    res = TwitterSource(client=fake, max_tickers=2, sleep=lambda: None).fetch(wl, context=_ctx())
+    assert [c[0] for c in fake.search_calls] == ["AAA", "BBB"]     # only the top-2 searched
+    assert {r.ticker for r in res.records} == {"AAA", "BBB"}       # only searched tickers get records
+    assert any("beyond the top-2 cap" in w and "CCC" in w for w in res.warnings)  # loud, not silent
+
+
+def test_priority_then_cap_keeps_the_must_have_name():
+    # priority + cap together: MU is last in file order but priority -> survives a cap of 1.
+    syms = ["AAA", "BBB", "MU"]
+    wl = WatchlistConfig(name="w", tickers=[{"symbol": s} for s in syms])
+    fake = _FakeTwitter(searches={s: [] for s in syms})
+    res = TwitterSource(client=fake, priority=("MU",), max_tickers=1, sleep=lambda: None).fetch(
+        wl, context=_ctx()
+    )
+    assert [c[0] for c in fake.search_calls] == ["MU"]  # the one slot goes to the priority name
+    assert {r.ticker for r in res.records} == {"MU"}
+
+
+def test_finnhub_news_ranks_the_queue():
+    # Order 21: with prior Finnhub records, noisier names (more headlines) are searched FIRST —
+    # so the per-account quota spends on the loudest tickers, not the alphabetical head.
+    syms = ["AAA", "BBB", "CCC"]
+    wl = WatchlistConfig(name="w", tickers=[{"symbol": s} for s in syms])
+    prior = [_fin_record("CCC", 40), _fin_record("AAA", 5), _fin_record("BBB", 20)]
+    fake = _FakeTwitter(searches={s: [] for s in syms})
+    TwitterSource(client=fake, sleep=lambda: None).fetch(wl, context=_ctx(), prior_records=prior)
+    assert [c[0] for c in fake.search_calls] == ["CCC", "BBB", "AAA"]  # by Finnhub headline volume
+
+
+def test_priority_pins_win_over_finnhub_rank():
+    # Explicit pins lead even when quiet on news; the rest follow by Finnhub volume.
+    syms = ["AAA", "BBB", "MU"]
+    wl = WatchlistConfig(name="w", tickers=[{"symbol": s} for s in syms])
+    prior = [_fin_record("AAA", 99), _fin_record("BBB", 50), _fin_record("MU", 1)]  # MU quietest
+    fake = _FakeTwitter(searches={s: [] for s in syms})
+    TwitterSource(client=fake, priority=("MU",), sleep=lambda: None).fetch(
+        wl, context=_ctx(), prior_records=prior
+    )
+    assert [c[0] for c in fake.search_calls] == ["MU", "AAA", "BBB"]  # pin first, then by news
+
+
+def test_ordering_without_finnhub_falls_back_to_file_order():
+    # No prior Finnhub records (Finnhub disabled / empty) -> the remainder keeps file order.
+    syms = ["AAA", "BBB", "CCC"]
+    wl = WatchlistConfig(name="w", tickers=[{"symbol": s} for s in syms])
+    fake = _FakeTwitter(searches={s: [] for s in syms})
+    TwitterSource(client=fake, sleep=lambda: None).fetch(wl, context=_ctx())  # no prior_records
+    assert [c[0] for c in fake.search_calls] == ["AAA", "BBB", "CCC"]  # file order preserved
+
+
+def test_finnhub_rank_flows_through_run_scan():
+    # End-to-end: run_scan hands each source the EARLIER sources' records as prior_records, so
+    # Twitter (last) ranks its queue by the Finnhub source's headline volume — no direct plumbing.
+    from chatter_daemon.orchestrator import run_scan
+
+    syms = ["AAA", "BBB", "CCC"]
+    wl = WatchlistConfig(name="w", tickers=[{"symbol": s} for s in syms])
+
+    class _FakeFinnhub:
+        name = "finnhub_news"
+
+        def fetch(self, watchlist, *, context, **_):
+            recs = [_fin_record(s, n) for s, n in (("AAA", 3), ("BBB", 30), ("CCC", 12))]
+            return SourceResult(source="finnhub_news", records=recs)
+
+    fake_tw = _FakeTwitter(searches={s: [] for s in syms})
+    run_scan([wl], sources=[_FakeFinnhub(), TwitterSource(client=fake_tw, sleep=lambda: None)], now=FIXED)
+    assert [c[0] for c in fake_tw.search_calls] == ["BBB", "CCC", "AAA"]  # loudest Finnhub news first
 
 
 def test_since_derived_from_context_not_clock():
@@ -351,76 +449,6 @@ def test_cost_accumulated_on_haiku_path():
     assert res.cost.input_tokens == 20 and res.cost.output_tokens == 10  # 2 x _Usage(10, 5)
 
 
-# --- Order 18: Twitter commentary summary (<=3 sentences, gated + cost-capped) ---------
-
-
-def test_summary_set_above_floor_with_key():
-    tweets = [_tweet(str(i), f"nvda take {i}", ago_h=1) for i in range(1, 5)]  # 4 >= floor
-    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
-    res = TwitterSource(
-        client=fake, min_tweets_haiku=3,
-        anthropic_client=_FakeAnthropic(summary="Traders debate valuation vs AI demand."),
-        sleep=lambda: None,
-    ).fetch(WL, context=_ctx())
-    assert {r.ticker: r for r in res.records}["NVDA"].twitter_summary == "Traders debate valuation vs AI demand."
-
-
-def test_summary_none_below_floor():
-    tweets = [_tweet("1", "a", ago_h=1), _tweet("2", "b", ago_h=1)]  # 2 < floor 3
-    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
-    res = TwitterSource(
-        client=fake, min_tweets_haiku=3, anthropic_client=_FakeAnthropic(), sleep=lambda: None,
-    ).fetch(WL, context=_ctx())
-    assert {r.ticker: r for r in res.records}["NVDA"].twitter_summary is None
-
-
-def test_summary_none_without_key():
-    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
-    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
-    res = TwitterSource(client=fake, min_tweets_haiku=3, sleep=lambda: None).fetch(WL, context=_ctx())
-    nvda = {r.ticker: r for r in res.records}["NVDA"]
-    assert nvda.twitter_summary is None and res.cost.haiku_calls == 0
-
-
-def test_summary_cost_cap_skips_and_warns():
-    # The stance call spends ~$0.000035 (_Usage 10/5); a cap below that trips before the
-    # summary call, so the summary is skipped (stance already ran).
-    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
-    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
-    res = TwitterSource(
-        client=fake, min_tweets_haiku=3, summary_cost_cap_usd=0.00001,
-        anthropic_client=_FakeAnthropic(), sleep=lambda: None,
-    ).fetch(WL, context=_ctx())
-    nvda = {r.ticker: r for r in res.records}["NVDA"]
-    assert nvda.twitter_summary is None                 # over cap -> skipped
-    assert nvda.sentiment.method == "haiku"              # stance still ran (before the cap check)
-    assert any("NVDA" in w and "cost cap" in w for w in res.warnings)
-
-
-def test_summary_degrades_on_failure():
-    class _Boom:
-        def __init__(self):
-            self.messages = self
-            self._n = 0
-
-        def create(self, **kwargs):
-            # stance (output_config) succeeds; the summary call raises.
-            if "output_config" in kwargs:
-                return _Resp('{"classifications":[]}', "end_turn")
-            raise RuntimeError("api down")
-
-    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
-    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
-    res = TwitterSource(
-        client=fake, min_tweets_haiku=3, anthropic_client=_Boom(), sleep=lambda: None,
-    ).fetch(WL, context=_ctx())
-    nvda = {r.ticker: r for r in res.records}["NVDA"]
-    assert nvda.twitter_summary is None                  # degraded to None
-    assert nvda.sentiment.method == "haiku"              # stance unaffected
-    assert nvda.metrics.mention_count == 4               # record still ships
-    assert any("NVDA" in w and "summary failed" in w for w in res.warnings)
-
-
 def test_observed_window_round_trips_through_aggregate_to_json(tmp_path):
     # Order item 2: observed_window must survive source -> envelope -> aggregate -> the
     # exact JSON the CLI emits on stdout (result.model_dump(mode="json")).
@@ -493,3 +521,72 @@ def test_raw_items_collect_survivor_tweets():
     fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
     res = TwitterSource(client=fake, sleep=lambda: None).fetch(WL, context=_ctx())
     assert "NVDA\tnvda alpha" in res.raw_items and "NVDA\tnvda beta" in res.raw_items
+
+
+# --- Order 18: Twitter commentary summary (<=3 sentences, gated + cost-capped) ---------
+
+
+def test_summary_set_above_floor_with_key():
+    tweets = [_tweet(str(i), f"nvda take {i}", ago_h=1) for i in range(1, 5)]  # 4 >= floor
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3,
+        anthropic_client=_FakeAnthropic(summary="Traders debate valuation vs AI demand."),
+        sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    assert {r.ticker: r for r in res.records}["NVDA"].twitter_summary == "Traders debate valuation vs AI demand."
+
+
+def test_summary_none_below_floor():
+    tweets = [_tweet("1", "a", ago_h=1), _tweet("2", "b", ago_h=1)]  # 2 < floor 3
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3, anthropic_client=_FakeAnthropic(), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    assert {r.ticker: r for r in res.records}["NVDA"].twitter_summary is None
+
+
+def test_summary_none_without_key():
+    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(client=fake, min_tweets_haiku=3, sleep=lambda: None).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.twitter_summary is None and res.cost.haiku_calls == 0
+
+
+def test_summary_cost_cap_skips_and_warns():
+    # The stance call spends ~$0.000035 (_Usage 10/5); a cap below that trips before the
+    # summary call, so the summary is skipped (stance already ran).
+    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3, summary_cost_cap_usd=0.00001,
+        anthropic_client=_FakeAnthropic(), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.twitter_summary is None                 # over cap -> skipped
+    assert nvda.sentiment.method == "haiku"              # stance still ran (before the cap check)
+    assert any("NVDA" in w and "cost cap" in w for w in res.warnings)
+
+
+def test_summary_degrades_on_failure():
+    class _Boom:
+        def __init__(self):
+            self.messages = self
+
+        def create(self, **kwargs):
+            # stance (output_config) succeeds; the summary call raises.
+            if "output_config" in kwargs:
+                return _Resp('{"classifications":[]}', "end_turn")
+            raise RuntimeError("api down")
+
+    tweets = [_tweet(str(i), f"nvda {i}", ago_h=1) for i in range(1, 5)]
+    fake = _FakeTwitter(searches={"NVDA": tweets, "AMC": []})
+    res = TwitterSource(
+        client=fake, min_tweets_haiku=3, anthropic_client=_Boom(), sleep=lambda: None,
+    ).fetch(WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.twitter_summary is None                  # degraded to None
+    assert nvda.sentiment.method == "haiku"              # stance unaffected
+    assert nvda.metrics.mention_count == 4               # record still ships
+    assert any("NVDA" in w and "summary failed" in w for w in res.warnings)

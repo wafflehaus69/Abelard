@@ -91,10 +91,19 @@ class Source(Protocol):
     `name` is the stable source identifier (a `SourceName`). `fetch` is total over
     valid input: given a watchlist and the run context it returns a `SourceResult`
     or raises — the orchestrator owns the degraded / partial / missing-source
-    handling, never the leaf adapter.
+    handling, never the leaf adapter. `prior_records` carries the records produced by
+    EARLIER sources this run (empty for the first source); a source may use them for
+    cross-source enrichment — e.g. Twitter ranks its per-account-quota queue by Finnhub
+    news volume — but most sources ignore them.
     """
 
     name: str
 
-    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
+    def fetch(
+        self,
+        watchlist: WatchlistConfig,
+        *,
+        context: ScanContext,
+        prior_records: list[NormalizedRecord] | None = None,
+    ) -> SourceResult:
         ...

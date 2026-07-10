@@ -83,7 +83,7 @@ class FinnhubNewsSource:
         self._cost_cap = summary_cost_cap_usd
         self._shared_map = load_name_map(Path(company_names_path)) if company_names_path else {}
 
-    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
+    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext, **_: object) -> SourceResult:
         if not self.api_key:
             raise FinnhubError("FINNHUB_API_KEY not set")
 

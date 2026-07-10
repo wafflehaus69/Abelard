@@ -329,7 +329,7 @@ class StockTwitsSource:
         self._haiku_enabled = haiku_enabled  # Order 12: off by default (aggregate supersedes)
         self._sleep = sleep if sleep is not None else _courtesy_sleep
 
-    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
+    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext, **_: object) -> SourceResult:
         client = self._client or StockTwitsClient(logger=self._log)
         window = context.windows[WINDOW_LABEL]
         records: list[NormalizedRecord] = []

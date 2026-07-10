@@ -46,7 +46,7 @@ def test_run_scan_source_failure_isolated():
     class BoomSource:
         name = "stocktwits"
 
-        def fetch(self, watchlist, *, context):
+        def fetch(self, watchlist, *, context, **_):
             raise RuntimeError("upstream down")
 
     env = run_scan([_wl()], sources=[BoomSource()], now=FIXED)

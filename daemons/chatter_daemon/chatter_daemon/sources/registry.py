@@ -68,6 +68,9 @@ def build_sources(cfg: Config) -> list[Source]:
                 summary_model=cfg.summary_model,
                 summary_cost_cap_usd=cfg.news_summary_cost_cap_usd,
                 drop_promo=cfg.twitter_drop_promo,
+                # Order 21 — priority-first queue + top-N cap (beat X's quota on solo searches).
+                priority=cfg.twitter_priority,
+                max_tickers=cfg.twitter_max_tickers,
             )
         )
     return sources

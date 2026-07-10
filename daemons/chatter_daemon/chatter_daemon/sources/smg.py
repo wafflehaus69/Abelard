@@ -89,7 +89,7 @@ class SmgSource:
         self._floor = sentiment_min_mentions
         self._fetcher = fetcher  # injected in tests; built per-fetch otherwise
 
-    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
+    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext, **_: object) -> SourceResult:
         matcher = Matcher.for_watchlist(
             watchlist,
             shared_map=self._shared_map,

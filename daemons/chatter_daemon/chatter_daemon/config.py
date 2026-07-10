@@ -110,6 +110,15 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Comma-separated env list -> uppercased tuple (e.g. CHATTER_TWITTER_PRIORITY=NVDA,MU).
+    Blank/absent -> the default. Empty items are dropped."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return tuple(s.strip().upper() for s in raw.split(",") if s.strip())
+
+
 DEFAULT_USER_AGENT = "chatter-daemon/0.1"
 
 # Real tickers that collide with common words — the wordlist filter's exception
@@ -144,10 +153,9 @@ DEFAULT_TWITTER_MAX_PER_TICKER = 50
 DEFAULT_TWITTER_MIN_TWEETS_HAIKU = 3  # parity with DEFAULT_SENTIMENT_MIN_MENTIONS
 DEFAULT_TWITTER_MIN_LIKES = 2  # low positive floor — drops zero-engagement spam
 DEFAULT_TWITTER_BINARY = "twitter"
-# Per-search subprocess timeout. LOWERED 30 -> 8s on 2026-07-09: X throttles a 45-ticker
-# scan by slow-walking ~30% of searches to the timeout; a real search returns in ~2-5s, so
-# 8s fail-fasts the throttled ones (they'd yield junk anyway) instead of hanging 30s each —
-# cuts a full scan ~20min -> ~15min. Env-tunable (CHATTER_TWITTER_TIMEOUT).
+# Per-search subprocess timeout. 8s fail-fasts a throttled search (a real one returns in ~2-5s)
+# instead of hanging — the priority+cap (Order 21) keeps the scan under quota so throttling is
+# rare, but a boundary search that slow-walks still fails fast. Env-tunable (CHATTER_TWITTER_TIMEOUT).
 DEFAULT_TWITTER_TIMEOUT_S = 8.0
 # Seconds between per-ticker searches — X rate-limits fast bursts. CALIBRATED 2026-07-09:
 # 12/12 clean at 5s vs ~25/45 unpaced; 45 tickers ~= a 4-min Twitter phase. Env-tunable.
@@ -155,6 +163,17 @@ DEFAULT_TWITTER_PACE_S = 5.0
 # Order 19: drop promotional / follow-bait / cashtag-stuffed tweets before stance + summary
 # (raw `latest` is ~80% promo). ON by default; env CHATTER_TWITTER_DROP_PROMO=0 to keep raw.
 DEFAULT_TWITTER_DROP_PROMO = True
+
+# Order 21 — priority + cap. X meters authenticated search per-account (~25 requests/rolling
+# window), so 45 per-ticker searches always throttled the alphabetical tail. OR-batching was
+# tried and REJECTED (live cert 2026-07-10): a `$A OR $B OR ...` latest search returns a small
+# low-engagement shared page — ~1 usable tweet/name vs ~15-34 for a solo search. So SOLO
+# per-ticker searches stay (quality), but the queue is reordered PRIORITY-first (must-have names
+# always land within the budget) and capped to the top-N that fit the quota (MAX_TICKERS). Names
+# beyond the cap get no Twitter that scan (logged, never silent). For the barber_growth deploy:
+# CHATTER_TWITTER_PRIORITY=NVDA,MU,... and CHATTER_TWITTER_MAX_TICKERS=25.
+DEFAULT_TWITTER_PRIORITY: tuple[str, ...] = ()  # symbols searched first (CHATTER_TWITTER_PRIORITY)
+DEFAULT_TWITTER_MAX_TICKERS = 0  # 0 = cover all; >0 = only the top-N in priority order
 
 # Order 7 — baseline store, archive, anomaly tunables.
 DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
@@ -211,6 +230,9 @@ class Config:
     twitter_timeout_s: float = DEFAULT_TWITTER_TIMEOUT_S
     twitter_pace_s: float = DEFAULT_TWITTER_PACE_S
     twitter_drop_promo: bool = DEFAULT_TWITTER_DROP_PROMO  # Order 19: strip promo/spam
+    # Order 21 — priority-first queue + top-N cap (beat X's per-account quota on solo searches).
+    twitter_priority: tuple[str, ...] = DEFAULT_TWITTER_PRIORITY
+    twitter_max_tickers: int = DEFAULT_TWITTER_MAX_TICKERS
     # Order 7 — baseline store, run archive, anomaly tunables.
     history_root: Path = field(default_factory=_default_history_root)  # Order 19: raw dumps
     baseline_db_path: Path = field(default_factory=_default_baseline_db_path)
@@ -282,6 +304,8 @@ class Config:
             twitter_timeout_s=_env_float("CHATTER_TWITTER_TIMEOUT", DEFAULT_TWITTER_TIMEOUT_S),
             twitter_pace_s=_env_float("CHATTER_TWITTER_PACE", DEFAULT_TWITTER_PACE_S),
             twitter_drop_promo=_env_bool("CHATTER_TWITTER_DROP_PROMO", DEFAULT_TWITTER_DROP_PROMO),
+            twitter_priority=_env_list("CHATTER_TWITTER_PRIORITY", DEFAULT_TWITTER_PRIORITY),
+            twitter_max_tickers=_env_int("CHATTER_TWITTER_MAX_TICKERS", DEFAULT_TWITTER_MAX_TICKERS),
             summary_model=os.environ.get("CHATTER_SUMMARY_MODEL", "").strip() or DEFAULT_SUMMARY_MODEL,
             baseline_db_path=_env_path("CHATTER_BASELINE_DB", _default_baseline_db_path()),
             archive_root=_env_path("CHATTER_ARCHIVE_ROOT", _default_archive_root()),

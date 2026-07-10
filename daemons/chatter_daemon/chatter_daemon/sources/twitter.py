@@ -46,8 +46,10 @@ from ..config import (
     DEFAULT_TWITTER_BINARY,
     DEFAULT_TWITTER_DROP_PROMO,
     DEFAULT_TWITTER_MAX_PER_TICKER,
+    DEFAULT_TWITTER_MAX_TICKERS,
     DEFAULT_TWITTER_MIN_LIKES,
     DEFAULT_TWITTER_PACE_S,
+    DEFAULT_TWITTER_PRIORITY,
     DEFAULT_TWITTER_TIMEOUT_S,
     DEFAULT_TWITTER_WINDOW_HOURS,
     HAIKU_MODEL_ID,
@@ -268,8 +270,9 @@ class TwitterClient:
         self, cashtag: str, *, since_iso: str, max_n: int, min_likes: int
     ) -> list[dict[str, Any]]:
         """Recent cashtag tweets for one symbol. `since_iso` is trimmed to a DATE for the
-        CLI's date-granular --since; the source enforces the exact window in-process.
-        Raises TwitterBlocked on non-zero exit / timeout / empty / non-JSON stdout."""
+        CLI's date-granular --since; the source enforces the exact window in-process. The argv
+        holds only the cashtag (no secrets); auth stays ambient in the child env. Raises
+        TwitterBlocked on non-zero exit / timeout / empty / non-JSON stdout."""
         argv = self._build_argv(cashtag, since_iso, max_n, min_likes)
         try:
             rc, out = self._runner(argv, self._timeout)
@@ -323,6 +326,8 @@ class TwitterSource:
         summary_model: str = DEFAULT_SUMMARY_MODEL,
         summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD,
         drop_promo: bool = DEFAULT_TWITTER_DROP_PROMO,
+        priority: tuple[str, ...] = DEFAULT_TWITTER_PRIORITY,
+        max_tickers: int = DEFAULT_TWITTER_MAX_TICKERS,
         client: TwitterClient | None = None,
         anthropic_client: Any | None = None,
         sleep: Callable[[], None] | None = None,
@@ -344,11 +349,20 @@ class TwitterSource:
         self._summary_model = summary_model  # Order 19: Sonnet for the prose summary
         self._summary_cost_cap = summary_cost_cap_usd
         self._drop_promo = drop_promo  # Order 19: strip promo/spam before stance + summary
-        # PACE between per-ticker searches — X rate-limits fast bursts (Order 18). Default
-        # sleeps `pace_s`; tests inject a no-op.
+        # Order 21 — priority-first queue + top-N cap (beat X's per-account quota on solo searches).
+        self._priority = tuple(p.upper() for p in priority)
+        self._max_tickers = max_tickers
+        # PACE between per-ticker searches — X rate-limits fast bursts (Order 18). Default sleeps
+        # `pace_s`; tests inject a no-op.
         self._sleep = sleep if sleep is not None else (lambda: time.sleep(self._pace_s))
 
-    def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext) -> SourceResult:
+    def fetch(
+        self,
+        watchlist: WatchlistConfig,
+        *,
+        context: ScanContext,
+        prior_records: list[NormalizedRecord] | None = None,
+    ) -> SourceResult:
         client = self._client or TwitterClient(
             binary=self._binary, timeout=self._timeout, logger=self._log
         )
@@ -363,14 +377,21 @@ class TwitterSource:
         cutoff_unix = context.canonical_unix - self._window_hours * 3600
         since_iso = iso_z(cutoff_unix)
 
+        # Priority names lead the queue (front -> always land within the quota); the cap trims
+        # to the top-N that fit X's per-account budget. Skipped names are logged, never silent.
+        ordered = self._ordered_symbols(watchlist.active_tickers, prior_records)
+        dropped: list[str] = []
+        if self._max_tickers and self._max_tickers > 0 and len(ordered) > self._max_tickers:
+            dropped = [s.symbol for s in ordered[self._max_tickers :]]
+            ordered = ordered[: self._max_tickers]
+
         records: list[NormalizedRecord] = []
         warnings: list[str] = []
         blocked: list[str] = []
         raw_items: list[str] = []  # Order 19: survivor tweets for the history dump
         cost = CostTelemetry()
-        actives = watchlist.active_tickers
 
-        for i, spec in enumerate(actives):
+        for i, spec in enumerate(ordered):
             sym = spec.symbol
             if i:
                 self._sleep()  # courtesy delay between per-ticker subprocess calls
@@ -391,11 +412,16 @@ class TwitterSource:
                 )
             )
 
-        # A ticker whose search was unreadable degrades the surface (ok=False flips the
-        # envelope `degraded`); the rest ship. An EMPTY (but readable) search is an honest
-        # zero record, not a block — mirrors StockTwits' empty-stream distinction.
+        if dropped:
+            warnings.append(
+                f"twitter: {len(dropped)} tickers beyond the top-{self._max_tickers} cap "
+                f"(no Twitter this scan): {', '.join(dropped)}"
+            )
+        # A ticker whose search was unreadable degrades the surface (ok=False flips the envelope
+        # `degraded`); the rest ship. An EMPTY (but readable) search is an honest zero record,
+        # not a block — mirrors StockTwits' empty-stream distinction.
         error = (
-            f"{len(blocked)}/{len(actives)} Twitter unavailable (subprocess): "
+            f"{len(blocked)}/{len(ordered)} Twitter unavailable (subprocess): "
             f"{', '.join(blocked)}"
             if blocked
             else None
@@ -404,6 +430,29 @@ class TwitterSource:
             source=SOURCE_NAME, records=records, warnings=warnings, error=error, cost=cost,
             raw_items=raw_items,
         )
+
+    def _ordered_symbols(self, actives, prior_records=None):
+        """Queue order for the per-account quota: explicit PRIORITY pins first (config order,
+        when present & active), then the remaining tickers ranked by FINNHUB news volume from
+        this run's earlier sources (noisier names first — they earn the spotlight), with file
+        order as the stable tiebreak. No prior Finnhub records (Finnhub disabled, or it produced
+        none) -> the remainder falls back to file order. Case-insensitive; each ticker once."""
+        news: dict[str, float] = {}
+        for r in prior_records or []:
+            if getattr(r, "source", None) == "finnhub_news":
+                news[r.ticker.upper()] = float(r.metrics.mention_count)
+        by_sym = {s.symbol.upper(): s for s in actives}
+        ordered, seen = [], set()
+        for p in self._priority:
+            spec = by_sym.get(p)
+            if spec is not None and spec.symbol not in seen:
+                ordered.append(spec)
+                seen.add(spec.symbol)
+        # stable sort keeps file order among equal news counts (incl. the count==0 tail).
+        remaining = [s for s in actives if s.symbol not in seen]
+        remaining.sort(key=lambda s: -news.get(s.symbol.upper(), 0.0))
+        ordered.extend(remaining)
+        return ordered
 
     def _build_record(self, watchlist, context, window, symbol, cutoff_unix, raw, cost, warnings, raw_items):
         survivors = self._filter(raw, cutoff_unix)

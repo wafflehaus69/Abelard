@@ -44,12 +44,38 @@ python -m venv .venv
 .venv/bin/python    -m pip install -e ../common -e .[dev]
 ```
 
-## Run (Order 1)
+## Run
+
+The whole pipeline — scan, persist, raw-history dump, and the client-facing PDF — is
+**one command** (WSL today, macOS later; all config lives in `.env`, auto-loaded):
 
 ```
-chatter-daemon --watchlist barber_growth   # load + validate one list, emit the scan envelope
-chatter-daemon --all                        # every list in watchlists/
+bash scripts/run.sh
 ```
 
-One JSON object (the scan envelope) is written to stdout per invocation; logs go to
-stderr. Exit 0 iff `errors == []`, else exit 1.
+That is two steps you can also run by hand:
+
+```
+# 1. Scan: aggregate against the baseline, persist to archive/, dump history/, emit JSON.
+python -m chatter_daemon scan --all                       # every list in watchlists/
+python -m chatter_daemon scan --watchlist barber_growth   # one list
+
+# 2. Render the client-facing PDF from a persisted scan.
+python -m chatter_daemon report archive/<YYYY-MM>/<scan_id>.json
+```
+
+One JSON object (the scan envelope) is written to stdout per scan; logs go to stderr.
+Exit 0 unless every attempted source failed.
+
+### Twitter/X (Order 17/21)
+
+Twitter is a subprocess source (the `twitter` CLI, v0.8.x) and is **gated OFF by
+default** — enable it only on a host that has the CLI. In `.env` set
+`CHATTER_TWITTER_ENABLED=1`, `CHATTER_TWITTER_BINARY=<abs path>`, and the session
+cookies `TWITTER_AUTH_TOKEN` / `TWITTER_CT0` (read ambient by the CLI, never logged;
+they expire — refresh when searches start failing). X meters authenticated search to
+~25 requests/rolling-window per account, so per-ticker searches beyond ~25 time out.
+Set `CHATTER_TWITTER_PRIORITY` (must-have names — searched first, always land) and
+`CHATTER_TWITTER_MAX_TICKERS` (cap to the top-N that fit the quota; the rest are
+skipped that scan, logged). Order the portfolio by conviction and the cap keeps your
+top-N. See [.env.example](.env.example).
