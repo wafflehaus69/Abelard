@@ -1,0 +1,74 @@
+# CONSENSUS — single source of configuration (spec §5, §6).
+#
+# Determinism rule: no algorithm parameter is hard-coded in Python; every knob
+# lives here and is validated by consensus/config.py (pydantic). This file GROWS
+# one module at a time — M1 populates data_layer + categories below; the scoring,
+# scan, crosswalk, alert, and unusual-activity parameter blocks (spec §6) are
+# added as each module lands, so the file always reflects what actually exists
+# rather than fabricating knobs for code that isn't built yet.
+#
+# Secrets do NOT live here (see .env.example): ETHERSCAN_API_KEY, LOG_LEVEL.
+
+meta:
+  # The US/intl regime split. Trades before this date get reduced weight in
+  # scoring (M3), not deletion. Kept here now because it is a system-wide policy
+  # date referenced by multiple future modules.
+  regime_floor_date: "2026-06-01"
+
+logging:
+  level: INFO          # DEBUG/INFO/WARNING/ERROR; overridden by env LOG_LEVEL.
+
+categories:
+  # Target market categories for the universe/scan. Expandable.
+  targets:
+    - geopolitics
+    - politics
+    - macro
+
+data_layer:
+  # SQLite raw-response cache. Every live fetch is written here keyed by
+  # (source, endpoint, params, fetch_ts); the backtest replays from this store
+  # and nothing recomputes from live calls silently (spec §M1). Path is relative
+  # to this config file's directory unless absolute. The parent dir is created
+  # on first use; it is git-ignored.
+  cache_path: "data/consensus_cache.db"
+
+  http:
+    # A descriptive UA is polite and aids the upstreams' abuse triage.
+    user_agent: "CONSENSUS/0.1 (Polymarket winners-circle research; read-only)"
+    timeout: 15.0
+    max_retries: 3
+    base_backoff: 0.5
+
+  endpoints:
+    polymarket_data_api: "https://data-api.polymarket.com"
+    polymarket_gamma_api: "https://gamma-api.polymarket.com"
+    polymarket_clob_api: "https://clob.polymarket.com"
+    kalshi_api: "https://api.elections.kalshi.com/trade-api/v2"
+    # Etherscan V2 unified multichain API (chainid=137 for Polygon PoS).
+    # Standalone Polygonscan V1 (api.polygonscan.com) was sunset 2025-08-15 and
+    # now 301-redirects to the migration docs — verified dead 2026-07-10.
+    etherscan_v2_api: "https://api.etherscan.io/v2/api"
+
+  # Known-good identifiers used by `consensus data smoke` (verified live
+  # 2026-07-10). Override on the CLI with --market/--wallet/--kalshi-limit.
+  # These may go stale as markets resolve; the smoke test is about plumbing,
+  # not these specific IDs.
+  smoke:
+    market_condition_id: "0x500393a76a35b88f4169188c03253b8200cfa33756ae1aabf2a355529e904a7e"
+    wallet_proxy: "0xeeb69a3468fedb81d1073b4187bb8b50f1d2cc67"
+    kalshi_markets_limit: 5
+
+# ---------------------------------------------------------------------------
+# FUTURE (spec §6) — added per module as it is built, not before:
+#   scoring:   activity_gate_days, decay_half_life_days, min_resolved_trades,
+#              circle_size_K, composite weights, mm_filter thresholds
+#   scan:      participation_floor, agreement_threshold, max_edge_paid,
+#              entry_lag_minutes, freshness_window
+#   graph:     leadlag thresholds, overlap_jaccard_min
+#   alert:     default_stake, channels
+#   unusual:   unusual_lookback_hours, unusual_size_floor, fresh_day_breakpoints,
+#              cluster_min, cluster_window_hours, factor_weights{F,S,A,D,C,T,P},
+#              tier_thresholds{WATCH,ELEVATED,CRITICAL}, unusual_excluded_categories
+#   safety:    M9_enabled: false
+# ---------------------------------------------------------------------------

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# On-disk data cache (raw fetched records; regenerated from live calls).
+# Never committed — it can grow large and is machine-local. See config.yaml
+# data_layer.cache_path. Rule 1: signals trace back to these raw records.
+data/
