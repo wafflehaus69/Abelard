@@ -97,6 +97,7 @@ class DataLayer:
         endpoint: str,
         request_params: dict[str, Any] | None = None,
         cache_params: dict[str, Any] | None = None,
+        persist: bool = True,
     ) -> Any:
         """Return the raw JSON body for one request.
 
@@ -104,7 +105,20 @@ class DataLayer:
         body. Replay mode: return the cached body (most recent at/before
         ``as_of``), or raise if there is none. Transport/HTTP failures are mapped
         to a loud :class:`DataLayerError` — never swallowed into empty data.
+
+        ``persist=False`` skips the response cache. Reserved for the L2
+        collector, whose poll volume would bloat the cache and whose raw
+        RECORDS are each preserved verbatim in the tape with poll provenance —
+        equivalent auditability at per-record grain (addendum v1.2 deviation,
+        flagged in the M1.5 report). Incompatible with replay: the collector's
+        record is the tape, not the response cache.
         """
+        if not persist and self.replay:
+            raise DataLayerError(
+                f"{source}{endpoint}: persist=False is meaningless in replay mode "
+                "(replay reads the response cache; collector replay reads the tape)",
+                source=source,
+            )
         key_params = request_params if cache_params is None else cache_params
 
         if self.replay:
@@ -144,15 +158,16 @@ class DataLayer:
                 source=source,
             ) from exc
 
-        # Store the raw response verbatim before parsing (Rule 1). get_json only
-        # returns on a 2xx, so status is recorded as 200.
-        self.cache.store(
-            source=source,
-            endpoint=endpoint,
-            params=key_params,
-            body=body,
-            http_status=200,
-        )
+        if persist:
+            # Store the raw response verbatim before parsing (Rule 1). get_json
+            # only returns on a 2xx, so status is recorded as 200.
+            self.cache.store(
+                source=source,
+                endpoint=endpoint,
+                params=key_params,
+                body=body,
+                http_status=200,
+            )
         return body
 
     def parse_records(

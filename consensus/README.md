@@ -20,18 +20,31 @@ interpolation. Every signal traces back to a raw response persisted on disk.
 
 ---
 
-## Status — M1 (data layer) built
+## Status — M1 accepted; M1.5 forward collector running
 
-The current milestone is **M1** (accepted): a deterministic, cached, rate-limited,
-read-only data layer over Polymarket data-api + gamma-api and Kalshi public market
-data, with an Etherscan-V2 Polygon fetcher (key-gated) staged for the M5 funding
-graph. Standalone Polygonscan V1 was sunset 2025-08-15 — the unified Etherscan key
-covers Polygon via `api.etherscan.io/v2/api?chainid=137`.
+**M1** (accepted): a deterministic, cached, rate-limited, read-only data layer over
+Polymarket data-api + gamma-api and Kalshi public market data, with an Etherscan-V2
+Polygon fetcher (key-gated) staged for the M5 funding graph. Standalone Polygonscan
+V1 was sunset 2025-08-15 — the unified Etherscan key covers Polygon via
+`api.etherscan.io/v2/api?chainid=137`.
 
-Endpoint schemas were verified live before coding (see the reference notes).
+**M1.5** (addendum v1.2): the three-layer data model —
+
+| Layer | Source | Coverage |
+|---|---|---|
+| L1 archival | Goldsky `orderbook-subgraph` (frozen at the ~Apr 28 2026 contract migration) | Nov 2022 → Apr 28 2026 |
+| L2 forward archive | `consensus collect run` polling data-api (this repo) | collector-start → forever |
+| L3 gap backfill | Polygon chain logs, new exchange contracts (design-only) | migration → collector-start |
+
 Gate 0 finding (2026-07-10): data-api caps history at limit<=1000 x offset<=3000
-(newest ~4,000 records per dimension) — deep/archival tape comes from the Goldsky
-orderbook subgraph instead; data-api serves the live/recent end.
+(newest ~4,000 records **per filter value**, no time cursors) — hence L2 must run
+continuously; every uncollected day is history lost from the cheap source.
+
+The collector runs as a Windows scheduled task (`ConsensusCollector`, every 2 min):
+market lane is the coverage guarantee (tiered hot/quiet/dormant cadence + per-run
+budget), global lane is telemetry/stray-detection/hot-promotion. Unobservable
+intervals are DECLARED in the `l2_gaps` ledger — never bridged. Check it with
+`consensus collect status`; remove it with `schtasks /Delete /TN ConsensusCollector /F`.
 
 ## Setup
 
@@ -64,6 +77,11 @@ consensus data market   --market <conditionId>
 consensus data kalshi   --limit 10 --status open
 
 # Any command takes --json for a structured summary, and --config <path>.
+
+# M1.5 forward collector (L2). `run` is orchestrator-facing: stdout is always
+# a JSON envelope (also appended to data/collector_envelopes.jsonl).
+consensus collect run
+consensus collect status     # tape size/fills, tiers, declared gaps, strays
 ```
 
 `consensus data smoke` exits non-zero if any source is a gap, so cron/scripts can
@@ -100,7 +118,9 @@ consensus/
   fetching.py            DataLayer: cache-through fetch, replay, gap-counting parse
   sources_polymarket.py  data-api + gamma-api fetchers
   sources_kalshi.py      Kalshi public market-data fetchers
-  sources_polygon.py     Polygonscan ERC-20 transfers (M5 funding graph; key-gated)
-  cli.py                 `consensus` CLI (owner-facing; --json optional)
+  sources_polygon.py     Etherscan-V2 ERC-20 transfers (M5 funding graph; key-gated)
+  tape.py                L2 forward-archive store (dedupe, gap ledger, drain)
+  collector.py           M1.5 collector lanes (market/global/enumeration)
+  cli.py                 `consensus` CLI (owner-facing; `collect run` emits envelopes)
 tests/                   hermetic pytest suite
 ```

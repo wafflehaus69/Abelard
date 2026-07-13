@@ -59,6 +59,56 @@ data_layer:
     wallet_proxy: "0xeeb69a3468fedb81d1073b4187bb8b50f1d2cc67"
     kalshi_markets_limit: 5
 
+collector:
+  # M1.5 forward collector (addendum v1.2 §2) — the L2 layer. Runs single-pass
+  # on an OS schedule (every hot_interval_minutes); state lives in the tape DB.
+  # Design measurements (2026-07-12): global 4k window rolls in ~5 min normally,
+  # ~64 s at the Feb-28 burst peak → the MARKET lane is the coverage guarantee;
+  # the global lane is telemetry, stray detection, and hot-promotion only.
+  tape_path: "data/l2_tape.db"
+
+  # Gamma tag_slugs enumerated into the tracked-market roster. These are the
+  # collector's coverage universe (verified live: geopolitics 601, politics
+  # 1376, economy 561 markets on 2026-07-12).
+  tags:
+    - geopolitics
+    - politics
+    - economy
+
+  enumeration_interval_minutes: 30
+  gamma_page_limit: 100
+  request_spacing_ms: 100    # politeness spacing between data-api requests
+  page_size: 1000            # data-api hard max
+  max_pages: 4               # offset cap 3000 -> at most 4 pages per walk
+  global_lane_enabled: true
+  envelope_log: "data/collector_envelopes.jsonl"
+
+  # Per-invocation market-poll budget: bounds one pass to minutes under ANY
+  # universe size (live enumeration: ~15k markets across the three tags).
+  # Oldest-polled-first rotation drains any backlog across invocations; the
+  # envelope reports due_backlog so rotation pressure is visible.
+  max_markets_per_run: 500
+  # After a market is first seen closed, keep polling it this long before
+  # deactivating (captures the fill tail around resolution — on a resolving
+  # geopolitics market that tail is exactly the data that matters).
+  drain_minutes: 360
+  # A lock older than this is an abandoned (crashed) run. The poll budget
+  # keeps live passes far shorter than this.
+  lock_stale_minutes: 30
+
+  tiers:
+    # Worst observed per-market burst rolls a 4k window in ~13.7 min; hot at
+    # 2 min gives >5x margin. Dormant markets are protected by the global
+    # lane's promote-on-sight (any tracked market seen in global fills is
+    # hot-promoted and polled in the same invocation), so the long dormant
+    # interval is safe and keeps the steady-state request rate sane.
+    hot_interval_minutes: 2
+    quiet_interval_minutes: 15
+    dormant_interval_minutes: 360
+    hot_threshold_new_fills: 50
+    hot_ttl_minutes: 30
+    quiet_if_fill_within_hours: 24
+
 # ---------------------------------------------------------------------------
 # FUTURE (spec §6) — added per module as it is built, not before:
 #   scoring:   activity_gate_days, decay_half_life_days, min_resolved_trades,

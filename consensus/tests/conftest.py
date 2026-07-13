@@ -37,6 +37,25 @@ BASE_CONFIG: dict = {
             "kalshi_markets_limit": 3,
         },
     },
+    "collector": {
+        "tape_path": "l2_tape.db",
+        "tags": ["geopolitics"],
+        "enumeration_interval_minutes": 30,
+        "gamma_page_limit": 100,
+        "request_spacing_ms": 0,  # no politeness sleeps in tests
+        "page_size": 1000,
+        "max_pages": 4,
+        "global_lane_enabled": True,
+        "envelope_log": None,
+        "tiers": {
+            "hot_interval_minutes": 2,
+            "quiet_interval_minutes": 15,
+            "dormant_interval_minutes": 60,
+            "hot_threshold_new_fills": 50,
+            "hot_ttl_minutes": 30,
+            "quiet_if_fill_within_hours": 24,
+        },
+    },
 }
 
 # ---- sample upstream payloads --------------------------------------------

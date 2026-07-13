@@ -66,6 +66,44 @@ class CategoriesConfig(_Strict):
     targets: list[str] = Field(min_length=1)
 
 
+class CollectorTiersConfig(_Strict):
+    """Adaptive per-market poll cadence (M1.5). Intervals sized from the
+    2026-07-12 measurements: worst observed per-market burst rolls a 4k window
+    in ~13.7 min, so the hot tier's default gives >5x margin."""
+
+    hot_interval_minutes: int = Field(ge=1, default=2)
+    quiet_interval_minutes: int = Field(ge=1, default=15)
+    dormant_interval_minutes: int = Field(ge=1, default=360)
+    hot_threshold_new_fills: int = Field(ge=1, default=50)
+    hot_ttl_minutes: int = Field(ge=1, default=30)
+    quiet_if_fill_within_hours: int = Field(ge=1, default=24)
+
+
+class CollectorConfig(_Strict):
+    """M1.5 forward collector (L2). ``tags`` are gamma tag_slugs — the
+    enumeration universe; the market lane is the coverage guarantee."""
+
+    tape_path: str
+    tags: list[str] = Field(min_length=1)
+    enumeration_interval_minutes: int = Field(ge=1, default=30)
+    gamma_page_limit: int = Field(ge=1, le=500, default=100)
+    request_spacing_ms: int = Field(ge=0, default=100)
+    page_size: int = Field(ge=1, le=1000, default=1000)
+    max_pages: int = Field(ge=1, le=4, default=4)
+    global_lane_enabled: bool = True
+    envelope_log: str | None = None
+    # Per-invocation market-poll budget: bounds a pass under ANY universe size
+    # (measured: the three tags enumerate ~15k markets). Oldest-polled-first
+    # rotation drains the backlog fairly across invocations.
+    max_markets_per_run: int = Field(ge=1, default=500)
+    # After a market is first seen closed, keep polling it this long before
+    # deactivation, so the fills around resolution are captured (drain window).
+    drain_minutes: int = Field(ge=1, default=360)
+    # A lock older than this is considered abandoned (crashed run).
+    lock_stale_minutes: int = Field(ge=1, default=30)
+    tiers: CollectorTiersConfig = CollectorTiersConfig()
+
+
 class LoggingConfig(_Strict):
     level: str = "INFO"
 
@@ -91,6 +129,7 @@ class Config(_Strict):
     logging: LoggingConfig
     categories: CategoriesConfig
     data_layer: DataLayerConfig
+    collector: CollectorConfig
 
     # Populated by the loader, not the yaml. Excluded from the strict model to
     # keep validation of the file itself clean.
@@ -100,6 +139,17 @@ class Config(_Strict):
         """Absolute cache DB path (``data_layer.cache_path`` resolved relative to
         the config file's directory when not already absolute)."""
         p = Path(self.data_layer.cache_path)
+        return p if p.is_absolute() else (config_dir / p).resolve()
+
+    def resolved_tape_path(self, config_dir: Path) -> Path:
+        """Absolute L2 tape DB path, same resolution rule as the cache."""
+        p = Path(self.collector.tape_path)
+        return p if p.is_absolute() else (config_dir / p).resolve()
+
+    def resolved_envelope_log(self, config_dir: Path) -> Path | None:
+        if self.collector.envelope_log is None:
+            return None
+        p = Path(self.collector.envelope_log)
         return p if p.is_absolute() else (config_dir / p).resolve()
 
     @property
@@ -117,6 +167,8 @@ class LoadedConfig:
         self.config_dir = config_dir
         self.secrets = secrets
         self.cache_path = config.resolved_cache_path(config_dir)
+        self.tape_path = config.resolved_tape_path(config_dir)
+        self.envelope_log = config.resolved_envelope_log(config_dir)
 
     @property
     def log_level(self) -> str:

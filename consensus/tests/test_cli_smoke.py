@@ -152,6 +152,114 @@ def test_cache_stats_command(config_file, requests_mock, capsys):
     assert out["sources"][0]["source"] == "polymarket_data"
 
 
+# ---------------------------------------------------------------------------
+# collect group (M1.5)
+# ---------------------------------------------------------------------------
+
+
+def _mock_collect_world(requests_mock):
+    requests_mock.get("https://gamma-api.polymarket.com/events", json=[])
+    requests_mock.get("https://data-api.polymarket.com/trades", json=[])
+
+
+def test_collect_run_emits_envelope_and_exit_0(config_file, requests_mock, capsys):
+    _mock_collect_world(requests_mock)
+    rc = main(["--config", str(config_file), "collect", "run"])
+    assert rc == 0
+    env = json.loads(capsys.readouterr().out)
+    assert env["daemon"] == "consensus_collector"
+    assert env["status"] in ("ok", "degraded")
+    assert "result" in env and "tape" in env["result"]
+
+
+def test_collect_run_skipped_when_lock_fresh(config_file, requests_mock, capsys, tmp_path):
+    import time
+    _mock_collect_world(requests_mock)
+    lock = tmp_path / "l2_tape.db.lock"
+    lock.write_text(json.dumps({"pid": 999_999, "ts": time.time()}), encoding="utf-8")
+    rc = main(["--config", str(config_file), "collect", "run"])
+    assert rc == 0
+    env = json.loads(capsys.readouterr().out)
+    assert env["status"] == "skipped_lock"
+    assert lock.exists(), "a fresh foreign lock must not be deleted"
+
+
+def test_collect_run_steals_stale_lock(config_file, requests_mock, capsys, tmp_path):
+    _mock_collect_world(requests_mock)
+    lock = tmp_path / "l2_tape.db.lock"
+    lock.write_text(json.dumps({"pid": 999_999, "ts": 1.0}), encoding="utf-8")  # ancient
+    rc = main(["--config", str(config_file), "collect", "run"])
+    assert rc == 0
+    env = json.loads(capsys.readouterr().out)
+    assert env["status"] in ("ok", "degraded")
+    assert not lock.exists(), "our own lock is released after the pass"
+
+
+def test_collect_run_corrupt_lock_treated_stale(config_file, requests_mock, capsys, tmp_path):
+    _mock_collect_world(requests_mock)
+    (tmp_path / "l2_tape.db.lock").write_text("not json{", encoding="utf-8")
+    rc = main(["--config", str(config_file), "collect", "run"])
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["status"] in ("ok", "degraded")
+
+
+def test_collect_run_fatal_init_still_emits_envelope(tmp_path, capsys):
+    rc = main(["--config", str(tmp_path / "missing.yaml"), "collect", "run"])
+    assert rc == 1
+    env = json.loads(capsys.readouterr().out)
+    assert env["daemon"] == "consensus_collector"
+    assert env["status"] == "error"
+    assert env["errors"]
+
+
+def test_collect_run_appends_envelope_log(tmp_path, requests_mock, capsys):
+    import copy
+    import yaml as _yaml
+    from tests.conftest import BASE_CONFIG
+
+    cfg = copy.deepcopy(BASE_CONFIG)
+    cfg["collector"]["envelope_log"] = "envelopes.jsonl"
+    path = tmp_path / "config.yaml"
+    path.write_text(_yaml.safe_dump(cfg), encoding="utf-8")
+    _mock_collect_world(requests_mock)
+    assert main(["--config", str(path), "collect", "run"]) == 0
+    lines = (tmp_path / "envelopes.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0])["daemon"] == "consensus_collector"
+
+
+def test_collect_run_envelope_log_failure_degrades_status(tmp_path, requests_mock, capsys):
+    import copy
+    import yaml as _yaml
+    from tests.conftest import BASE_CONFIG
+
+    cfg = copy.deepcopy(BASE_CONFIG)
+    cfg["collector"]["envelope_log"] = "elog/envelopes.jsonl"
+    path = tmp_path / "config.yaml"
+    path.write_text(_yaml.safe_dump(cfg), encoding="utf-8")
+    (tmp_path / "elog").write_text("a file where a dir must go", encoding="utf-8")
+    _mock_collect_world(requests_mock)
+    rc = main(["--config", str(path), "collect", "run"])
+    assert rc == 0
+    env = json.loads(capsys.readouterr().out)
+    # errors present => status is not "ok" (orchestrators branch on status).
+    assert env["status"] == "degraded"
+    assert any("envelope_log" in e for e in env["errors"])
+
+
+def test_collect_status_human_and_json(config_file, requests_mock, capsys):
+    _mock_collect_world(requests_mock)
+    assert main(["--config", str(config_file), "collect", "run"]) == 0
+    capsys.readouterr()
+    assert main(["--config", str(config_file), "collect", "status"]) == 0
+    text = capsys.readouterr().out
+    assert "CONSENSUS collector status" in text
+    assert main(["--config", str(config_file), "--json", "collect", "status"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["kind"] == "collect.status"
+    assert "tape" in out and "tiers" in out
+
+
 def test_trades_all_walks_pages_and_reports_range(config_file, requests_mock, capsys):
     def mk(i):
         return {"proxyWallet": f"0x{i:x}", "side": "BUY", "conditionId": "0xCID",

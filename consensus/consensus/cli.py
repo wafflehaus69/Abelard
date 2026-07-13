@@ -92,6 +92,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=10)
     p.add_argument("--status", default=None, help="e.g. open, closed, settled.")
 
+    collect = groups.add_parser(
+        "collect",
+        help="M1.5 forward collector (L2). `run` is orchestrator-facing and always emits a JSON envelope.",
+    )
+    collect_cmds = collect.add_subparsers(dest="command", required=True)
+    collect_cmds.add_parser(
+        "run",
+        help="One collection pass: enumerate if due, global lane, poll due markets. Prints the envelope.",
+    )
+    collect_cmds.add_parser(
+        "status",
+        help="Owner-facing tape summary: fills, tiers, declared gaps, strays.",
+    )
+
     return parser
 
 
@@ -380,6 +394,130 @@ def _render_generic_human(summary: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# collect group (M1.5)
+# ---------------------------------------------------------------------------
+
+
+def _acquire_collector_lock(tape_path: Any, *, stale_minutes: int) -> Any | None:
+    """Best-effort single-instance lock (Task Scheduler can overlap a slow pass).
+    Returns the lock path on success, None if a fresh lock is held elsewhere.
+    A stale lock (crashed run) expires after ``stale_minutes``. The per-run
+    poll budget bounds a pass well under the staleness window, so a live pass
+    can't be mistaken for a crashed one."""
+    import os
+    import time as _time
+    from pathlib import Path
+
+    lock = Path(str(tape_path) + ".lock")
+    if lock.exists():
+        try:
+            held = json.loads(lock.read_text(encoding="utf-8"))
+            if _time.time() - float(held.get("ts", 0)) < stale_minutes * 60:
+                return None
+        except (OSError, ValueError):
+            pass  # unreadable/corrupt lock -> treat as stale
+    tmp = lock.with_suffix(".lock.tmp")
+    tmp.write_text(json.dumps({"pid": os.getpid(), "ts": _time.time()}), encoding="utf-8")
+    os.replace(tmp, lock)
+    return lock
+
+
+def _release_collector_lock(lock: Any) -> None:
+    """Unlink only if we still own it — a stale takeover must not cascade into
+    deleting the taker's lock."""
+    import os
+
+    try:
+        held = json.loads(lock.read_text(encoding="utf-8"))
+        if int(held.get("pid", -1)) == os.getpid():
+            lock.unlink()
+    except (OSError, ValueError):
+        pass
+
+
+def cmd_collect_run(dl: DataLayer, loaded: LoadedConfig) -> tuple[dict[str, Any], int]:
+    """One collector pass. Returns (envelope, exit_code); exit 0 covers ok AND
+    degraded (the envelope carries the detail — orchestrator reads it), 1 only
+    for a fatal failure to run at all."""
+    from .collector import Collector
+    from .tape import TapeStore
+
+    lock = _acquire_collector_lock(
+        loaded.tape_path, stale_minutes=loaded.config.collector.lock_stale_minutes
+    )
+    if lock is None:
+        return ({"daemon": "consensus_collector", "schema": 1,
+                 "status": "skipped_lock",
+                 "detail": "previous invocation still running (fresh lock)"}, 0)
+    tape = TapeStore(loaded.tape_path)
+    try:
+        envelope = Collector(dl, tape).run_once()
+    finally:
+        tape.close()
+        _release_collector_lock(lock)
+
+    if loaded.envelope_log is not None:
+        try:
+            loaded.envelope_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(loaded.envelope_log, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(envelope, ensure_ascii=False, default=str) + "\n")
+        except OSError as exc:
+            # errors present must imply a degraded status — orchestrators
+            # branch on status, not on scanning the errors array.
+            envelope.setdefault("errors", []).append(f"envelope_log write failed: {exc}")
+            if envelope.get("status") == "ok":
+                envelope["status"] = "degraded"
+    return envelope, 0
+
+
+def cmd_collect_status(loaded: LoadedConfig) -> dict[str, Any]:
+    from .tape import TapeStore
+
+    tape = TapeStore(loaded.tape_path)
+    try:
+        stats = tape.stats()
+        markets = tape.markets(active_only=True)
+        tiers = {t: sum(1 for m in markets if (m.get("tier") or "quiet") == t)
+                 for t in ("hot", "quiet", "dormant")}
+        recent_gaps = tape._conn.execute(
+            "SELECT lane, condition_id, lo_ts, hi_ts, declared_ts, reason"
+            " FROM l2_gaps ORDER BY id DESC LIMIT 10"
+        ).fetchall()
+    finally:
+        tape.close()
+    return {
+        "kind": "collect.status",
+        "tape": stats,
+        "tracked_markets": len(markets),
+        "tiers": tiers,
+        "recent_gaps": [
+            {"lane": g[0], "market": g[1], "lo_ts": g[2], "hi_ts": g[3],
+             "declared_ts": g[4], "reason": g[5]}
+            for g in recent_gaps
+        ],
+    }
+
+
+def _render_collect_status_human(s: dict[str, Any]) -> str:
+    t = s["tape"]
+    size = t.get("size_bytes")
+    size_mb = f"{size / 1_048_576:.2f} MiB" if isinstance(size, int) else "unknown"
+    lines = [
+        "CONSENSUS collector status (L2 tape)",
+        f"  tape   : {t['path']}  ({size_mb})",
+        f"  fills  : {t['fills']} ({t['fills_unparsed']} unparsed, kept raw)",
+        f"  span   : {t['oldest_fill_ts']} .. {t['newest_fill_ts']} (unix UTC)",
+        f"  markets: {s['tracked_markets']} tracked  "
+        f"(hot {s['tiers']['hot']} / quiet {s['tiers']['quiet']} / dormant {s['tiers']['dormant']})",
+        f"  polls  : {t['polls']}   declared gaps: {t['gaps_declared']}   "
+        f"unresolved strays: {t['unresolved_strays']}",
+    ]
+    for g in s["recent_gaps"]:
+        lines.append(f"  GAP [{g['lane']}] market={g['market']} ({g['lo_ts']}, {g['hi_ts']}]: {g['reason']}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # dispatch + main
 # ---------------------------------------------------------------------------
 
@@ -432,15 +570,57 @@ def main(argv: list[str] | None = None) -> int:
     if load_dotenv is not None:
         load_dotenv()  # load .env if present, for ETHERSCAN_API_KEY / LOG_LEVEL
 
+    collect_run = args.group == "collect" and getattr(args, "command", None) == "run"
+
+    def _fatal_envelope(message: str) -> int:
+        # collect run is orchestrator-facing: even a fatal init failure must
+        # come out as a JSON envelope on stdout, never a bare traceback/log.
+        json.dump({"daemon": "consensus_collector", "schema": 1,
+                   "status": "error", "errors": [message]}, sys.stdout,
+                  ensure_ascii=False, default=str)
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        return 1
+
     try:
         loaded = load_config(args.config)
         configure_logging(loaded)
     except ConfigError as exc:
+        if collect_run:
+            return _fatal_envelope(f"config error: {exc.to_error()}")
         log.error("configuration error: %s", exc.to_error())
         return 1
 
-    dl = build_data_layer(loaded)
     try:
+        dl = build_data_layer(loaded)
+    except Exception as exc:  # noqa: BLE001 - e.g. CacheError on unwritable path
+        if collect_run:
+            return _fatal_envelope(f"init error: {type(exc).__name__}: {exc}")
+        log.error("init error: %s", exc)
+        return 1
+    try:
+        if args.group == "collect":
+            if args.command == "run":
+                try:
+                    envelope, rc = cmd_collect_run(dl, loaded)
+                except Exception as exc:  # noqa: BLE001 - fatal path must stay machine-readable
+                    envelope, rc = {
+                        "daemon": "consensus_collector", "schema": 1,
+                        "status": "error", "errors": [dl._scrub(f"{type(exc).__name__}: {exc}")],
+                    }, 1
+                # Orchestrator-facing: the envelope IS the output, always JSON.
+                json.dump(envelope, sys.stdout, ensure_ascii=False, default=str)
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+                return rc
+            if args.command == "status":
+                summary = cmd_collect_status(loaded)
+                if args.json:
+                    _emit(summary, as_json=True)
+                else:
+                    sys.stdout.write(_render_collect_status_human(summary) + "\n")
+                return 0
+            raise ValueError(f"unknown collect command: {args.command}")
         summary = _dispatch(dl, loaded, args)
     except DataLayerError as exc:
         # A direct command (not smoke) hit a hard data failure. Report loudly.
