@@ -53,6 +53,7 @@ BASE_CONFIG: dict = {
         "cluster_window_hours": 12,
         "cluster_boost": 1.5,
         "cross_market_enabled": True,
+        "cluster_boosts_score": True,  # exercise the boost path in unit tests
         "tier_thresholds": {"WATCH": 0.15, "ELEVATED": 0.30, "CRITICAL": 0.45},
         "as_of_ladder": [1772260413],
         "labeled_hypotheses": [

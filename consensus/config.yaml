@@ -150,22 +150,24 @@ m0f:
   # Composite: weighted geometric mean over ACTIVE factors only (P needs the
   # funding graph; absent factors are excluded and reported, never imputed).
   factor_weights: {F: 1.0, S: 1.0, A: 0.7, D: 0.8, C: 0.8, T: 0.5, P: 1.0}
-  # Cluster amplifier (per-market AND cross-market within the sibling set).
-  # M0-F FINDING (docs/m0f_report.md §4): the cross-market scope is the dominant
-  # false-positive driver in a high-activity window — ~3 fresh wallets on
-  # correlated contracts within 12h fires on nearly everything and mass-boosts.
-  # cross_market_enabled disables that scope pending a tighter same-wallet-across-
-  # markets rule or a P (funding) gate. Per-market clustering is retained.
+  # Cluster amplifier. v1.3 §3.2 RULING: cluster membership is dossier evidence,
+  # NOT a score multiplier — in a saturated-attention regime everything clusters,
+  # so boosting the composite is the dominant false-positive driver (M0-F §4).
+  # Membership (per-market AND cross-market) is still computed and printed; it
+  # just does not move the composite or tier while cluster_boosts_score=false.
+  # Parked hypothesis (needs a 2nd labeled event): a regime-conditioned boost
+  # (vs. baseline fresh-wallet rate) that self-suppresses in hot regimes.
   cluster_min: 3
   cluster_window_hours: 12
-  cluster_boost: 1.5
-  cross_market_enabled: false
-  # Severity tiers — CALIBRATED by M0-F (docs/m0f_report.md §4/§5). The initial
-  # guess (0.15/0.30/0.45) + cross-market clustering produced ~44 CRITICAL/as-of.
-  # With cross-market OFF, the dominant insider (0x1caa) tops out at composite
-  # 0.48 (raw F/S/D/C/T), so CRITICAL=0.45 is the tightest threshold that still
-  # flags it ~30h pre-news — at a cost of ~11 false positives across the
-  # war-week cluster. Full-cluster separation at low FP needs A (M8) + P (M5).
+  cluster_boost: 1.5              # only applied if cluster_boosts_score=true
+  cross_market_enabled: true      # compute cross-market membership for dossiers
+  cluster_boosts_score: false     # v1.3 §3.2: membership does not move the score
+  # Severity tiers — CALIBRATED by M0-F (docs/m0f_report.md §4/§5), PROVISIONAL
+  # per v1.3 §3.1. The dominant insider (0x1caa) tops out at composite 0.48 (raw
+  # F/S/D/C/T, no cluster boost), so CRITICAL=0.45 is the tightest threshold that
+  # still flags it ~30h pre-news — at ~11 false positives across the war-week
+  # cluster. MANDATORY RECALIBRATION when A (M8 CLOB) and P (M5 funding) land:
+  # those factors are what separate a coordinated cluster from retail war-bettors.
   tier_thresholds: {WATCH: 0.25, ELEVATED: 0.35, CRITICAL: 0.45}
   # As-of ladder for detection replay (unix ts UTC).
   as_of_ladder:

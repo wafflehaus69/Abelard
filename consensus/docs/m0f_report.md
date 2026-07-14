@@ -58,7 +58,7 @@ Operating points at **−30h** (the strongest pre-news detection), labeled clust
 | 0.48 | — | — | 1/6 | 11 |
 | 0.50 | 1/6 | 25 | 0/6 | 7 |
 
-**Dominant false-positive driver: the cross-market cluster amplifier.** In a war-onset week, the cross-market scope (≥3 fresh wallets on correlated contracts within 12h) fires on nearly every fresh directional wallet, mass-boosting them by ×1.5 → a pileup (≈44 CRITICAL/as-of). Disabling it roughly halves the false positives.
+**Dominant false-positive driver: the cross-market cluster amplifier.** In a war-onset week, the cross-market scope (≥3 fresh wallets on correlated contracts within 12h) fires on nearly every fresh directional wallet, mass-boosting them by ×1.5 → a pileup (≈44 CRITICAL/as-of). Disabling the *boost* roughly halves the false positives. *(The "xmkt ON" column is the now-deprecated boost behavior; per v1.3 §3.2 cluster membership is computed but no longer boosts the score — see §7. The detection numbers below are identical either way, since the dominant wallet never depended on the boost.)*
 
 **The dominant insider's raw ceiling is composite 0.48** (`0x1caa`, F/S/D/C/T with no cluster boost, at −30h). So with cross-market off, **CRITICAL = 0.45 is the tightest threshold that still flags `0x1caa` ~30h before the news, at a cost of 11 false positives** across the 114-market cluster; recall is 1/6 (only the largest wallet clears the bar on fill-only factors). There is **no operating point that recovers the full cluster at a low false-positive count** on F/S/D/C/T alone.
 
@@ -70,12 +70,27 @@ The footprint mechanic **works for the dominant informed entrant, early and clea
 - **A (aggression, M8 CLOB)** would separate urgent marketable insider fills from patient retail limit orders.
 - **Cross-market clustering needs tightening** to *same-wallet-across-markets* coordination rather than *any* fresh wallets co-occurring, or it should be gated behind P.
 
-**Recommended interim calibration** (pending A/P), now the config default: `CRITICAL = 0.45`, cross-market cluster boost **off** (`cross_market_enabled: false`). This flags the dominant insider `0x1caa` ~30h pre-news at ~11 false positives across the war-week cluster — the tightest honest operating point on fill-only factors. The full trade-off curve above is the owner's operating-point menu; the false-positive floor drops materially once P (funding) can gate the cluster and A (aggression) can separate urgent from patient flow.
+**Recommended interim calibration** (pending A/P), now the config default: `CRITICAL = 0.45`, cluster membership recorded but not scored (`cluster_boosts_score: false`, per v1.3 §3.2). This flags the dominant insider `0x1caa` ~30h pre-news at ~11 false positives across the war-week cluster — the tightest honest operating point on fill-only factors. The full trade-off curve above is the owner's operating-point menu; the false-positive floor drops materially once P (funding) can gate the cluster and A (aggression) can separate urgent from patient flow.
 
 **This is a partial-pass with a concrete, evidence-backed priority argument**, not a failure of the build: it quantifies exactly how much the excluded factors are worth and turns "we should build M5/M8" from an assertion into a measured conclusion.
+
+## 5a. Epistemics — what "11 false positives" does and doesn't mean (v1.3 §2)
+
+The labeled set contains **only publicly reported insiders**. During a war-onset week, some of the unlabeled CRITICALs are plausibly genuinely-informed wallets that simply never made the news. So **measured precision is a lower bound on true precision**, just as the A/P exclusion makes measured detection a floor on true detection. A reader must not treat "unlabeled" as "confirmed noise" — it means "not in the public record," nothing more.
+
+Operationally this matters because **M10 is an alert-only intelligence product with human review** — it will never be an auto-trader, and its precision bar is a dossier bar, not a trade-execution bar. ~11 dossiers to skim during the most extraordinary geopolitical week of the year is a tolerable review load, not a broken detector.
+
+**Early peaking is a feature, not a bug.** `0x1caa` scores highest at −30h and decays toward the event — because the detector is loudest exactly when the informational edge is freshest and the wallet's stake is largest relative to the still-thin market. That is the desired shape. (For the live scan, that decay must be handled by tier **latching**, not alert retraction — see §7.)
 
 ## 6. Caveats (Rule 1)
 
 - **Attribution is maker-side** (a wallet's own orders each emit an event with `maker`=owner; validated exact against `0x1caa`). Pure-taker sweep fills *may* be under-attributed under one possible event model — a recall risk to confirm with CLOB data in M8.
 - **T is a proxy and A/P are excluded** — the composite is over 4–5 factors, not 7. All exclusions are declared in the artifact, never imputed.
 - Replay is byte-identical from the response cache; every number here is reproducible with `consensus m0f score --replay`.
+
+## 7. Rulings incorporated from addendum v1.3 (gate review)
+
+- **Calibration ratified as provisional** (`CRITICAL=0.45`). Mandatory recalibration when A (M8) and P (M5) land — noted in `config.yaml` next to the values.
+- **Cluster membership demoted from score-booster to dossier evidence** (§3.2). Membership (per-market *and* cross-market) is still computed and recorded in every result (6 clusters at −30h), but `cluster_boosts_score: false` means it no longer moves the composite or the tier. The accepted detection numbers above are unchanged by this (the dominant wallet never depended on the boost); it removes the FP-inflation mechanism. A regime-conditioned boost is a parked hypothesis, to be tested only once a second labeled event exists.
+- **Tier latching** (§3.3) is a live-M10 requirement: tiers latch at their per-(wallet, market-family) high-water mark with the crossing timestamp; decay is shown as dossier trajectory, never as alert retraction. A tested `latch_tiers` helper ships ready in `m0f.py`; the backtest itself reports raw per-as-of tiers (trajectory is the point).
+- The self-caught `0.65 → 0.45` calibration correction is recorded: with cluster boost off, the dominant wallet's ceiling is 0.48, so a 0.65 threshold would have detected nothing — the kind of error that must not ship silently.

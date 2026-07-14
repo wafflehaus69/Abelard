@@ -163,6 +163,11 @@ class M0FConfig(_Strict):
     cluster_window_hours: int = Field(ge=1, default=12)
     cluster_boost: float = Field(ge=1, default=1.5)
     cross_market_enabled: bool = True
+    # v1.3 §3.2: cluster membership is dossier evidence, not a score multiplier.
+    # In a saturated-attention regime everything clusters, so boosting the
+    # composite is the dominant FP driver. Membership is still computed and
+    # reported; when False it does not move the composite or the tier.
+    cluster_boosts_score: bool = False
     tier_thresholds: dict[str, float]
     as_of_ladder: list[int] = Field(min_length=1)
     labeled_hypotheses: list[LabeledHypothesis] = Field(default_factory=list)

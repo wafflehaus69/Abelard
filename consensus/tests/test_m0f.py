@@ -280,9 +280,50 @@ def test_tier_assignment_and_cluster_elevation(loaded):
     plain = _cand("0xa", composite=0.35)
     clustered = _cand("0xb", composite=0.35)
     clustered.cluster_ids = ["market:0xMKT:1"]
-    assign_tiers([plain, clustered], cfg.tier_thresholds)
+    # v1.3 §3.2: elevation only when explicitly enabled.
+    assign_tiers([plain, clustered], cfg.tier_thresholds, cluster_elevates=True)
     assert plain.tier == "ELEVATED"
     assert clustered.tier == "CRITICAL"  # auto-elevated one tier
+
+
+def test_cluster_membership_does_not_move_tier_by_default(loaded):
+    """v1.3 §3.2: cluster membership is dossier evidence — with elevation off
+    (the default), a clustered wallet keeps its composite-derived tier."""
+    cfg = _cfg(loaded)
+    clustered = _cand("0xb", composite=0.35)
+    clustered.cluster_ids = ["market:0xMKT:1"]
+    assign_tiers([clustered], cfg.tier_thresholds)  # cluster_elevates defaults False
+    assert clustered.tier == "ELEVATED"  # NOT elevated to CRITICAL
+
+
+def test_cluster_boost_gated_by_config(loaded):
+    """v1.3 §3.2: membership is always recorded, but the composite boost only
+    applies when cluster_boosts_score is true."""
+    import copy
+    burst = lambda: [_cand("0xa", first_bet=1_772_000_000),
+                     _cand("0xb", first_bet=1_772_010_000),
+                     _cand("0xc", first_bet=1_772_020_000)]
+    on = copy.copy(_cfg(loaded)); object.__setattr__(on, "cluster_boosts_score", True)
+    off = copy.copy(_cfg(loaded)); object.__setattr__(off, "cluster_boosts_score", False)
+    con = burst(); apply_cluster_amplifier(con, cfg=on, elevated_floor=0.30)
+    coff = burst(); cl = apply_cluster_amplifier(coff, cfg=off, elevated_floor=0.30)
+    assert all(c.composite == pytest.approx(0.75) for c in con)   # boosted
+    assert all(c.composite == pytest.approx(0.50) for c in coff)  # NOT boosted
+    assert all(c.cluster_ids for c in coff)  # ...but membership still recorded
+    assert cl  # cluster still reported for the dossier
+
+
+def test_latch_tiers_high_water_mark(loaded):
+    """v1.3 §3.3: live tiers latch at their peak per (wallet, market) with the
+    crossing ts; a later decay never retracts the alert."""
+    from consensus.m0f import latch_tiers
+    hist: dict = {}
+    peak = _cand("0xw", cid="0xM", composite=0.72); peak.tier = "CRITICAL"
+    latch_tiers(hist, [peak], as_of=1000)
+    decayed = _cand("0xw", cid="0xM", composite=0.42); decayed.tier = "ELEVATED"
+    latch_tiers(hist, [decayed], as_of=2000)
+    assert hist[("0xw", "0xM")]["peak_tier"] == "CRITICAL"   # not retracted
+    assert hist[("0xw", "0xM")]["crossed_ts"] == 1000        # first CRITICAL crossing
 
 
 # -- hypothesis matching ------------------------------------------------------------------

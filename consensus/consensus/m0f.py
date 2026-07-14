@@ -507,15 +507,55 @@ def apply_cluster_amplifier(
     if getattr(cfg, "cross_market_enabled", True):
         _find(strong, "cross-market", "iran-cluster")
 
-    # Apply the boost once per clustered wallet, regardless of how many scopes
-    # it belongs to.
-    for c in candidates:
-        if c.cluster_ids:
-            c.composite = round(min(1.0, c.composite * cfg.cluster_boost), 4)
+    # v1.3 §3.2: membership is recorded above (cluster_ids) as dossier evidence.
+    # The composite boost is applied ONLY when cluster_boosts_score is enabled;
+    # by default cluster membership does not move the score (it over-fires in a
+    # saturated-attention regime). Boost is once-per-wallet regardless of scope.
+    if getattr(cfg, "cluster_boosts_score", False):
+        for c in candidates:
+            if c.cluster_ids:
+                c.composite = round(min(1.0, c.composite * cfg.cluster_boost), 4)
     return clusters
 
 
-def assign_tiers(candidates: list[CandidateScore], thresholds: dict[str, float]) -> None:
+def latch_tiers(
+    history: dict[tuple[str, str], dict[str, Any]],
+    candidates: list[CandidateScore],
+    *,
+    as_of: int,
+) -> dict[tuple[str, str], dict[str, Any]]:
+    """Tier high-water-mark latching for the LIVE M10 scan (v1.3 §3.3).
+
+    A live alert that fires CRITICAL at −30h and then "un-fires" as trailing
+    volume dilutes the relative-size factor invites a "it cleared itself"
+    misread. So per (wallet, market-family) the tier latches at its highest
+    level reached, with the crossing timestamp; decay is shown as trajectory in
+    the dossier, never as an alert retraction. (Early peaking is desirable — the
+    detector is loudest when the information is freshest.)
+
+    ``history`` is the running latch state (mutated and returned); key is
+    (wallet, condition_id). Backtests report the raw per-as-of tier and do not
+    latch — this helper is for the live scan and is unit-tested here so it ships
+    ready.
+    """
+    for c in candidates:
+        if c.tier in ("NONE", "INSUFFICIENT_DATA"):
+            continue
+        key = (c.wallet, c.condition_id)
+        rank = TIER_ORDER.index(c.tier)
+        prev = history.get(key)
+        if prev is None or rank > TIER_ORDER.index(prev["peak_tier"]):
+            history[key] = {"peak_tier": c.tier, "crossed_ts": as_of,
+                            "peak_composite": c.composite}
+    return history
+
+
+def assign_tiers(
+    candidates: list[CandidateScore],
+    thresholds: dict[str, float],
+    *,
+    cluster_elevates: bool = False,
+) -> None:
     for c in candidates:
         if c.data_incomplete:
             # Enrichment failed -> F/T unknown. Never assign a real tier from an
@@ -526,8 +566,10 @@ def assign_tiers(candidates: list[CandidateScore], thresholds: dict[str, float])
         for name in ("WATCH", "ELEVATED", "CRITICAL"):
             if c.composite >= thresholds[name]:
                 tier = name
-        if c.cluster_ids and tier != "NONE":
-            # Cluster membership auto-elevates one severity tier.
+        # v1.3 §3.2: cluster membership does not move the tier by default (it is
+        # dossier evidence). Auto-elevation is available only when explicitly
+        # enabled alongside cluster_boosts_score.
+        if cluster_elevates and c.cluster_ids and tier != "NONE":
             tier = TIER_ORDER[min(TIER_ORDER.index(tier) + 1, len(TIER_ORDER) - 1)]
         c.tier = tier
 
@@ -744,7 +786,8 @@ def run_score(
         clusters = apply_cluster_amplifier(
             cands, cfg=cfg, elevated_floor=cfg.tier_thresholds["ELEVATED"]
         )
-        assign_tiers(cands, cfg.tier_thresholds)
+        assign_tiers(cands, cfg.tier_thresholds,
+                     cluster_elevates=cfg.cluster_boosts_score)
         matches = match_hypotheses(cands, cfg.labeled_hypotheses)
 
         labeled_wallets = {h["wallet"] for m in matches.values() for h in m["hits"]}
