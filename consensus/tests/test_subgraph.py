@@ -69,29 +69,30 @@ def test_get_events_parses_and_types(dl, requests_mock):
     assert e.transaction_hash == "0x0001tx"
 
 
-def test_where_clause_carries_filters_and_cursor(dl, requests_mock):
+def test_where_clause_carries_filters(dl, requests_mock):
     m = requests_mock.post(SUBGRAPH_URL, json=_events_body([]))
-    get_order_filled_events(
-        dl, asset_ids=["A1"], ts_gte=100, ts_lt=200, id_gt="0xCUR", first=500
-    )
+    get_order_filled_events(dl, asset_ids=["A1"], ts_gte=100, ts_lt=200, first=500)
     query = m.last_request.json()["query"]
     # Graph-node forbids column filters beside `or` — every branch must carry
     # the shared filters (verified against the live server).
-    branch = 'timestamp_gte: "100", timestamp_lt: "200", id_gt: "0xCUR"'
+    branch = 'timestamp_gte: "100", timestamp_lt: "200"'
     assert f'{{ makerAssetId: "A1", {branch} }}' in query
     assert f'{{ takerAssetId: "A1", {branch} }}' in query
     assert query.count(branch) == 2  # filters only inside branches
     assert "or: [" in query
     assert "first: 500" in query
-    assert "orderBy: id" in query
+    # Ordered by timestamp (not id): orderBy id times the server out on
+    # high-volume markets (verified live 2026-07-13).
+    assert "orderBy: timestamp" in query
 
 
 # -- cursor walk + provenance ------------------------------------------------------
 
 
-def test_paginate_walks_id_cursor_and_reports_provenance(dl, requests_mock):
-    page1 = [subgraph_event(i) for i in range(3)]
-    page2 = [subgraph_event(7)]
+def test_paginate_walks_ts_cursor_and_reports_provenance(dl, requests_mock):
+    # distinct timestamps so no boundary overlap
+    page1 = [subgraph_event(i, ts=1000 + i) for i in range(3)]
+    page2 = [subgraph_event(7, ts=1010)]
     m = requests_mock.post(SUBGRAPH_URL, [
         _meta_response(),
         {"json": _events_body(page1)},
@@ -100,13 +101,48 @@ def test_paginate_walks_id_cursor_and_reports_provenance(dl, requests_mock):
     events, prov = paginate_order_filled(dl, asset_ids=["111000111"], page_size=3)
     assert len(events) == 4
     assert m.call_count == 3
-    # Cursor continuation used the last id of page 1.
+    # Cursor continuation used the last TIMESTAMP of page 1 (gte, for boundary
+    # safety).
     q3 = m.request_history[2].json()["query"]
-    assert f'id_gt: "{page1[-1]["id"]}"' in q3
+    assert f'timestamp_gte: "{page1[-1]["timestamp"]}"' in q3
     assert prov["layer"] == "L1" and prov["head_block"] == 87_814_766
     assert prov["pages"] == 2 and prov["events"] == 4
-    assert prov["first_id"] == page1[0]["id"] and prov["last_id"] == page2[0]["id"]
+    assert prov["first_ts"] == 1000 and prov["last_ts"] == 1010
     assert prov["truncated_by_max_records"] is False
+    assert prov["forced_skips_ts"] == []
+
+
+def test_paginate_dedupes_second_boundary_overlap(dl, requests_mock):
+    """A fill at the page-boundary second reappears when the next page re-queries
+    timestamp_gte — it must be counted once, never lost or doubled."""
+    shared = subgraph_event(2, ts=1002)      # lands at the tail of page 1...
+    page1 = [subgraph_event(0, ts=1000), subgraph_event(1, ts=1001), shared]
+    page2 = [shared, subgraph_event(3, ts=1003)]   # ...and the head of page 2
+    requests_mock.post(SUBGRAPH_URL, [
+        _meta_response(),
+        {"json": _events_body(page1)},
+        {"json": _events_body(page2)},
+    ])
+    events, prov = paginate_order_filled(dl, asset_ids=["A"], page_size=3)
+    ids = [e.event_id for e in events]
+    assert len(ids) == len(set(ids)) == 4  # shared counted exactly once
+    assert prov["events"] == 4
+
+
+def test_paginate_livelock_guard_on_overfull_second(dl, requests_mock):
+    """>page_size fills in one second: the walk must advance past it (declared
+    in forced_skips_ts) instead of re-querying the same second forever."""
+    same = [subgraph_event(i, ts=1000) for i in range(3)]     # full page, one ts
+    after = [subgraph_event(9, ts=1001)]
+    requests_mock.post(SUBGRAPH_URL, [
+        _meta_response(),
+        {"json": _events_body(same)},
+        {"json": _events_body(same)},   # gte 1000 re-serves the same second...
+        {"json": _events_body(after)},  # ...then the guard steps to gte 1001
+    ])
+    events, prov = paginate_order_filled(dl, asset_ids=["A"], page_size=3)
+    assert prov["forced_skips_ts"] == [1000]
+    assert 1001 in [e.timestamp for e in events]
 
 
 def test_paginate_max_records_is_explicit_in_provenance(dl, requests_mock):

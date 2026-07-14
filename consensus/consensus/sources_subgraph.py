@@ -64,7 +64,6 @@ def _where_clause(
     asset_ids: list[str] | None,
     ts_gte: int | None,
     ts_lt: int | None,
-    id_gt: str | None,
 ) -> str:
     """Graph-node forbids mixing column filters with ``or`` at the same level
     (verified live 2026-07-13: 'Cannot mix column filters with or operator'),
@@ -74,8 +73,6 @@ def _where_clause(
         parts.append(f'timestamp_gte: "{ts_gte}"')
     if ts_lt is not None:
         parts.append(f'timestamp_lt: "{ts_lt}"')
-    if id_gt is not None:
-        parts.append(f'id_gt: "{id_gt}"')
     base = ", ".join(parts)
     if asset_ids:
         branches: list[str] = []
@@ -93,13 +90,18 @@ def get_order_filled_events(
     asset_ids: list[str] | None = None,
     ts_gte: int | None = None,
     ts_lt: int | None = None,
-    id_gt: str | None = None,
     first: int = 1000,
 ) -> list[OrderFilledEvent]:
-    """One page of fill events, ordered by id ascending (cursor-stable)."""
-    where = _where_clause(asset_ids=asset_ids, ts_gte=ts_gte, ts_lt=ts_lt, id_gt=id_gt)
+    """One page of fill events ordered by timestamp ascending.
+
+    Ordered by timestamp (not id): ``orderBy: id`` forces a sort of the whole
+    filtered set and times the server's Postgres out on high-volume markets
+    (verified 2026-07-13 — the $89M anchor). ``orderBy: timestamp`` with the
+    timestamp range uses the timestamp index and returns in ~1s. Cursoring is
+    the caller's job (see :func:`paginate_order_filled`)."""
+    where = _where_clause(asset_ids=asset_ids, ts_gte=ts_gte, ts_lt=ts_lt)
     query = (
-        f"{{ orderFilledEvents(first: {first}, orderBy: id, orderDirection: asc, "
+        f"{{ orderFilledEvents(first: {first}, orderBy: timestamp, orderDirection: asc, "
         f"where: {where}) {{ {_EVENT_FIELDS} }} }}"
     )
     data = dl.fetch_graphql(source=_SOURCE, url=dl.endpoints.goldsky_subgraph, query=query)
@@ -118,31 +120,48 @@ def paginate_order_filled(
     page_size: int = 1000,
     max_records: int | None = None,
 ) -> tuple[list[OrderFilledEvent], dict[str, Any]]:
-    """Exhaustive ``id_gt`` cursor walk over a slice of the L1 tape.
+    """Exhaustive timestamp-cursor walk over a slice of the L1 tape.
 
-    Returns ``(events, provenance)``. Provenance records the indexing head,
-    the walk's cursor span and page count, and whether the walk was truncated
-    by ``max_records`` — never silently capped.
+    Returns ``(events, provenance)``. Because many fills share a timestamp, the
+    cursor advances with ``timestamp_gte`` (not ``_gt``) and boundary events are
+    de-duplicated by ``event_id`` — no fill at a second-boundary is lost. A
+    livelock guard covers the (rate-impossible) case of >``page_size`` fills in
+    a single second: it advances past that second and records a declared skip
+    in provenance rather than looping forever.
     """
     meta = get_subgraph_meta(dl)
     events: list[OrderFilledEvent] = []
-    cursor: str | None = None
+    seen: set[str] = set()
+    cursor_ts = ts_gte
     pages = 0
     truncated = False
+    forced_skips: list[int] = []
     while True:
         page = get_order_filled_events(
-            dl, asset_ids=asset_ids, ts_gte=ts_gte, ts_lt=ts_lt,
-            id_gt=cursor, first=page_size,
+            dl, asset_ids=asset_ids, ts_gte=cursor_ts, ts_lt=ts_lt, first=page_size,
         )
         pages += 1
-        events.extend(page)
+        fresh = [e for e in page if e.event_id not in seen]
+        for e in fresh:
+            seen.add(e.event_id)
+        events.extend(fresh)
         if max_records is not None and len(events) >= max_records:
             del events[max_records:]
             truncated = True
             break
         if len(page) < page_size:
-            break
-        cursor = page[-1].event_id
+            break  # end of this slice
+        last_ts = page[-1].timestamp
+        if not fresh and cursor_ts is not None and last_ts == cursor_ts:
+            # A full page entirely within one second, all already seen: more
+            # than page_size fills in that second. Rate-impossible (<~62/s
+            # observed), but never loop — step past the second and declare it.
+            forced_skips.append(last_ts)
+            dl.logger.error("subgraph walk: >%d fills at ts=%d; forced skip past it",
+                            page_size, last_ts)
+            cursor_ts = last_ts + 1
+        else:
+            cursor_ts = last_ts
     provenance = {
         "source": _SOURCE,
         "layer": "L1",
@@ -151,9 +170,10 @@ def paginate_order_filled(
         "coverage_oldest_ts": meta["oldest_event_ts"],
         "pages": pages,
         "events": len(events),
-        "first_id": events[0].event_id if events else None,
-        "last_id": events[-1].event_id if events else None,
+        "first_ts": events[0].timestamp if events else None,
+        "last_ts": events[-1].timestamp if events else None,
         "truncated_by_max_records": truncated,
+        "forced_skips_ts": forced_skips,   # declared gaps, never silent
         "filter": {"asset_ids": asset_ids, "ts_gte": ts_gte, "ts_lt": ts_lt},
     }
     return events, provenance

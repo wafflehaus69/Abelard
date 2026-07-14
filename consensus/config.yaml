@@ -113,6 +113,79 @@ collector:
     hot_ttl_minutes: 30
     quiet_if_fill_within_hours: 24
 
+m0f:
+  # M0-F Feb-28 footprint backtest (v1.0 §M0-F + v1.2 §3). Historical study on
+  # L1 data only — no live scanning, no alerting, nothing near M9.
+  # Ground truth pinned from archived liveblog metadata (see reference memo).
+  news_break_ts: 1772260414          # 2026-02-28T06:33:34Z (AJ liveblog, conservative)
+  window_start_ts: 1771545600        # 2026-02-20T00:00:00Z (detection window)
+  window_end_ts: 1772323200          # 2026-03-01T00:00:00Z
+  baseline_days: 7                   # pre-window pull for trailing-volume baselines
+  # Expanded universe (v1.2 §3): strikes family + leadership + siblings.
+  search_terms:
+    - "us strikes iran"
+    - "khamenei"
+    - "iran regime"
+    - "iran retaliat"
+    - "strait of hormuz"
+    - "iran nuclear"
+    - "israel iran"
+    - "ayatollah"
+    - "iran war"
+    - "reza pahlavi"
+  # Stage-1 candidate extraction.
+  size_floor_usdc: 5000              # calibration floor (live M10 default is 10k)
+  directional_min: 0.8               # net/gross one-sidedness
+  # Factor F freshness breakpoints (days) + prior-history discount.
+  fresh_day_breakpoints: [7, 30, 90]
+  fresh_scores: [1.0, 0.6, 0.2, 0.02]
+  prior_fills_discount_threshold: 50
+  prior_fills_discount: 0.3
+  # Factor S: stake as a fraction of trailing 7d market volume; this fraction
+  # maps to S=1.0.
+  s_full_scale_frac: 0.05
+  # Factor T (proxy: first-seen -> first-bet latency, minutes).
+  t_latency_breakpoints_min: [60, 1440, 10080]
+  t_scores: [1.0, 0.7, 0.3, 0.1]
+  # Composite: weighted geometric mean over ACTIVE factors only (P needs the
+  # funding graph; absent factors are excluded and reported, never imputed).
+  factor_weights: {F: 1.0, S: 1.0, A: 0.7, D: 0.8, C: 0.8, T: 0.5, P: 1.0}
+  # Cluster amplifier (per-market AND cross-market within the sibling set).
+  # M0-F FINDING (docs/m0f_report.md §4): the cross-market scope is the dominant
+  # false-positive driver in a high-activity window — ~3 fresh wallets on
+  # correlated contracts within 12h fires on nearly everything and mass-boosts.
+  # cross_market_enabled disables that scope pending a tighter same-wallet-across-
+  # markets rule or a P (funding) gate. Per-market clustering is retained.
+  cluster_min: 3
+  cluster_window_hours: 12
+  cluster_boost: 1.5
+  cross_market_enabled: false
+  # Severity tiers — CALIBRATED by M0-F (docs/m0f_report.md §4/§5). The initial
+  # guess (0.15/0.30/0.45) + cross-market clustering produced ~44 CRITICAL/as-of.
+  # With cross-market OFF, the dominant insider (0x1caa) tops out at composite
+  # 0.48 (raw F/S/D/C/T), so CRITICAL=0.45 is the tightest threshold that still
+  # flags it ~30h pre-news — at a cost of ~11 false positives across the
+  # war-week cluster. Full-cluster separation at low FP needs A (M8) + P (M5).
+  tier_thresholds: {WATCH: 0.25, ELEVATED: 0.35, CRITICAL: 0.45}
+  # As-of ladder for detection replay (unix ts UTC).
+  as_of_ladder:
+    - 1772064000    # 2026-02-26T00:00:00Z
+    - 1772150400    # 2026-02-27T00:00:00Z
+    - 1772193600    # 2026-02-27T12:00:00Z
+    - 1772236800    # 2026-02-28T00:00:00Z
+    - 1772258400    # 2026-02-28T06:00:00Z
+    - 1772260413    # 1s before news break
+  # Press-reported wallet hypotheses (Bubblemaps via The Block/Forbes/CoinDesk).
+  # HYPOTHESES until matched on-chain; the score report does the matching.
+  # 0x1caA6a... was already confirmed digit-for-digit (2026-07-13 probe).
+  labeled_hypotheses:
+    - {name: "bubblemaps-1", address: "0x1caa6a7ad0c6916aef7b67946de2e57ad24846a0", approx_shares: 560680, approx_price: 0.108}
+    - {name: "Planktonbets", approx_shares: 200747, approx_price: 0.132}
+    - {name: "Dicedicedice", approx_shares: 149955, approx_price: 0.20}
+    - {name: "Neodbs", approx_shares: 98838, approx_price: 0.10}
+    - {name: "nothingeverhappens911", approx_price: 0.19}
+    - {name: "Anon", approx_shares: 55556, approx_price: 0.18}
+
 # ---------------------------------------------------------------------------
 # FUTURE (spec §6) — added per module as it is built, not before:
 #   scoring:   activity_gate_days, decay_half_life_days, min_resolved_trades,

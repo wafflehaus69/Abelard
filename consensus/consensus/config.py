@@ -29,7 +29,12 @@ _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 
 
 class _Strict(BaseModel):
-    """Base model: reject unknown keys so config typos fail loudly."""
+    """Base model: reject unknown keys so config typos fail loudly.
+
+    Note: frozen=True blocks attribute rebinding, but dict/list field VALUES
+    (factor_weights, tier_thresholds, breakpoint lists) remain mutable in place.
+    Config is the single source of truth and must be treated as read-only; the
+    determinism contract relies on callers never mutating these in place."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -125,12 +130,51 @@ class Secrets:
         return tuple(v for v in (self.etherscan_api_key,) if v)
 
 
+class LabeledHypothesis(_Strict):
+    """One reported insider-wallet hypothesis (press-derived; confirmed only
+    by matching against the on-chain tape — spec §7)."""
+
+    name: str
+    address: str | None = None
+    approx_shares: float | None = None
+    approx_price: float | None = None
+
+
+class M0FConfig(_Strict):
+    """M0-F Feb-28 footprint backtest (v1.2 §3) — calibration parameters.
+    A historical study on L1 data: no live scanning, no alerting."""
+
+    news_break_ts: int
+    window_start_ts: int
+    window_end_ts: int
+    baseline_days: int = Field(ge=0, default=7)
+    search_terms: list[str] = Field(min_length=1)
+    size_floor_usdc: float = Field(gt=0, default=5000)
+    directional_min: float = Field(ge=0, le=1, default=0.8)
+    fresh_day_breakpoints: list[int] = Field(default=[7, 30, 90])
+    fresh_scores: list[float] = Field(default=[1.0, 0.6, 0.2, 0.02])
+    prior_fills_discount_threshold: int = Field(ge=1, default=50)
+    prior_fills_discount: float = Field(gt=0, le=1, default=0.3)
+    s_full_scale_frac: float = Field(gt=0, default=0.05)
+    t_latency_breakpoints_min: list[int] = Field(default=[60, 1440, 10080])
+    t_scores: list[float] = Field(default=[1.0, 0.7, 0.3, 0.1])
+    factor_weights: dict[str, float]
+    cluster_min: int = Field(ge=2, default=3)
+    cluster_window_hours: int = Field(ge=1, default=12)
+    cluster_boost: float = Field(ge=1, default=1.5)
+    cross_market_enabled: bool = True
+    tier_thresholds: dict[str, float]
+    as_of_ladder: list[int] = Field(min_length=1)
+    labeled_hypotheses: list[LabeledHypothesis] = Field(default_factory=list)
+
+
 class Config(_Strict):
     meta: MetaConfig
     logging: LoggingConfig
     categories: CategoriesConfig
     data_layer: DataLayerConfig
     collector: CollectorConfig
+    m0f: M0FConfig
 
     # Populated by the loader, not the yaml. Excluded from the strict model to
     # keep validation of the file itself clean.

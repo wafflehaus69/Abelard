@@ -119,6 +119,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Owner-facing tape summary: fills, tiers, declared gaps, strays.",
     )
 
+    m0f = groups.add_parser(
+        "m0f",
+        help="M0-F Feb-28 footprint backtest (historical study on L1; no live scanning, no alerting).",
+    )
+    m0f_cmds = m0f.add_subparsers(dest="command", required=True)
+    m0f_cmds.add_parser("universe", help="Enumerate the Iran-cluster market universe -> artifact.")
+    p = m0f_cmds.add_parser("pull", help="Walk every universe market's L1 fills into the cache.")
+    p.add_argument("--limit-markets", type=int, default=None,
+                   help="Only the N highest-volume universe markets (explicitly reported).")
+    p = m0f_cmds.add_parser("score", help="Seven-factor detection replay at the as-of ladder.")
+    p.add_argument("--as-of", type=int, default=None,
+                   help="Single as-of ts (default: the configured ladder).")
+    p.add_argument("--replay", action="store_true",
+                   help="Serve every fetch from the response cache (offline, deterministic).")
+    p.add_argument("--limit-markets", type=int, default=None,
+                   help="Score only the N highest-volume universe markets (must match the pull).")
+
     return parser
 
 
@@ -661,6 +678,22 @@ def main(argv: list[str] | None = None) -> int:
         log.error("init error: %s", exc)
         return 1
     try:
+        if args.group == "m0f":
+            from .m0f import run_pull, run_score, run_universe
+
+            if args.command == "universe":
+                summary = run_universe(dl, loaded)
+            elif args.command == "pull":
+                summary = run_pull(dl, loaded, limit_markets=args.limit_markets)
+            elif args.command == "score":
+                if args.replay:
+                    dl.replay = True
+                summary = run_score(dl, loaded, as_of_override=args.as_of,
+                                    limit_markets=args.limit_markets)
+            else:
+                raise ValueError(f"unknown m0f command: {args.command}")
+            _emit(summary, as_json=True)  # backtest artifacts are structured
+            return 0
         if args.group == "collect":
             if args.command == "run":
                 try:
