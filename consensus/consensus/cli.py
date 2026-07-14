@@ -150,6 +150,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit-markets", type=int, default=None,
                    help="Score only the N highest-volume universe markets (must match the pull).")
 
+    m5 = groups.add_parser(
+        "m5",
+        help="M5 funded->bet latency (v1.4): the funding-provenance factor + its FP curve.",
+    )
+    m5_cmds = m5.add_subparsers(dest="command", required=True)
+    p = m5_cmds.add_parser(
+        "latency-scan",
+        help="Funded->bet latency for every Feb-28 M0-F candidate + the false-positive curve.",
+    )
+    p.add_argument("--limit-wallets", type=int, default=None,
+                   help="Cap the batch (labeled wallets always kept). Omit for the full ~900.")
+    p.add_argument("--replay", action="store_true",
+                   help="Serve every chain fetch from the cache (offline; loud on miss).")
+
     return parser
 
 
@@ -706,6 +720,15 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(f"unknown m0c command: {args.command}")
             _emit(summary, as_json=True)
             return 0
+        if args.group == "m5":
+            from .m5 import run_latency_scan
+            if args.command == "latency-scan":
+                if args.replay:
+                    dl.replay = True
+                summary = run_latency_scan(dl, loaded, limit_wallets=args.limit_wallets)
+                _emit(summary, as_json=True)
+                return 0
+            raise ValueError(f"unknown m5 command: {args.command}")
         if args.group == "m0f":
             from .m0f import run_pull, run_score, run_universe
 

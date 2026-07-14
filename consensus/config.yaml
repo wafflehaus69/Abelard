@@ -113,6 +113,18 @@ collector:
     hot_ttl_minutes: 30
     quiet_if_fill_within_hours: 24
 
+m5:
+  # M5 funded->bet latency (addendum v1.4). Corrects the falsified P premise:
+  # shared-funder identity is confounded by CEX hot wallets (~1,700-way fan-out);
+  # the real signal is funded->bet LATENCY. Deliverable = the FP curve across all
+  # M0-F candidates: at the latency that catches the confirmed insiders, how many
+  # non-insider war-week wallets also fire?
+  cex_fanout_threshold: 400          # >= this many distinct payout recipients -> CEX hot wallet
+  latency_breakpoints_min: [5, 60, 1440]
+  latency_scores: [1.0, 0.6, 0.2, 0.02]
+  fp_curve_thresholds_min: [1, 5, 15, 60, 240, 1440]
+  request_spacing_ms: 250            # Etherscan free tier ~3-5 calls/s
+
 m0f:
   # M0-F Feb-28 footprint backtest (v1.0 §M0-F + v1.2 §3). Historical study on
   # L1 data only — no live scanning, no alerting, nothing near M9.

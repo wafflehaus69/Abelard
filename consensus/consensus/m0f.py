@@ -189,7 +189,9 @@ def pull_market_events(
             )
         except DataLayerError as exc:
             last_exc = exc
-            if dl.replay or "timed out" not in str(exc).lower() or attempt == retries:
+            msg = str(exc).lower()
+            transient = "timed out" in msg or "timeout" in msg
+            if dl.replay or not transient or attempt == retries:
                 raise
             dl.logger.warning("m0f pull %s: subgraph timeout, retry %d/%d",
                               market["condition_id"][:14], attempt + 1, retries)

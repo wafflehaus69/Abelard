@@ -216,6 +216,19 @@ class M0CConfig(_Strict):
     regime_slices: list[M0CRegimeSlice] = Field(default_factory=list)
 
 
+class M5Config(_Strict):
+    """M5 funded→bet latency (addendum v1.4). The deliverable is the
+    false-positive curve of the latency factor across all M0-F candidates."""
+
+    cex_fanout_threshold: int = Field(ge=1, default=400)
+    latency_breakpoints_min: list[int] = Field(default=[5, 60, 1440])
+    latency_scores: list[float] = Field(default=[1.0, 0.6, 0.2, 0.02])
+    # Latency thresholds (minutes) swept for the FP curve; a wallet "fires" if
+    # its funded→bet latency is at/under the threshold.
+    fp_curve_thresholds_min: list[int] = Field(default=[1, 5, 15, 60, 240, 1440])
+    request_spacing_ms: int = Field(ge=0, default=250)  # Etherscan free tier ~3-5/s
+
+
 class Config(_Strict):
     meta: MetaConfig
     logging: LoggingConfig
@@ -223,6 +236,7 @@ class Config(_Strict):
     data_layer: DataLayerConfig
     collector: CollectorConfig
     m0f: M0FConfig
+    m5: M5Config = M5Config()
     m0c: M0CConfig
 
     # Populated by the loader, not the yaml. Excluded from the strict model to
