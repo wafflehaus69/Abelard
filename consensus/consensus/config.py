@@ -173,6 +173,40 @@ class M0FConfig(_Strict):
     labeled_hypotheses: list[LabeledHypothesis] = Field(default_factory=list)
 
 
+class M0CRegimeSlice(_Strict):
+    name: str
+    start: int
+    end: int
+
+
+class M0CSweep(_Strict):
+    participation_floor: list[int] = Field(min_length=1)
+    agreement_threshold: list[float] = Field(min_length=1)
+    circle_size_k: list[int] = Field(min_length=1)
+    max_edge_paid: list[float] = Field(min_length=1)
+
+
+class M0CConfig(_Strict):
+    """M0-C consensus replay (v1.0 §M0-C + v1.2 §4). Zero-lookahead backtest of
+    the CONSENSUS mechanic with a parameter sweep and GO/NO-GO decision."""
+
+    replay_start_ts: int
+    replay_end_ts: int
+    categories: list[str] = Field(min_length=1)
+    min_resolved_trades: int = Field(ge=1, default=10)
+    decay_half_life_days: int = Field(ge=1, default=90)
+    mm_two_sided_frac: float = Field(ge=0, le=1, default=0.35)
+    circle_size_k: int = Field(ge=1, default=15)
+    participation_floor: int = Field(ge=1, default=4)
+    agreement_threshold: float = Field(ge=0.5, le=1, default=0.75)
+    max_edge_paid: float = Field(ge=0, default=0.10)
+    entry_lag_minutes: int = Field(ge=0, default=30)
+    rescan_cadence_days: int = Field(ge=1, default=7)
+    min_position_usdc: float = Field(ge=0, default=500)
+    sweep: M0CSweep
+    regime_slices: list[M0CRegimeSlice] = Field(default_factory=list)
+
+
 class Config(_Strict):
     meta: MetaConfig
     logging: LoggingConfig
@@ -180,6 +214,7 @@ class Config(_Strict):
     data_layer: DataLayerConfig
     collector: CollectorConfig
     m0f: M0FConfig
+    m0c: M0CConfig
 
     # Populated by the loader, not the yaml. Excluded from the strict model to
     # keep validation of the file itself clean.

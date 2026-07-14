@@ -119,6 +119,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Owner-facing tape summary: fills, tiers, declared gaps, strays.",
     )
 
+    m0c = groups.add_parser(
+        "m0c",
+        help="M0-C consensus historical replay (zero-lookahead backtest + parameter sweep + GO/NO-GO).",
+    )
+    m0c_cmds = m0c.add_subparsers(dest="command", required=True)
+    m0c_cmds.add_parser("universe", help="Enumerate target-category markets resolved in the replay window.")
+    p = m0c_cmds.add_parser("sweep", help="Run the parameter sweep and emit the GO/NO-GO report.")
+    p.add_argument("--limit-markets", type=int, default=None,
+                   help="Only the N highest-volume resolved markets in the band (reported).")
+    p.add_argument("--min-volume", type=float, default=0.0, help="Volume-band floor (USDC).")
+    p.add_argument("--max-volume", type=float, default=None,
+                   help="Volume-band cap (USDC) — skip mega-markets whose full history is infeasible to walk.")
+    p.add_argument("--replay", action="store_true", help="Serve all fetches from cache (offline).")
+
     m0f = groups.add_parser(
         "m0f",
         help="M0-F Feb-28 footprint backtest (historical study on L1; no live scanning, no alerting).",
@@ -678,6 +692,20 @@ def main(argv: list[str] | None = None) -> int:
         log.error("init error: %s", exc)
         return 1
     try:
+        if args.group == "m0c":
+            from .m0c import run_sweep, run_universe as m0c_universe
+
+            if args.command == "universe":
+                summary = m0c_universe(dl, loaded)
+            elif args.command == "sweep":
+                if args.replay:
+                    dl.replay = True
+                summary = run_sweep(dl, loaded, limit_markets=args.limit_markets,
+                                    min_volume=args.min_volume, max_volume=args.max_volume)
+            else:
+                raise ValueError(f"unknown m0c command: {args.command}")
+            _emit(summary, as_json=True)
+            return 0
         if args.group == "m0f":
             from .m0f import run_pull, run_score, run_universe
 

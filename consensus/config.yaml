@@ -188,6 +188,40 @@ m0f:
     - {name: "nothingeverhappens911", approx_price: 0.19}
     - {name: "Anon", approx_shares: 55556, approx_price: 0.18}
 
+m0c:
+  # M0-C consensus historical replay (spec v1.0 §M0-C + v1.2 §4). Replays the
+  # CONSENSUS mechanic (Detector A) over L1 data with ZERO lookahead and sweeps
+  # the parameters to decide GO/NO-GO. Necessary-not-sufficient: the window is
+  # almost entirely pre-June-2026-split regime; the L2 forward archive runs the
+  # confirmation pass later.
+  replay_start_ts: 1735689600        # 2025-01-01T00:00:00Z
+  replay_end_ts: 1777593600          # 2026-04-30T00:00:00Z (>= L1 freeze 2026-04-28)
+  categories: [geopolitics, politics]
+  # Skill scoring (M3).
+  min_resolved_trades: 10            # significance floor before a wallet is scored
+  decay_half_life_days: 90           # time-decay on trade edge contributions
+  mm_two_sided_frac: 0.35            # >this share two-sided in a market -> MM_SUSPECT
+  # Roster (M4) + scan (M6) — SWEPT (values here are the sweep centers).
+  circle_size_k: 15
+  participation_floor: 4
+  agreement_threshold: 0.75
+  max_edge_paid: 0.10                # signal EXHAUSTED if price moved past entry band + this
+  entry_lag_minutes: 30             # owner-realistic fill lag (NOT the whales' entry)
+  rescan_cadence_days: 7
+  min_position_usdc: 500            # a roster wallet must hold >=this to count as participating
+  # Parameter sweep grid (M0-C deliverable). Each axis is a list; the harness
+  # takes the product and reports expectancy per cell.
+  sweep:
+    participation_floor: [3, 4, 5]
+    agreement_threshold: [0.7, 0.8, 0.9]
+    circle_size_k: [10, 15, 25]
+    max_edge_paid: [0.05, 0.10, 0.20]
+  # Regime slices for sensitivity (v1.2 §4).
+  regime_slices:
+    - {name: "2025-H1", start: 1735689600, end: 1751328000}
+    - {name: "2025-H2", start: 1751328000, end: 1767225600}
+    - {name: "2026-Jan-Apr", start: 1767225600, end: 1777593600}
+
 # ---------------------------------------------------------------------------
 # FUTURE (spec §6) — added per module as it is built, not before:
 #   scoring:   activity_gate_days, decay_half_life_days, min_resolved_trades,
