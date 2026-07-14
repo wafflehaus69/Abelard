@@ -34,9 +34,17 @@ class FakeSession:
     def __init__(self, responses):
         self._responses = list(responses)
         self.calls = []
+        self.post_calls = []
 
     def get(self, url, params=None, headers=None, timeout=None):
         self.calls.append((url, params, headers))
+        r = self._responses.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    def post(self, url, json=None, params=None, headers=None, timeout=None):
+        self.post_calls.append((url, json, headers))
         r = self._responses.pop(0)
         if isinstance(r, Exception):
             raise r
@@ -106,6 +114,26 @@ def test_500_exhausted_raises_transport_error():
     with pytest.raises(TransportError):
         _client([FakeResponse(500, text="e"), FakeResponse(500, text="e")], max_retries=2).get_json(
             "https://x/y"
+        )
+
+
+def test_post_json_sends_body_and_parses_response():
+    r = FakeResponse(200, json_data={"data": {"ok": 1}})
+    client = _client([r])
+    out = client.post_json("https://x/graphql", json_body={"query": "{ a }"})
+    assert out == {"data": {"ok": 1}}
+    assert client.session.post_calls[0][1] == {"query": "{ a }"}
+    assert client.session.calls == []  # never fell back to GET
+
+
+def test_post_json_retries_and_maps_statuses():
+    with pytest.raises(RateLimited):
+        _client([FakeResponse(429), FakeResponse(429)], max_retries=2).post_json(
+            "https://x/graphql", json_body={"query": "q"}
+        )
+    with pytest.raises(TransportError):
+        _client([FakeResponse(500, text="e"), FakeResponse(500, text="e")], max_retries=2).post_json(
+            "https://x/graphql", json_body={"query": "q"}
         )
 
 

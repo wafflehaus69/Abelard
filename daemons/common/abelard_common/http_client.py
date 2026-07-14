@@ -88,6 +88,23 @@ class HttpClient:
     ) -> Any:
         return self._request(url, params=params, headers=headers, timeout=timeout).json()
 
+    def post_json(
+        self,
+        url: str,
+        *,
+        json_body: Any,
+        headers: dict[str, str] | None = None,
+        timeout: float | None = None,
+    ) -> Any:
+        """POST a JSON body, return the JSON response. Same retry/backoff and
+        status semantics as :meth:`get_json` — additive; GET callers unchanged.
+        Note: POSTs here are read-style queries (e.g. GraphQL), so retrying on
+        transport failure is as safe as it is for GET."""
+        resp = self._request(
+            url, params=None, headers=headers, timeout=timeout, json_body=json_body
+        )
+        return resp.json()
+
     def get_text(
         self,
         url: str,
@@ -105,6 +122,7 @@ class HttpClient:
         params: dict[str, Any] | None,
         headers: dict[str, str] | None,
         timeout: float | None = None,
+        json_body: Any | None = None,
     ) -> requests.Response:
         assert self.session is not None
         assert self.logger is not None
@@ -115,9 +133,15 @@ class HttpClient:
 
         for attempt in range(self.max_retries):
             try:
-                resp = self.session.get(
-                    url, params=params, headers=merged, timeout=effective_timeout
-                )
+                if json_body is not None:
+                    resp = self.session.post(
+                        url, json=json_body, params=params, headers=merged,
+                        timeout=effective_timeout,
+                    )
+                else:
+                    resp = self.session.get(
+                        url, params=params, headers=merged, timeout=effective_timeout
+                    )
             except requests.RequestException as exc:
                 last_exc = exc
                 self.logger.warning(
