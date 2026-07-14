@@ -363,6 +363,17 @@ def scan_consensus_market(
     exhausted = (cur == cur) and (cur - hi > cfg.max_edge_paid)
     # signal ts = the latest participant entry (the moment consensus was complete)
     sig_ts = int(max(pos[w][t]["last_ts"] for t in [side_token] for w in side_wallets))
+    # Freshness gate (M6.5): a consensus completed long before the scan is stale
+    # by construction — pilot finding: 6-week-old consensus on resolved-favorite
+    # positions. No signal.
+    freshness_s = getattr(cfg, "freshness_window_days", 14) * _DAY
+    if as_of - sig_ts > freshness_s:
+        return None
+    # Absolute payoff-room ceiling (deviation-flagged in config): at 0.999 there
+    # is nothing left to win regardless of band run-up.
+    ceiling = getattr(cfg, "price_ceiling", 1.0)
+    if cur == cur and cur > ceiling:
+        return None
     return ConsensusSignal(
         condition_id="", signal_ts=sig_ts, side_token=side_token,
         n_participants=n_part, agreement=round(agreement, 4),
@@ -408,11 +419,18 @@ def evaluate_signal(
     market: ResolvedMarket,
     *,
     entry_lag_minutes: int,
+    entry_anchor_ts: int | None = None,
 ) -> SignalOutcome:
-    """Measure a signal at the OWNER's realistic entry (signal_ts + lag) against
-    the eventual resolution. Post-resolution info enters here only as the thing
-    predicted, never as a decision input."""
-    entry_ts = signal.signal_ts + entry_lag_minutes * 60
+    """Measure a signal at the OWNER's realistic entry against the eventual
+    resolution. Post-resolution info enters here only as the thing predicted,
+    never as a decision input.
+
+    ``entry_anchor_ts`` is the owner's INFORMATION time — the scan that surfaced
+    the signal. Entry = anchor + lag. Anchoring to signal_ts (when the whales'
+    consensus completed, possibly days earlier) would price the owner into a
+    moment he could not have known about."""
+    entry_ts = (entry_anchor_ts if entry_anchor_ts is not None else signal.signal_ts) \
+        + entry_lag_minutes * 60
     entry = price_at(fills, signal.side_token, at_ts=entry_ts)
     outcome = 1.0 if signal.side_token == market.winning_token else 0.0
     realized = (outcome - entry) if entry is not None else None
@@ -677,7 +695,9 @@ def replay(
     scan_cfg = type("ScC", (), {"participation_floor": participation_floor,
                                 "agreement_threshold": agreement_threshold,
                                 "max_edge_paid": max_edge_paid,
-                                "min_position_usdc": cfg.min_position_usdc})()
+                                "min_position_usdc": cfg.min_position_usdc,
+                                "freshness_window_days": cfg.freshness_window_days,
+                                "price_ceiling": cfg.price_ceiling})()
 
     outcomes: list[SignalOutcome] = []
     signalled: set[str] = set()
@@ -701,7 +721,8 @@ def replay(
             sig.condition_id = cid
             signalled.add(cid)
             outcomes.append(evaluate_signal(sig, md.fills, md.market,
-                                            entry_lag_minutes=cfg.entry_lag_minutes))
+                                            entry_lag_minutes=cfg.entry_lag_minutes,
+                                            entry_anchor_ts=date))
     return outcomes
 
 

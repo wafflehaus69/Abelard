@@ -31,6 +31,8 @@ class _Cfg:
     max_edge_paid = 0.10
     min_position_usdc = 500
     entry_lag_minutes = 30
+    freshness_window_days = 14
+    price_ceiling = 0.95
 
 
 CFG = _Cfg()
@@ -215,6 +217,50 @@ def test_scan_one_vote_per_wallet_largest_position():
     sig = scan_consensus_market(fills, ["a", "b", "c"], as_of=1_000_000,
                                 token_ids=(YES, NO), current_price_by_token={NO: 0.36}, cfg=CFG)
     assert sig is not None and sig.side_token == NO and sig.n_participants == 3
+
+
+def test_scan_freshness_gate_kills_stale_consensus():
+    """Pilot finding: a consensus completed weeks before the scan is stale by
+    construction (M6.5) — no signal, even if all other gates pass."""
+    scan_ts = 1_800_000_000
+    stale_ts = scan_ts - 20 * 86400   # 20 days before the scan (window 14d)
+    fills = _pos_fills([("a", YES, 0.30), ("b", YES, 0.31), ("c", YES, 0.32)], ts=stale_ts)
+    sig = scan_consensus_market(fills, ["a", "b", "c"], as_of=scan_ts,
+                                token_ids=(YES, NO), current_price_by_token={YES: 0.35}, cfg=CFG)
+    assert sig is None
+    # same consensus, formed 2 days before the scan -> fresh -> signal
+    fresh = _pos_fills([("a", YES, 0.30), ("b", YES, 0.31), ("c", YES, 0.32)],
+                       ts=scan_ts - 2 * 86400)
+    sig2 = scan_consensus_market(fresh, ["a", "b", "c"], as_of=scan_ts,
+                                 token_ids=(YES, NO), current_price_by_token={YES: 0.35}, cfg=CFG)
+    assert sig2 is not None
+
+
+def test_scan_price_ceiling_kills_no_room_signals():
+    """Pilot finding: a 0.99 'signal' has no payoff room regardless of band —
+    gated by the (deviation-flagged) absolute ceiling."""
+    fills = _pos_fills([("a", YES, 0.97), ("b", YES, 0.98), ("c", YES, 0.98)],
+                       ts=1_000_000 - 3600)
+    sig = scan_consensus_market(fills, ["a", "b", "c"], as_of=1_000_000,
+                                token_ids=(YES, NO), current_price_by_token={YES: 0.99}, cfg=CFG)
+    assert sig is None
+
+
+def test_evaluate_anchors_entry_to_scan_information_time():
+    """The owner learns of a signal at the SCAN; entry must be scan+lag, not the
+    (possibly much earlier) consensus-completion moment."""
+    from consensus.m0c import ConsensusSignal
+    sig = ConsensusSignal(condition_id="0xM", signal_ts=900_000, side_token=YES,
+                          n_participants=3, agreement=1.0, entry_band_lo=0.3,
+                          entry_band_hi=0.34, current_price=0.4, remaining_edge=0.0,
+                          exhausted=False, participants=["a"])
+    fills = [
+        _fill("x", YES, "BUY", 35, 100, 900_000 + 30 * 60 + 10),   # 0.35 near signal_ts+lag
+        _fill("y", YES, "BUY", 60, 100, 1_000_000 + 30 * 60 + 10), # 0.60 near scan+lag
+    ]
+    o = evaluate_signal(sig, fills, _market(win=YES), entry_lag_minutes=30,
+                        entry_anchor_ts=1_000_000)
+    assert o.entry_price == pytest.approx(0.60)   # scan-anchored, not signal-anchored
 
 
 def test_scan_positions_are_as_of():

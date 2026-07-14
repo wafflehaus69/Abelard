@@ -203,6 +203,15 @@ class M0CConfig(_Strict):
     entry_lag_minutes: int = Field(ge=0, default=30)
     rescan_cadence_days: int = Field(ge=1, default=7)
     min_position_usdc: float = Field(ge=0, default=500)
+    # M6 freshness: the consensus must have COMPLETED within this window of the
+    # scan (a consensus formed weeks ago at much lower prices is stale by
+    # construction — pilot finding: 6-week-old consensus on 99.9c favorites).
+    freshness_window_days: int = Field(ge=1, default=14)
+    # Absolute signal-price ceiling: above this there is no meaningful payoff
+    # room left to buy (pilot finding: 0.999-band "signals" earn millicents).
+    # DEVIATION-FLAG: not in v1.0 §M6 explicitly; supported by its remaining-
+    # edge rationale; architect to ratify.
+    price_ceiling: float = Field(gt=0, le=1, default=0.95)
     sweep: M0CSweep
     regime_slices: list[M0CRegimeSlice] = Field(default_factory=list)
 

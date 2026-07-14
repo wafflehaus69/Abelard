@@ -206,9 +206,13 @@ m0c:
   participation_floor: 4
   agreement_threshold: 0.75
   max_edge_paid: 0.10                # signal EXHAUSTED if price moved past entry band + this
-  entry_lag_minutes: 30             # owner-realistic fill lag (NOT the whales' entry)
+  entry_lag_minutes: 30             # owner-realistic fill lag from the SCAN (information time)
   rescan_cadence_days: 7
   min_position_usdc: 500            # a roster wallet must hold >=this to count as participating
+  # Pilot findings (2026-07-14): without these gates the mechanic "signals"
+  # 6-week-stale consensus on 99.9c favorites and earns millicents.
+  freshness_window_days: 14         # consensus must have completed within this window of the scan
+  price_ceiling: 0.95               # DEVIATION-FLAG: absolute payoff-room ceiling (architect to ratify)
   # Parameter sweep grid (M0-C deliverable). Each axis is a list; the harness
   # takes the product and reports expectancy per cell.
   sweep:

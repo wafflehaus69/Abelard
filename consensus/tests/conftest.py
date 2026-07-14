@@ -75,6 +75,8 @@ BASE_CONFIG: dict = {
         "entry_lag_minutes": 30,
         "rescan_cadence_days": 7,
         "min_position_usdc": 500,
+        "freshness_window_days": 14,
+        "price_ceiling": 0.95,
         "sweep": {
             "participation_floor": [3, 4],
             "agreement_threshold": [0.7, 0.8],
