@@ -92,6 +92,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=10)
     p.add_argument("--status", default=None, help="e.g. open, closed, settled.")
 
+    p = data_cmds.add_parser(
+        "subgraph",
+        help="L1 archival tape: walk on-chain fill events for a market or asset (deep history).",
+    )
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--market", help="Condition id: resolves clobTokenIds via gamma, walks both outcome tokens.")
+    g.add_argument("--asset", help="One ERC-1155 outcome-token id.")
+    p.add_argument("--since", type=int, default=None, help="timestamp_gte (unix seconds UTC).")
+    p.add_argument("--until", type=int, default=None, help="timestamp_lt (unix seconds UTC).")
+    p.add_argument("--max-records", type=int, default=None)
+    p.add_argument("--replay", action="store_true",
+                   help="Serve the walk from the response cache only (no network; loud on miss).")
+
     collect = groups.add_parser(
         "collect",
         help="M1.5 forward collector (L2). `run` is orchestrator-facing and always emits a JSON envelope.",
@@ -295,6 +308,51 @@ def cmd_trades(dl: DataLayer, args: argparse.Namespace) -> dict[str, Any]:
 
 def cmd_cache_stats(dl: DataLayer) -> dict[str, Any]:
     return {"kind": "data.cache_stats", **dl.cache.stats()}
+
+
+def cmd_subgraph(dl: DataLayer, args: argparse.Namespace) -> dict[str, Any]:
+    import json as _json
+
+    from .sources_polymarket import get_market_meta
+    from .sources_subgraph import paginate_order_filled
+
+    if args.market:
+        meta = get_market_meta(dl, args.market)
+        if meta is None:
+            return {"kind": "data.subgraph", "market": args.market, "found": False,
+                    "error": "market unknown to gamma (open and closed lookups empty)"}
+        try:
+            token_ids = [str(t) for t in _json.loads(meta.clob_token_ids or "[]")]
+        except (ValueError, TypeError):
+            token_ids = []
+        if not token_ids:
+            return {"kind": "data.subgraph", "market": args.market, "found": True,
+                    "error": "market has no clobTokenIds; cannot map to subgraph assets"}
+    else:
+        token_ids = [args.asset]
+
+    events, provenance = paginate_order_filled(
+        dl, asset_ids=token_ids, ts_gte=args.since, ts_lt=args.until,
+        max_records=args.max_records,
+    )
+    ts = [e.timestamp for e in events]
+    sample_n = 20
+    return {
+        "kind": "data.subgraph",
+        "market": args.market,
+        "asset_ids": token_ids,
+        "count": len(events),
+        "earliest_ts": min(ts) if ts else None,
+        "latest_ts": max(ts) if ts else None,
+        "provenance": provenance,
+        "sample_size": min(sample_n, len(events)),
+        "events": [
+            {"id": e.event_id, "ts": e.timestamp, "maker": e.maker, "taker": e.taker,
+             "maker_asset": e.maker_asset_id[-10:], "taker_asset": e.taker_asset_id[-10:],
+             "maker_amt": e.maker_amount_filled, "taker_amt": e.taker_amount_filled}
+            for e in events[:sample_n]
+        ],
+    }
 
 
 def cmd_positions(dl: DataLayer, args: argparse.Namespace) -> dict[str, Any]:
@@ -537,6 +595,10 @@ def _dispatch(dl: DataLayer, loaded: LoadedConfig, args: argparse.Namespace) -> 
         return cmd_kalshi(dl, args)
     if args.command == "cache-stats":
         return cmd_cache_stats(dl)
+    if args.command == "subgraph":
+        if args.replay:
+            dl.replay = True  # serve from the response cache; loud on miss
+        return cmd_subgraph(dl, args)
     raise ValueError(f"unknown command: {args.command}")
 
 

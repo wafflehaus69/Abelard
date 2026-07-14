@@ -30,6 +30,9 @@ BASE_CONFIG: dict = {
             "polymarket_clob_api": "https://clob.polymarket.com",
             "kalshi_api": "https://api.elections.kalshi.com/trade-api/v2",
             "etherscan_v2_api": "https://api.etherscan.io/v2/api",
+            "goldsky_subgraph": ("https://api.goldsky.com/api/public/"
+                                 "project_cl6mb8i9h0003e201j6li0diw/subgraphs/"
+                                 "orderbook-subgraph/prod/gn"),
         },
         "smoke": {
             "market_condition_id": "0xCID",
@@ -98,8 +101,29 @@ GAMMA_MARKETS = [
         "active": True, "closed": False,
         "startDate": "2026-07-10T16:00:31Z", "endDate": "2026-07-17T16:00:00Z",
         "description": "Resolves Yes if ...",
+        "clobTokenIds": '["111000111", "222000222"]',
     },
 ]
+
+SUBGRAPH_URL = ("https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw"
+                "/subgraphs/orderbook-subgraph/prod/gn")
+
+
+def subgraph_event(i: int, *, ts: int | None = None, asset: str = "111000111") -> dict:
+    return {
+        "id": f"0x{i:04x}tx_0x{i:04x}order", "timestamp": str(ts if ts is not None else 1000 + i),
+        "maker": f"0xMAKER{i}", "taker": "0xE111", "makerAssetId": "0",
+        "takerAssetId": asset, "makerAmountFilled": str(220_000 + i),
+        "takerAmountFilled": "1000000", "fee": "0",
+    }
+
+
+def subgraph_meta_body() -> dict:
+    return {
+        "_meta": {"block": {"number": 87_814_766}, "hasIndexingErrors": False},
+        "newest": [{"timestamp": "1777374040"}],
+        "oldest": [{"timestamp": "1669060209"}],
+    }
 
 KALSHI_ENV = {
     "cursor": "abc",

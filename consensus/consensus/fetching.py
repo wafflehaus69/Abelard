@@ -17,9 +17,17 @@ The two invariants every fetcher inherits:
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable
+
+
+def json_dumps_safe(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return repr(value)
 
 import requests
 from abelard_common.http_client import (
@@ -169,6 +177,78 @@ class DataLayer:
                 http_status=200,
             )
         return body
+
+    def fetch_graphql(
+        self,
+        *,
+        source: str,
+        url: str,
+        query: str,
+        variables: dict[str, Any] | None = None,
+        persist: bool = True,
+    ) -> Any:
+        """POST one GraphQL query; return the ``data`` object. Same cache/replay
+        discipline as :meth:`fetch` — the cache key is (source, endpoint="",
+        params={query, variables}), so an as-of replay re-serves the exact
+        response for the exact query.
+
+        GraphQL failure quirk handled loudly: servers return HTTP 200 with an
+        ``errors`` array (and possibly partial ``data``). That is a failed
+        query, not data — it raises and is never cached as a good response.
+        """
+        params: dict[str, Any] = {"query": query}
+        if variables:
+            params["variables"] = variables
+
+        if self.replay:
+            cached = self.cache.latest(source=source, endpoint="", params=params, as_of=self.as_of)
+            if cached is None:
+                raise DataLayerError(
+                    f"replay cache miss for {source} graphql query as_of={self.as_of}",
+                    source=source,
+                )
+            body = cached.body
+        else:
+            try:
+                body = self.http.post_json(url, json_body=params)
+            except NotFound as exc:
+                raise DataLayerError(
+                    self._scrub(f"{source} graphql: not found ({exc})"), source=source
+                ) from exc
+            except RateLimited as exc:
+                raise DataLayerError(
+                    self._scrub(f"{source} graphql: rate limited ({exc})"), source=source
+                ) from exc
+            except TransportError as exc:
+                raise DataLayerError(
+                    self._scrub(f"{source} graphql: transport error ({exc})"), source=source
+                ) from exc
+            except ValueError as exc:
+                raise DataLayerError(
+                    self._scrub(f"{source} graphql: invalid JSON in 2xx response ({exc})"),
+                    source=source,
+                ) from exc
+
+        if not isinstance(body, dict):
+            raise DataLayerError(
+                f"{source} graphql: expected an object, got {type(body).__name__}",
+                source=source,
+            )
+        if body.get("errors"):
+            raise DataLayerError(
+                self._scrub(f"{source} graphql: server returned errors: "
+                            f"{json_dumps_safe(body['errors'])[:400]}"),
+                source=source,
+            )
+        data = body.get("data")
+        if data is None:
+            raise DataLayerError(f"{source} graphql: response has no data object", source=source)
+
+        if not self.replay and persist:
+            self.cache.store(
+                source=source, endpoint="", params=params, body=body, http_status=200
+            )
+        return data
 
     def parse_records(
         self,

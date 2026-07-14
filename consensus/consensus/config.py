@@ -47,6 +47,7 @@ class EndpointsConfig(_Strict):
     polymarket_clob_api: str
     kalshi_api: str
     etherscan_v2_api: str
+    goldsky_subgraph: str
 
 
 class SmokeConfig(_Strict):

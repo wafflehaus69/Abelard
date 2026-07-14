@@ -288,6 +288,9 @@ class MarketMeta:
     start_date: str | None = None
     end_date: str | None = None
     description: str | None = None
+    # JSON-string list of the two ERC-1155 outcome-token ids — kept verbatim
+    # (decoded by callers that need it). The join key to the L1 subgraph.
+    clob_token_ids: str | None = None
 
     @classmethod
     def from_api(cls, d: dict[str, Any]) -> "MarketMeta | None":
@@ -322,6 +325,7 @@ class MarketMeta:
             start_date=_opt_str(d.get("startDate")),
             end_date=_opt_str(d.get("endDate")),
             description=_opt_str(d.get("description")),
+            clob_token_ids=_opt_str(d.get("clobTokenIds")),
         )
 
 
@@ -430,4 +434,64 @@ class Erc20Transfer:
             token_decimals=decimals,
             contract_address=(_opt_str(d.get("contractAddress")) or "").lower() or None,
             value_normalized=normalized,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Goldsky subgraph (L1 archival tape) — on-chain order-fill events
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class OrderFilledEvent:
+    """One ``orderFilledEvent`` from the L1 orderbook subgraph.
+
+    These are the raw on-chain fill events (one per maker order touched, so a
+    taker sweep emits several; a fill appears once per side with the two
+    complementary events sharing a transaction). Amounts are RAW integer
+    6-decimal USDC-scale values — deliberately not converted or interpreted
+    here: price/size/side derivation is M0 analysis logic, not parsing.
+
+    ``event_id`` is ``<transactionHash>_<orderHash>`` — the subgraph's unique
+    key and the id_gt pagination cursor.
+    """
+
+    event_id: str
+    timestamp: int
+    maker: str
+    taker: str
+    maker_asset_id: str
+    taker_asset_id: str
+    maker_amount_filled: int
+    taker_amount_filled: int
+    fee: int | None = None
+
+    @property
+    def transaction_hash(self) -> str:
+        return self.event_id.split("_", 1)[0]
+
+    @classmethod
+    def from_api(cls, d: dict[str, Any]) -> "OrderFilledEvent | None":
+        event_id = _opt_str(d.get("id"))
+        ts = _opt_int(d.get("timestamp"))
+        maker = _opt_str(d.get("maker"))
+        taker = _opt_str(d.get("taker"))
+        maker_asset = _opt_str(d.get("makerAssetId"))
+        taker_asset = _opt_str(d.get("takerAssetId"))
+        maker_amt = _opt_int(d.get("makerAmountFilled"))
+        taker_amt = _opt_int(d.get("takerAmountFilled"))
+        if not (event_id and maker and taker) or ts is None:
+            return None
+        if maker_asset is None or taker_asset is None or maker_amt is None or taker_amt is None:
+            return None
+        return cls(
+            event_id=event_id,
+            timestamp=ts,
+            maker=maker.lower(),
+            taker=taker.lower(),
+            maker_asset_id=maker_asset,
+            taker_asset_id=taker_asset,
+            maker_amount_filled=maker_amt,
+            taker_amount_filled=taker_amt,
+            fee=_opt_int(d.get("fee")),
         )

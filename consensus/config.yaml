@@ -49,6 +49,10 @@ data_layer:
     # Standalone Polygonscan V1 (api.polygonscan.com) was sunset 2025-08-15 and
     # now 301-redirects to the migration docs — verified dead 2026-07-10.
     etherscan_v2_api: "https://api.etherscan.io/v2/api"
+    # L1 archival tape: Polymarket orderbook subgraph (public, keyless GraphQL).
+    # Frozen at the ~2026-04-28 exchange-contract migration with a COMPLETE
+    # tape from 2022-11-21 to the boundary (verified 2026-07-12).
+    goldsky_subgraph: "https://api.goldsky.com/api/public/project_cl6mb8i9h0003e201j6li0diw/subgraphs/orderbook-subgraph/prod/gn"
 
   # Known-good identifiers used by `consensus data smoke` (verified live
   # 2026-07-10). Override on the CLI with --market/--wallet/--kalshi-limit.
