@@ -49,6 +49,34 @@ def _market(win=YES, res_ts=1_000_000):
                           token_ids=(YES, NO), category="geopolitics")
 
 
+def test_sweep_decision_regime_decay_guard():
+    """A cell that is aggregate-positive but whose signals decay to zero in the
+    most-recent regime must be NO-GO (v1.2 §4), not GO — the M0-C headline."""
+    from consensus.m0c import _sweep_decision
+    cells = [{"tradeable": 23, "mean_realized_edge": 0.106}]  # aggregate positive
+    # latest regime (last) empty -> decay -> NO-GO
+    regimes_decay = [
+        {"name": "2025-H1", "tradeable": 22, "mean_realized_edge": 0.092},
+        {"name": "2025-H2", "tradeable": 1, "mean_realized_edge": 0.42},
+        {"name": "2026-JanApr", "tradeable": 0, "mean_realized_edge": None},
+    ]
+    go, decay, npos, basis = _sweep_decision(cells, regimes_decay, entry_lag_minutes=30)
+    assert go is False and decay is True and "DECAYED" in basis
+
+    # latest regime fires positive -> genuine GO
+    regimes_stable = [
+        {"name": "2025-H1", "tradeable": 22, "mean_realized_edge": 0.092},
+        {"name": "2026-JanApr", "tradeable": 12, "mean_realized_edge": 0.05},
+    ]
+    go2, decay2, _, _ = _sweep_decision(cells, regimes_stable, entry_lag_minutes=30)
+    assert go2 is True and decay2 is False
+
+    # no positive cells at all -> NO-GO, not a decay label
+    go3, decay3, _, basis3 = _sweep_decision(
+        [{"tradeable": 2, "mean_realized_edge": 0.1}], regimes_decay, entry_lag_minutes=30)
+    assert go3 is False and decay3 is False and "not demonstrable" in basis3
+
+
 def test_sweep_precompute_matches_naive_replay():
     """The optimized (precomputed) replay must produce OUTCOME-IDENTICAL results
     to the naive per-cell path — the sweep's speedup must not change a number."""

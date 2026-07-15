@@ -803,6 +803,39 @@ def run_universe(dl: DataLayer, loaded: LoadedConfig) -> dict[str, Any]:
     return build_universe(dl, loaded)
 
 
+def _sweep_decision(
+    cells: list[dict[str, Any]], regimes: list[dict[str, Any]], *, entry_lag_minutes: int
+) -> tuple[bool, bool, int, str]:
+    """GO / NO-GO with a regime-decay guard (v1.2 §4).
+
+    A cell is 'positive' with >=10 tradeable signals at positive mean edge. But
+    an aggregate positive is a STALE ARTIFACT if the signals live only in old
+    regimes and the most-recent slice (last in config order — closest to the
+    live platform) is empty or negative. Aggregating across regimes masks decay,
+    so a naive 'any positive cell -> GO' mislabels a mechanic whose edge has
+    already vanished. Returns (go, regime_decay, n_positive, basis)."""
+    positive = [c for c in cells if (c.get("tradeable") or 0) >= 10
+                and (c.get("mean_realized_edge") or 0) > 0]
+    latest = regimes[-1] if regimes else None
+    latest_fires = bool(latest and (latest.get("tradeable") or 0) >= 1
+                        and (latest.get("mean_realized_edge") or 0) > 0)
+    regime_decay = bool(positive) and not latest_fires
+    go = bool(positive) and not regime_decay
+    if go:
+        basis = (f"{len(positive)} sweep cell(s) show positive expectancy at >=10 tradeable "
+                 f"signals and realistic +{entry_lag_minutes}min entry, and the most-recent "
+                 f"regime slice ({latest['name']}) also fires positive")
+    elif regime_decay:
+        basis = (f"{len(positive)} cell(s) show aggregate positive expectancy, but the signals "
+                 f"are confined to older regimes — the most-recent slice ({latest['name']}) is "
+                 f"empty/negative. The edge has DECAYED; the aggregate is a stale artifact "
+                 f"(v1.2 §4). Not tradeable on the current regime.")
+    else:
+        basis = ("no sweep cell shows positive expectancy at a non-trivial sample; on this "
+                 "data/window the edge is not demonstrable (necessary-not-sufficient)")
+    return go, regime_decay, len(positive), basis
+
+
 def run_sweep(
     dl: DataLayer, loaded: LoadedConfig, *, limit_markets: int | None = None,
     min_volume: float = 0.0, max_volume: float | None = None,
@@ -847,19 +880,18 @@ def run_sweep(
                       max_edge_paid=cfg.max_edge_paid)
         regimes.append({"name": rs.name, "markets": len(md_slice), **summarize_outcomes(outs)})
 
-    positive = [c for c in cells if c["tradeable"] and c["tradeable"] >= 10
-                and c["mean_realized_edge"] and c["mean_realized_edge"] > 0]
+    go, regime_decay, n_positive, basis = _sweep_decision(
+        cells, regimes, entry_lag_minutes=cfg.entry_lag_minutes)
+
     report = {
         "kind": "m0c.sweep",
         "markets_loaded": load_info["markets"], "markets_failed": load_info["failed"],
         "limit_markets": limit_markets, "entry_lag_minutes": cfg.entry_lag_minutes,
         "total_realized_edges": len(edges),
-        "decision": "GO" if positive else "NO-GO",
-        "decision_basis": (
-            f"{len(positive)} sweep cell(s) show positive expectancy at >=10 tradeable "
-            f"signals and realistic +{cfg.entry_lag_minutes}min entry" if positive else
-            "no sweep cell shows positive expectancy at a non-trivial sample; on this "
-            "data/window the edge is not demonstrable (necessary-not-sufficient)"),
+        "decision": "GO" if go else "NO-GO",
+        "regime_decay": regime_decay,
+        "positive_cells": n_positive,
+        "decision_basis": basis,
         "best_cell": best,
         "cells": sorted(cells, key=lambda c: -(c["mean_realized_edge"] or -9)),
         "regime_slices": regimes,
