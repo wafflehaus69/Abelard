@@ -12,7 +12,8 @@
 # native Windows: venvs here use bin/, not Scripts/.)
 #
 # Usage:
-#   scripts/setup.sh                  set up common + every daemon (reuse existing venvs)
+#   scripts/setup.sh                  set up common + every daemon + abelard_queue
+#                                     (reuse existing venvs)
 #   scripts/setup.sh --force          delete and recreate each venv from scratch
 #   scripts/setup.sh --test           install + run each package's pytest (FAIL-LOUD)
 #   scripts/setup.sh --check          ONLY import-smoke existing venvs (fast drift check)
@@ -75,7 +76,18 @@ if [ "${#ONLY[@]}" -gt 0 ]; then
 else
   TARGETS=(common)
   while IFS= read -r d; do TARGETS+=("$d"); done < <(discover)
+  # Top-level packages (not under daemons/): the GATE 2 consumer. Abelard's
+  # side of the alert path — Phase 5 launchd runs it, so it provisions here.
+  TARGETS+=(abelard_queue)
 fi
+
+# --- name -> package dir (daemons live under daemons/; some packages are top-level) ---
+pkg_dir() {
+  case "$1" in
+    abelard_queue) echo "$REPO_ROOT/abelard_queue" ;;
+    *)             echo "$DAEMONS_DIR/$1" ;;
+  esac
+}
 
 # --- import-smoke (anti-drift): PROVE the deps import, not just that pip ran ----------
 critical_deps() {
@@ -84,6 +96,9 @@ critical_deps() {
   # (so a plain package import would NOT catch them). Empty = rely on the package import.
   case "$1" in
     chatter_daemon) echo "curl_cffi anthropic reportlab" ;;
+    # The consumer module is NOT imported by the package __init__ (daemons must
+    # never pull it in transitively) — smoke it, and the queue primitive, explicitly.
+    abelard_queue)  echo "abelard_queue.consumer abelard_common.alert_queue requests" ;;
     *) echo "" ;;
   esac
 }
@@ -110,9 +125,10 @@ smoke_imports() {
 
 # --- set up one package: venv -> (common editable, unless this IS common) -> self --
 setup_one() {
-  local name="$1" dir="$DAEMONS_DIR/$1" venv py
+  local name="$1" dir venv py
+  dir="$(pkg_dir "$1")"
   if [ ! -f "$dir/pyproject.toml" ]; then
-    echo "!! $name: no pyproject.toml under daemons/ — skipping" >&2
+    echo "!! $name: no pyproject.toml at $dir — skipping" >&2
     return 0
   fi
   venv="$dir/.venv"
@@ -186,6 +202,7 @@ cat <<'EOF'
 >> done.
    Run a daemon:   daemons/<name>/.venv/bin/python -m <name> ...
    e.g.            daemons/chatter_daemon/.venv/bin/python -m chatter_daemon scan --all
+   Abelard's consumer (GATE 2): abelard_queue/.venv/bin/abelard-queue run
 
    Secrets: daemons that need keys read a gitignored .env beside their pyproject.
    chatter_daemon needs FINNHUB_API_KEY + ANTHROPIC_API_KEY:
