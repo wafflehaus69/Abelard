@@ -288,15 +288,20 @@ class ConsensusSignal:
 
 
 def _positions_as_of(
-    fills: list[Fill], roster: set[str], *, as_of: int, min_usdc: float
+    fills: list[Fill], roster: set[str] | None, *, as_of: int, min_usdc: float
 ) -> dict[str, dict[str, dict[str, float]]]:
-    """roster wallet -> token -> {net_tokens, capital, vwap} from fills <= as_of."""
+    """wallet -> token -> {net_tokens, capital, vwap} from fills <= as_of.
+
+    ``roster=None`` aggregates ALL wallets (used by the sweep's per-(market,date)
+    precompute, which is then filtered to each cell's roster — the min_usdc gate
+    is per-position and roster-independent, so precompute-then-filter is
+    identical to computing a roster directly)."""
     agg: dict[tuple[str, str], dict[str, float]] = defaultdict(
         lambda: {"buy_usdc": 0.0, "buy_tok": 0.0, "sell_usdc": 0.0, "sell_tok": 0.0,
                  "last_ts": 0.0}
     )
     for f in fills:
-        if f.wallet not in roster or f.timestamp > as_of:
+        if (roster is not None and f.wallet not in roster) or f.timestamp > as_of:
             continue
         a = agg[(f.wallet, f.token_id)]
         if f.side == "BUY":
@@ -335,6 +340,21 @@ def scan_consensus_market(
     band by more than ``max_edge_paid``."""
     roster_set = set(roster)
     pos = _positions_as_of(fills, roster_set, as_of=as_of, min_usdc=cfg.min_position_usdc)
+    return _signal_from_positions(pos, as_of=as_of, token_ids=token_ids,
+                                  current_price_by_token=current_price_by_token, cfg=cfg)
+
+
+def _signal_from_positions(
+    pos: dict[str, dict[str, dict[str, float]]],
+    *,
+    as_of: int,
+    token_ids: tuple[str, ...],
+    current_price_by_token: dict[str, float],
+    cfg: Any,
+) -> ConsensusSignal | None:
+    """The vote + gate logic, given already-aggregated roster positions. Split
+    out of :func:`scan_consensus_market` so the sweep can feed it precomputed,
+    roster-filtered positions instead of re-scanning fills for every param cell."""
     # each wallet votes for its largest net-long token in THIS market
     votes: dict[str, list[str]] = defaultdict(list)   # token -> wallets
     entries: dict[str, list[float]] = defaultdict(list)
@@ -669,6 +689,43 @@ def _last_price_before(fills: list[Fill], as_of: int) -> dict[str, float]:
     return {tok: px for tok, (_ts, px) in last.items()}
 
 
+@dataclass
+class SweepPrecompute:
+    """Param-independent inputs computed ONCE and reused across every sweep cell:
+    per-date wallet scores, and per-(market_index, date) all-wallet positions +
+    last-price. Turns the sweep's dominant cost from O(cells x dates x fills) into
+    O(dates x fills) precompute + O(cells x dates x roster) cheap filtering."""
+
+    scores_by_date: dict[int, dict[str, "WalletScore"]]
+    positions: dict[tuple[int, int], dict[str, dict[str, dict[str, float]]]]
+    price: dict[tuple[int, int], dict[str, float]]
+
+
+def build_sweep_precompute(
+    market_data: list["MarketData"], *, cfg: Any, edges: list[WalletMarketEdge]
+) -> SweepPrecompute:
+    """One O(dates x fills) pass: per-date scores + per-(market,date) all-wallet
+    positions and last-price. A market contributes to a date only while unresolved
+    and with fills before it (same skips as the scan loop)."""
+    score_cfg = type("SkC", (), {"decay_half_life_days": cfg.decay_half_life_days,
+                                 "min_resolved_trades": cfg.min_resolved_trades})()
+    dates = _rescan_dates(cfg)
+    scores_by_date = {d: score_wallets(edges, as_of=d, cfg=score_cfg) for d in dates}
+    positions: dict[tuple[int, int], dict[str, dict[str, dict[str, float]]]] = {}
+    price: dict[tuple[int, int], dict[str, float]] = {}
+    for mi, md in enumerate(market_data):
+        for d in dates:
+            if md.market.resolution_ts <= d:
+                continue
+            pbt = _last_price_before(md.fills, d)
+            if not pbt:
+                continue
+            price[(mi, d)] = pbt
+            positions[(mi, d)] = _positions_as_of(
+                md.fills, None, as_of=d, min_usdc=cfg.min_position_usdc)
+    return SweepPrecompute(scores_by_date=scores_by_date, positions=positions, price=price)
+
+
 def replay(
     market_data: list["MarketData"],
     *,
@@ -678,6 +735,7 @@ def replay(
     agreement_threshold: float,
     max_edge_paid: float,
     precomputed_edges: list[WalletMarketEdge] | None = None,
+    precomputed: "SweepPrecompute | None" = None,
 ) -> list[SignalOutcome]:
     """One parameter cell: as-of roster + consensus scan across the rescan ladder,
     first-signal-per-market dedup, realistic-entry outcome eval. Zero lookahead.
@@ -701,21 +759,36 @@ def replay(
 
     outcomes: list[SignalOutcome] = []
     signalled: set[str] = set()
-    for date in _rescan_dates(cfg):
-        scores = score_wallets(edges, as_of=date, cfg=score_cfg)
+    dates = _rescan_dates(cfg)
+    for date in dates:
+        # Param-independent per date: wallet scores. Reused across cells when a
+        # ``precomputed`` bundle is supplied (the sweep path).
+        scores = (precomputed.scores_by_date[date] if precomputed
+                  else score_wallets(edges, as_of=date, cfg=score_cfg))
         roster = build_roster(scores, k=k)
         if not roster:
             continue
-        for md in market_data:
+        roster_set = set(roster)
+        for mi, md in enumerate(market_data):
             cid = md.market.condition_id
             if cid in signalled or md.market.resolution_ts <= date:
                 continue
-            price_by_token = _last_price_before(md.fills, date)
-            if not price_by_token:
-                continue
-            sig = scan_consensus_market(
-                md.fills, roster, as_of=date, token_ids=md.market.token_ids,
-                current_price_by_token=price_by_token, cfg=scan_cfg)
+            if precomputed:
+                price_by_token = precomputed.price.get((mi, date))
+                if not price_by_token:   # market absent from precompute = no price/resolved
+                    continue
+                allpos = precomputed.positions[(mi, date)]
+                pos = {w: allpos[w] for w in roster_set if w in allpos}
+                sig = _signal_from_positions(
+                    pos, as_of=date, token_ids=md.market.token_ids,
+                    current_price_by_token=price_by_token, cfg=scan_cfg)
+            else:
+                price_by_token = _last_price_before(md.fills, date)
+                if not price_by_token:
+                    continue
+                sig = scan_consensus_market(
+                    md.fills, roster, as_of=date, token_ids=md.market.token_ids,
+                    current_price_by_token=price_by_token, cfg=scan_cfg)
             if sig is None or sig.exhausted:
                 continue
             sig.condition_id = cid
@@ -744,6 +817,10 @@ def run_sweep(
     for md in market_data:
         edges.extend(wallet_edges(md.fills, md.market, mm_two_sided_frac=cfg.mm_two_sided_frac))
 
+    # Precompute the param-independent scan inputs ONCE (per-date scores +
+    # per-(market,date) positions/prices), reused across all sweep cells.
+    precomp = build_sweep_precompute(market_data, cfg=cfg, edges=edges)
+
     sw = cfg.sweep
     cells: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
@@ -751,7 +828,8 @@ def run_sweep(
         sw.participation_floor, sw.agreement_threshold, sw.circle_size_k, sw.max_edge_paid
     ):
         outs = replay(market_data, cfg=cfg, k=k, participation_floor=pf,
-                      agreement_threshold=ag, max_edge_paid=mep, precomputed_edges=edges)
+                      agreement_threshold=ag, max_edge_paid=mep,
+                      precomputed_edges=edges, precomputed=precomp)
         summ = summarize_outcomes(outs)
         cell = {"participation_floor": pf, "agreement_threshold": ag, "circle_size_k": k,
                 "max_edge_paid": mep, **summ}

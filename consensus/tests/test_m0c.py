@@ -49,6 +49,58 @@ def _market(win=YES, res_ts=1_000_000):
                           token_ids=(YES, NO), category="geopolitics")
 
 
+def test_sweep_precompute_matches_naive_replay():
+    """The optimized (precomputed) replay must produce OUTCOME-IDENTICAL results
+    to the naive per-cell path — the sweep's speedup must not change a number."""
+    from consensus.m0c import (MarketData, ResolvedMarket, replay, wallet_edges,
+                               build_sweep_precompute)
+
+    class Cfg:
+        decay_half_life_days = 90
+        min_resolved_trades = 1
+        mm_two_sided_frac = 0.35
+        min_position_usdc = 100
+        entry_lag_minutes = 30
+        freshness_window_days = 3650   # don't gate on freshness in this fixture
+        price_ceiling = 0.999
+        replay_start_ts = 1_000_000
+        replay_end_ts = 1_000_000 + 30 * 86400
+        rescan_cadence_days = 7
+
+    # Two resolved markets; several wallets build converging positions over time.
+    def mk(cid, win, res, fills):
+        return MarketData(market=ResolvedMarket(condition_id=cid, resolution_ts=res,
+                          winning_token=win, token_ids=(YES, NO), category="geopolitics"),
+                          fills=fills, question=None)
+    base = 1_000_000 + 3 * 86400
+    m1 = mk("0xA", YES, 1_000_000 + 40 * 86400, [
+        _fill("w1", YES, "BUY", 5000, 20000, base),
+        _fill("w2", YES, "BUY", 6000, 24000, base + 3600),
+        _fill("w3", YES, "BUY", 7000, 28000, base + 7200),
+        # a later fill to create price history
+        _fill("w4", YES, "BUY", 1000, 3000, base + 10 * 86400),
+    ])
+    m2 = mk("0xB", NO, 1_000_000 + 40 * 86400, [
+        _fill("w1", NO, "BUY", 5000, 12000, base + 8 * 86400),
+        _fill("w2", NO, "BUY", 5000, 12000, base + 8 * 86400 + 3600),
+        _fill("w5", NO, "BUY", 5000, 12000, base + 8 * 86400 + 7200),
+    ])
+    md = [m1, m2]
+    cfg = Cfg()
+    edges = []
+    for m in md:
+        edges.extend(wallet_edges(m.fills, m.market, mm_two_sided_frac=cfg.mm_two_sided_frac))
+    pre = build_sweep_precompute(md, cfg=cfg, edges=edges)
+
+    for k, pf, ag, mep in [(15, 3, 0.75, 0.10), (10, 2, 0.6, 0.05), (25, 4, 0.8, 0.2)]:
+        naive = replay(md, cfg=cfg, k=k, participation_floor=pf, agreement_threshold=ag,
+                       max_edge_paid=mep, precomputed_edges=edges)
+        fast = replay(md, cfg=cfg, k=k, participation_floor=pf, agreement_threshold=ag,
+                      max_edge_paid=mep, precomputed_edges=edges, precomputed=pre)
+        assert [o.__dict__ for o in naive] == [o.__dict__ for o in fast], (
+            f"precompute diverged from naive at k={k} pf={pf} ag={ag} mep={mep}")
+
+
 # -- resolution parsing --------------------------------------------------------
 
 
