@@ -18,9 +18,11 @@ warned about).
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..synthesize.config import AlertSinkConfig
+from .abelard_queue_sink import AbelardQueueSink
 from .signal_sink import SignalSink
 from .sink import AlertSink
 from .telegram_bot_sink import TelegramBotSink
@@ -72,9 +74,17 @@ def build_alert_sink(config: AlertSinkConfig) -> AlertSink:
             timeout_s=tg_config.timeout_s,
         )
 
+    if sink_type == "abelard_queue":
+        # GATE 2 enqueue-only sink. The env var (name from config) may
+        # override the DB path; construction never touches the network.
+        aq_config = config.abelard_queue
+        raw_path = os.environ.get(aq_config.db_path_env, "").strip()
+        db_path = Path(raw_path or aq_config.db_path_default).expanduser()
+        return AbelardQueueSink(db_path=db_path)
+
     raise AlertSinkFactoryError(
         f"unknown alert_sink.type {sink_type!r}; "
-        f"expected 'signal' or 'telegram_bot'"
+        f"expected 'signal', 'telegram_bot', or 'abelard_queue'"
     )
 
 

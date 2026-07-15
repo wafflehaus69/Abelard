@@ -103,11 +103,26 @@ class TelegramBotSinkConfig(BaseModel):
     timeout_s: float = Field(default=30.0, gt=0)
 
 
+class AbelardQueueSinkConfig(BaseModel):
+    """AbelardQueueSink configuration (GATE 2 enqueue-only sink).
+
+    `db_path_env` is an env-var NAME, not a value — same discipline as
+    TelegramBotSinkConfig. The factory resolves it at construction
+    time; `db_path_default` applies when the env var is unset/empty.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    db_path_env: str = "ABELARD_QUEUE_DB_PATH"
+    db_path_default: str = "~/.openclaw/abelard_queue/queue.db"
+
+
 class AlertSinkConfig(BaseModel):
     """Top-level alert-sink configuration.
 
-    `type` selects which sink the factory instantiates: "signal" or
-    "telegram_bot".
+    `type` selects which sink the factory instantiates: "signal",
+    "telegram_bot", or "abelard_queue". GATE 2 (2026-07-14): the deploy
+    config pins "abelard_queue" — daemons enqueue, Abelard dispatches.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -115,6 +130,7 @@ class AlertSinkConfig(BaseModel):
     type: str = "signal"
     signal: SignalSinkConfig = Field(default_factory=SignalSinkConfig)
     telegram_bot: TelegramBotSinkConfig = Field(default_factory=TelegramBotSinkConfig)
+    abelard_queue: AbelardQueueSinkConfig = Field(default_factory=AbelardQueueSinkConfig)
 
 
 # ---------- synthesis (Pass C Step 8 — materiality + Step 9 — model) ----------
@@ -240,6 +256,7 @@ def load_synthesis_config(path: Path) -> SynthesisDaemonConfig:
 
 
 __all__ = [
+    "AbelardQueueSinkConfig",
     "AlertSinkConfig",
     "DriftWatcherConfig",
     "SignalSinkConfig",

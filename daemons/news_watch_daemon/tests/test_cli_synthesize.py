@@ -200,14 +200,15 @@ def _patch_alert_sink(monkeypatch, sink: _FakeSink) -> None:
 
 
 def test_alert_sink_test_success(env, capsys, monkeypatch):
-    sink = _FakeSink(success=True, channel="signal")
+    sink = _FakeSink(success=True, channel="abelard_queue")
     _patch_alert_sink(monkeypatch, sink)
     rc = main(["alert-sink", "test"])
     payload = _read_envelope(capsys)
     assert rc == 0
     assert payload["data"]["success"] is True
-    assert payload["data"]["channel"] == "signal"
-    assert payload["data"]["sink_type"] == "signal"
+    assert payload["data"]["channel"] == "abelard_queue"
+    # sink_type echoes the YAML — GATE 2 pins the enqueue-only sink
+    assert payload["data"]["sink_type"] == "abelard_queue"
     # Test brief was constructed + dispatched.
     assert sink.last_brief is not None
     assert "self-test" in sink.last_brief.narrative

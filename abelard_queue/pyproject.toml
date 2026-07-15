@@ -1,0 +1,31 @@
+[project]
+name = "abelard-queue"
+version = "0.1.0"
+description = "ABELARD's side of the GATE 2 alert path: triage (explicit rules, then Haiku) + Telegram dispatch over the abelard_queue durable alert queue. Daemons only ever enqueue (via abelard_common.alert_queue); this package is the single component allowed to dispatch externally. Advisory pipeline plumbing; the queue schema itself lives in abelard-common."
+requires-python = ">=3.12"
+# abelard-common (the queue primitive) is a monorepo editable install, not a
+# published package — install it FIRST: pip install -e ../daemons/common
+dependencies = [
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+abelard-queue = "abelard_queue.consumer:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["abelard_queue*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+pythonpath = ["."]

@@ -87,9 +87,18 @@ trigger_gate:
 
 
 alert_sink:
-  # Which sink the factory instantiates. Currently "signal" only;
-  # Step 7 will land TelegramBotSink and "telegram_bot" becomes valid.
-  type: signal
+  # Which sink the factory instantiates. GATE 2 (2026-07-14): daemons
+  # never dispatch externally — "abelard_queue" persists each alert as
+  # a structured queue item; Abelard owns materiality and Telegram
+  # dispatch (abelard_common.alert_queue_consumer). "signal" and
+  # "telegram_bot" remain buildable for tests / explicit rollback.
+  type: abelard_queue
+
+  abelard_queue:
+    # Env-var NAME for the queue DB path (names-not-values discipline,
+    # same as telegram_bot below) + the fallback when unset.
+    db_path_env: ABELARD_QUEUE_DB_PATH
+    db_path_default: "~/.openclaw/abelard_queue/queue.db"
 
   signal:
     # The ONLY allowed destination. The destination-validation gate

@@ -103,7 +103,7 @@ class Dispatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     alerted: bool
-    channel: Optional[Literal["signal", "telegram_bot"]] = None
+    channel: Optional[Literal["signal", "telegram_bot", "abelard_queue"]] = None
     suppressed_reason: Optional[str] = None
 
 

@@ -8,7 +8,7 @@ Conforms to the `AlertSink` Protocol structurally — no inheritance is
 required because the protocol is `@runtime_checkable`.
 
 NOT a production sink. Brief.dispatch.channel is constrained to
-Literal["signal", "telegram_bot"] in the schema; NullSink declares
+Literal["signal", "telegram_bot", "abelard_queue"] in the schema; NullSink declares
 channel="null" which would fail that validation if persisted. Tests
 that exercise the orchestrator's brief-archiving path use a real
 sink-shaped fixture rather than NullSink for the channel field.

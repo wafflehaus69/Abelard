@@ -15,12 +15,13 @@ Channel-name discipline:
     string). The orchestrator uses it for logging and for picking
     the right sink instance when multiple are wired.
   - `Brief.dispatch.channel` is the persisted channel field, a
-    closed Literal["signal", "telegram_bot"] in the schema. Mapping
-    happens at the orchestrator layer when writing the Brief.
+    closed Literal["signal", "telegram_bot", "abelard_queue"] in the
+    schema. Mapping happens at the orchestrator layer when writing
+    the Brief.
   - `DispatchResult.channel` is the sink-side echo of what it
     delivered to — also a free string. Production sinks return
-    "signal" or "telegram_bot" matching the Brief schema; the test
-    NullSink returns "null".
+    "signal", "telegram_bot", or "abelard_queue" matching the Brief
+    schema; the test NullSink returns "null".
 """
 
 from __future__ import annotations

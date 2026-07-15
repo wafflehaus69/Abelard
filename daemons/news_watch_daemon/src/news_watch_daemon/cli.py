@@ -2045,13 +2045,30 @@ def _handle_doctor(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
         ok, detail = _check_writable_dir(p)
         add(f"writable:{label}", "ok" if ok else "error", detail)
 
-    # --- external binaries (non-blocking; only alert dispatch depends on them) ---
-    sig = shutil.which("signal-cli")
-    add("signal-cli", "ok" if sig else "warn",
-        sig or "not on PATH — alert dispatch fails (briefs still archived)")
-    jav = shutil.which("java")
-    add("java", "ok" if jav else "warn",
-        jav or "not on PATH — signal-cli needs a Java runtime")
+    # --- alert sink prerequisites (sink-aware; GATE 2 default is the
+    # abelard_queue enqueue-only sink, which needs no external binary) ---
+    synth_cfg, synth_err = _load_synthesis_config_for_cli(cfg)
+    sink_type = synth_cfg.alert_sink.type if synth_cfg else "unknown"
+    if synth_err:
+        err_detail = (synth_err.get("error_detail")
+                      if isinstance(synth_err, dict) else str(synth_err))
+        add("alert_sink", "warn",
+            f"synthesis config unreadable ({err_detail}); sink checks skipped")
+    else:
+        add("alert_sink", "ok", f"type={sink_type}")
+    if sink_type == "abelard_queue" and synth_cfg is not None:
+        aq = synth_cfg.alert_sink.abelard_queue
+        raw = os.environ.get(aq.db_path_env, "").strip() or aq.db_path_default
+        queue_dir = Path(raw).expanduser().parent
+        ok, detail = _check_writable_dir(queue_dir)
+        add("writable:abelard_queue_dir", "ok" if ok else "error", detail)
+    if sink_type == "signal":
+        sig = shutil.which("signal-cli")
+        add("signal-cli", "ok" if sig else "warn",
+            sig or "not on PATH — alert dispatch fails (briefs still archived)")
+        jav = shutil.which("java")
+        add("java", "ok" if jav else "warn",
+            jav or "not on PATH — signal-cli needs a Java runtime")
 
     # --- DB schema + active themes (blocking) ---
     conn = connect(cfg.db_path)

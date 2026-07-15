@@ -1,0 +1,13 @@
+# Normalize every text file to LF — in the index AND on checkout — so a
+# Windows-side tool (editor, OneDrive, autocrlf) can never CRLF-churn the
+# tree again. Added at the GATE 2 diff separation (2026-07-14) after
+# consensus/ showed pure line-ending churn under `git diff` (empty at -w).
+* text=auto eol=lf
+
+# These four were committed WITH CRLF before this file existed. Pinned
+# as -text so they do not show as perpetually modified; renormalize them
+# in a dedicated commit (`git add --renormalize .`) if/when Mando chooses.
+.claude/CLAUDE.md -text
+daemons/chatter_daemon/tests/fixtures/sentiment_BLZE.json -text
+daemons/chatter_daemon/tests/fixtures/sentiment_PLTR.json -text
+daemons/chatter_daemon/tests/fixtures/sentiment_XOVR.json -text
