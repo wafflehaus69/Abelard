@@ -464,7 +464,32 @@ def test_twitter_band_renders_stance_and_summary():
     assert "TWITTER" in html and "39 tweets" in html
     assert "17 bull / 3 bear / 19 neutral" in html                 # stance in the band
     assert "commentary" in html and "Bulls tout AI demand" in html  # the <=3-sentence summary
-    assert "02:11-12:51 UTC" in html                                # observed span
+    assert "[02:11-12:51 UTC]" in html                              # observed span, same-day -> compact, no marker
+
+
+def test_twitter_band_span_marks_cross_day_windows():
+    """Order 17: the observed-window span is compact HH:MM-HH:MM when the surviving tweets
+    share a UTC date, but gains a '+Nd' marker when they straddle midnight. The Twitter
+    `--since` is a bare date, so survivors cross into later days; without the marker a
+    prior-day earliest reads backwards against a same-day latest (e.g. '15:02-13:43').
+    Display-only — earliest/latest on the record stay full, correctly-ordered ISO."""
+    from chatter_daemon.report import _twitter_band_html
+    from chatter_daemon.schema import ObservedWindow
+
+    def span(earliest, latest):
+        return _twitter_band_html(_wsig(
+            "twitter", count=12, sentiment=_sent(method="haiku", b=4, r=2, n=6),
+            observed_window=ObservedWindow(earliest=earliest, latest=latest),
+        ))
+
+    # same UTC date -> compact, no marker
+    assert "[02:11-12:51 UTC]" in span("2026-07-09T02:11:00+00:00", "2026-07-09T12:51:00+00:00")
+    # straddles one midnight -> '+1d' so a 15:02 prior-day earliest doesn't read after 13:43
+    assert "[15:02-13:43 +1d UTC]" in span("2026-07-08T15:02:00+00:00", "2026-07-09T13:43:00+00:00")
+    # a full 7d window spanning a week -> '+7d' (the marker generalizes past +1d)
+    assert "[09:00-08:00 +7d UTC]" in span("2026-07-02T09:00:00+00:00", "2026-07-09T08:00:00+00:00")
+    # crosses a month boundary -> date math is real (not a string compare): Jun 30 -> Jul 01
+    assert "[23:50-00:20 +1d UTC]" in span("2026-06-30T23:50:00+00:00", "2026-07-01T00:20:00+00:00")
 
 
 def test_twitter_band_none_when_no_signal():

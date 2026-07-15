@@ -374,6 +374,24 @@ def _social_band_html(s) -> str | None:
     return None
 
 
+def _observed_span(ow) -> str:
+    """The surviving-tweet window rendered compactly for the Twitter band. Same-day
+    survivors read as plain `HH:MM-HH:MM`; when they straddle UTC midnight (the Twitter
+    `--since` is a bare date, so survivors can cross into later days) a `+Nd` marker is
+    appended — e.g. an earliest of 15:02 the prior day against a 13:43 latest renders
+    `15:02-13:43 +1d`, not a reversed-looking `15:02-13:43`. N generalizes past 1 (a 7d
+    scan can span a full week). Display-only: earliest/latest on the record stay full,
+    correctly-ordered ISO. Parse failure degrades to the bare time span (never crashes the
+    render), matching eastern_stamp's defensive posture."""
+    span = f"{ow.earliest[11:16]}-{ow.latest[11:16]}"
+    try:
+        days = (datetime.fromisoformat(ow.latest[:10]).date()
+                - datetime.fromisoformat(ow.earliest[:10]).date()).days
+    except (ValueError, TypeError):
+        return span
+    return f"{span} +{days}d" if days else span
+
+
 def _twitter_band_html(s) -> str | None:
     """The Twitter band (Order 18), rendered UNDER the StockTwits band: the crowd read
     (N tweets + bull/bear/neutral stance colored by direction + the surviving-tweet time
@@ -396,7 +414,7 @@ def _twitter_band_html(s) -> str | None:
         head = f'<b>TWITTER</b>  {n} tweets'
     ow = getattr(s, "observed_window", None)
     if ow is not None:
-        head += f'  <font color="{_MUTED}">[{ow.earliest[11:16]}-{ow.latest[11:16]} UTC]</font>'
+        head += f'  <font color="{_MUTED}">[{_observed_span(ow)} UTC]</font>'
     if summary:
         head += f'<br/><font color="{_MUTED}">commentary &middot;</font> {escape(summary)}'
     return head
