@@ -51,6 +51,12 @@ Neither factor is sufficient alone (latency: ~9% base rate; M0-F: 16 FP). Their 
 
 **Plausibly deployable as an alert product — with latency integrated as a factor, not standalone.** At the operating point above, the footprint detector produces ~5 dossiers for the most extraordinary geopolitical week of the year, of which 1 is a reported insider and 4 are the most insider-like unlabelled wallets (some of which, per the labels caveat, may be genuine unreported insiders). Per v1.3 §2's framing — a dossier product with human review — 5 dossiers is a tolerable load, and the 4× FP reduction over fill-factors-alone is the concrete value the chain data added.
 
+## 4a. Mandatory caveats (addendum v1.5 §2)
+
+1. **In-sample calibration.** Both thresholds in the conjunction (composite 0.45, latency 5 min) were tuned on the *same single labeled event* they are evaluated against — n=1 event, n=6 labels. The 4× FP reduction is a real **in-sample** result; its out-of-sample validity is **unknown until a second labeled event exists**. This is the difference between "validated detector" and "calibrated once."
+2. **Recall is unchanged: 1/6 at CRITICAL.** The conjunction sharpens *precision*; it does not recover the cluster. The full-cluster recall gap remains open, and factor **A (CLOB aggression, M8) is the remaining designed remedy**. "4× FP reduction" must not be read as "detector solved."
+3. **FP-count reconciliation (11 vs 16).** M0-F's report quoted **11 FP** at a *single* as-of (−30h / 02-27 00:00Z: 12 CRITICAL wallets, 1 labeled); this cross-analysis quotes **16 FP** using **best-composite-across-the-full-6-point ladder** (17 wallets ≥0.45, 1 labeled), which accumulates any wallet that crossed 0.45 at *any* point in the window. Same detector, different aggregation; the 4× conjunction reduction is measured on the ladder-max set (16→4).
+
 ## 5. Caveats (Rule 1)
 
 - **Labels are a worst-case bound on precision.** The 4–16 "false positives" are unlabelled, not confirmed-innocent; some tight-latency high-composite wallets in a war-onset week may be genuinely informed and simply never reported. Measured precision is a *lower* bound on true precision.

@@ -82,6 +82,10 @@ Operationally this matters because **M10 is an alert-only intelligence product w
 
 **Early peaking is a feature, not a bug.** `0x1caa` scores highest at −30h and decays toward the event — because the detector is loudest exactly when the informational edge is freshest and the wallet's stake is largest relative to the still-thin market. That is the desired shape. (For the live scan, that decay must be handled by tier **latching**, not alert retraction — see §7.)
 
+## 5a. In-sample caveat (addendum v1.5 §2.1)
+
+The recommended calibration (`CRITICAL=0.45`, cross-market off) was tuned on the **same single labeled event** it is evaluated against — n=1 event, n=6 labels. Every threshold here is an **in-sample** fit; out-of-sample validity is unknown until a second labeled event exists. Treat these numbers as "calibrated once," not "validated." (The M5 latency conjunction, docs/m5_report.md, shares this caveat.)
+
 ## 6. Caveats (Rule 1)
 
 - **Attribution is maker-side** (a wallet's own orders each emit an event with `maker`=owner; validated exact against `0x1caa`). Pure-taker sweep fills *may* be under-attributed under one possible event model — a recall risk to confirm with CLOB data in M8.
