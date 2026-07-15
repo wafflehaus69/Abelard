@@ -76,6 +76,13 @@ class DataLayer:
     replay: bool = False
     as_of: str | None = None
     rate_limits: RateLimitCounter | None = None
+    # Resume mode: in LIVE fetches, serve a cached response if one exists instead
+    # of re-fetching. Correct ONLY for immutable sources (the frozen L1 subgraph
+    # tape) — cached == fresh forever there. It makes a long pull resumable across
+    # a network drop: re-run, already-walked pages return from cache, only the
+    # un-walked tail hits the wire. Honored by fetch_graphql only (the subgraph
+    # path); fetch() over the mutable data-api never prefers cache.
+    prefer_cache: bool = False
 
     @property
     def endpoints(self):  # convenience
@@ -200,6 +207,7 @@ class DataLayer:
         if variables:
             params["variables"] = variables
 
+        served_from_cache = False
         if self.replay:
             cached = self.cache.latest(source=source, endpoint="", params=params, as_of=self.as_of)
             if cached is None:
@@ -208,6 +216,15 @@ class DataLayer:
                     source=source,
                 )
             body = cached.body
+            served_from_cache = True
+        elif self.prefer_cache and (
+            hit := self.cache.latest(source=source, endpoint="", params=params)
+        ) is not None:
+            # Resume mode: for the frozen subgraph a cache hit is authoritative —
+            # use it without touching the wire so an interrupted pull resumes from
+            # where it died. Flows through the same validation/extraction below.
+            body = hit.body
+            served_from_cache = True
         else:
             try:
                 body = self.http.post_json(url, json_body=params)
@@ -244,7 +261,7 @@ class DataLayer:
         if data is None:
             raise DataLayerError(f"{source} graphql: response has no data object", source=source)
 
-        if not self.replay and persist:
+        if not served_from_cache and persist:
             self.cache.store(
                 source=source, endpoint="", params=params, body=body, http_status=200
             )

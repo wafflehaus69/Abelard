@@ -132,6 +132,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-volume", type=float, default=None,
                    help="Volume-band cap (USDC) — skip mega-markets whose full history is infeasible to walk.")
     p.add_argument("--replay", action="store_true", help="Serve all fetches from cache (offline).")
+    p.add_argument("--resume", action="store_true",
+                   help="Resume a partial live pull: serve already-cached L1 pages from cache "
+                        "(frozen tape — cached==fresh) and only fetch the un-walked tail. "
+                        "Survives a network drop mid-pull.")
 
     m0f = groups.add_parser(
         "m0f",
@@ -714,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
             elif args.command == "sweep":
                 if args.replay:
                     dl.replay = True
+                if args.resume:
+                    dl.prefer_cache = True   # frozen L1: cached==fresh, resume the pull
                 summary = run_sweep(dl, loaded, limit_markets=args.limit_markets,
                                     min_volume=args.min_volume, max_volume=args.max_volume)
             else:

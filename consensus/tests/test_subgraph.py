@@ -182,6 +182,32 @@ def test_deep_slice_replay_reproduces_walk_exactly(dl, requests_mock):
     assert replay_prov == live_prov
 
 
+def test_prefer_cache_resumes_without_refetch(dl, requests_mock):
+    """Resume mode: a cache HIT is served from cache (no wire), a MISS fetches
+    live — so an interrupted frozen-tape pull resumes from where it died."""
+    m = requests_mock.post(SUBGRAPH_URL, [
+        _meta_response(),
+        {"json": _events_body([subgraph_event(1)])},
+    ])
+    # First live pass populates the cache.
+    paginate_order_filled(dl, asset_ids=["A"], page_size=3)
+    calls_after_first = m.call_count
+
+    # Resume: prefer_cache -> the identical queries return from cache, zero new calls.
+    dl.prefer_cache = True
+    events, prov = paginate_order_filled(dl, asset_ids=["A"], page_size=3)
+    assert m.call_count == calls_after_first   # no re-fetch
+    assert len(events) == 1
+
+    # A NEW slice (cache miss) still fetches live in resume mode. The meta query
+    # is already cached (served from cache), so only the events-B query hits the
+    # wire — mock just the events response.
+    m2 = requests_mock.post(SUBGRAPH_URL, json=_events_body([subgraph_event(2)]))
+    ev2, _ = paginate_order_filled(dl, asset_ids=["B"], page_size=3)
+    assert m2.call_count == 1     # fetched the un-cached tail live
+    assert len(ev2) == 1
+
+
 def test_replay_miss_on_different_slice_is_loud(dl, requests_mock):
     requests_mock.post(SUBGRAPH_URL, [
         _meta_response(),

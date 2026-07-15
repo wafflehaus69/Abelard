@@ -17,17 +17,25 @@ With data-api out, the choice is market-centric-L1 vs wallet-centric-L1:
 - **Wallet-centric-L1** still requires a *seed* of candidate wallets, which can only come from seeing market participants — i.e. walking markets. It does not remove the fundamental L1 walk, only reorders it, and adds a token→market remap per wallet. No clear cost win.
 - **Market-centric-L1** is already built (the M0-C pull), bounded, and reuses proven machinery.
 
-## Finding 3 — the mid-band universe is bounded and walkable
+## Finding 3 — the mid-band universe is bounded (mega-markets excluded)
 
-The mid-band (v1.4 §5 scope limit: excludes mega-markets for tractability):
+The 200k–3M volume cap **automatically excludes** the unwalkable mega-markets ($400M Trump, $269M Iran) — the exact exclusion v1.4 §5.1 mandated. Mid-band markets in target categories (geopolitics/politics/economy) ended within the replay window.
 
-- **348 markets** in target categories (geopolitics/politics/economy), volume 200k–3M, ended within the replay window. Median volume ~$500k (vs the Iran cluster's $89M anchor).
-- The 200k–3M cap **automatically excludes** the unwalkable mega-markets ($400M Trump, $269M Iran) — the exact exclusion v1.4 §5.1 mandated.
-- Cost estimate: the M0-F pull was 114 markets / 996k events in ~15 min, dominated by a few mega-markets. 348 mid-band markets (all smaller than the Iran anchor) is ~1–1.5M events — a comparable, bounded background batch, rate-instrumented, every response cached.
+## Finding 4 — CORRECTED: the cost was badly underestimated; the pull is NOT one-session-feasible
 
-## Decision
+Two numbers in the first draft of this doc were wrong, both discovered when the run was launched:
 
-**Run market-centric L1 over the 348 mid-band markets.** No new access pattern; the existing `m0c pull` machinery scales to it as a background batch.
+1. **Market count: ~3,692, not 348.** The "348" came from a probe that capped enumeration at 6 pages/tag; the full mid-band universe is **~3,692 markets**.
+2. **Fill volume per market: ~20× the M0-F estimate.** The M0-F pull used the *2-week* Feb-28 window; M0-C walks the *full 10-month* replay window, so each market carries ~20× more fills. The cost is dominated by fills-over-time, not market count.
+
+**Outcome of the launched run:** the market-centric L1 pull ran **>2.5 hours**, cached **12.6 GB / ~14.6M fills across 935 completed markets**, then **died on a network outage** (goldsky DNS resolution failure) — the machine-availability fragility the architect flagged, realized. The pull is **not resumable as built** (live mode re-fetches; only replay reads cache), so a restart would redo everything.
+
+**This vindicates v1.4 §5's "full-tape L1 walks are slow" concern more strongly than this assessment first credited.** A complete powered pull of the full mid-band is a multi-session, resumability-dependent operation, not a background batch.
+
+## Decision (revised)
+
+1. **Salvage the completed work:** run the sweep in **replay** over the 935 markets that completed (partially-walked markets fail cleanly and drop — no silent truncation), bounded to a tractable subset (300 markets, 12× the pilot) for sweep compute. This yields a **genuinely powered verdict** without any further network exposure.
+2. **Engineering follow-up (needed for any full run):** add a *prefer-cache* fetch mode for the frozen L1 subgraph so the pull is **resumable** across network drops (cached == fresh for an immutable archival source). Without it, the machine's fragility makes a full 3,692-market pull impractical.
 
 **Scope-limit statements for the eventual M0-C report (v1.4 §5, restated):**
 1. **Mega-markets are excluded for tractability** — the verdict is scoped to the mid-volume band and may not generalize to the highest-liquidity markets (which could be more efficient → less edge, or more informed → more edge; this run cannot tell).
