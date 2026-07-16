@@ -52,22 +52,26 @@ Why would a consensus signal be present in spring 2025 and gone by 2026?
 
 ## 4b. Gate-attribution — WHY zero signals in 2026 (addendum v1.6 §2)
 
-The decisive question: are the 2026 zeros **World A** (convergences still happen but the remaining-edge gate kills them — price already moved, edge arbitraged, mechanic honestly dead) or **World B** (the circle went quiet — participation floor kills, a re-bootstrapped current-regime circle might revive it)? Instrumented the best-cell roster over the 2026-Jan–Apr slice (474 markets × 70 rescan dates = 26,438 (market,date) evaluations), recording the first-failing gate:
+The decisive question: are the 2026 zeros **World A** (convergences happen but the remaining-edge gate kills them — edge arbitraged, mechanic honestly dead) or **World B** (participation fails — a current-regime re-bootstrap might revive it)?
 
-| first-failing gate | count | share |
-|---|---|---|
-| no_price_history (market not trading at that date) | 23,434 | 88.6% |
-| no_roster_position | 2,858 | 10.8% |
-| participation_floor | 146 | 0.6% |
-| agreement | 0 | — |
-| **remaining-edge (exhausted)** | **0** | — |
-| **SIGNAL** | **0** | — |
+> **CORRECTION (2026-07-15).** An earlier draft of this section concluded "World B, the roster collapsed to ~1 wallet." **That was wrong — a bug in the first diagnostic**, which mis-built the as-of roster. The corrected diagnostic mirrors the validated `replay()` path exactly (real roster via the sweep precompute), and a separate roster-supply reconciliation confirms it. The corrected findings replace it below. The top-line NO-GO is unchanged; only the *mechanism* changed.
 
-Restricting to evaluations where the market was actually trading (had price history), ~95% fail at **no-roster-position**, ~5% at **participation floor**, and **zero ever reach a convergence** (participation + agreement). **Zero remaining-edge kills.**
+**Fact 1 — the roster is HEALTHY in 2026, not collapsed.** Eligible-wallet supply grows monotonically: 281 (2025-05) → 3,963 (2026-01) → **7,983 (2026-04)**; the top-K roster is full (15/25) throughout, and the 15th-best wallet carries **+45% edge** by 2026-04. There is no circle collapse.
 
-**Verdict: World B, unambiguously.** There is *no* World-A signal at all — no convergence is ever arbitraged away, because no convergence forms. The mechanism is a **collapse of the winners circle**: the roster shrank to **~1 wallet** by 2026. This is not an always-tiny-roster artifact — 2025-H1 produced 22 convergences, which requires a substantial circle then. The circle is present and converging in spring 2025 and **gone by 2026**.
+**Fact 2 — censoring is ruled out.** Roster supply by trade *resolution* (the real as-of roster) vs by trade *placement* (a censoring-free upper bound) converges from 14× (early 2025, lots of unresolved recent bets) to **1.0× by 2026-04**. Near the freeze there is a huge resolved history, so right-censoring barely thins the 2026 roster.
 
-**Consequence for the L2 confirmation pass (positive):** because the failure is "no current circle," not "convergences arrive too late," the September L2 re-test is a **genuine second chance** — a circle bootstrapped from current-regime L2 data (with full market coverage, unlike this network-truncated backtest) directly targets the failure mode. *Caveat:* the roster collapse may be partly exacerbated by the network-truncated 935/3,692 universe (fewer 2026 markets/wallets to score a circle from); the full L2 archive will not have this truncation, so the effect may be less severe live.
+**Fact 3 — the real mechanism is DISPERSAL, not collapse.** Correct gate-attribution over the 2026-Jan–Apr slice (best cell, real roster median size 25) — roster-wallet co-participation per trading market:
+
+| roster wallets holding a position in the same market | (market,date) evals |
+|---|---|
+| 0 | 2,858 |
+| 1 | 141 |
+| 2 | **5** |
+| **≥3 (participation floor)** | **0** |
+
+The 25 skilled wallets exist and are strong, but they **almost never hold positions in the same 2026 market** — ≥3 on one market happens *zero* times, so no convergence ever forms. In 2025-H1 the same mechanic produced 22 convergences; by 2026 the circle members have **gone their separate ways across a much larger market set**. Kill distribution confirms: 0 remaining-edge kills, 0 convergences. Still **not World A** (nothing is arbitraged, because nothing converges) — but the cause is dispersal, not a vanished circle.
+
+**Consequence for the L2 confirmation pass — tempered, not a clean green light (v1.8 §2–3).** Dispersal is visible in **Jan–Apr 2026, before the June split** — so whatever spread the circle apart was already operating pre-split, and the split adds a second, permanent thinning (US sharps migrated off international Polymarket). That is the architect's mechanism **(c) — real, possibly-persistent dispersal**, the one that makes September a formality. *However*, two confounds prevent asserting (c) cleanly: the 2026 universe here is **network-truncated (935/3,692)** and **horizon-biased** (median 3 days to resolution — only fast-resolving markets appear before the freeze; docs §4b-supply). Co-participation is therefore **under-measured** — roster wallets may converge on markets absent from this sample. **Net:** the data leans toward real dispersal (c), but the truncation/horizon confounds keep it from being conclusive. Per v1.8 §3's decision rule, September is downgraded from "genuine second chance" to **"run it, but expect a formality,"** and the **cross-venue spread (v1.7 §3) rises to the primary forward hope**, not a parallel one. The full L2 archive (complete market coverage, forward resolution) is what would actually distinguish dispersal-real from sampling-artifact.
 
 ## 5. Verdict and consequence
 
