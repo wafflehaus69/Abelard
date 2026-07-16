@@ -157,6 +157,25 @@ rss_feeds:
     feed_id: bloomberg_economics
   - url: https://feeds.bloomberg.com/markets/news.rss
     feed_id: bloomberg_markets
+  # ---- NW-SRC-2 additions (2026-07-15) ----
+  # Placement organizational only (global fetch-dedup by feed_id + global
+  # tagging). General-markets / macro intake home.
+  #
+  # WSJ via Google News site: proxy — OPTIONAL recall tier, Mando greenlit
+  # 2026-07-15. Live recon (2026-07-15): ~98 items/24h, strongest fed/macro
+  # coverage of the site: proxies (fed 11, energy 10). Headline-only
+  # (paywalled bodies). Distinct publisher angle on rates/macro vs the
+  # Reuters/AP wires. Query verbatim from raw/gn_site_wsj_com.json.
+  - url: "https://news.google.com/rss/search?q=when%3A24h%20site%3Awsj.com&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_wsj
+  # Yahoo Finance rssindex — keyless general-markets feed, alive as of recon
+  # (contrary to the historical "deprecated" prior). Headline-only (0% body).
+  # CAVEAT: freshness is inconsistent — recon saw ~47 items/24h (median 0.6h)
+  # but the NW-SRC-2 re-verify saw only 4 within 24h (median 33h). It goes
+  # stale silently (200 + old items). Kept as low-cost broad recall; a
+  # freshness assertion is the flagged optional-hardening follow-up.
+  - url: https://finance.yahoo.com/news/rssindex
+    feed_id: yahoo_rssindex
 
 telegram_channels:
   - username: CIG_telegram

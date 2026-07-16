@@ -48,7 +48,7 @@ def _insert(conn, *, hid: str, headline: str, ts: int = NOW - 1000,
     )
 
 
-def _seed_crossing_term(conn, term: str = "hormuz", count: int = 12) -> None:
+def _seed_crossing_term(conn, term: str = "hormuz", count: int = 16) -> None:
     """Insert `count` headlines containing only `term` so it's the only crossing
     candidate. Single-word headlines avoid polluting with other tokens that
     would also cross the threshold."""
@@ -147,7 +147,7 @@ def test_run_attention_no_crossings_returns_candidates(tmp_path):
 
 def test_run_attention_one_crossing_calls_llm_and_archives(tmp_path):
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     sink = NullSink()
     client = _FakeClient(_VALID_LLM_RESPONSE)
 
@@ -175,11 +175,34 @@ def test_run_attention_one_crossing_calls_llm_and_archives(tmp_path):
     assert Path(outcome.archive_path).exists()
 
 
+def test_run_attention_collapses_convergent_crossings(tmp_path):
+    """One story described by several adjacent phrases: each bigram crosses the
+    floor, but they share the identical cluster -> collapse to ONE LLM call."""
+    conn = _make_conn()
+    for i in range(16):
+        _insert(conn, hid=f"iran-{i}",
+                headline="attacks iran hormuz tensions rise blockade",
+                ts=NOW - 100 - i)
+    client = _FakeClient(_VALID_LLM_RESPONSE)
+    result = run_attention(
+        conn=conn, now_unix=NOW, stopwords=frozenset(),
+        anthropic_client=client, model="m", max_tokens=2048,
+        archive_root=tmp_path / "archive", sink=None,
+    )
+    # Several phrases crossed, but only ONE synthesis call (one per_term outcome).
+    assert result.crossings_evaluated > 1
+    assert len(result.per_term) == 1
+    outcome = result.per_term[0]
+    assert outcome.success is True
+    # The other converged phrases are recorded as merged into this call.
+    assert len(outcome.merged_terms) == result.crossings_evaluated - 1
+
+
 def test_run_attention_llm_parse_failure_recorded_as_error(tmp_path):
     """Malformed JSON from the LLM → per_term failure, cycle continues
     without crashing. archive write does NOT happen for this term."""
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     client = _FakeClient("not json at all")
 
     result = run_attention(
@@ -204,7 +227,7 @@ def test_run_attention_invalid_attention_shape_fails_loud(tmp_path):
         "attention_shape": "made_up_shape_not_in_literal",
     })
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     client = _FakeClient(bad_response)
 
     result = run_attention(
@@ -222,7 +245,7 @@ def test_run_attention_dispatch_failure_still_archives_brief(tmp_path):
     """If the sink rejects, the brief stays on disk and the per_term outcome
     records dispatch_success=False; success itself is still True (archive worked)."""
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     sink = NullSink(fail_next=True, fail_error="simulated transport failure")
     client = _FakeClient(_VALID_LLM_RESPONSE)
 
@@ -241,7 +264,7 @@ def test_run_attention_dispatch_failure_still_archives_brief(tmp_path):
 def test_run_attention_skips_dispatch_when_sink_is_none(tmp_path):
     """sink=None → archive happens but dispatch is bypassed entirely."""
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     client = _FakeClient(_VALID_LLM_RESPONSE)
 
     result = run_attention(
@@ -256,7 +279,7 @@ def test_run_attention_skips_dispatch_when_sink_is_none(tmp_path):
 
 def test_run_attention_records_token_telemetry(tmp_path):
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     client = _FakeClient(_VALID_LLM_RESPONSE)
 
     result = run_attention(
@@ -307,7 +330,7 @@ def test_run_attention_window_hours_default_24_backwards_compat(tmp_path):
     (scrape's auto-attention, standalone `attention` CLI) against any
     accidental signature change in Full Brief downstream."""
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     client = _FakeClient(_VALID_LLM_RESPONSE)
     result = run_attention(
         conn=conn, now_unix=NOW, stopwords=frozenset(),
@@ -323,7 +346,7 @@ def test_run_attention_window_hours_6_plumbs_through(tmp_path):
     count_terms which sizes the live + prior windows accordingly."""
     conn = _make_conn()
     # All seeded headlines within the last few hundred seconds, well inside 6h
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     client = _FakeClient(_VALID_LLM_RESPONSE)
     result = run_attention(
         conn=conn, now_unix=NOW, stopwords=frozenset(),
@@ -335,8 +358,9 @@ def test_run_attention_window_hours_6_plumbs_through(tmp_path):
     assert result.window_until_unix == NOW
     assert result.prior_since_unix == NOW - 12 * 3600
     assert result.prior_until_unix == NOW - 6 * 3600
-    # Crossing still fires: all 12 headlines are within the 6h window,
-    # so 'hormuz' hits ≥10 threshold (which stays absolute per Q4 Option A).
+    # Crossing still fires: all 16 headlines are within the 6h window,
+    # so 'hormuz' clears the window-floor (15 as of NW-SRC-4), which stays
+    # absolute per Q4 Option A.
     assert result.crossings_evaluated == 1
     assert result.per_term[0].term == "hormuz"
 
@@ -345,7 +369,7 @@ def test_run_attention_window_hours_48_plumbs_through(tmp_path):
     """`window_hours=48` → run result reports 48h windows. Validates the
     parameterization works in the >24h direction too."""
     conn = _make_conn()
-    _seed_crossing_term(conn, term="hormuz", count=12)
+    _seed_crossing_term(conn, term="hormuz", count=16)
     client = _FakeClient(_VALID_LLM_RESPONSE)
     result = run_attention(
         conn=conn, now_unix=NOW, stopwords=frozenset(),

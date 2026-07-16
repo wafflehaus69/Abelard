@@ -219,11 +219,17 @@ def build_user_prompt(
     window_since_iso: str,
     window_until_iso: str,
     cluster: list[ClusterHeadline],
+    also_surfaced_terms: list[str] | None = None,
 ) -> str:
     """Build the per-run user-message text. NOT cached.
 
     Volatile content: triggering term + frequency stats + the cluster of
     headlines containing the term. Re-rendered every attention call.
+
+    `also_surfaced_terms`, when set, names the other threshold-crossing phrases
+    whose headline clusters converged with this one (same event). It tells the
+    model this is ONE story that surfaced under several phrasings, so the
+    narrative is unified rather than fragmentary.
     """
     sections: list[str] = []
 
@@ -232,6 +238,12 @@ def build_user_prompt(
     sections.append(f"Window count (24h): {term_frequency_window}")
     sections.append(f"Prior count (prior 24h): {term_frequency_prior}")
     sections.append(f"Window: {window_since_iso} -> {window_until_iso}")
+    if also_surfaced_terms:
+        sections.append(
+            "Also crossed the attention gate under converging phrasings of the "
+            f"same story: {', '.join(also_surfaced_terms)}. Treat this as ONE "
+            "event and synthesize it once."
+        )
     sections.append("")
 
     sections.append("[CLUSTER]")
@@ -271,6 +283,7 @@ def build_messages_payload(
     window_since_iso: str,
     window_until_iso: str,
     cluster: list[ClusterHeadline],
+    also_surfaced_terms: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the `system` + `messages` kwargs for `client.messages.create()`.
 
@@ -292,6 +305,7 @@ def build_messages_payload(
                     window_since_iso=window_since_iso,
                     window_until_iso=window_until_iso,
                     cluster=cluster,
+                    also_surfaced_terms=also_surfaced_terms,
                 ),
             },
         ],

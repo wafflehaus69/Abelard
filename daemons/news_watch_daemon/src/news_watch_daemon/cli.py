@@ -1133,6 +1133,7 @@ def _handle_scrape(args: argparse.Namespace, cfg: Config) -> dict[str, Any]:
             themes=themes,
             tracked_tickers=tracked_tickers,
             cross_source_log_path=cfg.cross_source_log_path,
+            ingest_filter_log_path=cfg.filtered_log_path,
             translation_credentials=translation_credentials,
             translation_source=translation_source,
             translation_batch_size=translation_batch_size,

@@ -212,6 +212,17 @@ rss_feeds:
     feed_id: cointelegraph_tokenization
   - url: https://cointelegraph.com/rss/tag/regulation
     feed_id: cointelegraph_regulation
+  # ---- NW-SRC-2 addition (2026-07-15) ----
+  # Google News topic-query — the NW-SRC-1 fix for this theme's chronic
+  # starvation. Live recon (2026-07-15): 100 items/24h, 86 tagged to
+  # tokenized_finance_infrastructure by the real matcher, median age ~4h,
+  # keyless. Source-diverse (CoinDesk, Crypto Briefing, CryptoRank, Pluang,
+  # ledgerinsights) and weighted to stablecoin/RWA/payments-rails/settlement,
+  # complementing the cointelegraph tag feeds above. Query verbatim from
+  # raw/google_news_topic_tokenized.json. Placement is organizational only
+  # (global fetch-dedup by feed_id; global tagging). robots-gray, keyless.
+  - url: "https://news.google.com/rss/search?q=%28stablecoin%20OR%20tokenization%20OR%20%22tokenized%22%20OR%20%22real-world%20assets%22%20OR%20%22payment%20rails%22%20OR%20USDC%29%20when%3A24h&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_tokenized
 
 telegram_channels:
   - username: CIG_telegram

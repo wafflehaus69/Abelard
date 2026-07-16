@@ -2,7 +2,7 @@
 
 Pass E spec (build brief, 2026-05-26): a term crosses signal-over-noise iff
 
-    count(window) >= 10  AND  count(prior_window) < 3
+    count(window) >= COLD_START_WINDOW_MIN  AND  count(prior_window) < COLD_START_PRIOR_MAX
 
 This is the COLD-START rule. A standard-deviation baseline rule (Definition
 A from the design discussion) is a future pass once 30+ days of data exist.
@@ -21,7 +21,18 @@ from dataclasses import dataclass
 from .counter import TermCounts
 
 
-COLD_START_WINDOW_MIN = 10
+# NW-SRC-4 amends the NW-SRC-3 floor 12 -> 15 (Mando's call). Accepted
+# casualties drop to near-miss (still surfaced in the frequency diagnostic,
+# NOT silently lost): PayPal (11), tokenization (10), SpaceX (8), Hochul (8),
+# BlackRock (12). This is safe because the theme layer now homes those exact
+# names: capital_markets captures SpaceX/PayPal/BlackRock (IPO/M&A/AUM) and
+# ai_capex/tokenized capture tokenization/Hochul-datacenter — the higher floor
+# removes low-volume single-names from the (per-term, expensive) attention pass
+# while the theme segments give them a durable home. The suffix strip (Fix 1) +
+# stoplists (Fix 2) remain the real noise separators; the floor is the trim.
+# (History: NW-SRC-3 raised 10 -> 12; NW-SRC-4 raised 12 -> 15.) PRIOR_MAX
+# unchanged.
+COLD_START_WINDOW_MIN = 15
 COLD_START_PRIOR_MAX = 3
 
 
@@ -52,7 +63,8 @@ class CandidateTerm:
 def evaluate_threshold(counts: TermCounts) -> list[CrossingTerm]:
     """Return terms that cross the cold-start gate, ordered desc by window count.
 
-    Cold-start rule: `count(window) >= 10 AND count(prior_window) < 3`. Both
+    Cold-start rule: `count(window) >= COLD_START_WINDOW_MIN (15) AND
+    count(prior_window) < COLD_START_PRIOR_MAX (3)`. Both
     counts are per-headline (not per-occurrence). Ties broken alphabetically
     for deterministic ordering.
     """
@@ -76,8 +88,8 @@ def top_candidates(counts: TermCounts, *, limit: int = 5) -> list[CandidateTerm]
 
     Two near-miss buckets:
       - below_window_min: high enough relative density to be interesting
-        but didn't hit 10 (e.g. count(window)=8, count(prior)=0).
-      - above_prior_max: hit 10 in window but prior was too noisy
+        but didn't hit the window floor (e.g. count(window)=8, count(prior)=0).
+      - above_prior_max: cleared the window floor but prior was too noisy
         (e.g. count(window)=15, count(prior)=5 — recurring topic, not novel).
 
     Both buckets ordered by window count desc, top `limit` returned.

@@ -88,6 +88,19 @@ _SOURCE_NAME_TOKENS = frozenset({
     "politico", "nikkei", "scmp", "tass", "ria", "npr", "bbc", "cnn",
     "guardian", "marketwatch", "barrons", "forbes", "yahoo",
     "finnhub", "telegram", "cig", "trading",
+    # NW-SRC-3 Fix 2 (Tier A backstop): single-token outlet names that leaked
+    # as attention orphans off the NW-SRC-2 Google News feeds. `barron` is the
+    # real culprit behind the "$0.072 barron" orphan — "Barron's" tokenizes to
+    # `barron` (the apostrophe splits and the 1-char trailing "s" is dropped by
+    # the 2-char floor), so the existing `barrons` entry above never matched.
+    # `jazeera` (from "Al Jazeera"), `coindesk`, `cryptorank`, `magnates` (from
+    # "Finance Magnates") are outlet-ONLY tokens, never content words.
+    # DELIBERATELY NOT ADDED (polysemy guard, per order §4): the multi-word
+    # outlet names whose constituents are real subjects — "New York" (Times),
+    # "finance" (Magnates), "crypto" (Briefing), "ledger" (Insights). Those are
+    # single-token here would delete genuine signal; Fix 1's position-aware,
+    # source-matched suffix strip removes them in byline position instead.
+    "barron", "jazeera", "coindesk", "cryptorank", "magnates",
 })
 
 # Tier B — soft-stopwords. Generic words that surface as noisy standalone
@@ -101,6 +114,17 @@ _SOFT_STOPWORDS = frozenset({
     "are", "new", "use", "since", "people", "world", "years",
     "low", "strong", "post", "media", "information", "service",
     "million", "billion", "trillion",
+    # NW-SRC-3 Fix 2 (Tier B): generic frequency-gate words that crossed the
+    # threshold as bare unigrams on the enlarged NW-SRC-2 corpus but carry no
+    # standalone signal. Bigram-only: suppressed as unigrams, RETAINED as pair
+    # members — so "defense production", "ground troops", "data center",
+    # "year end" still surface; bare production/troops/end/etc do not. Kept out
+    # of stopwords.yaml on purpose: a grammatical stop there would forbid the
+    # bigram membership too and kill those real pairs.
+    "get", "plans", "bring", "buy", "face", "raises", "recent", "companies",
+    "shares", "live", "final", "ahead", "fund", "end", "production", "troops",
+    # near-miss fillers that sat just under the gate — pre-empt next-cycle crossings
+    "now", "one", "two", "latest", "across", "major", "push",
 })
 
 # Tier A — the intrinsic hard-drop set (fragments + source names). Folded

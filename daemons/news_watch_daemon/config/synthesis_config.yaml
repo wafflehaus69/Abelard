@@ -38,17 +38,24 @@ synthesis:
 
   # Cap on events the synthesis prompt may emit per brief. Prevents
   # "everything is interesting" failure mode.
-  max_events_per_brief: 8
+  # NW-SRC-4 §6: raised 8 -> 14 (~1.75x) to surface more events per theme,
+  # reinvesting the Pass E budget the NW-SRC-3 noise fix + floor-15 freed.
+  # This is OUTPUT depth (more events surfaced), NOT matcher breadth — the
+  # keyword matchers are untouched so no new noise is re-imported.
+  max_events_per_brief: 14
 
   # API-level output budget for the synthesis call. Adaptive thinking
   # (always on for Sonnet) counts against this budget — if it's too
   # low, the model exhausts tokens in reasoning blocks and returns a
   # content list with thinking blocks only, no text. The parser then
   # raises SynthesisLLMError with stop_reason='max_tokens' diagnostics.
-  # First live smoke (2026-05-14) hit this at 2048; 8192 leaves
-  # comfortable headroom for 8 events + narrative + full thinking.
-  # Sonnet 4.6 supports up to 64K output.
-  default_max_tokens: 8192
+  # First live smoke (2026-05-14) hit this at 2048; 8192 left comfortable
+  # headroom for 8 events + narrative + full thinking.
+  # NW-SRC-4 §6: raised 8192 -> 14000 alongside the events cap (8 -> 14) so the
+  # larger event set + longer narrative do not truncate against the output
+  # budget (the failure mode the note below describes). Sonnet 4.6 supports up
+  # to 64K output, so this stays well within limits.
+  default_max_tokens: 14000
 
 
 trigger_gate:

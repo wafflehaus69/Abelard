@@ -392,6 +392,39 @@ def test_t2_pass_c_synthesis_failed_envelope_still_assembles(tmp_path):
     assert envelope.attention_synthesis.crossings[0].convergence.status == "orphan"
 
 
+def test_t2b_pass_c_sdk_error_raised_still_assembles(tmp_path):
+    """A raw Anthropic SDK error (rate-limit / timeout / 5xx) escapes
+    synthesize_window's own (SynthesisError, SynthesisLLMError) catch and
+    RAISES. The Full Brief must still assemble with Pass C degraded — never
+    crash the whole run with no PDF."""
+    cfg = _make_cfg(tmp_path)
+    with _Patches() as p:
+        p.synthesize_window_mock.side_effect = RuntimeError(
+            "anthropic RateLimitError: 429"
+        )
+        with patch(
+            "news_watch_daemon.fullbrief.orchestrator._do_scrape_step",
+            return_value=(
+                _StepHealth(status="ok", headlines_inserted=0, sources_failed=0),
+                _make_attention_outcome(),
+            ),
+        ):
+            envelope = assemble_full_brief(
+                cfg=cfg, no_scrape=False,
+                now=datetime(2026, 5, 29, 14, 32, 47, tzinfo=timezone.utc),
+            )
+
+    assert envelope.theme_synthesis.status == "failed"
+    assert "synthesis call raised" in envelope.theme_synthesis.failure_reason
+    assert "RuntimeError" in envelope.theme_synthesis.failure_reason
+    assert envelope.envelope_health.pass_c.status == "failed"
+    pass_c_failures = [pf for pf in envelope.pass_failures if pf.step == "pass_c"]
+    assert len(pass_c_failures) == 1
+    assert pass_c_failures[0].recovered is True
+    # Attention still ran -> the brief (and its rendered PDF) still produced.
+    assert len(envelope.attention_synthesis.crossings) == 1
+
+
 # ---------- T3: Pass E attention_outcome status=error ----------
 
 

@@ -8,9 +8,12 @@ produces one segment PER TRACKED THEME so every theme surfaces, and does
 it with a SINGLE batched Sonnet call (cost-aware — one call covers all
 themes, active syntheses and quiet one-liners alike).
 
-Split (Mando 2026-06-30): a theme is "active" (2-3 sentence synthesis) if
-it is in Pass C scope OR its tagged-headline count clears
-`ACTIVE_TAG_THRESHOLD`; otherwise "quiet" (a single "why it's hot" line).
+Split (Mando 2026-06-30): a theme is "active" (deep synthesis) if it is in
+Pass C scope OR its tagged-headline count clears `ACTIVE_TAG_THRESHOLD`;
+otherwise "quiet" (a single "why it's hot" line). NW-SRC-4 §6 deepened the
+active tier from 2-3 to 5-6 sentences (output-depth reinvestment of the
+NW-SRC-3 noise-fix budget); the quiet tier stays a single line, so the
+active-vs-quiet cost tiering is intact.
 
 Design discipline mirrors synthesize/llm_client.py: injected client,
 streaming call, thinking disabled, defensive fence-strip on the JSON, full
@@ -22,9 +25,10 @@ pure logic + the LLM boundary.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any
+
+from ..llm_text import strip_code_fences
 
 
 # A theme with at least this many tagged headlines in-window is treated as
@@ -37,8 +41,10 @@ ACTIVE_TAG_THRESHOLD = 8
 
 # Cap on sample headlines fed per theme — bounds the batched call's input
 # tokens. The model gets enough to characterize the thread without the full
-# tagged set.
-SAMPLE_HEADLINES_PER_THEME = 8
+# tagged set. NW-SRC-4 §6: 8 -> 12 so the deeper 5-6 sentence active summaries
+# have enough grounding material (more sub-threads to cite). This is INPUT to
+# the summary call, not the theme matcher — it does not widen tagging.
+SAMPLE_HEADLINES_PER_THEME = 12
 
 
 @dataclass(frozen=True)
@@ -72,19 +78,15 @@ class ThemeSegmentsError(RuntimeError):
     """Raised when the batched segment response is unparseable/shape-violating."""
 
 
-# Defensive markdown-fence strip — same posture as synthesis (Sonnet
-# occasionally fences JSON despite the no-fence instruction).
-_FENCE_OPEN = re.compile(r"^```(?:json)?\s*\n?")
-_FENCE_CLOSE = re.compile(r"\n?```\s*$")
-
 _SYSTEM_INSTRUCTIONS = (
     "You write the THEME SEGMENTS panel of a markets/geopolitics intelligence "
     "brief. For each theme you are given its tagged-headline count for the "
     "window, whether the deeper event-synthesis pass already covered it, a "
     "sample of its headlines, and any attention-spike terms riding on it.\n\n"
     "For each theme produce a summary keyed by its theme_id:\n"
-    "  - status 'active': 2-3 sentences on what is actually happening in this "
-    "theme this window — the concrete thread, not meta-commentary.\n"
+    "  - status 'active': 5-6 sentences on what is actually happening in this "
+    "theme this window — the concrete thread with its distinct sub-threads and "
+    "specifics (named deals, programs, figures), not meta-commentary.\n"
     "  - status 'quiet': ONE sentence — why (or whether) it is hot; be honest "
     "when it is genuinely quiet ('only N headlines, routine X').\n\n"
     "Ground every line in the supplied headlines. Do not invent specifics. "
@@ -135,11 +137,7 @@ def parse_segment_response(text: str, expected_ids: list[str]) -> dict[str, str]
     theme_ids not in `expected_ids` are ignored. Non-string summaries are
     coerced/skipped defensively.
     """
-    text = text.strip()
-    if text.startswith("```"):
-        text = _FENCE_OPEN.sub("", text, count=1)
-        text = _FENCE_CLOSE.sub("", text, count=1)
-        text = text.strip()
+    text = strip_code_fences(text)
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:

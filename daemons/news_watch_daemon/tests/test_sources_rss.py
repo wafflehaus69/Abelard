@@ -8,7 +8,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from news_watch_daemon.http_client import HttpClient, HttpResponse
-from news_watch_daemon.sources.rss import RssSource, derive_feed_id
+from news_watch_daemon.sources.rss import (
+    RssSource,
+    _strip_google_news_publisher,
+    derive_feed_id,
+)
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -323,3 +327,99 @@ def test_fetch_handles_empty_response_body():
     result = src.fetch(since_unix=0)
     assert result.status == "error"
     assert "empty" in result.error_detail
+
+
+# ---------- NW-SRC-3 Fix 1: Google News publisher-suffix strip ----------
+
+
+def test_strip_helper_removes_source_matched_suffix():
+    assert _strip_google_news_publisher(
+        "U.S. attacks Iran as Strait of Hormuz tensions rise - Reuters", "Reuters"
+    ) == "U.S. attacks Iran as Strait of Hormuz tensions rise"
+
+
+def test_strip_helper_leaves_non_matching_dash_tail_intact():
+    # Legitimate " - X" in a headline where X is NOT the item's source: untouched.
+    assert _strip_google_news_publisher(
+        "Trump-Xi summit - what to expect - The Hill", "Reuters"
+    ) == "Trump-Xi summit - what to expect - The Hill"
+
+
+def test_strip_helper_preserves_legit_internal_dash():
+    assert _strip_google_news_publisher(
+        "Nvidia CEO: AI boom is real - Barron's", "Barron's"
+    ) == "Nvidia CEO: AI boom is real"
+
+
+def test_strip_helper_no_publisher_is_noop():
+    assert _strip_google_news_publisher("Some headline - Reuters", None) == \
+        "Some headline - Reuters"
+
+
+def test_strip_helper_refuses_to_empty_a_byline_only_title():
+    # Degenerate: title is only the byline. Do not strip to "".
+    assert _strip_google_news_publisher("- Reuters", "Reuters") == "- Reuters"
+
+
+def _gn_feed_xml(items: list[tuple[str, str]]) -> str:
+    """Build a Google-News-shaped RSS body. items = [(title, publisher), ...]."""
+    entries = "".join(
+        f"""
+        <item>
+          <title>{title}</title>
+          <link>https://news.google.com/rss/articles/{i}</link>
+          <guid>gn-{i}</guid>
+          <pubDate>Tue, 15 Jul 2026 12:00:00 GMT</pubDate>
+          <source url="https://{pub.lower().replace(' ', '')}.com">{pub}</source>
+        </item>"""
+        for i, (title, pub) in enumerate(items)
+    )
+    return (
+        '<?xml version="1.0"?><rss version="2.0"><channel>'
+        "<title>&quot;when:24h site:x&quot; - Google News</title>"
+        f"{entries}</channel></rss>"
+    )
+
+
+def test_gn_source_strips_suffix_and_promotes_publisher():
+    src = RssSource(
+        MagicMock(spec=HttpClient),
+        feed_url="https://news.google.com/rss/search?q=when%3A24h+site%3Areuters.com",
+    )
+    body = _gn_feed_xml([("Big wire story happens - Reuters", "Reuters")])
+    result = src._parse_feed(body, since_unix=0, fetched_at=0)
+    assert len(result.items) == 1
+    item = result.items[0]
+    assert item.headline == "Big wire story happens"   # suffix stripped
+    assert item.raw_source == "Reuters"                # attribution preserved
+
+
+def test_gn_syndication_collapses_to_one_clean_headline():
+    """The core dedup payoff: same story from 3 publishers -> identical clean
+    headline, so the orchestrator's dedupe_hash collapses them to one."""
+    src = RssSource(
+        MagicMock(spec=HttpClient),
+        feed_url="https://news.google.com/rss/search?q=iran",
+    )
+    story = "U S attacks Iran as Strait of Hormuz tensions rise"
+    body = _gn_feed_xml([
+        (f"{story} - Reuters", "Reuters"),
+        (f"{story} - CBC", "CBC"),
+        (f"{story} - The Washington Post", "The Washington Post"),
+    ])
+    result = src._parse_feed(body, since_unix=0, fetched_at=0)
+    clean = {it.headline for it in result.items}
+    assert clean == {story}   # all three collapse to one distinct headline
+
+
+def test_non_google_news_titles_are_untouched():
+    src = RssSource(
+        MagicMock(spec=HttpClient),
+        feed_url="https://www.aljazeera.com/xml/rss/all.xml",
+    )
+    # Al Jazeera headline that legitimately ends with " - Something".
+    body = _gn_feed_xml([("Analysis: the war - and what comes next - Al Jazeera",
+                          "Al Jazeera")])
+    result = src._parse_feed(body, since_unix=0, fetched_at=0)
+    # Not a GN feed -> no strip, and raw_source stays the feed title, not <source>.
+    assert result.items[0].headline == "Analysis: the war - and what comes next - Al Jazeera"

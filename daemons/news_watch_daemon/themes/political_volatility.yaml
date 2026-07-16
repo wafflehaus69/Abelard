@@ -119,6 +119,31 @@ rss_feeds:
   # source-class actor's domestic political surface area.
   - url: https://feeds.bloomberg.com/politics/news.rss
     feed_id: bloomberg_politics
+  # ---- NW-SRC-2 additions (2026-07-15) ----
+  # Placement organizational only (global fetch-dedup by feed_id + global
+  # tagging). These broad newswires are the primary keyless backfill for the
+  # dead Bloomberg feeds and light many themes; they live here because this
+  # is the most general politics/markets wire home.
+  #
+  # Reuters via Google News site: proxy — the single best keyless replacement
+  # for Bloomberg's markets/econ/politics spread. Live recon (2026-07-15):
+  # 100 items/24h, broadest cross-theme spread of any source (7 themes lit:
+  # russia_ukraine, energy, political_volatility, ai_capex, us_iran, fed,
+  # china). Headline-only (snippet). Reuters native RSS is retired; Reuters
+  # Connect is enterprise. Query verbatim from raw/gn_site_reuters_com.json.
+  # DEDUP WATCH: ~8 headlines/24h overlap Finnhub (Reuters wire syndication);
+  # global forward-only dedup means first-fetched wins.
+  - url: "https://news.google.com/rss/search?q=when%3A24h%20site%3Areuters.com&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_reuters
+  # AP via Google News site: proxy — OPTIONAL recall tier, Mando greenlit
+  # 2026-07-15. Live recon: 100 items/24h, strong politics/geopolitics. Wire
+  # diversity vs Reuters. Headline-only. NOTE: the RSSHub AP mirror was
+  # REJECTED in NW-SRC-1 (137 entries but zero pubDate -> RssSource drops
+  # 100%); Google News is the only usable AP route. Thematically overlaps the
+  # Reuters wire (same big stories, different wording — dedup catches exact
+  # matches only).
+  - url: "https://news.google.com/rss/search?q=when%3A24h%20site%3Aapnews.com&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_apnews
 
 telegram_channels:
   # Cadence is 5 minutes — tightest in config, justified by burst-posting

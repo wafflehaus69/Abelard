@@ -1,0 +1,195 @@
+theme_id: defense_industrial
+display_name: Defense Industrial — Military-Industrial Complex
+status: active
+created_at: 2026-07-15
+
+brief: |
+  Tracks the defense-INDUSTRIAL base — the production, procurement, budgets,
+  programs, and corporate structure of the arms industry — NOT the battlefield.
+  The signal is who builds the weapons, at what rate, under what contracts, and
+  the capacity constraints and appropriations that gate them. Combat outcomes
+  belong to the geopolitical theme; this theme is the supply side of force.
+
+  The thesis is that the 2020s rearmament cycle (Ukraine attrition, allied
+  restocking, a multipolar arms race) is a durable industrial-capex story on the
+  scale of the AI buildout, bottlenecked the same way — by capacity, not
+  demand. 155mm shell output, missile production rates (JASSM/LRASM), shipyard
+  throughput, and munitions-plant expansions are the constraint; multi-year
+  procurement contracts and NDAA appropriations are the readout. The primes
+  (Lockheed, Northrop, General Dynamics, RTX, L3Harris) plus the new
+  merchant-of-arms entrants (Anduril, General Atomics) are the axis.
+
+  Material signals: multi-year munitions/missile procurement contracts and
+  production-rate changes (155mm, JASSM, LRASM, howitzers, artillery shells);
+  shipbuilding and submarine program awards and delays; fighter/F-35 program
+  news with a production or sustainment angle; NDAA authorization and defense
+  appropriations; foreign military sales and defense exports; prime-contractor
+  earnings, backlog, and M&A; munitions-plant / shipyard capacity expansions;
+  Pentagon IG and program-of-record disclosures; named principals of the primes
+  and the DoD acquisition apparatus.
+
+  Design principle — BATTLEFIELD EXCLUSION BY OMISSION. The matcher is
+  OR-over-tiers with no conditional co-occurrence, so every keyword is
+  independently defense-INDUSTRY-specific. Pure combat terms (missile, drone,
+  troops, forces, offensive, strike) are deliberately NOT keywords — a
+  battlefield headline with no industrial token simply won't match. Generic
+  business terms (contract, procurement, appropriation, budget) appear ONLY as
+  defense-compounded phrases, never bare.
+
+  Noise: battlefield/tactical coverage with no industrial token; "arms control"
+  diplomacy and "defense attorney" legal senses; Moog the synthesizer brand
+  (the ticker MOG.A is the aerospace/defense supplier). If bare "arms"/"defense"
+  false senses surface in the retag sample, add the specific sense as an
+  exclusion.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  # Case-sensitivity is AUTOMATIC: the matcher makes any keyword containing 2+
+  # consecutive uppercase letters case-sensitive (LMT, NOC, GD, RTX, LHX, NDAA,
+  # JASSM, LRASM, FMS, UAV). So tickers/acronyms are written BARE here, NOT as
+  # a literal (?-i:...) wrapper (which would be re.escaped and matched
+  # literally). DoD / M&A / F-35 have no 2-consecutive-cap run and so tag
+  # case-insensitively (accepted — "dod"/"m&a" are not English words).
+  primary:
+    # Prime / entity names — each unambiguously an arms manufacturer.
+    - "Lockheed Martin"
+    - "Northrop Grumman"
+    - "General Dynamics"
+    - "Raytheon"
+    - "L3Harris"
+    - "Moog"
+    - "BAE Systems"
+    - "Huntington Ingalls"
+    - "General Atomics"
+    - "Anduril"
+    # Tickers / acronyms (auto case-sensitive by the 2-consecutive-cap rule).
+    - "LMT"
+    - "NOC"
+    - "GD"
+    - "RTX"
+    - "LHX"
+    - "MOG.A"
+    - "NDAA"
+    - "DoD"
+    # Industrial concept phrases — defense-compounded, never bare.
+    - "defense contractor"
+    - "arms manufacturer"
+    - "weapons maker"
+    - "munitions production"
+    - "defense procurement"
+    - "defense contract"
+    - "weapons contract"
+    - "defense budget"
+    - "defense spending"
+    - "military-industrial"
+    - "arms industry"
+    - "defense industrial base"
+  secondary:
+    # Programs / materiel.
+    - "JASSM"
+    - "LRASM"
+    - "155mm"
+    - "howitzer"
+    - "artillery shell"
+    - "hypersonic weapon"
+    - "shipbuilding contract"
+    - "submarine program"
+    - "fighter program"
+    - "F-35 program"
+    - "warhead production"
+    # NOTE — bare "munition" and "ordnance" were REMOVED from this list after the
+    # retag precision measurement (2026-07-15): bare "munition" produced 6/59
+    # battlefield false positives (rocket at Bahrain, Sana'a airport strike,
+    # Ahvaz detonation, A-10 ordnance markings, Apache shootdown, CENTCOM tanker)
+    # — it catches munition USAGE, not munition PRODUCTION. They are bare combat
+    # terms, which the order's own §8 guardrail prohibits ("no bare combat
+    # terms"). The industrial senses remain covered by the compounds above +
+    # "munitions production" / "munitions plant" below. (The 6 already-tagged FP
+    # rows persist per the no-mutation guardrail and age out of brief windows.)
+    # Industrial actions.
+    - "defense appropriation"
+    - "defense authorization"
+    - "arms sale"
+    - "foreign military sale"
+    - "FMS"
+    - "defense exports"
+    - "weapons production"
+    - "missile production"
+    - "drone production"
+    - "UAV production"
+    - "defense M&A"
+    - "munitions plant"
+  exclusions:
+    # Omission design needs no exclusions for battlefield, but these are the
+    # known non-defense senses of otherwise-industrial tokens. Expand from the
+    # retag sample if "arms"/"defense" false-hit (per order §4).
+    - "Moog synthesizer"
+    - "Moog music"
+    - "Bob Moog"
+    - "arms control"
+    - "defense attorney"
+
+tracked_entities:
+  # Reference metadata for ticker extraction — does NOT gate theme tagging.
+  tickers:
+    - LMT
+    - NOC
+    - GD
+    - RTX
+    - LHX
+    - MOG.A
+    # Order named "BA (BAE)", but BA is Boeing's NYSE ticker; BAE Systems is
+    # BAESY (US ADR) / BA.L (London). Using BAESY to avoid mis-tagging Boeing.
+    - BAESY
+    - HII
+  companies:
+    - Lockheed Martin
+    - Northrop Grumman
+    - General Dynamics
+    - Raytheon
+    - L3Harris
+    - Moog
+    - BAE Systems
+    - Huntington Ingalls
+    # Private / pre-IPO — reference only.
+    - General Atomics
+    - Anduril
+  countries:
+    - United States
+    - Ukraine
+    - United Kingdom
+    - Israel
+  commodities: []
+  people:
+    - Jim Taiclet
+    - Kathy Warden
+    - Phebe Novakovic
+    - Palmer Luckey
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # Moderate baseline — narrower than energy's broad complex.
+  velocity_baseline_headlines_per_day: 15.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds:
+  # Breaking Defense — re-anchored here from russia_ukraine_war.yaml on
+  # 2026-07-15 (Order NW-SRC-4). This theme's native feedstock: keyless, ~15
+  # items/day, procurement / programs / M&A / industry (battlefield excluded —
+  # Defense News was rejected for mixing battlefield). Fetch + tagging are
+  # global, so the anchor is organizational; it belongs here.
+  - url: https://breakingdefense.com/feed/
+    feed_id: breaking_defense
+
+telegram_channels: []

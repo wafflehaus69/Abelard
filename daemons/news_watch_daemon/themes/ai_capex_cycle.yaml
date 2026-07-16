@@ -403,6 +403,31 @@ rss_feeds:
   # also reads the semis/Taiwan-supply-chain crossover this feed carries.
   - url: https://feeds.bloomberg.com/technology/news.rss
     feed_id: bloomberg_technology
+  # ---- NW-SRC-2 additions (2026-07-15) ----
+  # Placement is ORGANIZATIONAL ONLY: the scrape factory fetches each unique
+  # feed_id once across all active themes (build_sources dedupes by feed_id),
+  # and the orchestrator tags every fetched headline against EVERY active
+  # theme's regexes. So a feed's home theme does not gate what it tags — it
+  # only documents intent. These live here because ai_capex is their primary
+  # target, but they feed all themes.
+  #
+  # Google News topic-query — the NW-SRC-1 fix for this theme's chronic
+  # ~1% inflow. Live recon (2026-07-15): 100 items/24h, 92 tagged to
+  # ai_capex_cycle by the real matcher, median age ~3h, keyless. Query string
+  # is verbatim from the recon raw pull (raw/google_news_topic_ai_capex.json);
+  # do not hand-edit the encoded query — it is the confirmed-working form.
+  # NOTE: Google's robots.txt disallows /rss/search (gray-ToS aggregator
+  # scraping); acceptable for personal non-redistributive use, flag if this
+  # ever underpins a redistributed product.
+  - url: "https://news.google.com/rss/search?q=%28semiconductor%20OR%20%22AI%20chip%22%20OR%20%22data%20center%22%20OR%20hyperscaler%20OR%20Nvidia%20OR%20TSMC%20OR%20%22AI%20capex%22%29%20when%3A24h&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_ai_capex
+  # Barron's via Google News site: proxy — OPTIONAL recall tier, Mando
+  # greenlit 2026-07-15. Live recon: 80-84 items/24h, notably strong on
+  # ai_capex names (SK Hynix, ASML, Micron, Intel, Marvell). Headline-only
+  # (paywalled bodies). Most redundant with gn_ai_capex above — dedup absorbs
+  # exact-match collisions; expect same-story-different-headline overlap.
+  - url: "https://news.google.com/rss/search?q=when%3A24h%20site%3Abarrons.com&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_barrons
 
 telegram_channels:
   - username: CIG_telegram

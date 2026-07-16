@@ -43,11 +43,14 @@ from pathlib import Path
 from ..db import record_heartbeat, to_json_column, transaction
 from ..lang import classify_language
 from ..sources.base import FetchedItem, FetchResult, SourcePlugin
+from ..sources.noise_filter_log import write_filter_entry
 from ..sources.telegram import PLUGIN_PREFIX as TELEGRAM_PLUGIN_PREFIX
 from ..theme_config import ThemeConfig
 from ..translation import TranslationResult, run_translation_pass
+from .content_blocklist import classify_blocklist
 from .cross_source_log import write_observation as write_cross_source_observation
 from .dedup import compute_dedupe_hash
+from .sports_filter import classify_sports
 from .ticker_extract import TrackedTickers, log_tracked_ticker_match
 
 
@@ -70,6 +73,10 @@ class PerSourceResult:
     items_after_dedup: int
     items_inserted: int
     error_detail: str | None
+    # Counts of items dropped by the ingest content filters before dedup
+    # (defaults 0 keep every existing keyword construction valid).
+    items_sports_filtered: int = 0
+    items_blocklist_filtered: int = 0
 
 
 @dataclass(frozen=True)
@@ -85,6 +92,10 @@ class ScrapeResult:
     headlines_inserted_total: int
     theme_tags_inserted_total: int
     themes_active: list[str]
+    # Totals dropped by the ingest content filters this sweep (defaults 0 keep
+    # existing keyword constructions valid).
+    sports_filtered_total: int = 0
+    blocklist_filtered_total: int = 0
 
 
 # ---------- compiled theme regexes ----------
@@ -602,6 +613,7 @@ def run_scrape(
     now_unix: int | None = None,
     tracked_tickers: TrackedTickers | None = None,
     cross_source_log_path: Path | None = None,
+    ingest_filter_log_path: Path | None = None,
     translation_credentials: tuple[int, str, str] | None = None,
     translation_source: str = "telegram_native",
     translation_batch_size: int = 10,
@@ -636,6 +648,8 @@ def run_scrape(
     per_source: list[PerSourceResult] = []
     headlines_inserted_total = 0
     theme_tags_inserted_total = 0
+    sports_filtered_total = 0
+    blocklist_filtered_total = 0
     # In-memory dedup within sweep. Promoted from set[str] to
     # dict[str, (source, fetched_at_unix)] so cross-source dups can be
     # logged with the first observer's identity.
@@ -661,6 +675,8 @@ def run_scrape(
         items_fetched = len(fetch_result.items)
         items_after_dedup = 0
         items_inserted = 0
+        items_sports_filtered = 0
+        items_blocklist_filtered = 0
 
         # Pass F (2026-05-28): defer ru/mixed Telegram rows so translation
         # can run as a single batched call per source. en rows still
@@ -679,6 +695,46 @@ def run_scrape(
 
         if fetch_result.status in ("ok", "partial"):
             for item in fetch_result.items:
+                # Ingest content filters (Mando 2026-07-15): drop headlines
+                # BEFORE dedup/tag/insert so they never reach the corpus, the
+                # attention counter, or the frequency diagnostic. Two filters:
+                #   - editorial blocklist: UNCONDITIONAL (forbidden conspiracy/
+                #     ideological terms that must never appear in a report),
+                #   - sports: pure-sports with an internal markets/geo guard.
+                # Blocklist takes precedence (checked first). Every drop is
+                # recorded in the noise-filter audit trail with a kind: prefix.
+                block_term = classify_blocklist(item.headline)
+                sports_term = None if block_term else classify_sports(item.headline)
+                if block_term is not None or sports_term is not None:
+                    if block_term is not None:
+                        kind, term = "blocklist", block_term
+                        items_blocklist_filtered += 1
+                        blocklist_filtered_total += 1
+                    else:
+                        kind, term = "sports", sports_term
+                        items_sports_filtered += 1
+                        sports_filtered_total += 1
+                    _LOG.info(
+                        "%s-filtered (%s): matched %r | %s",
+                        kind, source.name, term, item.headline[:120],
+                    )
+                    if ingest_filter_log_path is not None:
+                        try:
+                            write_filter_entry(
+                                ingest_filter_log_path,
+                                channel=source.name,
+                                msg_id=item.source_item_id,
+                                matched_pattern=f"{kind}:{term}",
+                                full_text=item.headline,
+                                now_unix=start_unix,
+                            )
+                        except Exception as exc:  # noqa: BLE001 — audit must never abort scrape
+                            _LOG.warning(
+                                "%s-filter audit write failed (%s): %s: %s",
+                                kind, source.name, type(exc).__name__, exc,
+                            )
+                    continue
+
                 dedupe_hash = compute_dedupe_hash(item.headline)
 
                 # In-sweep dedup. If the hash was seen earlier in this
@@ -865,6 +921,8 @@ def run_scrape(
             items_after_dedup=items_after_dedup,
             items_inserted=items_inserted,
             error_detail=fetch_result.error_detail,
+            items_sports_filtered=items_sports_filtered,
+            items_blocklist_filtered=items_blocklist_filtered,
         ))
 
     duration_ms = max(0, int((time.perf_counter() - start_perf) * 1000))
@@ -886,6 +944,8 @@ def run_scrape(
         headlines_inserted_total=headlines_inserted_total,
         theme_tags_inserted_total=theme_tags_inserted_total,
         themes_active=active_theme_ids,
+        sports_filtered_total=sports_filtered_total,
+        blocklist_filtered_total=blocklist_filtered_total,
     )
 
 
@@ -957,6 +1017,7 @@ def scrape_cycle(
     themes: list[ThemeConfig],
     tracked_tickers: Any | None = None,
     cross_source_log_path: Path | None = None,
+    ingest_filter_log_path: Path | None = None,
     translation_credentials: tuple[int, str, str] | None = None,
     translation_source: str = "telegram_native",
     translation_batch_size: int = 10,
@@ -1003,6 +1064,7 @@ def scrape_cycle(
             conn, sources, themes,
             tracked_tickers=tracked_tickers,
             cross_source_log_path=cross_source_log_path,
+            ingest_filter_log_path=ingest_filter_log_path,
             translation_credentials=translation_credentials,
             translation_source=translation_source,
             translation_batch_size=translation_batch_size,

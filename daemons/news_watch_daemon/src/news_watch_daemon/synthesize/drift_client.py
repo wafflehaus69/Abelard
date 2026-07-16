@@ -35,9 +35,10 @@ The Anthropic client is INJECTED. This module does NOT import the
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any
+
+from ..llm_text import strip_code_fences
 
 
 @dataclass(frozen=True)
@@ -69,10 +70,6 @@ class DriftLLMError(RuntimeError):
     """
 
 
-_FENCE_OPEN = re.compile(r"^```(?:json)?\s*\n?")
-_FENCE_CLOSE = re.compile(r"\n?```\s*$")
-
-
 def parse_drift_response(text: str) -> list[dict[str, Any]]:
     """Parse Haiku's JSON output into a list of raw proposal dicts.
 
@@ -84,11 +81,7 @@ def parse_drift_response(text: str) -> list[dict[str, Any]]:
         DriftLLMError: malformed JSON, non-object root, or missing /
             non-list `proposals` key.
     """
-    text = text.strip()
-    if text.startswith("```"):
-        text = _FENCE_OPEN.sub("", text, count=1)
-        text = _FENCE_CLOSE.sub("", text, count=1)
-        text = text.strip()
+    text = strip_code_fences(text)
 
     try:
         data = json.loads(text)
