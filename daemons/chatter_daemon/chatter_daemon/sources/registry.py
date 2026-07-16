@@ -8,6 +8,7 @@ registered source (Order 2); /smg/, Trends, and StockTwits have since landed.
 from __future__ import annotations
 
 from ..config import Config
+from ..news_summary import NewsSummarizer
 from .alpha_vantage import AlphaVantageSource
 from .base import Source
 from .finnhub_news import FinnhubNewsSource
@@ -22,13 +23,9 @@ def build_sources(cfg: Config) -> list[Source]:
         FinnhubNewsSource(
             api_key=cfg.finnhub_api_key,
             user_agent=cfg.user_agent,
-            # Order 15: named-news summary — company aliases for the direct-mention gate,
-            # the shared Anthropic key, and the per-scan cost cap.
+            # company aliases back the relevance gate; the per-ticker news SUMMARY moved out to
+            # the NewsSummarizer (CH-SRC-2), which reads Finnhub + Yahoo heads together.
             company_names_path=cfg.company_names_path,
-            anthropic_api_key=cfg.anthropic_api_key,
-            haiku_model=cfg.haiku_model_id,
-            summary_model=cfg.summary_model,
-            summary_cost_cap_usd=cfg.news_summary_cost_cap_usd,
             relevance_gate=cfg.finnhub_relevance_gate,  # CH-SRC-1: drop cross-tagged peer/macro heads
         ),
         SmgSource(
@@ -101,3 +98,15 @@ def build_sources(cfg: Config) -> list[Source]:
             )
         )
     return sources
+
+
+def build_news_summarizer(cfg: Config) -> NewsSummarizer:
+    """CH-SRC-2: the per-ticker news summarizer (Finnhub + Yahoo + AV headlines analyzed together).
+    The CLI runs it once after the source fan-out, between the scan and the aggregate. Auto-off
+    without an Anthropic key, so a keyless scan simply carries no summaries."""
+    return NewsSummarizer(
+        anthropic_api_key=cfg.anthropic_api_key,
+        company_names_path=cfg.company_names_path,
+        summary_model=cfg.summary_model,
+        summary_cost_cap_usd=cfg.news_summary_cost_cap_usd,
+    )

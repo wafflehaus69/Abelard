@@ -28,24 +28,16 @@ from typing import Any
 from abelard_common.company_aliases import load_name_map
 from abelard_common.http_client import HttpClient, NotFound
 
-from ..config import (
-    DEFAULT_FINNHUB_RELEVANCE_GATE,
-    DEFAULT_SUMMARY_COST_CAP_USD,
-    DEFAULT_SUMMARY_MODEL,
-    DEFAULT_USER_AGENT,
-    HAIKU_MODEL_ID,
-)
+from ..config import DEFAULT_FINNHUB_RELEVANCE_GATE, DEFAULT_USER_AGENT
 from ..errors import ChatterDaemonError
 from ..matching import title_mentions_ticker, watchlist_alias_map
-from ..schema import CostTelemetry, Headline, Metrics, NormalizedRecord, Sentiment
-from ..sentiment import AnthropicProvider, SentimentError, summarize_news, summary_cost_usd
+from ..schema import Headline, Metrics, NormalizedRecord, Sentiment
 from ..watchlist import WatchlistConfig
 from .base import ScanContext, SourceResult
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
 SOURCE_NAME = "finnhub_news"
 WINDOW_LABEL = "24h"
-_SUMMARY_HEADLINE_CAP = 15  # top-N relevant headlines per summary call (recency-ordered)
 
 
 class FinnhubError(ChatterDaemonError):
@@ -64,13 +56,8 @@ class FinnhubNewsSource:
         api_key: str | None,
         user_agent: str = DEFAULT_USER_AGENT,
         company_names_path: str | Path | None = None,
-        anthropic_api_key: str | None = None,
-        haiku_model: str = HAIKU_MODEL_ID,
-        summary_model: str = DEFAULT_SUMMARY_MODEL,
-        summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD,
         relevance_gate: bool = DEFAULT_FINNHUB_RELEVANCE_GATE,
         client: HttpClient | None = None,
-        anthropic_client: Any | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self.api_key = api_key
@@ -78,16 +65,10 @@ class FinnhubNewsSource:
         # Inject the daemon logger so chatter's redaction filter covers the
         # transport's logs (the http_client also redacts token= in URLs).
         self.client = client or HttpClient(user_agent=user_agent, logger=self._log)
-        # Order 15: named-news summary — shared provider (auto-off without a key), the
-        # company-name map for the direct-mention gate, and the per-scan cost cap.
-        self._anthropic = AnthropicProvider(
-            api_key=anthropic_api_key, client=anthropic_client, logger=self._log
-        )
-        self._haiku_model = haiku_model
-        self._summary_model = summary_model  # Order 19: Sonnet for the prose summary
-        self._cost_cap = summary_cost_cap_usd
         # CH-SRC-1: keep a head under T only if its title names T (drops Finnhub's peer/macro
         # cross-tags — ~67% of returned heads name no ticker). False = keep every cross-tag.
+        # The company-name map backs that gate. (CH-SRC-2: the per-ticker news SUMMARY moved out
+        # to news_summary.py, which reads Finnhub + Yahoo together — Finnhub is now LLM-free.)
         self._relevance_gate = relevance_gate
         self._shared_map = load_name_map(Path(company_names_path)) if company_names_path else {}
 
@@ -102,12 +83,8 @@ class FinnhubNewsSource:
         window = context.windows[WINDOW_LABEL]
 
         # CH-SRC-1: the FULL alias map (all tickers, incl name_match:false names like "micron" that a
-        # news headline can trust though a noisy social source can't). Drives BOTH the relevance gate
-        # and the summary gate — one source of truth, so a gated head and its summary agree.
+        # news headline can trust though a noisy social source can't) — backs the relevance gate.
         aliases = watchlist_alias_map(watchlist, self._shared_map)
-        anthropic = self._anthropic.get()             # None without a key -> no summaries
-        cost = CostTelemetry()
-        warnings: list[str] = []
 
         records: list[NormalizedRecord] = []
         raw_items: list[str] = []  # Order 19: headlines for the history dump
@@ -142,7 +119,6 @@ class FinnhubNewsSource:
                 names = aliases.get(spec.symbol, ())
                 heads = [h for h in heads if title_mentions_ticker(h.title, spec.symbol, names)]
             raw_items.extend(f"{spec.symbol}\t{h.title}" for h in heads)
-            summary = self._summarize(spec.symbol, heads, aliases, anthropic, cost, warnings)
             records.append(
                 NormalizedRecord(
                     watchlist=watchlist.name,
@@ -154,45 +130,12 @@ class FinnhubNewsSource:
                     matched_by=["symbol"],
                     metrics=Metrics(mention_count=len(heads), headlines=heads),
                     sentiment=Sentiment(method="none"),
-                    news_summary=summary,
                     flags=[],
                 )
             )
-        return SourceResult(
-            source=SOURCE_NAME, records=records, warnings=warnings, cost=cost, raw_items=raw_items
-        )
-
-    def _summarize(self, symbol, heads, aliases, anthropic, cost, warnings) -> str | None:
-        """One Haiku summary of the headlines that NAME this ticker — gated on evidence
-        (>=1 direct mention) and the per-scan cost cap. None (no call, no spend) when there
-        is no named news; None + a fail-loud warning on cap-hit or Haiku failure. Never
-        poisons the count/headlines, which stand on their own."""
-        if anthropic is None:
-            return None  # no Anthropic key -> no summaries (auto-gated)
-        names = aliases.get(symbol, ())
-        relevant = [h.title for h in heads if title_mentions_ticker(h.title, symbol, names)]
-        if not relevant:
-            return None  # no named news -> the skip condition (normal, not a failure)
-        if summary_cost_usd(cost) >= self._cost_cap:
-            warnings.append(f"{symbol}: summary skipped — scan cost cap ${self._cost_cap:.2f}")
-            return None
-        company = names[0].title() if names else symbol
-        try:
-            return (
-                summarize_news(
-                    titles=relevant[:_SUMMARY_HEADLINE_CAP],
-                    ticker=symbol,
-                    company=company,
-                    client=anthropic,
-                    model=self._summary_model,
-                    cost=cost,
-                )
-                or None
-            )
-        except SentimentError as exc:
-            self._log.warning("finnhub summary failed for %s: %s", symbol, exc)
-            warnings.append(f"{symbol}: news summary failed ({exc})")
-            return None
+        # No cost: the per-ticker news summary moved to news_summary.py (CH-SRC-2). Finnhub is a
+        # pure headline count/list now — the summary reads its heads alongside Yahoo's, after the fan-out.
+        return SourceResult(source=SOURCE_NAME, records=records, raw_items=raw_items)
 
 
 def _parse_headlines(payload: list[Any]) -> list[Headline]:

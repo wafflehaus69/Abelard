@@ -74,6 +74,20 @@ def _prime(conn, ticker, source, counts, *, end=FIXED):
         )
 
 
+def test_news_summaries_attached_per_ticker(tmp_path):
+    # CH-SRC-2: build_aggregate maps (watchlist, ticker) -> the cross-feed summary onto the ticker.
+    conn = _store(tmp_path)
+    env = _env([_rec("NVDA", "finnhub_news", count=3), _rec("MU", "finnhub_news", count=2)])
+    res = build_aggregate(
+        env, conn=conn, scan_id="cd-test", source_floors=FLOORS, baseline_window=20,
+        baseline_min_obs=5, spike_z_threshold=2.0, now=FIXED,
+        news_summaries={("w", "NVDA"): "NVDA combined-feed summary."},
+    )
+    by = {t.ticker: t for t in res.tickers}
+    assert by["NVDA"].news_summary == "NVDA combined-feed summary."
+    assert by["MU"].news_summary is None  # no summary supplied for this ticker -> None
+
+
 def test_groups_by_ticker_and_diversity(tmp_path):
     conn = _store(tmp_path)
     env = _env([

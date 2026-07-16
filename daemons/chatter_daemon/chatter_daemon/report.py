@@ -337,7 +337,10 @@ def _news_lines(ticker, aliases=None) -> list[str]:
             lines.append(f'<font color="{_MUTED}">news &middot;</font> {escape(titles[0])}')
     elif yah and yah.metrics.headlines:
         lines.append(f'<font color="{_MUTED}">news &middot;</font> {escape(yah.metrics.headlines[0].title)}')
-    summary = fin.news_summary if fin else None  # Order 15: the named-news "why"
+    # CH-SRC-2: the "why" is now ONE ticker-level summary over Finnhub + Yahoo (+ AV) headlines
+    # analyzed together. Fall back to the legacy per-source Finnhub field so pre-CH-SRC-2 archives
+    # still render their summary.
+    summary = ticker.news_summary or (fin.news_summary if fin else None)
     if summary:
         lines.append(f'<font color="{_MUTED}">summary &middot;</font> {escape(summary)}')
     # CH-SRC-1: Alpha Vantage per-ticker news-sentiment axis (label + signed score + article count).

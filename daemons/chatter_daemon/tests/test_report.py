@@ -57,8 +57,11 @@ def _sent(method="none", b=0, r=0, n=0, native=None):
     return Sentiment(method=method, bullish=b, bearish=r, neutral=n, native=nat)
 
 
-def _wt(ticker, sources, diversity):
-    return AggregatedTicker(watchlist="barber_growth", ticker=ticker, sources=sources, source_diversity=diversity)
+def _wt(ticker, sources, diversity, *, news_summary=None):
+    return AggregatedTicker(
+        watchlist="barber_growth", ticker=ticker, sources=sources,
+        source_diversity=diversity, news_summary=news_summary,
+    )
 
 
 def _wresult(tickers, *, degraded=False, sources=None):
@@ -386,20 +389,38 @@ def test_report_default_filename_carries_eastern_timestamp():
     assert report_default_filename("2026-06-24T01:13:36Z") == "chatter-report_06-23-2026_2113_EDT.pdf"
 
 
-# --- Order 15: named-news summary line in the news band ----------------------------
+# --- CH-SRC-2: ticker-level news summary line (Finnhub + Yahoo analyzed together) ---------
 
 
-def test_news_band_shows_summary_and_omits_when_none():
+def test_news_band_shows_ticker_summary_and_omits_when_none():
     from chatter_daemon.report import _news_lines
 
-    with_sum = _wt("NVDA", [_wsig("finnhub_news", count=5,
-                                  headlines=[Headline(title="NVDA beats", url="http://x")],
-                                  news_summary="Strong data-center demand drove the quarter.")], 1)
+    # The summary is now a TICKER-level field (one summary over both feeds), not a source field.
+    with_sum = _wt(
+        "NVDA",
+        [_wsig("finnhub_news", count=5, headlines=[Headline(title="NVDA beats", url="http://x")])],
+        1,
+        news_summary="Strong data-center demand drove the quarter.",
+    )
     lines = " ".join(_news_lines(with_sum))
     assert "summary &middot;" in lines and "Strong data-center demand" in lines
     # None -> the summary line is omitted entirely (no "summary", no empty row, no "null")
     no_sum = _wt("XYZ", [_wsig("finnhub_news", count=5, headlines=[Headline(title="XYZ news", url="http://x")])], 1)
     assert "summary" not in " ".join(_news_lines(no_sum))
+
+
+def test_news_band_falls_back_to_legacy_finnhub_summary():
+    # Back-compat: a pre-CH-SRC-2 archive carries the summary on the Finnhub SIGNAL and has no
+    # ticker-level field — the report still renders it.
+    from chatter_daemon.report import _news_lines
+
+    legacy = _wt(
+        "NVDA",
+        [_wsig("finnhub_news", count=5, headlines=[Headline(title="NVDA beats", url="http://x")],
+               news_summary="Legacy per-source summary.")],
+        1,
+    )
+    assert "Legacy per-source summary." in " ".join(_news_lines(legacy))
 
 
 def test_report_relevance_filter_is_the_shared_matching_function():

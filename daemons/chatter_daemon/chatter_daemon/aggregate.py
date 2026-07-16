@@ -53,12 +53,16 @@ def build_aggregate(
     spike_z_threshold: float,
     now: int,
     max_age_s: int | None = None,
+    news_summaries: dict[tuple[str, str], str] | None = None,
 ) -> AggregatedScanResult:
     """Build the persisted aggregate from one scan envelope + the baseline store.
 
     `now` is the run's canonical_unix (the single clock). Count observations are
-    appended at `now` AFTER every anomaly is computed.
+    appended at `now` AFTER every anomaly is computed. `news_summaries`
+    (CH-SRC-2) maps `(watchlist, ticker) -> the cross-feed news summary` and is
+    attached per ticker.
     """
+    news_summaries = news_summaries or {}
     by_ticker: dict[tuple[str, str], list] = {}
     order: list[tuple[str, str]] = []
     for rec in envelope.records:
@@ -120,7 +124,11 @@ def build_aggregate(
             )
         tickers_out.append(
             AggregatedTicker(
-                watchlist=wl, ticker=ticker, sources=signals, source_diversity=diversity
+                watchlist=wl,
+                ticker=ticker,
+                sources=signals,
+                source_diversity=diversity,
+                news_summary=news_summaries.get((wl, ticker)),  # CH-SRC-2: cross-feed news summary
             )
         )
 

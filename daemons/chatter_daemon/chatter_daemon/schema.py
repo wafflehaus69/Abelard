@@ -303,6 +303,10 @@ class AggregatedTicker(BaseModel):
     ticker: str
     sources: list[SourceSignal] = Field(default_factory=list)
     source_diversity: int = Field(default=0, ge=0)
+    # CH-SRC-2: ONE per-ticker news summary over ALL article feeds (Finnhub + Yahoo + AV) analyzed
+    # together — the "why". Supersedes the old per-source SourceSignal.news_summary (kept on the
+    # signal for back-compat when reading pre-CH-SRC-2 archives). None = no named news this scan.
+    news_summary: str | None = None
 
 
 class AggregatedScanResult(BaseModel):

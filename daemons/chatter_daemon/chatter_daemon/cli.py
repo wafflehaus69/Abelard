@@ -43,7 +43,7 @@ from .persist import (
     write_result,
 )
 from .render import render_attention, render_chatter
-from .sources.registry import build_sources
+from .sources.registry import build_news_summarizer, build_sources
 from .watchlist import load_all_watchlists, load_watchlist
 from .windows import iso_z
 
@@ -128,6 +128,19 @@ def _cmd_scan(args: argparse.Namespace, cfg: Config, log: logging.Logger) -> int
     now = int(time.time())  # the daemon's single clock read, threaded everywhere
     envelope = run_scan(watchlists, sources=build_sources(cfg), now=now)
 
+    # CH-SRC-2: one per-ticker news summary over the Finnhub + Yahoo (+ AV) headlines TOGETHER,
+    # after the fan-out so both feeds are in hand. Cost accumulates into envelope.cost; a failure
+    # warns and yields no summaries but never sinks the scan (no key -> auto-off, empty result).
+    news_summaries: dict[tuple[str, str], str] = {}
+    try:
+        news_summaries, sum_warnings = build_news_summarizer(cfg).summarize(
+            envelope.records, watchlists, cost=envelope.cost
+        )
+        envelope.errors.extend(sum_warnings)
+    except Exception as exc:  # never crash the scan over the summary step
+        log.warning("news summary step failed: %s", exc)
+        envelope.errors.append(f"news_summary: {exc}")
+
     try:
         conn = baseline.connect(cfg.baseline_db_path)
         baseline.init_db(conn)
@@ -141,6 +154,7 @@ def _cmd_scan(args: argparse.Namespace, cfg: Config, log: logging.Logger) -> int
             baseline_min_obs=cfg.baseline_min_obs,
             spike_z_threshold=cfg.spike_z_threshold,
             now=now,
+            news_summaries=news_summaries,
         )
         conn.close()
     except baseline.BaselineError as exc:
