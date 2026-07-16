@@ -128,6 +128,7 @@ class WalletMarketEdge:
     outcome: float                  # 1.0 if side_token won, else 0.0
     edge: float                     # outcome - vwap  (per-share edge from their side)
     mm_suspect: bool
+    entry_ts: int = 0               # first BUY on the net-long token (placement time)
 
 
 def wallet_edges(
@@ -144,7 +145,8 @@ def wallet_edges(
     if market.winning_token is None:
         return []
     per: dict[tuple[str, str], dict[str, float]] = defaultdict(
-        lambda: {"buy_usdc": 0.0, "buy_tok": 0.0, "sell_usdc": 0.0, "sell_tok": 0.0}
+        lambda: {"buy_usdc": 0.0, "buy_tok": 0.0, "sell_usdc": 0.0, "sell_tok": 0.0,
+                 "first_buy_ts": float("inf")}
     )
     for f in fills:
         if f.token_id not in market.token_ids:
@@ -153,6 +155,7 @@ def wallet_edges(
         if f.side == "BUY":
             a["buy_usdc"] += f.usdc
             a["buy_tok"] += f.tokens
+            a["first_buy_ts"] = min(a["first_buy_ts"], f.timestamp)
         else:
             a["sell_usdc"] += f.usdc
             a["sell_tok"] += f.tokens
@@ -182,12 +185,14 @@ def wallet_edges(
         other = gross[w] - (a["buy_usdc"] + a["sell_usdc"])
         mm = gross[w] > 0 and (other / gross[w]) > mm_two_sided_frac
         outcome = 1.0 if tok == market.winning_token else 0.0
+        entry = a["first_buy_ts"]
         out.append(WalletMarketEdge(
             wallet=w, condition_id=market.condition_id,
             resolution_ts=market.resolution_ts, side_token=tok,
             net_tokens=round(net_tok, 4), capital=round(capital, 2),
             vwap=round(vwap, 6), outcome=outcome, edge=round(outcome - vwap, 6),
             mm_suspect=mm,
+            entry_ts=int(entry) if entry != float("inf") else market.resolution_ts,
         ))
     return out
 
