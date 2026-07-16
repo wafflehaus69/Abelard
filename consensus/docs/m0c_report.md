@@ -50,6 +50,25 @@ Why would a consensus signal be present in spring 2025 and gone by 2026?
 - **Pre-split regime.** v1.2 §4 warned the replay is almost entirely pre-June-2026-split; the decay is already complete *before* the split boundary, suggesting the mechanic was fading independent of it.
 - **Arbitrage.** The simplest reading: any edge from "follow the proven wallets' consensus" was competed away as the platform grew.
 
+## 4b. Gate-attribution — WHY zero signals in 2026 (addendum v1.6 §2)
+
+The decisive question: are the 2026 zeros **World A** (convergences still happen but the remaining-edge gate kills them — price already moved, edge arbitraged, mechanic honestly dead) or **World B** (the circle went quiet — participation floor kills, a re-bootstrapped current-regime circle might revive it)? Instrumented the best-cell roster over the 2026-Jan–Apr slice (474 markets × 70 rescan dates = 26,438 (market,date) evaluations), recording the first-failing gate:
+
+| first-failing gate | count | share |
+|---|---|---|
+| no_price_history (market not trading at that date) | 23,434 | 88.6% |
+| no_roster_position | 2,858 | 10.8% |
+| participation_floor | 146 | 0.6% |
+| agreement | 0 | — |
+| **remaining-edge (exhausted)** | **0** | — |
+| **SIGNAL** | **0** | — |
+
+Restricting to evaluations where the market was actually trading (had price history), ~95% fail at **no-roster-position**, ~5% at **participation floor**, and **zero ever reach a convergence** (participation + agreement). **Zero remaining-edge kills.**
+
+**Verdict: World B, unambiguously.** There is *no* World-A signal at all — no convergence is ever arbitraged away, because no convergence forms. The mechanism is a **collapse of the winners circle**: the roster shrank to **~1 wallet** by 2026. This is not an always-tiny-roster artifact — 2025-H1 produced 22 convergences, which requires a substantial circle then. The circle is present and converging in spring 2025 and **gone by 2026**.
+
+**Consequence for the L2 confirmation pass (positive):** because the failure is "no current circle," not "convergences arrive too late," the September L2 re-test is a **genuine second chance** — a circle bootstrapped from current-regime L2 data (with full market coverage, unlike this network-truncated backtest) directly targets the failure mode. *Caveat:* the roster collapse may be partly exacerbated by the network-truncated 935/3,692 universe (fewer 2026 markets/wallets to score a circle from); the full L2 archive will not have this truncation, so the effect may be less severe live.
+
 ## 5. Verdict and consequence
 
 - **Detector A (consensus — the primary product): no tradeable-edge verdict in its favor.** On current-regime data it does not demonstrably have edge. It remains viable as an *intelligence* tool (surfacing where skilled money agrees) but is **not** established as a trade signal.
