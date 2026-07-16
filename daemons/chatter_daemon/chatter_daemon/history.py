@@ -17,17 +17,20 @@ from pathlib import Path
 
 from .report import eastern_stamp
 
-# Source id -> section heading, in display order. Only these three are dumped (Order 19).
-_SECTIONS: list[tuple[str, str]] = [
-    ("finnhub_news", "HEADLINES (Finnhub)"),
-    ("stocktwits", "STOCKTWITS"),
-    ("twitter", "TWITTER (promo-filtered)"),
+# (source ids, section heading), in display order. The two headline sources — Finnhub and Yahoo's
+# fresh net-new heads — MERGE into one HEADLINES section per ticker (CH-SRC-1: Yahoo folds in with
+# Finnhub, not a separate section).
+_SECTIONS: list[tuple[tuple[str, ...], str]] = [
+    (("finnhub_news", "yahoo_rss"), "HEADLINES"),
+    (("stocktwits",), "STOCKTWITS"),
+    (("twitter",), "TWITTER (promo-filtered)"),
 ]
 
 
 def render_history(raw_items: list[str], *, scan_id: str, stamp: str) -> str:
-    """Group source-prefixed raw lines (``source\\tTICKER\\ttext``) into per-source sections,
-    each grouped by ticker. Malformed lines are skipped."""
+    """Group source-prefixed raw lines (``source\\tTICKER\\ttext``) into sections, each grouped by
+    ticker. A section may span several sources (the HEADLINES section merges Finnhub + Yahoo per
+    ticker — CH-SRC-1). Malformed lines are skipped."""
     by_source: dict[str, list[tuple[str, str]]] = {}
     for line in raw_items:
         parts = line.split("\t", 2)
@@ -37,20 +40,25 @@ def render_history(raw_items: list[str], *, scan_id: str, stamp: str) -> str:
         by_source.setdefault(source, []).append((ticker, text))
 
     out: list[str] = [f"ChatterDaemon raw scrape   {stamp}   {scan_id}", "=" * 74, ""]
-    for source, heading in _SECTIONS:
-        items = by_source.get(source, [])
-        out.append(f"### {heading}   ({len(items)} items)")
+    for sources, heading in _SECTIONS:
+        # Merge the section's sources per ticker, in first-seen (watchlist) order.
+        per_ticker: dict[str, list[str]] = {}
+        order: list[str] = []
+        for src in sources:
+            for ticker, text in by_source.get(src, []):
+                if ticker not in per_ticker:
+                    per_ticker[ticker] = []
+                    order.append(ticker)
+                per_ticker[ticker].append(text)
+        count = sum(len(v) for v in per_ticker.values())
+        out.append(f"### {heading}   ({count} items)")
         out.append("-" * 74)
-        if not items:
+        if not order:
             out.append("(none)")
-        else:
-            last: str | None = None
-            for ticker, text in items:
-                if ticker != last:
-                    out.append("" if last is None else "")
-                    out.append(f"[{ticker}]")
-                    last = ticker
-                out.append(f"  - {text}")
+        for ticker in order:
+            out.append("")
+            out.append(f"[{ticker}]")
+            out.extend(f"  - {text}" for text in per_ticker[ticker])
         out.append("")
     return "\n".join(out)
 

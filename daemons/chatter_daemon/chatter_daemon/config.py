@@ -175,6 +175,39 @@ DEFAULT_TWITTER_DROP_PROMO = True
 DEFAULT_TWITTER_PRIORITY: tuple[str, ...] = ()  # symbols searched first (CHATTER_TWITTER_PRIORITY)
 DEFAULT_TWITTER_MAX_TICKERS = 0  # 0 = cover all; >0 = only the top-N in priority order
 
+# CH-SRC-1 — Yahoo Finance per-ticker RSS (fresh headline supplement, keyless). Yahoo's ?s= feed
+# is a MIXED market feed (recon 2026-07-15: ~3-9/20 items on-ticker), so the source relevance-
+# filters (title+desc) and dedups vs Finnhub via prior_records — its value is the ~0.2-1h latency
+# edge, not volume. Yahoo deprecates SILENTLY (200 + stale/empty): zero items scan-wide -> source
+# error; a freshest item older than STALE_AFTER_H -> a loud staleness warning.
+DEFAULT_YAHOO_ENABLED = True
+DEFAULT_YAHOO_MAX_ITEMS = 20        # Yahoo serves ~20 items/feed — the per-ticker relevance pool
+DEFAULT_YAHOO_STALE_AFTER_H = 48    # freshest item older than this scan-wide -> stale warning
+# Relevance matches the TITLE only (not the blurb — a MU headline whose description lists 8 tickers
+# would otherwise attribute to all 8, the main cross-ticker duplicate source). ROUNDUP_MAX then
+# drops a headline whose title itself names >= this many watchlist tickers (a "Dow movers" roundup,
+# low per-ticker signal) — 0 disables it. Mirrors the Twitter >=5-cashtag promo filter.
+DEFAULT_YAHOO_ROUNDUP_MAX = 4
+
+# CH-SRC-1 — Finnhub relevance gate. Finnhub's company-news API cross-tags peer/macro stories onto
+# every large-cap: only ~23% of the heads it returns for symbol=T actually NAME T in the title, and
+# 35% of headline slots are cross-ticker duplicates (measured live 2026-07-15). A count-threshold
+# roundup filter is inert here — the dupes name <=3 tickers, not many. The fix is a per-ticker title
+# gate: keep a head under T only if its title names T (full alias map, incl name_match:false names
+# like "micron" that news headlines can trust). Live: dupes 35%->8%, ~67% of heads dropped (verified
+# cross-tag noise, no ticker zeroed), MU coverage restored. This also trims mention_count (feeds
+# ranking + the anomaly baseline) — a one-time, more-honest baseline shift. 0/False disables it.
+DEFAULT_FINNHUB_RELEVANCE_GATE = True
+
+# CH-SRC-1 — Alpha Vantage NEWS_SENTIMENT (per-ticker news-sentiment axis, KEYED). OFF unless a
+# key is present (claim a free one at alphavantage.co; put it in .env as ALPHAVANTAGE_API_KEY or
+# AV_KEY). One call/scan with limit=1000 covers the watchlist under the 25/day free cap. The
+# IN-BAND ERROR GUARD is mandatory — AV returns errors as HTTP 200 with an Information / Note /
+# Error Message body. RELEVANCE_MIN gates low-relevance ticker mentions out as noise pre-aggregate.
+DEFAULT_AV_LIMIT = 1000
+DEFAULT_AV_RELEVANCE_MIN = 0.1     # drop AV ticker mentions below this relevance_score (tune live)
+DEFAULT_AV_SORT = "LATEST"
+
 # Order 7 — baseline store, archive, anomaly tunables.
 DEFAULT_BASELINE_WINDOW = 20  # K trailing observations in a baseline
 DEFAULT_BASELINE_MIN_OBS = 5  # N_min before a z-score is meaningful (else `building`)
@@ -233,6 +266,16 @@ class Config:
     # Order 21 — priority-first queue + top-N cap (beat X's per-account quota on solo searches).
     twitter_priority: tuple[str, ...] = DEFAULT_TWITTER_PRIORITY
     twitter_max_tickers: int = DEFAULT_TWITTER_MAX_TICKERS
+    # CH-SRC-1 — Yahoo per-ticker RSS (fresh supplement, keyless) + Alpha Vantage news-sentiment.
+    yahoo_enabled: bool = DEFAULT_YAHOO_ENABLED
+    yahoo_max_items: int = DEFAULT_YAHOO_MAX_ITEMS
+    yahoo_stale_after_h: int = DEFAULT_YAHOO_STALE_AFTER_H
+    yahoo_roundup_max: int = DEFAULT_YAHOO_ROUNDUP_MAX
+    finnhub_relevance_gate: bool = DEFAULT_FINNHUB_RELEVANCE_GATE
+    alphavantage_api_key: str | None = None  # from env only, never logged (see secrets())
+    av_relevance_min: float = DEFAULT_AV_RELEVANCE_MIN
+    av_limit: int = DEFAULT_AV_LIMIT
+    av_sort: str = DEFAULT_AV_SORT
     # Order 7 — baseline store, run archive, anomaly tunables.
     history_root: Path = field(default_factory=_default_history_root)  # Order 19: raw dumps
     baseline_db_path: Path = field(default_factory=_default_baseline_db_path)
@@ -257,6 +300,7 @@ class Config:
             for s in (
                 self.finnhub_api_key,
                 self.anthropic_api_key,
+                self.alphavantage_api_key,
             )
             if s
         )
@@ -306,6 +350,21 @@ class Config:
             twitter_drop_promo=_env_bool("CHATTER_TWITTER_DROP_PROMO", DEFAULT_TWITTER_DROP_PROMO),
             twitter_priority=_env_list("CHATTER_TWITTER_PRIORITY", DEFAULT_TWITTER_PRIORITY),
             twitter_max_tickers=_env_int("CHATTER_TWITTER_MAX_TICKERS", DEFAULT_TWITTER_MAX_TICKERS),
+            yahoo_enabled=_env_bool("CHATTER_YAHOO_ENABLED", DEFAULT_YAHOO_ENABLED),
+            yahoo_max_items=_env_int("CHATTER_YAHOO_MAX_ITEMS", DEFAULT_YAHOO_MAX_ITEMS),
+            yahoo_stale_after_h=_env_int("CHATTER_YAHOO_STALE_AFTER_H", DEFAULT_YAHOO_STALE_AFTER_H),
+            yahoo_roundup_max=_env_int("CHATTER_YAHOO_ROUNDUP_MAX", DEFAULT_YAHOO_ROUNDUP_MAX),
+            finnhub_relevance_gate=_env_bool(
+                "CHATTER_FINNHUB_RELEVANCE_GATE", DEFAULT_FINNHUB_RELEVANCE_GATE
+            ),
+            alphavantage_api_key=(
+                os.environ.get("ALPHAVANTAGE_API_KEY", "").strip()
+                or os.environ.get("AV_KEY", "").strip()
+                or None
+            ),
+            av_relevance_min=_env_float("CHATTER_AV_RELEVANCE_MIN", DEFAULT_AV_RELEVANCE_MIN),
+            av_limit=_env_int("CHATTER_AV_LIMIT", DEFAULT_AV_LIMIT),
+            av_sort=os.environ.get("CHATTER_AV_SORT", "").strip() or DEFAULT_AV_SORT,
             summary_model=os.environ.get("CHATTER_SUMMARY_MODEL", "").strip() or DEFAULT_SUMMARY_MODEL,
             baseline_db_path=_env_path("CHATTER_BASELINE_DB", _default_baseline_db_path()),
             archive_root=_env_path("CHATTER_ARCHIVE_ROOT", _default_archive_root()),

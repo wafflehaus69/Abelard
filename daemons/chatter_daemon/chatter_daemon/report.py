@@ -37,6 +37,8 @@ _SOURCE_LABEL = {
     "smg": "/smg/",
     "google_trends": "Google Trends",
     "stocktwits": "StockTwits",
+    "yahoo_rss": "Yahoo",
+    "alpha_vantage": "AV news-sentiment",
     # attention surfaces
     "smg_freq": "/smg/",
     "stocktwits_trending": "StockTwits",
@@ -295,12 +297,22 @@ def _dir_color_counts(bull, bear) -> str:
     return _GREEN if bull > bear else _RED if bear > bull else _MUTED
 
 
+def _av_color(score) -> str:
+    """AV news-sentiment score [-1..+1] -> direction color, with a small dead-band around 0."""
+    if score is None:
+        return _MUTED
+    return _GREEN if score > 0.05 else _RED if score < -0.05 else _MUTED
+
+
 def _meta_bits(ticker) -> list[str]:
     """Compact header counts (no titles): 'N headlines', 'interest X', 'N /smg/'."""
     bits = []
+    # CH-SRC-1: Finnhub + Yahoo's fresh net-new heads share one 'headlines' count.
     fin = _src(ticker, "finnhub_news")
-    if fin and fin.metrics.mention_count > 0:
-        bits.append(f"{fin.metrics.mention_count} headlines")
+    yah = _src(ticker, "yahoo_rss")
+    heads = (fin.metrics.mention_count if fin else 0) + (yah.metrics.mention_count if yah else 0)
+    if heads > 0:
+        bits.append(f"{heads} headlines")
     tr = _src(ticker, "google_trends")
     if tr and tr.metrics.interest_24h is not None:
         bits.append(f"interest {int(round(tr.metrics.interest_24h))}")
@@ -315,13 +327,29 @@ def _news_lines(ticker, aliases=None) -> list[str]:
     A source carrying nothing is omitted (no empty rows)."""
     lines = []
     fin = _src(ticker, "finnhub_news")
+    yah = _src(ticker, "yahoo_rss")
+    # CH-SRC-1: Yahoo's fresh net-new heads fold into the Finnhub headline stream (no separate
+    # line) — the news line shows Finnhub's named-news top, or Yahoo's freshest when Finnhub is
+    # empty; both feed the combined 'headlines' count in the header meta.
     if fin and fin.metrics.mention_count > 0:
         _, titles = headline_sample(fin, ticker.ticker, (aliases or {}).get(ticker.ticker))
         if titles:
             lines.append(f'<font color="{_MUTED}">news &middot;</font> {escape(titles[0])}')
+    elif yah and yah.metrics.headlines:
+        lines.append(f'<font color="{_MUTED}">news &middot;</font> {escape(yah.metrics.headlines[0].title)}')
     summary = fin.news_summary if fin else None  # Order 15: the named-news "why"
     if summary:
         lines.append(f'<font color="{_MUTED}">summary &middot;</font> {escape(summary)}')
+    # CH-SRC-1: Alpha Vantage per-ticker news-sentiment axis (label + signed score + article count).
+    av = _src(ticker, "alpha_vantage")
+    ns = getattr(av, "news_sentiment", None) if av else None
+    if ns is not None and ns.score is not None:
+        col = _av_color(ns.score)
+        lines.append(
+            f'<font color="{_MUTED}">AV sentiment &middot;</font> '
+            f'<font color="{col}">{escape(ns.label or "?")} {ns.score:+.2f}</font>'
+            f'<font color="{_MUTED}"> ({ns.articles} articles)</font>'
+        )
     smg = _src(ticker, "smg")
     if smg and smg.sentiment and smg.sentiment.method != "none":
         s = smg.sentiment

@@ -4,7 +4,10 @@ For each ACTIVE watchlist ticker, one Finnhub ``/company-news`` call over the
 canonical 24h window. Emits a NormalizedRecord per ticker:
   - ``metrics.mention_count`` = headline count, ``metrics.headlines`` = the raw
     titles+URLs for Abelard to read (count plus heads, no classification).
-  - ``matched_by = ["symbol"]`` — symbol-keyed; no company-name scan.
+  - ``matched_by = ["symbol"]`` — the query is symbol-keyed. CH-SRC-1 then applies
+    a per-ticker title relevance gate (keep a head only if its title names the
+    ticker) to drop Finnhub's peer/macro cross-tags; ``relevance_gate=False`` keeps
+    every cross-tag (the pre-CH-SRC-1 behaviour).
   - ``sentiment.method = "none"`` — news carries no stance.
 
 Honest zeros emit records (empty list / ETF coverage gap / 404). A missing key,
@@ -26,13 +29,14 @@ from abelard_common.company_aliases import load_name_map
 from abelard_common.http_client import HttpClient, NotFound
 
 from ..config import (
+    DEFAULT_FINNHUB_RELEVANCE_GATE,
     DEFAULT_SUMMARY_COST_CAP_USD,
     DEFAULT_SUMMARY_MODEL,
     DEFAULT_USER_AGENT,
     HAIKU_MODEL_ID,
 )
 from ..errors import ChatterDaemonError
-from ..matching import build_name_map, title_mentions_ticker
+from ..matching import title_mentions_ticker, watchlist_alias_map
 from ..schema import CostTelemetry, Headline, Metrics, NormalizedRecord, Sentiment
 from ..sentiment import AnthropicProvider, SentimentError, summarize_news, summary_cost_usd
 from ..watchlist import WatchlistConfig
@@ -64,6 +68,7 @@ class FinnhubNewsSource:
         haiku_model: str = HAIKU_MODEL_ID,
         summary_model: str = DEFAULT_SUMMARY_MODEL,
         summary_cost_cap_usd: float = DEFAULT_SUMMARY_COST_CAP_USD,
+        relevance_gate: bool = DEFAULT_FINNHUB_RELEVANCE_GATE,
         client: HttpClient | None = None,
         anthropic_client: Any | None = None,
         logger: logging.Logger | None = None,
@@ -81,6 +86,9 @@ class FinnhubNewsSource:
         self._haiku_model = haiku_model
         self._summary_model = summary_model  # Order 19: Sonnet for the prose summary
         self._cost_cap = summary_cost_cap_usd
+        # CH-SRC-1: keep a head under T only if its title names T (drops Finnhub's peer/macro
+        # cross-tags — ~67% of returned heads name no ticker). False = keep every cross-tag.
+        self._relevance_gate = relevance_gate
         self._shared_map = load_name_map(Path(company_names_path)) if company_names_path else {}
 
     def fetch(self, watchlist: WatchlistConfig, *, context: ScanContext, **_: object) -> SourceResult:
@@ -93,7 +101,10 @@ class FinnhubNewsSource:
         ).date()
         window = context.windows[WINDOW_LABEL]
 
-        aliases = self._aliases(watchlist)            # {SYMBOL: [name words]} for the gate
+        # CH-SRC-1: the FULL alias map (all tickers, incl name_match:false names like "micron" that a
+        # news headline can trust though a noisy social source can't). Drives BOTH the relevance gate
+        # and the summary gate — one source of truth, so a gated head and its summary agree.
+        aliases = watchlist_alias_map(watchlist, self._shared_map)
         anthropic = self._anthropic.get()             # None without a key -> no summaries
         cost = CostTelemetry()
         warnings: list[str] = []
@@ -123,6 +134,13 @@ class FinnhubNewsSource:
                 )
 
             heads = _parse_headlines(payload)
+            if self._relevance_gate:
+                # Keep only heads whose title names THIS ticker — drops Finnhub's peer/macro
+                # cross-tags (~67% of returned heads name no watchlist ticker), the main
+                # cross-ticker duplicate. Summaries already gate the same way, so this only
+                # removes noise the report would otherwise show + count.
+                names = aliases.get(spec.symbol, ())
+                heads = [h for h in heads if title_mentions_ticker(h.title, spec.symbol, names)]
             raw_items.extend(f"{spec.symbol}\t{h.title}" for h in heads)
             summary = self._summarize(spec.symbol, heads, aliases, anthropic, cost, warnings)
             records.append(
@@ -143,15 +161,6 @@ class FinnhubNewsSource:
         return SourceResult(
             source=SOURCE_NAME, records=records, warnings=warnings, cost=cost, raw_items=raw_items
         )
-
-    def _aliases(self, watchlist: WatchlistConfig) -> dict[str, list[str]]:
-        """`{SYMBOL: [name words]}` from the shared company-name map — the SAME map the
-        report's relevance filter uses (one source of truth; name_match:false tickers
-        contribute no names, so they gate on the symbol token alone)."""
-        out: dict[str, list[str]] = {}
-        for name, sym in build_name_map(watchlist, self._shared_map).items():
-            out.setdefault(sym, []).append(name)
-        return out
 
     def _summarize(self, symbol, heads, aliases, anthropic, cost, warnings) -> str | None:
         """One Haiku summary of the headlines that NAME this ticker — gated on evidence

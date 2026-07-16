@@ -39,7 +39,9 @@ And within 2025-H1, the signals concentrate further: **15 of 22 resolved in a si
 
 **The supply confound is ruled out.** 2026-Jan–Apr has the *most* resolved markets (474 — 2.2× the 215 in 2025-H1) yet produces **zero** consensus signals. The mechanic is not starved for markets in 2026; it stops firing. The edge is not "thin in 2026" — it is **absent**.
 
-**Even the 2025-H1 edge is fragile:** n=22 concentrated in one quarter (two-thirds in May 2025), plausibly a handful of correlated markets driven by common news, not 22 independent bets. It is weak evidence even for its own period.
+**Even the 2025-H1 edge claim is soft (v1.6 §1).** The best cell was selected **post-hoc** from an 81-cell sweep, clustered at maximum permissiveness (largest circle, loosest agreement), in-sample, n=23 concentrated in one quarter (two-thirds in May 2025) — plausibly a handful of correlated markets driven by common news, not 22 independent bets. The defensible summary is: **"possibly a modest edge in early 2025; demonstrably not firing now"** — not "+10.6% edge that decayed." The 10.6% figure is a post-hoc-selected in-sample number and should not be quoted as a measured edge.
+
+**Scope limits stand as pre-registered (v1.6 §1), none of which rescue the verdict:** mid-band only (mega-markets excluded), pre-June-2026-split regime, network-recovered 935/3,692 universe. The decay pattern is the dominant signal regardless; these bound *what was measured*, not the conclusion.
 
 ## 4. Interpretation (offered, not asserted)
 

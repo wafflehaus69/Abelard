@@ -26,6 +26,7 @@ from chatter_daemon.schema import (
     Headline,
     Metrics,
     NativeStance,
+    NewsSentiment,
     Sentiment,
     SourceSignal,
     SourceStatus,
@@ -33,7 +34,7 @@ from chatter_daemon.schema import (
 )
 
 
-def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None, news_summary=None, observed_window=None, twitter_summary=None):
+def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None, news_summary=None, observed_window=None, twitter_summary=None, news_sentiment=None):
     return SourceSignal(
         source=source,
         metrics=Metrics(mention_count=count, interest_24h=i24, interest_7d=i7, interest_monthly=im, headlines=headlines),
@@ -42,6 +43,7 @@ def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state=
         news_summary=news_summary,
         observed_window=observed_window,
         twitter_summary=twitter_summary,
+        news_sentiment=news_sentiment,
         anomaly=Anomaly(kind="trend" if source == "google_trends" else "count", state=state),
     )
 
@@ -425,6 +427,35 @@ def test_news_lines_omits_absent_smg():
     t = _wt("ABBV", [_wsig("finnhub_news", count=10, headlines=[Headline(title="ABBV deal", url="http://x")])], 1)
     lines = _news_lines(t)
     assert len(lines) == 1 and "ABBV deal" in lines[0] and "/smg/" not in " ".join(lines)
+
+
+def test_yahoo_folds_into_headlines_av_gets_its_own_line(tmp_path):
+    # CH-SRC-1: Yahoo has NO separate line — its net-new heads fold into the combined 'headlines'
+    # count and the news line shows Finnhub's top. AV sentiment keeps its own line (distinct axis).
+    from chatter_daemon.report import _meta_bits, _news_lines, render_report
+
+    t = _wt("NVDA", [
+        _wsig("finnhub_news", count=5, headlines=[Headline(title="NVDA earnings", url="http://x")]),
+        _wsig("yahoo_rss", count=2, headlines=[Headline(title="Nvidia fresh scoop", url="http://y")]),
+        _wsig("alpha_vantage", count=8,
+              news_sentiment=NewsSentiment(score=0.42, label="Bullish", articles=8, mean_relevance=0.6)),
+    ], 3)
+    lines = " ".join(_news_lines(t))
+    assert "news &middot;" in lines and "NVDA earnings" in lines   # Finnhub top is the news line
+    assert "fresh" not in lines and "Yahoo" not in lines           # no separate Yahoo line/label
+    assert "7 headlines" in " ".join(_meta_bits(t))                # 5 Finnhub + 2 Yahoo net-new
+    assert "AV sentiment &middot;" in lines and "Bullish" in lines and "+0.42" in lines
+    out = tmp_path / "srcexp.pdf"
+    render_report(_wresult([t]), out)
+    assert out.read_bytes()[:5] == b"%PDF-"
+
+
+def test_yahoo_only_headline_shows_when_finnhub_empty():
+    # When Finnhub has nothing but Yahoo does, Yahoo's freshest becomes the news line (folded in).
+    from chatter_daemon.report import _news_lines
+
+    t = _wt("TSM", [_wsig("yahoo_rss", count=1, headlines=[Headline(title="TSMC fab update", url="http://y")])], 1)
+    assert "TSMC fab update" in " ".join(_news_lines(t))
 
 
 def test_social_band_color_encodes_direction():

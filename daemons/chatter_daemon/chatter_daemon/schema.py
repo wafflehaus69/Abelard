@@ -28,7 +28,9 @@ from pydantic import BaseModel, ConfigDict, Field
 SCHEMA_VERSION = "1"
 
 # Closed contract vocabularies. A value outside these is a validation error.
-SourceName = Literal["stocktwits", "smg", "finnhub_news", "google_trends", "twitter"]
+SourceName = Literal[
+    "stocktwits", "smg", "finnhub_news", "google_trends", "twitter", "yahoo_rss", "alpha_vantage"
+]
 ScanMode = Literal["watchlist", "attention"]
 MatchedBy = Literal["symbol", "cashtag", "name"]
 SentimentMethod = Literal["native", "haiku", "none"]
@@ -133,6 +135,23 @@ class StockTwitsAggregate(BaseModel):
     confidence: str | None = None          # high | quiet | low | pump_suspect
 
 
+class NewsSentiment(BaseModel):
+    """Alpha Vantage NEWS_SENTIMENT per-ticker aggregate (CH-SRC-1) — the news-sentiment axis,
+    distinct from StockTwits crowd mood and Finnhub's factual count. Aggregated over the
+    articles whose `ticker_sentiment[]` names this ticker ABOVE the relevance gate: `score` =
+    relevance-weighted mean of AV's `ticker_sentiment_score` ([-1..+1], + = bullish); `label` =
+    the AV band derived from `score`; `articles` = the count above the gate; `mean_relevance` =
+    their mean `relevance_score`. All nullable — no qualifying article -> None/0, an honest
+    absence. Chatter emits the axis; Abelard joins the three reads (never the daemon)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    score: float | None = None              # relevance-weighted mean ticker_sentiment_score
+    label: str | None = None                # Bearish | Somewhat-Bearish | Neutral | Somewhat-Bullish | Bullish
+    articles: int = Field(default=0, ge=0)  # AV articles above the relevance gate
+    mean_relevance: float | None = None     # mean relevance_score of the counted articles
+
+
 class NormalizedRecord(BaseModel):
     """One (ticker, source, window) observation — plugin output, pre-anomaly."""
 
@@ -162,6 +181,9 @@ class NormalizedRecord(BaseModel):
     # Haiku <=3-sentence summary of the Twitter commentary (Order 18) — Twitter records
     # only; the crowd's "what they're saying", distinct from the bull/bear stance tally.
     twitter_summary: str | None = None
+    # Alpha Vantage NEWS_SENTIMENT per-ticker aggregate (CH-SRC-1) — alpha_vantage records only;
+    # the news-sentiment axis, distinct from StockTwits crowd mood + Finnhub's method=none count.
+    news_sentiment: NewsSentiment | None = None
     flags: list[str] = Field(default_factory=list)
 
 
@@ -265,6 +287,7 @@ class SourceSignal(BaseModel):
     news_summary: str | None = None  # Finnhub named-news Haiku summary (Order 15)
     observed_window: ObservedWindow | None = None  # Twitter survivor span (Order 17)
     twitter_summary: str | None = None  # Twitter commentary Haiku summary (Order 18)
+    news_sentiment: NewsSentiment | None = None  # Alpha Vantage news-sentiment axis (CH-SRC-1)
     matched_by: list[MatchedBy] = Field(default_factory=list)
     flags: list[str] = Field(default_factory=list)
     anomaly: Anomaly

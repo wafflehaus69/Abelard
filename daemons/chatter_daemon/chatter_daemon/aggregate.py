@@ -27,7 +27,7 @@ from .schema import (
 # Sources whose signal is a count z-scored against the baseline store. StockTwits is
 # left OUT (Order 12) — its velocity is the aggregate's now-vs-24h gap, not a rolling
 # count, so it never touches the rolling store.
-COUNT_SOURCES = frozenset({"finnhub_news", "smg"})
+COUNT_SOURCES = frozenset({"finnhub_news", "smg", "yahoo_rss", "alpha_vantage"})
 STOCKTWITS_SOURCE = "stocktwits"
 ST_GAP_SPIKE = 15  # |now - 24h| sentiment points that flags an igniting/cooling name
 
@@ -112,6 +112,7 @@ def build_aggregate(
                     news_summary=rec.news_summary,
                     observed_window=rec.observed_window,
                     twitter_summary=rec.twitter_summary,
+                    news_sentiment=rec.news_sentiment,
                     matched_by=rec.matched_by,
                     flags=rec.flags,
                     anomaly=anomaly,

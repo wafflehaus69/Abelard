@@ -243,7 +243,10 @@ def test_nonascii_headline_decodes_through_real_client():
         _resp([]),
     ])
     client = HttpClient(user_agent="t", session=session)
-    res = FinnhubNewsSource(api_key="k", client=client).fetch(WL, context=_ctx())
+    # relevance_gate=False: this is the DECODE regression — the head names NVDA by company name
+    # ("Nvidia") not the "NVDA" symbol, and with no company_names_path the gate is symbol-only, so
+    # gating is orthogonal here. Turn it off to keep the test about UTF-8, not the alias map.
+    res = FinnhubNewsSource(api_key="k", client=client, relevance_gate=False).fetch(WL, context=_ctx())
     by = {r.ticker: r for r in res.records}
     assert by["NVDA"].metrics.headlines[0].title == "Nvidia — café déjà vu"
 
@@ -272,3 +275,55 @@ def test_summary_on_sonnet_and_headlines_collected():
     res = _finnhub(client, anthropic=fake).fetch(WL, context=_ctx())
     assert "NVDA\tNVDA jumps on earnings" in res.raw_items          # headlines -> history dump
     assert fake.messages.calls[0]["model"] == "claude-sonnet-4-6"  # summary on Sonnet
+
+
+# --- CH-SRC-1: relevance gate (keep a head only if its title names THIS ticker) -----------------
+# Finnhub cross-tags peer/macro stories onto every symbol's feed; live, only ~23% of returned heads
+# name the ticker. The gate drops the cross-tags (measured: dupes 35%->8%, no ticker zeroed).
+
+_GATE_WL = WatchlistConfig(name="x", tickers=[{"symbol": "NVDA"}, {"symbol": "AMD"}])
+
+
+def test_relevance_gate_drops_cross_tagged_peer_and_macro_heads():
+    client = _FakeClient([
+        [
+            {"headline": "NVDA ships a new GPU", "url": "http://a"},        # names NVDA -> keep
+            {"headline": "AMD wins a cloud contract", "url": "http://b"},  # peer cross-tag -> drop
+            {"headline": "Dow movers rally today", "url": "http://c"},     # macro, no ticker -> drop
+        ],
+        [],  # AMD honest zero
+    ])
+    res = FinnhubNewsSource(api_key="k", client=client, relevance_gate=True).fetch(_GATE_WL, context=_ctx())
+    nvda = {r.ticker: r for r in res.records}["NVDA"]
+    assert nvda.metrics.mention_count == 1
+    assert [h.title for h in nvda.metrics.headlines] == ["NVDA ships a new GPU"]
+
+
+def test_relevance_gate_disabled_keeps_cross_tags():
+    client = _FakeClient([
+        [
+            {"headline": "NVDA ships a new GPU", "url": "http://a"},
+            {"headline": "AMD wins a cloud contract", "url": "http://b"},
+            {"headline": "Dow movers rally today", "url": "http://c"},
+        ],
+        [],
+    ])
+    res = FinnhubNewsSource(api_key="k", client=client, relevance_gate=False).fetch(_GATE_WL, context=_ctx())
+    assert {r.ticker: r for r in res.records}["NVDA"].metrics.mention_count == 3  # gate off -> all kept
+
+
+def test_relevance_gate_keeps_name_match_false_alias():
+    # MU's "micron" name is name_match:false (a length-unit collision unsafe in social feeds), so it
+    # is absent from build_name_map. The gate must still keep a Finnhub head that names Micron by
+    # NAME — watchlist_alias_map folds in the name_match:false alias for a scoped headline feed.
+    wl = WatchlistConfig(name="x", tickers=[{"symbol": "MU", "names": ["Micron"], "name_match": False}])
+    client = _FakeClient([
+        [
+            {"headline": "Micron stock jumps on HBM demand", "url": "http://a"},  # names Micron -> keep
+            {"headline": "SK Hynix soars on AI memory", "url": "http://b"},        # peer, unnamed -> drop
+        ],
+    ])
+    res = FinnhubNewsSource(api_key="k", client=client, relevance_gate=True).fetch(wl, context=_ctx())
+    mu = {r.ticker: r for r in res.records}["MU"]
+    assert mu.metrics.mention_count == 1
+    assert [h.title for h in mu.metrics.headlines] == ["Micron stock jumps on HBM demand"]

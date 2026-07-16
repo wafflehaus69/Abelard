@@ -8,11 +8,13 @@ registered source (Order 2); /smg/, Trends, and StockTwits have since landed.
 from __future__ import annotations
 
 from ..config import Config
+from .alpha_vantage import AlphaVantageSource
 from .base import Source
 from .finnhub_news import FinnhubNewsSource
 from .smg import SmgSource
 from .stocktwits import StockTwitsSource
 from .twitter import TwitterSource
+from .yahoo_rss import YahooRssSource
 
 
 def build_sources(cfg: Config) -> list[Source]:
@@ -27,6 +29,7 @@ def build_sources(cfg: Config) -> list[Source]:
             haiku_model=cfg.haiku_model_id,
             summary_model=cfg.summary_model,
             summary_cost_cap_usd=cfg.news_summary_cost_cap_usd,
+            relevance_gate=cfg.finnhub_relevance_gate,  # CH-SRC-1: drop cross-tagged peer/macro heads
         ),
         SmgSource(
             company_names_path=cfg.company_names_path,
@@ -49,6 +52,18 @@ def build_sources(cfg: Config) -> list[Source]:
             haiku_enabled=cfg.stocktwits_haiku_enabled,
         ),
     ]
+    # CH-SRC-1 — Yahoo per-ticker RSS (fresh headline supplement, keyless). Ordered AFTER Finnhub
+    # in the fan-out so Finnhub's headlines arrive via prior_records for the net-new dedup. ON by
+    # default; CHATTER_YAHOO_ENABLED=0 to disable.
+    if cfg.yahoo_enabled:
+        sources.append(
+            YahooRssSource(
+                company_names_path=cfg.company_names_path,
+                max_items=cfg.yahoo_max_items,
+                stale_after_h=cfg.yahoo_stale_after_h,
+                roundup_max=cfg.yahoo_roundup_max,
+            )
+        )
     # Twitter/X cashtag source (Order 17) — the first subprocess source. Gated OFF by
     # default (cfg.twitter_enabled); flip CHATTER_TWITTER_ENABLED=1 after a live cert on
     # the host that has the `twitter` CLI. Absent from the fan-out entirely when off, so
@@ -71,6 +86,18 @@ def build_sources(cfg: Config) -> list[Source]:
                 # Order 21 — priority-first queue + top-N cap (beat X's quota on solo searches).
                 priority=cfg.twitter_priority,
                 max_tickers=cfg.twitter_max_tickers,
+            )
+        )
+    # CH-SRC-1 — Alpha Vantage NEWS_SENTIMENT (per-ticker news-sentiment axis). Gated on a key
+    # (claim a free one at alphavantage.co -> .env ALPHAVANTAGE_API_KEY / AV_KEY); absent -> off,
+    # so scans without a key are unchanged.
+    if cfg.alphavantage_api_key:
+        sources.append(
+            AlphaVantageSource(
+                api_key=cfg.alphavantage_api_key,
+                relevance_min=cfg.av_relevance_min,
+                limit=cfg.av_limit,
+                sort=cfg.av_sort,
             )
         )
     return sources

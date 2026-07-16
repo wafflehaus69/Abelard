@@ -13,7 +13,7 @@ def test_render_groups_by_source_and_ticker():
         "twitter\tNVDA\tanother nvda take",
     ]
     out = render_history(raw, scan_id="cd-x", stamp="07-09-2026 09:42 EDT")
-    assert "HEADLINES (Finnhub)" in out and "Apple beats on earnings" in out
+    assert "HEADLINES" in out and "Apple beats on earnings" in out
     assert "STOCKTWITS" in out and "$AAPL to the moon" in out
     assert "TWITTER" in out and "solid data-center thesis" in out and "another nvda take" in out
     assert "[AAPL]" in out and "[NVDA]" in out
@@ -23,6 +23,19 @@ def test_render_groups_by_source_and_ticker():
 def test_render_skips_malformed_lines():
     out = render_history(["bad-line-no-tabs", "twitter\tNVDA\tgood"], scan_id="s", stamp="t")
     assert "good" in out and "bad-line-no-tabs" not in out
+
+
+def test_headlines_section_merges_finnhub_and_yahoo():
+    # CH-SRC-1: Finnhub + Yahoo heads share ONE HEADLINES section, grouped together per ticker.
+    raw = [
+        "finnhub_news\tNVDA\tNvidia earnings beat",
+        "yahoo_rss\tNVDA\tNvidia fresh scoop",
+        "finnhub_news\tMU\tMicron guidance",
+    ]
+    out = render_history(raw, scan_id="s", stamp="t")
+    assert out.count("### HEADLINES") == 1  # one merged headline section, not two
+    nvda = out.split("[NVDA]")[1].split("[MU]")[0]
+    assert "Nvidia earnings beat" in nvda and "Nvidia fresh scoop" in nvda  # both sources together
 
 
 def test_write_timestamped_txt(tmp_path):
