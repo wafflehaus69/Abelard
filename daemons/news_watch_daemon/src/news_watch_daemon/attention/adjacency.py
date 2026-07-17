@@ -144,7 +144,7 @@ class AttentionTerm:
     """
 
     text: str
-    kind: str          # "bigram" | "unigram"
+    kind: str          # "trigram" | "bigram" | "unigram"
     window_count: int
     prior_count: int
     delta_ratio: float
@@ -171,17 +171,19 @@ def tokenize_ordered(text: str | None) -> list[str]:
 def _count_window(
     headlines: Iterable[str | None],
     grammatical_stops: frozenset[str],
-) -> tuple[Counter[str], Counter[tuple[str, str]]]:
-    """Per-headline-distinct unigram (Tier-C only) and bigram counters.
+) -> tuple[Counter[str], Counter[tuple[str, str]], Counter[tuple[str, str, str]]]:
+    """Per-headline-distinct unigram / bigram / TRIGRAM counters (Tier-C).
 
-    Unigrams exclude grammatical stopwords and Tier-B soft words. A bigram
-    is formed from an adjacent pair only when NEITHER member is a
-    grammatical stopword — soft members are allowed, so "world cup" forms
-    but "in iran" and "of the" do not. The grammatical stopword still
-    occupies its slot, so it breaks adjacency between the words flanking it.
+    Unigrams exclude grammatical stopwords and Tier-B soft words. A bigram or
+    trigram is formed from adjacent tokens only when NO member is a grammatical
+    stopword — soft members are allowed, so "world cup" and "defense industrial
+    base" form but "in iran" and "of the day" do not. The grammatical stopword
+    still occupies its slot, so it breaks adjacency between the words flanking it.
+    Trigrams extend the signal window to 3 words (Mando 2026-07-17).
     """
     unigrams: Counter[str] = Counter()
     bigrams: Counter[tuple[str, str]] = Counter()
+    trigrams: Counter[tuple[str, str, str]] = Counter()
     for text in headlines:
         toks = tokenize_ordered(text)
         # Unigrams: distinct, Tier-C only (grammatical + soft excluded).
@@ -199,7 +201,17 @@ def _count_window(
         }
         for pair in pairs:
             bigrams[pair] += 1
-    return unigrams, bigrams
+        # Trigrams: distinct adjacent triples, no grammatical-stopword member.
+        triples = {
+            (toks[i], toks[i + 1], toks[i + 2])
+            for i in range(len(toks) - 2)
+            if toks[i] not in grammatical_stops
+            and toks[i + 1] not in grammatical_stops
+            and toks[i + 2] not in grammatical_stops
+        }
+        for tr in triples:
+            trigrams[tr] += 1
+    return unigrams, bigrams, trigrams
 
 
 def _delta_ratio(window_n: int, prior_n: int) -> float:
@@ -226,44 +238,65 @@ def build_attention_list(
     the grammatical adjacency-breaker set (retained in-sequence, forbidden
     as bigram members, excluded from unigrams).
     """
-    win_uni, win_big = _count_window(window_headlines, stopwords)
-    prior_uni, prior_big = _count_window(prior_headlines, stopwords)
+    win_uni, win_big, win_tri = _count_window(window_headlines, stopwords)
+    prior_uni, prior_big, prior_tri = _count_window(prior_headlines, stopwords)
 
-    # Promote bigrams over the threshold (strictly greater than adjacency_min).
+    # 1) Promote TRIGRAMS over the threshold (strictly greater than adjacency_min).
+    promoted_tri = {tr: n for tr, n in win_tri.items() if n > adjacency_min}
+
+    # Collapse from a promoted trigram "a b c":
+    #   - its 3 constituent unigrams ALWAYS (they are fragments of the phrase);
+    #   - a constituent bigram ONLY when that bigram appears exclusively within
+    #     the trigram (win_big <= trigram count). A bigram that recurs
+    #     INDEPENDENTLY (e.g. "data center" @66 vs "data center moratorium" @15)
+    #     is a BROADER signal and must survive as its own term, so it is NOT
+    #     collapsed.
+    collapsed_uni: set[str] = set()
+    collapsed_big: set[tuple[str, str]] = set()
+    for (a, b, c), n in promoted_tri.items():
+        collapsed_uni.update((a, b, c))
+        for pair in ((a, b), (b, c)):
+            if win_big.get(pair, 0) <= n:
+                collapsed_big.add(pair)
+
+    # 2) Promote BIGRAMS over the threshold, except those fully subsumed by a
+    #    promoted trigram. Each surviving promoted bigram collapses its unigrams.
     promoted_pairs = {
-        pair: n for pair, n in win_big.items() if n > adjacency_min
+        pair: n for pair, n in win_big.items()
+        if n > adjacency_min and pair not in collapsed_big
     }
-
-    # Collapse set: every unigram that is a constituent of a promoted pair
-    # is removed from the standalone list and represented by the pair.
-    collapsed: set[str] = set()
     for a, b in promoted_pairs:
-        collapsed.add(a)
-        collapsed.add(b)
+        collapsed_uni.add(a)
+        collapsed_uni.add(b)
 
     terms: list[AttentionTerm] = []
+
+    # Promoted trigrams (widest signal first in the tiebreak sense).
+    for (a, b, c), n in promoted_tri.items():
+        prior_n = prior_tri.get((a, b, c), 0)
+        terms.append(AttentionTerm(
+            text=f"{a} {b} {c}", kind="trigram",
+            window_count=n, prior_count=prior_n,
+            delta_ratio=_delta_ratio(n, prior_n),
+        ))
 
     # Promoted bigrams.
     for (a, b), n in promoted_pairs.items():
         prior_n = prior_big.get((a, b), 0)
         terms.append(AttentionTerm(
-            text=f"{a} {b}",
-            kind="bigram",
-            window_count=n,
-            prior_count=prior_n,
+            text=f"{a} {b}", kind="bigram",
+            window_count=n, prior_count=prior_n,
             delta_ratio=_delta_ratio(n, prior_n),
         ))
 
-    # Surviving Tier-C unigrams (those not swallowed by a promoted pair).
+    # Surviving Tier-C unigrams (not swallowed by a promoted bigram/trigram).
     for tok, n in win_uni.items():
-        if tok in collapsed:
+        if tok in collapsed_uni:
             continue
         prior_n = prior_uni.get(tok, 0)
         terms.append(AttentionTerm(
-            text=tok,
-            kind="unigram",
-            window_count=n,
-            prior_count=prior_n,
+            text=tok, kind="unigram",
+            window_count=n, prior_count=prior_n,
             delta_ratio=_delta_ratio(n, prior_n),
         ))
 

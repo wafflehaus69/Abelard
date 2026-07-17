@@ -629,6 +629,9 @@ def _build_attention_synthesis_with_convergence(
             freq_prior=ab.term_frequency_prior,
             delta_ratio=delta_ratio,
             shape=ab.attention_shape,
+            # Distinct publishers carrying the term = breadth of news-industry
+            # push; the render sorts orphan crossings by this first.
+            source_count=len(ab.source_mix or {}),
             attention_brief_id=ab.brief_id,
             attention_brief_path=str(path),
             convergence=convergence_info,

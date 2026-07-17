@@ -213,6 +213,11 @@ class AttentionCrossing(BaseModel):
     delta_ratio: float = Field(ge=0.0)
     shape: str   # AttentionShape values; kept as str here since validation
                  # happens at AttentionBrief level (and shape comes pre-validated).
+    # Distinct publishers/sources carrying the term this window (len of the
+    # attention brief's source_mix). A high count means the news industry is
+    # pushing the story across many outlets - the primary sort key for orphan
+    # crossings in the render. Defaults 0 for back-compat with older envelopes.
+    source_count: int = Field(ge=0, default=0)
     attention_brief_id: str
     attention_brief_path: str
     convergence: ConvergenceInfo

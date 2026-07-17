@@ -27,9 +27,11 @@ synthesis:
   # build time. When Sonnet 4.7 ships, bump this string.
   default_model: "claude-sonnet-4-6"
 
-  # PLACEHOLDER (§14 calibration). Events scoring below this on
-  # Sonnet's self-rated materiality are filtered out by the gate.
-  materiality_threshold: 0.55
+  # Events scoring below this on Sonnet's self-rated materiality are treated as
+  # non-material. Raised 0.55 -> 0.70 (Mando 2026-07-17): only "confirmed shift"
+  # band events and above (>=0.70) count as material specific headlines; the
+  # render also gates the specific-headline list at this bar.
+  materiality_threshold: 0.70
 
   # The materiality gate scans the Brief archive this far back for
   # duplicate-event fingerprints. Briefs older than this are not
