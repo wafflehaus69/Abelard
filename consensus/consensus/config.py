@@ -107,6 +107,20 @@ class CollectorConfig(_Strict):
     drain_minutes: int = Field(ge=1, default=360)
     # A lock older than this is considered abandoned (crashed run).
     lock_stale_minutes: int = Field(ge=1, default=30)
+    # Dedup skip guard (L2 throughput). A market-lane walk re-fetches the newest
+    # page every poll; records below the market's stored frontier are already on
+    # the tape (contiguity invariant) and re-inserting them is pure waste. Skip
+    # them — but only those older than (frontier − this margin), so a fill that
+    # data-api surfaces LATE (indexed after its trade time) still lands in the
+    # re-processed near-frontier band and is never silently dropped. The margin
+    # must exceed data-api's worst indexing lag. No lag figure has been directly
+    # measured (the 2026-07-12 memo measured fill RATE/window-roll, not lag); 60
+    # min is a conservative assumption, well beyond the seconds-to-minutes lag
+    # those rates imply — a per-fill trade-time vs first_seen_poll probe would
+    # confirm it. A finite margin cannot cover a multi-hour indexer outage +
+    # backfill; that needs a periodic margin=0 reconciliation pass, not a bigger
+    # routine margin. Set to 0 to disable the skip entirely (full INSERT-OR-IGNORE).
+    late_arrival_margin_minutes: int = Field(ge=0, default=60)
     tiers: CollectorTiersConfig = CollectorTiersConfig()
 
 

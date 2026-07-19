@@ -98,6 +98,123 @@ def test_market_poll_stops_on_overlap(collector, requests_mock):
     assert m2.call_count == 1
 
 
+# -- dedup skip fast-path (Basilic 2026-07-19 throughput fix) ------------------
+
+
+def test_store_page_skips_below_threshold_keeps_band(collector):
+    """store_page contract: a record strictly below skip_below_ts is elided
+    (presumed already stored — pure redundant work), while a record at/above it
+    still INSERT-OR-IGNOREs so a late-indexed fill in the band is captured."""
+    from consensus.models import Trade
+    tape = collector.tape
+    poll = tape.open_poll(invoked_ts=1, lane="market", condition_id="0xCID")
+    base = 1_000_000_000
+    deep = _fill(1, cid="0xCID", ts=base - 10_000)   # below -> skipped
+    band = _fill(2, cid="0xCID", ts=base + 10)        # at/above -> stored
+    counts = tape.store_page([deep, band], lane="market", poll_id=poll,
+                             parsed_by=Trade.from_api, skip_below_ts=base)
+    assert counts["presumed_stored"] == 1 and counts["new"] == 1
+    stored = {r[0] for r in tape._conn.execute(
+        "SELECT timestamp FROM l2_trades WHERE parse_ok=1").fetchall()}
+    assert (base - 10_000) not in stored and (base + 10) in stored
+
+
+def test_poll_market_skips_stored_deep_dupes(collector, requests_mock):
+    """A caught-up market re-fetches its newest page each poll. Already-stored
+    fills older than (frontier − margin) are elided instead of re-IGNORE'd;
+    the genuinely-new top fill is still captured and continuity holds."""
+    mkt = _track(collector)
+    now = 2_000_000_000
+    margin_s = collector.cfg.late_arrival_margin_minutes * 60
+    first = [_fill(0, ts=now), _fill(1, ts=now - 1000),
+             _fill(2, ts=now - margin_s - 500)]  # last is below (frontier − margin)
+    requests_mock.get(_TRADES_URL, json=first)
+    collector.poll_market(mkt, now_ts=now + 1)
+    assert collector.tape.stats()["fills"] == 3
+    mkt = collector.tape.markets()[0]
+    requests_mock.get(_TRADES_URL, json=[_fill(9, ts=now + 5)] + first)
+    r = collector.poll_market(mkt, now_ts=now + 120)
+    assert r["presumed_stored"] == 1  # the deep, already-stored fill elided
+    assert r["new"] == 1              # only the new top fill inserted
+    assert r["gap"] is False          # continuity intact despite the skip
+    assert collector.tape.stats()["fills"] == 4
+
+
+def test_poll_market_captures_late_arrival_in_margin_band(collector, requests_mock):
+    """The non-negotiable: a fill data-api surfaces LATE (timestamp just under
+    the frontier, within the margin) must still be captured — the skip elides
+    only records OLDER than frontier − margin, never the near-frontier band."""
+    mkt = _track(collector)
+    now = 1_000_000_000
+    margin_s = collector.cfg.late_arrival_margin_minutes * 60
+    requests_mock.get(_TRADES_URL, json=[_fill(0, ts=now - 5), _fill(1, ts=now)])
+    collector.poll_market(mkt, now_ts=now + 1)
+    fills_before = collector.tape.stats()["fills"]
+    mkt = collector.tape.markets()[0]
+    late = _fill(99, cid="0xCID", ts=now - margin_s // 2)  # within the margin band
+    requests_mock.get(_TRADES_URL, json=[_fill(2, ts=now + 10), late, _fill(1, ts=now)])
+    r = collector.poll_market(mkt, now_ts=now + 120)
+    # Both the above-frontier fill and the late in-band fill are captured.
+    assert collector.tape.stats()["fills"] == fills_before + 2
+    assert r["gap"] is False
+
+
+def test_errored_poll_does_not_advance_frontier_onto_global_fill(collector, requests_mock):
+    """Adversarial-audit regression (2026-07-19, CONFIRMED data-loss): a pages==0
+    errored market poll must NOT advance the frontier onto a fill the GLOBAL lane
+    stored above it. The old code advanced newest_fill_ts to a lane-agnostic
+    MAX(timestamp); the frontier jumped across an un-walked interval with no gap,
+    and the next poll's dedup skip then silently elided that hole."""
+    mkt = _track(collector)
+    F = 1_772_000_000
+    requests_mock.get(_TRADES_URL, json=[_fill(0, ts=F)])
+    collector.poll_market(mkt, now_ts=F + 10)
+    assert collector.tape.markets()[0]["newest_fill_ts"] == F
+    # Global lane deposits a fresh fill for this market well above the frontier.
+    requests_mock.get(_TRADES_URL, json=[_fill(9, cid="0xCID", ts=F + 100_000)])
+    collector.poll_global(F + 20, {"0xCID"})
+    assert collector.tape.newest_fill_ts("0xCID") == F + 100_000  # it IS on the tape
+    # Market-lane poll errors on the first fetch: nothing walked (pages==0).
+    requests_mock.get(_TRADES_URL, status_code=500)
+    mkt = collector.tape.markets()[0]
+    r = collector.poll_market(mkt, now_ts=F + 30)
+    assert r["error"] is not None
+    # Frontier must NOT have jumped to the global fill; it stays at F so the next
+    # poll re-walks (F, now] rather than skipping it.
+    assert collector.tape.markets()[0]["newest_fill_ts"] == F
+
+
+def test_corrupt_future_timestamp_does_not_poison_frontier(collector, requests_mock):
+    """Re-audit 2026-07-19 (CONFIRMED): a corrupt far-future timestamp (e.g. a
+    millisecond value) must NOT advance the MAX-monotonic frontier. If it did,
+    every later walk would trip reached_frontier on page 0 (truncating bursts)
+    and the skip band (clamped to now) would elide real fills during a poll gap."""
+    mkt = _track(collector)
+    now = 1_772_000_000
+    # A real fill plus one corrupt ms-scale record in the same page.
+    requests_mock.get(_TRADES_URL, json=[_fill(1, ts=now), _fill(99, ts=now * 1000)])
+    collector.poll_market(mkt, now_ts=now + 5)
+    fr = collector.tape.markets()[0]["newest_fill_ts"]
+    assert fr == now, f"frontier must track the real fill, not the corrupt future ts (got {fr})"
+
+
+def test_presumed_stored_persisted_in_l2_polls(collector, requests_mock):
+    """The dedup skip count is persisted per-poll (observability parity with the
+    other record dispositions), not only aggregated in the run envelope."""
+    mkt = _track(collector)
+    now = 2_000_000_000
+    margin_s = collector.cfg.late_arrival_margin_minutes * 60
+    requests_mock.get(_TRADES_URL, json=[_fill(0, ts=now), _fill(1, ts=now - margin_s - 500)])
+    collector.poll_market(mkt, now_ts=now + 1)
+    mkt = collector.tape.markets()[0]
+    requests_mock.get(_TRADES_URL, json=[_fill(9, ts=now + 5), _fill(1, ts=now - margin_s - 500)])
+    collector.poll_market(mkt, now_ts=now + 120)
+    row = collector.tape._conn.execute(
+        "SELECT presumed_records FROM l2_polls WHERE lane='market' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row[0] == 1  # the one deep already-stored fill was skipped and recorded
+
+
 def test_market_poll_declares_gap_when_window_rolled(collector, requests_mock):
     """Prior tape exists, but a full max-page walk finds no stored fill ->
     the market's window rolled past us. The interval is DECLARED, not bridged."""
@@ -411,6 +528,46 @@ def test_run_once_budget_and_oldest_first(collector, requests_mock):
         "SELECT condition_id FROM l2_polls WHERE lane='market'"
     ).fetchall()]
     assert polled == ["0xM0", "0xM1"], "budget must take the longest-unpolled first"
+
+
+def test_run_once_prioritizes_hot_over_older_dormant_backlog(collector, requests_mock):
+    """Priority-inversion regression (Basilic 2026-07-19): a large dormant
+    backlog that was polled long ago must NOT crowd hot markets out of the
+    per-run budget. Selection is by overdue-ratio (age / tier interval), so a
+    hot market polled 5 min ago (2.5x its 2-min interval) beats a dormant
+    market polled 10 h ago (only ~1.6x its 360-min interval), even though the
+    dormant market is absolutely older."""
+    import time as _time
+    now = int(_time.time())
+    # Pin intervals to production values so the scenario is self-contained
+    # (the shared test config uses shorter intervals).
+    object.__setattr__(collector.cfg.tiers, "hot_interval_minutes", 2)
+    object.__setattr__(collector.cfg.tiers, "dormant_interval_minutes", 360)
+    # 3 dormant markets polled 10 h ago: absolutely oldest, but barely overdue
+    # (~1.7x a 360-min interval).
+    for i in range(3):
+        collector.tape.upsert_market(f"0xD{i}", slug="m", question="Q?",
+                                     tags="geopolitics", source="enumeration", now_ts=1)
+        collector.tape.update_market_poll_state(
+            f"0xD{i}", tier="dormant", hot_until_ts=0,
+            last_polled_ts=now - 10 * 3600, newest_fill_ts=0, last_new_fills=0)
+    # 2 hot markets polled 5 min ago: absolutely newer, but well past their
+    # 2-min interval.
+    for i in range(2):
+        collector.tape.upsert_market(f"0xH{i}", slug="m", question="Q?",
+                                     tags="geopolitics", source="enumeration", now_ts=1)
+        collector.tape.update_market_poll_state(
+            f"0xH{i}", tier="hot", hot_until_ts=now + 3600,
+            last_polled_ts=now - 5 * 60, newest_fill_ts=now, last_new_fills=0)
+    object.__setattr__(collector.cfg, "max_markets_per_run", 2)
+    requests_mock.get(_EVENTS_URL, json=[])
+    requests_mock.get(_TRADES_URL, json=[])
+    env = collector.run_once()
+    assert env["result"]["markets_polled"] == 2
+    polled = {row[0] for row in collector.tape._conn.execute(
+        "SELECT condition_id FROM l2_polls WHERE lane='market'").fetchall()}
+    assert polled == {"0xH0", "0xH1"}, \
+        "hot markets must win the budget over an absolutely-older dormant backlog"
 
 
 def test_run_once_polls_promoted_market_same_invocation(collector, requests_mock):

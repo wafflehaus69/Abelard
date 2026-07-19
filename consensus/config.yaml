@@ -96,9 +96,22 @@ collector:
   # deactivating (captures the fill tail around resolution — on a resolving
   # geopolitics market that tail is exactly the data that matters).
   drain_minutes: 360
-  # A lock older than this is an abandoned (crashed) run. The poll budget
-  # keeps live passes far shorter than this.
-  lock_stale_minutes: 30
+  # A lock older than this is an abandoned (crashed) run. Must stay ABOVE the
+  # real pass duration, or a still-running slow pass is mistaken for a crash and
+  # a second pass starts concurrently. Passes reached ~32 min on the 7.8 GB tape
+  # (2026-07-19), crossing the old 30-min value; raised to 90 so a degraded pass
+  # cannot self-overlap while the throughput fixes take effect.
+  lock_stale_minutes: 90
+
+  # Dedup skip guard: a market walk re-fetches the newest page each poll; records
+  # older than (frontier − this margin) are already stored (contiguity) and are
+  # skipped instead of re-INSERT-OR-IGNORE'd — the bulk of per-pass DB work on a
+  # large tape. The margin re-processes the near-frontier band so a late-indexed
+  # fill is never silently dropped; 60 min is a conservative assumption (real lag
+  # unmeasured, but seconds-to-minutes by the 2026-07-12 rate memo). Does NOT
+  # cover a multi-hour indexer outage + backfill — that needs a periodic margin=0
+  # reconciliation pass. Set to 0 to disable the skip.
+  late_arrival_margin_minutes: 60
 
   tiers:
     # Worst observed per-market burst rolls a 4k window in ~13.7 min; hot at

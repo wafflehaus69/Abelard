@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS l2_polls (
     dupe_records     INTEGER NOT NULL DEFAULT 0,
     skipped_records  INTEGER NOT NULL DEFAULT 0,
     unparsed_records INTEGER NOT NULL DEFAULT 0,
+    presumed_records INTEGER NOT NULL DEFAULT 0,
     overlap_found    INTEGER NOT NULL DEFAULT 0,
     gap_declared     INTEGER NOT NULL DEFAULT 0,
     error            TEXT
@@ -132,7 +133,23 @@ class TapeStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self._conn = sqlite3.connect(str(self.path))
+            # WAL + these pragmas are the collector's write-throughput budget.
+            # The tape is a commit-heavy, index-probe-heavy append log that had
+            # grown to ~7.8 GB / 4.3M rows by 2026-07-19, at which point per-pass
+            # INSERT-OR-IGNORE dedup against the four indexes went disk-bound and
+            # passes ballooned from ~4 min to ~32 min.
+            #   - busy_timeout: tolerate a concurrent writer (a stale-lock
+            #     takeover can briefly overlap two passes) instead of erroring
+            #     out with "database is locked".
+            #   - synchronous=NORMAL: safe under WAL (a crash can lose only the
+            #     last commit, never corrupt) and removes most fsync stalls; the
+            #     collector re-walks and re-captures on the next pass anyway.
+            #   - cache_size=-262144: 256 MB page cache (vs the 2 MB default) so
+            #     the hot index working set stays resident within a pass.
             self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA busy_timeout=30000")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+            self._conn.execute("PRAGMA cache_size=-262144")
             self._conn.executescript(_SCHEMA)
             self._migrate()
             self._conn.commit()
@@ -146,6 +163,7 @@ class TapeStore:
             ("l2_markets", "close_seen_ts", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_polls", "skipped_records", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_polls", "unparsed_records", "INTEGER NOT NULL DEFAULT 0"),
+            ("l2_polls", "presumed_records", "INTEGER NOT NULL DEFAULT 0"),
         ):
             cols = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
             if column not in cols:
@@ -165,21 +183,33 @@ class TapeStore:
         parsed_by: Any,  # Callable[[dict], model|None] — Trade.from_api
         restrict_condition_ids: set[str] | None = None,
         occurrence: dict[str, int] | None = None,
+        skip_below_ts: int | None = None,
     ) -> dict[str, int]:
         """Insert one response page of raw fill records.
 
         Returns counters: ``raw`` (records seen), ``new`` (inserted),
         ``overlap`` (already stored), ``dupes`` (identical tuples within this
         walk, stored as distinct fills), ``skipped`` (outside restrict set),
-        ``unparsed`` (stored with parse_ok=0 — archived, never dropped).
+        ``unparsed`` (stored with parse_ok=0 — archived, never dropped),
+        ``presumed_stored`` (below ``skip_below_ts`` — already on the tape by
+        the market-lane contiguity invariant, so not re-processed).
 
         ``occurrence`` scopes the identical-tuple disambiguation: pass one dict
         across all pages of a single walk so a multi-fill tx straddling a page
         boundary is still stored as two fills, not conflated with a cross-poll
         dupe. Omitting it scopes to this page only.
+
+        ``skip_below_ts`` is a dedup fast-path for the market lane ONLY: a record
+        whose raw timestamp is strictly below it is already stored (the walk that
+        set the frontier reached down through this timestamp; below the frontier
+        the tape is contiguous), so its hash/parse/insert is skipped as pure
+        redundant work. The caller sets it to ``frontier − late-arrival margin``
+        so the band just under the frontier is STILL re-inserted — a fill
+        data-api indexes late lands there and is captured, never dropped. The
+        global lane (no per-market frontier) must never pass this.
         """
         counts = {"raw": len(raw_records), "new": 0, "overlap": 0, "dupes": 0,
-                  "skipped": 0, "unparsed": 0}
+                  "skipped": 0, "unparsed": 0, "presumed_stored": 0}
         if occurrence is None:
             occurrence = {}
         try:
@@ -204,6 +234,15 @@ class TapeStore:
                 if restrict_condition_ids is not None and cid not in restrict_condition_ids:
                     counts["skipped"] += 1
                     continue
+                if skip_below_ts is not None:
+                    ts = raw.get("timestamp")
+                    if isinstance(ts, int) and ts < skip_below_ts:
+                        # Below the frontier margin: already on the tape. Skip
+                        # the hash/parse/insert — this is the redundant-work
+                        # elimination. (Records at/above the margin still fall
+                        # through to INSERT-OR-IGNORE, catching late arrivals.)
+                        counts["presumed_stored"] += 1
+                        continue
                 base = fill_key_base(raw)
                 occurrence[base] = occurrence.get(base, 0) + 1
                 key = base if occurrence[base] == 1 else f"{base}#{occurrence[base]}"
@@ -374,7 +413,7 @@ class TapeStore:
 
     def close_poll(self, poll_id: int, **fields: Any) -> None:
         allowed = {"pages", "raw_records", "new_records", "dupe_records",
-                   "skipped_records", "unparsed_records",
+                   "skipped_records", "unparsed_records", "presumed_records",
                    "overlap_found", "gap_declared", "error"}
         unknown = set(fields) - allowed
         if unknown:

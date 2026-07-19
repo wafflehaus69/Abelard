@@ -56,6 +56,14 @@ _GLOBAL_WATERMARK_SAMPLE = 100
 _GLOBAL_WATERMARK_KEY = "global_watermark_keys"
 _LAST_ENUMERATION_KEY = "last_enumeration_ts"
 
+# A trade cannot be timestamped in the future. A fill whose raw timestamp is
+# above now by more than this (clock skew between data-api and here) is corrupt
+# upstream data — e.g. a millisecond value where seconds are expected — and must
+# never advance the frontier: the frontier is MAX-monotonic, so one far-future
+# value would poison it permanently, truncating every later walk to page 0 and,
+# via the dedup skip band, silently dropping real fills (re-audit 2026-07-19).
+_MAX_CLOCK_SKEW_S = 300
+
 
 def _now_ts() -> int:
     return int(datetime.now(timezone.utc).timestamp())
@@ -276,10 +284,23 @@ class Collector:
         frontier = int(mkt.get("newest_fill_ts") or 0)
         had_prior = frontier > 0 or self.tape.has_fills(cid)
 
+        # Dedup fast-path: below (frontier − margin) the tape is contiguous, so
+        # those records are re-fetched every poll only to be IGNORE'd. Skip that
+        # redundant work; the margin keeps re-inserting the near-frontier band so
+        # a late-indexed fill is still captured. Disabled on bootstrap (no
+        # frontier) and when the margin is 0. The frontier is clamped to
+        # wall-clock first: a corrupt far-future timestamp on the tape must never
+        # push the skip band up to (now), which would elide genuinely-new fills.
+        margin_min = self.cfg.late_arrival_margin_minutes
+        eff_frontier = min(frontier, now_ts)
+        skip_below_ts = (eff_frontier - margin_min * 60) if (eff_frontier > 0 and margin_min > 0) else None
+
         pages = raw_total = new_total = dupes_total = skipped_total = unparsed_total = 0
+        presumed_total = 0
         reached_frontier = False
         end_of_history = False
         oldest_seen: int | None = None
+        newest_seen: int | None = None  # max ts THIS walk observed (frontier advance)
         error: str | None = None
         occurrence: dict[str, int] = {}  # spans the whole walk (page-boundary dupes)
         try:
@@ -288,18 +309,23 @@ class Collector:
                 pages += 1
                 counts = self.tape.store_page(
                     raw, lane="market", poll_id=poll_id, parsed_by=Trade.from_api,
-                    occurrence=occurrence,
+                    occurrence=occurrence, skip_below_ts=skip_below_ts,
                 )
                 raw_total += counts["raw"]
                 new_total += counts["new"]
                 dupes_total += counts["dupes"]
                 skipped_total += counts["skipped"]
                 unparsed_total += counts["unparsed"]
+                presumed_total += counts["presumed_stored"]
                 page_oldest: int | None = None
                 for r in raw:
                     ts = r.get("timestamp") if isinstance(r, dict) else None
                     if isinstance(ts, int):
                         page_oldest = ts if page_oldest is None else min(page_oldest, ts)
+                        # Never let a future-dated (corrupt) ts advance the
+                        # frontier; page_oldest is a min so it is unaffected.
+                        if ts <= now_ts + _MAX_CLOCK_SKEW_S:
+                            newest_seen = ts if newest_seen is None else max(newest_seen, ts)
                 if page_oldest is not None:
                     oldest_seen = page_oldest if oldest_seen is None else min(oldest_seen, page_oldest)
                 if frontier and page_oldest is not None and page_oldest <= frontier:
@@ -354,7 +380,17 @@ class Collector:
                 cid, oldest_seen, reason,
             )
 
-        newest_after = self.tape.newest_fill_ts(cid) or frontier
+        # Advance the frontier ONLY to what THIS market-lane walk observed —
+        # never a cross-lane MAX(timestamp). A pages==0 walk (errored first
+        # fetch) saw nothing (newest_seen is None) and must not advance the
+        # anchor: otherwise a fill the GLOBAL lane stored above the frontier
+        # would seed the new frontier across an interval the market lane never
+        # walked, no gap would be declared, and the next poll's dedup skip would
+        # silently elide that un-walked hole (adversarial audit 2026-07-19). The
+        # frontier only ever moves forward (MAX with the prior value in
+        # update_market_poll_state), so a walk that saw only old fills can't
+        # regress it.
+        newest_after = max(frontier, newest_seen) if newest_seen is not None else frontier
         tier, hot_until = self._tier_for(
             mkt, new_fills=new_total, newest_fill_ts=newest_after, now_ts=now_ts
         )
@@ -365,12 +401,12 @@ class Collector:
         self.tape.close_poll(
             poll_id, pages=pages, raw_records=raw_total, new_records=new_total,
             dupe_records=dupes_total, skipped_records=skipped_total,
-            unparsed_records=unparsed_total,
+            unparsed_records=unparsed_total, presumed_records=presumed_total,
             overlap_found=int(reached_frontier), gap_declared=gap, error=error,
         )
         return {"condition_id": cid, "pages": pages, "new": new_total,
                 "unparsed": unparsed_total, "gap": bool(gap), "tier": tier,
-                "error": error}
+                "presumed_stored": presumed_total, "error": error}
 
     # -- global lane -----------------------------------------------------------------
 
@@ -493,9 +529,29 @@ class Collector:
         # Re-read market rows: the global lane may have promoted tiers.
         markets = self.tape.markets(active_only=True)
         due = [m for m in markets if self.market_due(m, started)]
-        # Oldest-polled first: fair rotation under the per-run budget, so a
-        # large universe drains across invocations instead of starving tails.
-        due.sort(key=lambda m: int(m.get("last_polled_ts") or 0))
+        # Priority = how overdue a market is RELATIVE TO ITS TIER INTERVAL, not
+        # in absolute time. A hot market 30 min past its 2-min interval (15x
+        # overdue) must beat a dormant market 6 h past its 360-min interval
+        # (1x overdue). Sorting on absolute last-poll age instead lets a large
+        # dormant backlog crowd hot markets out of the budget and starve the
+        # coverage guarantee (observed on Basilic 2026-07-19: an ~8k dormant
+        # backlog held every one of 563 hot markets > 90 min unpolled, median
+        # 8 h). Ties within a tier fall back to oldest-first (same interval, so
+        # larger age wins) — preserving the original fair-rotation intent.
+        t = self.cfg.tiers
+        interval_min = {
+            "hot": t.hot_interval_minutes,
+            "quiet": t.quiet_interval_minutes,
+            "dormant": t.dormant_interval_minutes,
+        }
+
+        def _overdue_ratio(m: dict[str, Any]) -> float:
+            iv = interval_min.get(m.get("tier") or "dormant",
+                                  t.dormant_interval_minutes) * 60
+            age = started - int(m.get("last_polled_ts") or 0)
+            return age / iv if iv else float(age)
+
+        due.sort(key=_overdue_ratio, reverse=True)
         budget = self.cfg.max_markets_per_run
         to_poll = due[:budget]
         polled: list[dict[str, Any]] = []
@@ -545,6 +601,7 @@ class Collector:
                 "due_backlog": backlog,
                 "markets_deactivated": len(deactivated),
                 "new_fills": sum(p["new"] for p in polled) + (glob or {}).get("tracked_new", 0),
+                "dedup_skipped": sum(p.get("presumed_stored", 0) for p in polled),
                 "unparsed_archived": unparsed_total,
                 "gaps_declared": gaps,
                 "tiers": {
