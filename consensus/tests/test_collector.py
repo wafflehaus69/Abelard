@@ -71,14 +71,16 @@ def test_stray_abandoned_after_max_attempts(collector, requests_mock):
 
 
 def test_strays_pending_adjudication_capped_and_ordered(collector):
-    """The per-run cap bounds the gamma-fetch loop; least-attempted first so a
-    backlog rotates through instead of starving newer strays."""
+    """The per-run cap bounds the gamma-fetch loop; MOST-attempted first so
+    strays march to the give-up threshold and leave the pool (else the table
+    grows without bound under a steady influx of fresh strays)."""
     for i in range(5):
         collector.tape.record_stray(f"0xS{i}", now_ts=i, fills=1)
     collector.tape.bump_stray_attempt("0xS0")  # already tried once
     pending = collector.tape.strays_pending_adjudication(limit=3)
+    ids = [p[0] for p in pending]
     assert len(pending) == 3, "cap honored"
-    assert "0xS0" not in [p[0] for p in pending], "already-attempted stray deprioritized"
+    assert ids[0] == "0xS0", "closest-to-give-up stray adjudicated first"
 
 
 def test_enumeration_adjudicates_strays(collector, requests_mock):

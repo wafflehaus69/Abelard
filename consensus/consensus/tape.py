@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS l2_strays (
     resolved      INTEGER NOT NULL DEFAULT 0,   -- 1 once enumerator adjudicated it
     attempts      INTEGER NOT NULL DEFAULT 0    -- failed "unknown to gamma" lookups
 );
+CREATE INDEX IF NOT EXISTS idx_l2_strays_pending
+    ON l2_strays(resolved, attempts, first_seen_ts);
 
 CREATE TABLE IF NOT EXISTS l2_meta (
     key   TEXT PRIMARY KEY,
@@ -462,12 +464,16 @@ class TapeStore:
 
     def strays_pending_adjudication(self, *, limit: int | None = None) -> list[tuple[str, int]]:
         """Unresolved strays to adjudicate this pass, as (condition_id, attempts).
-        Least-attempted first (then oldest), so a per-run ``limit`` rotates
-        through the backlog and every stray still advances toward the give-up
-        threshold — bounding what would otherwise be an O(unresolved) gamma-fetch
-        loop every enumeration."""
+        MOST-attempted first (then oldest): a stray closest to the give-up
+        threshold is processed first so it reaches abandonment and leaves the
+        pool, which then admits newer strays. Ordering least-attempted-first
+        instead let a steady influx of fresh strays perpetually outrank the ones
+        marching toward give-up, so the table grew without bound even though the
+        per-run ``limit`` kept pass duration flat (observed 2026-07-20). A real
+        target market is still adopted by the enumeration tag-page walk, so
+        de-prioritizing brand-new strays here costs no coverage."""
         q = ("SELECT condition_id, attempts FROM l2_strays WHERE resolved = 0"
-             " ORDER BY attempts ASC, first_seen_ts ASC")
+             " ORDER BY attempts DESC, first_seen_ts ASC")
         params: tuple[Any, ...] = ()
         if limit is not None:
             q += " LIMIT ?"
