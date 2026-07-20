@@ -321,10 +321,20 @@ class Collector:
                 for r in raw:
                     ts = r.get("timestamp") if isinstance(r, dict) else None
                     if isinstance(ts, int):
-                        page_oldest = ts if page_oldest is None else min(page_oldest, ts)
-                        # Never let a future-dated (corrupt) ts advance the
-                        # frontier; page_oldest is a min so it is unaffected.
-                        if ts <= now_ts + _MAX_CLOCK_SKEW_S:
+                        # A corrupt NON-POSITIVE ts (e.g. a zeroed/null-coerced
+                        # field) must not pull page_oldest below the frontier and
+                        # falsely trip reached_frontier — that would stop the walk
+                        # mid-burst and silently drop the deeper pages (re-audit
+                        # 2026-07-19). Symmetric with the future-ts guard below;
+                        # store_page still archives the record, only continuity
+                        # ignores it.
+                        if ts > 0:
+                            page_oldest = ts if page_oldest is None else min(page_oldest, ts)
+                        # A corrupt future ts must not advance the frontier
+                        # (MAX-monotonic → permanent poison). page_oldest is a min
+                        # so a high ts never lowers it; only newest_seen needs the
+                        # upper bound.
+                        if 0 < ts <= now_ts + _MAX_CLOCK_SKEW_S:
                             newest_seen = ts if newest_seen is None else max(newest_seen, ts)
                 if page_oldest is not None:
                     oldest_seen = page_oldest if oldest_seen is None else min(oldest_seen, page_oldest)
@@ -557,7 +567,12 @@ class Collector:
         polled: list[dict[str, Any]] = []
         gaps = 0
         for mkt in to_poll:
-            r = self.poll_market(mkt, started)
+            # Fresh wall-clock per poll, not the pass-start ``started``: a pass
+            # can run many minutes (budget + a large tape), and a stale now_ts
+            # makes the frontier's future-ts skew bound reject legitimately-recent
+            # fills late in the pass, under-advancing the frontier so the next
+            # pass needlessly re-walks the tip band (re-audit 2026-07-19).
+            r = self.poll_market(mkt, _now_ts())
             polled.append(r)
             gaps += int(r["gap"])
             if r.get("error"):

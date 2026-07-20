@@ -198,6 +198,29 @@ def test_corrupt_future_timestamp_does_not_poison_frontier(collector, requests_m
     assert fr == now, f"frontier must track the real fill, not the corrupt future ts (got {fr})"
 
 
+def test_corrupt_low_timestamp_does_not_trip_false_continuity(collector, requests_mock):
+    """Re-audit 2026-07-19 (CONFIRMED, data-loss): a corrupt LOW ts (e.g. a
+    zeroed field) on page 0 must NOT pull page_oldest below the frontier and
+    falsely trip reached_frontier — that would stop the walk mid-burst and
+    silently drop the deeper pages with no gap declared."""
+    mkt = _track(collector)
+    requests_mock.get(_TRADES_URL, json=[_fill(0, ts=1000)])
+    collector.poll_market(mkt, now_ts=1_772_000_000)
+    assert collector.tape.markets()[0]["newest_fill_ts"] == 1000
+    P = collector.cfg.page_size
+    # Full page-0 burst all ABOVE the frontier, plus one corrupt ts=0 record.
+    page0 = [_fill(1000 + i, ts=5000 + i) for i in range(P - 1)] + [_fill(9999, ts=0)]
+    # page-1 carries a fill that exists ONLY here; a false stop at page 0 loses it.
+    page1 = [_fill(20000, ts=1500), _fill(20001, ts=999)]
+    requests_mock.get(_TRADES_URL, [{"json": page0}, {"json": page1}])
+    mkt = collector.tape.markets()[0]
+    r = collector.poll_market(mkt, now_ts=1_772_000_100)
+    assert r["pages"] == 2, "walk must not stop at page 0 on a corrupt low ts"
+    stored = collector.tape._conn.execute(
+        "SELECT COUNT(*) FROM l2_trades WHERE timestamp = 1500").fetchone()[0]
+    assert stored == 1, "page-1 fill must be captured, not silently dropped"
+
+
 def test_presumed_stored_persisted_in_l2_polls(collector, requests_mock):
     """The dedup skip count is persisted per-poll (observability parity with the
     other record dispositions), not only aggregated in the run envelope."""
