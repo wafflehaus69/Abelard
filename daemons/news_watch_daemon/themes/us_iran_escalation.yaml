@@ -163,6 +163,26 @@ rss_feeds:
   # diplomatic posture and political constraints around Iran policy.
   - url: https://feeds.bloomberg.com/politics/news.rss
     feed_id: bloomberg_politics
+  # ---- NW-SRC-2 additions (2026-07-15) ----
+  # Placement organizational only: global fetch-dedup by feed_id + global
+  # tagging (see build_sources / orchestrator). These are cross-theme wires
+  # that light us_iran hardest, so they live here, but they feed every theme.
+  #
+  # Google News geopolitics topic-query. Live recon (2026-07-15): 100
+  # items/24h, 98 tagged to us_iran_escalation by the real matcher (also
+  # lights political_volatility, energy, russia_ukraine), median age ~4h,
+  # keyless. Primary intake to compensate for the dead Bloomberg politics
+  # feed. Query verbatim from raw/google_news_topic_geopolitics.json.
+  # robots-gray aggregator scraping; keyless; personal-use OK.
+  - url: "https://news.google.com/rss/search?q=%28Iran%20OR%20%22Strait%20of%20Hormuz%22%20OR%20sanctions%20OR%20Kremlin%29%20when%3A24h&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_geopolitics
+  # Al Jazeera all.xml — keyless native RSS, the only body-carrying geopolitics
+  # feed proven in recon (100% description present, freshest body source at
+  # ~2.6h median). ~25 items/24h, strong Middle East / us_iran. Section feeds
+  # (economy.xml, middle-east/rss.xml) all 404 — all.xml is the only live
+  # endpoint. Carries raw_body-adjacent signal the headline-only GN feeds lack.
+  - url: https://www.aljazeera.com/xml/rss/all.xml
+    feed_id: aljazeera_all
 
 telegram_channels:
   - username: CIG_telegram

@@ -220,6 +220,7 @@ def _do_scrape_step(
         themes=active_themes,
         tracked_tickers=tracked_tickers,
         cross_source_log_path=cfg.cross_source_log_path,
+        ingest_filter_log_path=cfg.filtered_log_path,
         translation_credentials=translation_credentials,
         translation_source=translation_source,
         translation_batch_size=translation_batch_size,
@@ -316,20 +317,36 @@ def _do_pass_c_step(
             None, None,
         )
 
-    # Delegate to pure callable.
-    result: SynthesizeResult = synthesize_window(
-        conn=conn,
-        active_themes=active_themes,
-        brief_archive_path=cfg.brief_archive_path,
-        trigger_log_path=cfg.trigger_log_path,
-        theses_path=cfg.theses_path,
-        synth_cfg=synth_cfg,
-        anthropic_client=anthropic_client,
-        sink_factory=sink_factory,
-        window_hours=window_hours,
-        dry_run=False,
-        now=when,
-    )
+    # Delegate to pure callable. synthesize_window catches its own
+    # (SynthesisError, SynthesisLLMError), but raw Anthropic SDK errors
+    # (rate-limit, timeout, connection, 5xx) bubble up untouched per
+    # synthesize_brief's contract. Catch them HERE so a transient API hiccup
+    # degrades Pass C to a recovered failure and the Full Brief still renders
+    # (scrape + attention + theme segments + PDF) instead of aborting the whole
+    # run with no output — the same graceful-degradation the orchestrator
+    # already applies to scrape / pass_e / theme_segments / pass_f.
+    try:
+        result: SynthesizeResult = synthesize_window(
+            conn=conn,
+            active_themes=active_themes,
+            brief_archive_path=cfg.brief_archive_path,
+            trigger_log_path=cfg.trigger_log_path,
+            theses_path=cfg.theses_path,
+            synth_cfg=synth_cfg,
+            anthropic_client=anthropic_client,
+            sink_factory=sink_factory,
+            window_hours=window_hours,
+            dry_run=False,
+            now=when,
+        )
+    except Exception as exc:  # noqa: BLE001 — anthropic.* SDK errors + defensive
+        reason = f"synthesis call raised: {type(exc).__name__}: {exc}"
+        _LOG.warning("Pass C degraded (Full Brief still renders): %s", reason)
+        return (
+            StepHealth(status="failed", reason=reason),
+            ThemeSynthesisSection(status="failed", failure_reason=reason),
+            None, None,
+        )
     return _build_theme_synthesis(result, cfg.brief_archive_path)
 
 
@@ -612,6 +629,9 @@ def _build_attention_synthesis_with_convergence(
             freq_prior=ab.term_frequency_prior,
             delta_ratio=delta_ratio,
             shape=ab.attention_shape,
+            # Distinct publishers carrying the term = breadth of news-industry
+            # push; the render sorts orphan crossings by this first.
+            source_count=len(ab.source_mix or {}),
             attention_brief_id=ab.brief_id,
             attention_brief_path=str(path),
             convergence=convergence_info,
@@ -794,7 +814,10 @@ def _build_theme_segments(
     themes_covered: list[str],
     crossings: list[AttentionCrossing],
     model: str = "claude-sonnet-4-6",
-    max_tokens: int = 1500,
+    # NW-SRC-4 §6: 1500 -> 2800 to fit the deeper 5-6 sentence active segments
+    # across the now-11 tracked themes (2 new themes + longer summaries) without
+    # truncating the batched output.
+    max_tokens: int = 2800,
 ) -> tuple[ThemeSegmentsSection, Any | None]:
     """Step 6.5: one guaranteed segment per tracked theme.
 

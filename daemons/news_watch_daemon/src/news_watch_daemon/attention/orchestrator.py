@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -45,6 +44,7 @@ from pydantic import ValidationError
 from ..alert.factory import AlertSinkFactoryError, build_alert_sink
 from ..alert.sink import AlertSink
 from ..config import Config
+from ..llm_text import strip_code_fences
 from ..synthesize.archive import write_brief
 from ..synthesize.brief import Dispatch, SynthesisMetadata
 from ..synthesize.config import SynthesisConfigError, load_synthesis_config
@@ -52,6 +52,7 @@ from ..synthesize.synthesize import SynthesisError, build_anthropic_client
 from .brief_schema import AttentionBrief, AttentionShape
 from .cluster import ClusterHeadline, cluster_for_term
 from .counter import TermCounts, count_terms_collapsed
+from .event_group import group_convergent_crossings
 from .prompt import build_messages_payload
 from .stopwords import StopwordsError, load_stopwords
 from .threshold import CandidateTerm, CrossingTerm, evaluate_threshold, top_candidates
@@ -73,9 +74,6 @@ class AttentionError(RuntimeError):
 class AttentionLLMError(RuntimeError):
     """Raised when the LLM response is unparseable or shape-violating."""
 
-
-_FENCE_OPEN = re.compile(r"^```(?:json)?\s*\n?")
-_FENCE_CLOSE = re.compile(r"\n?```\s*$")
 
 _VALID_ATTENTION_SHAPES: frozenset[str] = frozenset({
     "single_event_dominant",
@@ -102,6 +100,10 @@ class PerTermOutcome:
     output_tokens: int = 0
     cache_creation_input_tokens: int = 0
     cache_read_input_tokens: int = 0
+    # Other crossing terms whose clusters converged with this one (same event);
+    # they were folded into this single synthesis call instead of firing their
+    # own. Empty for a solo crossing. See attention/event_group.py.
+    merged_terms: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -133,11 +135,7 @@ def _parse_attention_response(text: str) -> dict[str, Any]:
     are present with the right Python types; per-field schema validation
     happens at Pydantic construction time downstream.
     """
-    text = text.strip()
-    if text.startswith("```"):
-        text = _FENCE_OPEN.sub("", text, count=1)
-        text = _FENCE_CLOSE.sub("", text, count=1)
-        text = text.strip()
+    text = strip_code_fences(text)
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -365,12 +363,43 @@ def run_attention(
             candidates=top_candidates(counts, limit=top_candidates_limit),
         )
 
+    # Pre-compute each crossing's cluster ONCE (scripts-only DB queries), then
+    # group crossings whose clusters describe the same event. A single dominant
+    # story surfaces under several crossing phrases ("attacks iran" / "hormuz
+    # tensions" / "tensions rise"); without this each would fire its own LLM
+    # call. Grouping collapses them so we synthesize once per event, not once
+    # per phrase — the reused clusters are passed straight into synthesis, so
+    # there is no second DB pass.
+    clusters_by_term: dict[str, list[ClusterHeadline]] = {
+        c.term: cluster_for_term(
+            conn,
+            term=c.term,
+            window_since_unix=counts.window_since_unix,
+            window_until_unix=counts.window_until_unix,
+        )
+        for c in crossings
+    }
+    id_sets = {t: {h.headline_id for h in cl} for t, cl in clusters_by_term.items()}
+    groups = group_convergent_crossings(crossings, id_sets)
+    if len(groups) < len(crossings):
+        _LOG.info(
+            "attention convergence: %d crossings collapsed to %d event-group(s) "
+            "(saved %d LLM call(s))",
+            len(crossings), len(groups), len(crossings) - len(groups),
+        )
+
     per_term: list[PerTermOutcome] = []
-    for crossing in crossings:
+    for group in groups:
+        representative = group[0]
+        also_surfaced = [c.term for c in group[1:]]
+        merged_cluster = _merge_clusters(
+            [clusters_by_term[c.term] for c in group]
+        )
         outcome = _process_one_term(
-            crossing=crossing,
+            crossing=representative,
+            cluster=merged_cluster,
+            also_surfaced_terms=also_surfaced,
             counts=counts,
-            conn=conn,
             anthropic_client=anthropic_client,
             model=model,
             max_tokens=max_tokens,
@@ -394,35 +423,54 @@ def run_attention(
     )
 
 
+def _merge_clusters(clusters: list[list[ClusterHeadline]]) -> list[ClusterHeadline]:
+    """Union of several term clusters, deduped by headline_id, newest-first.
+
+    Convergent crossings share most of their headlines, so the union is close
+    to any single member's cluster; the dedup keeps the merged view from
+    double-listing the shared rows.
+    """
+    seen: set[str] = set()
+    merged: list[ClusterHeadline] = []
+    for cluster in clusters:
+        for h in cluster:
+            if h.headline_id in seen:
+                continue
+            seen.add(h.headline_id)
+            merged.append(h)
+    merged.sort(key=lambda h: -h.published_at_unix)
+    return merged
+
+
 def _process_one_term(
     *,
     crossing: CrossingTerm,
+    cluster: list[ClusterHeadline],
     counts: TermCounts,
-    conn: sqlite3.Connection,
     anthropic_client: Any,
     model: str,
     max_tokens: int,
     archive_root: Path,
     sink: AlertSink | None,
     when: datetime,
+    also_surfaced_terms: list[str] | None = None,
 ) -> PerTermOutcome:
-    """Process one crossing term: cluster -> LLM -> brief -> archive -> dispatch.
+    """Process one event-group: LLM -> brief -> archive -> dispatch.
 
-    Per-term failures (cluster empty, LLM parse error, validation error,
-    archive write error) are caught and recorded as failures in the
-    outcome. Remaining terms still get processed.
+    `crossing` is the group's representative term; `cluster` is the merged
+    headline set for the group (a solo crossing is just a one-member group).
+    `also_surfaced_terms` names the converged phrasings folded into this call.
+
+    Failures (cluster empty, LLM parse error, validation error, archive write
+    error) are caught and recorded in the outcome. Remaining groups still get
+    processed.
     """
-    cluster = cluster_for_term(
-        conn,
-        term=crossing.term,
-        window_since_unix=counts.window_since_unix,
-        window_until_unix=counts.window_until_unix,
-    )
+    also_surfaced_terms = also_surfaced_terms or []
     if not cluster:
-        # Threshold said >= 10 but cluster came back empty: the LIKE
-        # pre-filter or word-boundary post-verify dropped everything.
-        # Defensive — should be impossible if threshold and counter
-        # agree, but log and bail rather than call LLM on empty input.
+        # Threshold said the term crossed but the merged cluster is empty: the
+        # LIKE pre-filter or word-boundary post-verify dropped everything.
+        # Defensive — should be impossible if threshold and counter agree, but
+        # log and bail rather than call LLM on empty input.
         return PerTermOutcome(
             term=crossing.term,
             success=False,
@@ -430,6 +478,7 @@ def _process_one_term(
                 "cluster empty after term retrieval; counter and cluster "
                 "filters disagree (possible regex/word-boundary edge case)"
             ),
+            merged_terms=also_surfaced_terms,
         )
 
     window_since_iso = datetime.fromtimestamp(
@@ -446,6 +495,7 @@ def _process_one_term(
         window_since_iso=window_since_iso,
         window_until_iso=window_until_iso,
         cluster=cluster,
+        also_surfaced_terms=also_surfaced_terms,
     )
 
     try:
@@ -461,6 +511,7 @@ def _process_one_term(
             term=crossing.term,
             success=False,
             error=f"llm_error: {exc}",
+            merged_terms=also_surfaced_terms,
         )
     except Exception as exc:  # noqa: BLE001 — anthropic.* exceptions
         _LOG.warning("attention SDK call raised for term %r: %s", crossing.term, exc)
@@ -468,6 +519,7 @@ def _process_one_term(
             term=crossing.term,
             success=False,
             error=f"sdk_error: {type(exc).__name__}: {exc}",
+            merged_terms=also_surfaced_terms,
         )
 
     _LOG.info(
@@ -499,6 +551,7 @@ def _process_one_term(
             output_tokens=llm_usage["output_tokens"],
             cache_creation_input_tokens=llm_usage["cache_creation_input_tokens"],
             cache_read_input_tokens=llm_usage["cache_read_input_tokens"],
+            merged_terms=also_surfaced_terms,
         )
 
     try:
@@ -517,6 +570,7 @@ def _process_one_term(
             output_tokens=llm_usage["output_tokens"],
             cache_creation_input_tokens=llm_usage["cache_creation_input_tokens"],
             cache_read_input_tokens=llm_usage["cache_read_input_tokens"],
+            merged_terms=also_surfaced_terms,
         )
 
     dispatch_success: bool | None = None
@@ -560,6 +614,7 @@ def _process_one_term(
         output_tokens=llm_usage["output_tokens"],
         cache_creation_input_tokens=llm_usage["cache_creation_input_tokens"],
         cache_read_input_tokens=llm_usage["cache_read_input_tokens"],
+        merged_terms=also_surfaced_terms,
     )
 
 
@@ -614,6 +669,7 @@ def attention_outcome_to_dict(result: AttentionRunResult) -> dict[str, Any]:
                 "output_tokens": o.output_tokens,
                 "cache_creation_input_tokens": o.cache_creation_input_tokens,
                 "cache_read_input_tokens": o.cache_read_input_tokens,
+                "merged_terms": o.merged_terms,
             }
             for o in result.per_term
         ],

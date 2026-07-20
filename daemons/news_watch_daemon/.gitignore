@@ -14,3 +14,7 @@ dist/
 # verification. The committed *_synthetic.json fixtures are
 # structurally identical and what CI runs against.
 tests/fixtures/*_real.json
+
+# Source-exploration recon output (Order NW-SRC-1) — raw live pulls +
+# findings reports stay local; never committed.
+recon/

@@ -48,10 +48,6 @@ from .brief import (
 # list; the render truncates with a footer pointing back at the JSON.
 NEAR_MISS_RENDER_CAP = 50
 
-# Materiality threshold for "material event" classification in the
-# executive summary — matches the orchestrator's default.
-_MATERIAL_THRESHOLD = 0.5
-
 # Section divider widths (Section 6 sample).
 _HEAVY_DIVIDER = "=" * 80
 _LIGHT_DIVIDER = "-" * 80

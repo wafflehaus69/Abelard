@@ -50,9 +50,10 @@ Design choices:
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any
+
+from ..llm_text import strip_code_fences
 
 
 @dataclass(frozen=True)
@@ -87,12 +88,6 @@ class SynthesisLLMError(RuntimeError):
     """
 
 
-# Markdown-fence regexes — defensive strip. Sonnet sometimes ignores
-# no-fence instructions despite explicit rules in the prompt.
-_FENCE_OPEN = re.compile(r"^```(?:json)?\s*\n?")
-_FENCE_CLOSE = re.compile(r"\n?```\s*$")
-
-
 def parse_synthesis_response(text: str) -> tuple[list[dict[str, Any]], str]:
     """Parse Sonnet's JSON output into (events_payload, narrative).
 
@@ -102,12 +97,7 @@ def parse_synthesis_response(text: str) -> tuple[list[dict[str, Any]], str]:
         SynthesisLLMError: malformed JSON, non-object root, missing
             `events` list, or missing `narrative` string.
     """
-    text = text.strip()
-    # Strip a leading ```json or ``` fence + trailing ``` fence if either present.
-    if text.startswith("```"):
-        text = _FENCE_OPEN.sub("", text, count=1)
-        text = _FENCE_CLOSE.sub("", text, count=1)
-        text = text.strip()
+    text = strip_code_fences(text)
 
     try:
         data = json.loads(text)

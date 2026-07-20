@@ -64,6 +64,42 @@ ADJACENCY_MIN = 5
 # two tokenizers in lockstep so unigram counts reconcile across modules.
 _TOKEN_RE = re.compile(r"\b[a-zA-Z]{2,}\b")
 
+# Singular/plural fold (2026-07-20). The counter treats "prediction market" and
+# "prediction markets" as two distinct bigrams: they clear the threshold
+# separately, and — measured 22 vs 16 headlines with ZERO overlap — convergence
+# grouping (Jaccard >= 0.5) cannot merge them, so each fired its own attention
+# synthesis and both surfaced as crossings. This helper feeds a term-identity
+# pass in event_group.py that merges such variants at grouping time (NOT in the
+# counter: the term text is a downstream search key for cluster_for_term, and a
+# singular key would not match plural headline text).
+#
+# CONSERVATIVE by construction — it must never corrupt a singular noun that
+# ends in 's'. Words <= 4 chars are left alone (gas, news, odds, lens), as are
+# the singular-in-'s' families below. So it folds markets->market,
+# sanctions->sanction, tariffs->tariff, yields->yield, prices->price, but
+# leaves consensus / analysis / series / politics / status / campus intact.
+_PLURAL_KEEP_SUFFIXES = ("ss", "us", "is", "ics", "ies", "as", "os")
+
+
+def _singularize(word: str) -> str:
+    """Fold a regular English plural to its singular. Leaves short words and
+    singular-in-'s' families (consensus/analysis/series/gas) untouched — see
+    _PLURAL_KEEP_SUFFIXES."""
+    if len(word) <= 4:
+        return word
+    if word.endswith(_PLURAL_KEEP_SUFFIXES):
+        return word
+    if word.endswith("s"):
+        return word[:-1]
+    return word
+
+
+def normalize_term(term: str) -> str:
+    """Singular-fold every word of a (possibly multi-word) attention term, so
+    "prediction markets" and "prediction market" normalize to one key. Used by
+    convergence grouping to merge singular/plural variants of the same term."""
+    return " ".join(_singularize(w) for w in term.split())
+
 # Tier A — tokenizer fragments. The `\b[a-zA-Z]{2,}\b` regex splits
 # contractions on the apostrophe: "we're" -> ["we", "re"], "doesn't" ->
 # ["doesn", "t"] (the 1-char "t" is dropped by the 2-char floor). These
@@ -88,6 +124,19 @@ _SOURCE_NAME_TOKENS = frozenset({
     "politico", "nikkei", "scmp", "tass", "ria", "npr", "bbc", "cnn",
     "guardian", "marketwatch", "barrons", "forbes", "yahoo",
     "finnhub", "telegram", "cig", "trading",
+    # NW-SRC-3 Fix 2 (Tier A backstop): single-token outlet names that leaked
+    # as attention orphans off the NW-SRC-2 Google News feeds. `barron` is the
+    # real culprit behind the "$0.072 barron" orphan — "Barron's" tokenizes to
+    # `barron` (the apostrophe splits and the 1-char trailing "s" is dropped by
+    # the 2-char floor), so the existing `barrons` entry above never matched.
+    # `jazeera` (from "Al Jazeera"), `coindesk`, `cryptorank`, `magnates` (from
+    # "Finance Magnates") are outlet-ONLY tokens, never content words.
+    # DELIBERATELY NOT ADDED (polysemy guard, per order §4): the multi-word
+    # outlet names whose constituents are real subjects — "New York" (Times),
+    # "finance" (Magnates), "crypto" (Briefing), "ledger" (Insights). Those are
+    # single-token here would delete genuine signal; Fix 1's position-aware,
+    # source-matched suffix strip removes them in byline position instead.
+    "barron", "jazeera", "coindesk", "cryptorank", "magnates",
 })
 
 # Tier B — soft-stopwords. Generic words that surface as noisy standalone
@@ -101,6 +150,17 @@ _SOFT_STOPWORDS = frozenset({
     "are", "new", "use", "since", "people", "world", "years",
     "low", "strong", "post", "media", "information", "service",
     "million", "billion", "trillion",
+    # NW-SRC-3 Fix 2 (Tier B): generic frequency-gate words that crossed the
+    # threshold as bare unigrams on the enlarged NW-SRC-2 corpus but carry no
+    # standalone signal. Bigram-only: suppressed as unigrams, RETAINED as pair
+    # members — so "defense production", "ground troops", "data center",
+    # "year end" still surface; bare production/troops/end/etc do not. Kept out
+    # of stopwords.yaml on purpose: a grammatical stop there would forbid the
+    # bigram membership too and kill those real pairs.
+    "get", "plans", "bring", "buy", "face", "raises", "recent", "companies",
+    "shares", "live", "final", "ahead", "fund", "end", "production", "troops",
+    # near-miss fillers that sat just under the gate — pre-empt next-cycle crossings
+    "now", "one", "two", "latest", "across", "major", "push",
 })
 
 # Tier A — the intrinsic hard-drop set (fragments + source names). Folded
@@ -120,7 +180,7 @@ class AttentionTerm:
     """
 
     text: str
-    kind: str          # "bigram" | "unigram"
+    kind: str          # "trigram" | "bigram" | "unigram"
     window_count: int
     prior_count: int
     delta_ratio: float
@@ -147,17 +207,19 @@ def tokenize_ordered(text: str | None) -> list[str]:
 def _count_window(
     headlines: Iterable[str | None],
     grammatical_stops: frozenset[str],
-) -> tuple[Counter[str], Counter[tuple[str, str]]]:
-    """Per-headline-distinct unigram (Tier-C only) and bigram counters.
+) -> tuple[Counter[str], Counter[tuple[str, str]], Counter[tuple[str, str, str]]]:
+    """Per-headline-distinct unigram / bigram / TRIGRAM counters (Tier-C).
 
-    Unigrams exclude grammatical stopwords and Tier-B soft words. A bigram
-    is formed from an adjacent pair only when NEITHER member is a
-    grammatical stopword — soft members are allowed, so "world cup" forms
-    but "in iran" and "of the" do not. The grammatical stopword still
-    occupies its slot, so it breaks adjacency between the words flanking it.
+    Unigrams exclude grammatical stopwords and Tier-B soft words. A bigram or
+    trigram is formed from adjacent tokens only when NO member is a grammatical
+    stopword — soft members are allowed, so "world cup" and "defense industrial
+    base" form but "in iran" and "of the day" do not. The grammatical stopword
+    still occupies its slot, so it breaks adjacency between the words flanking it.
+    Trigrams extend the signal window to 3 words (Mando 2026-07-17).
     """
     unigrams: Counter[str] = Counter()
     bigrams: Counter[tuple[str, str]] = Counter()
+    trigrams: Counter[tuple[str, str, str]] = Counter()
     for text in headlines:
         toks = tokenize_ordered(text)
         # Unigrams: distinct, Tier-C only (grammatical + soft excluded).
@@ -175,7 +237,17 @@ def _count_window(
         }
         for pair in pairs:
             bigrams[pair] += 1
-    return unigrams, bigrams
+        # Trigrams: distinct adjacent triples, no grammatical-stopword member.
+        triples = {
+            (toks[i], toks[i + 1], toks[i + 2])
+            for i in range(len(toks) - 2)
+            if toks[i] not in grammatical_stops
+            and toks[i + 1] not in grammatical_stops
+            and toks[i + 2] not in grammatical_stops
+        }
+        for tr in triples:
+            trigrams[tr] += 1
+    return unigrams, bigrams, trigrams
 
 
 def _delta_ratio(window_n: int, prior_n: int) -> float:
@@ -202,44 +274,65 @@ def build_attention_list(
     the grammatical adjacency-breaker set (retained in-sequence, forbidden
     as bigram members, excluded from unigrams).
     """
-    win_uni, win_big = _count_window(window_headlines, stopwords)
-    prior_uni, prior_big = _count_window(prior_headlines, stopwords)
+    win_uni, win_big, win_tri = _count_window(window_headlines, stopwords)
+    prior_uni, prior_big, prior_tri = _count_window(prior_headlines, stopwords)
 
-    # Promote bigrams over the threshold (strictly greater than adjacency_min).
+    # 1) Promote TRIGRAMS over the threshold (strictly greater than adjacency_min).
+    promoted_tri = {tr: n for tr, n in win_tri.items() if n > adjacency_min}
+
+    # Collapse from a promoted trigram "a b c":
+    #   - its 3 constituent unigrams ALWAYS (they are fragments of the phrase);
+    #   - a constituent bigram ONLY when that bigram appears exclusively within
+    #     the trigram (win_big <= trigram count). A bigram that recurs
+    #     INDEPENDENTLY (e.g. "data center" @66 vs "data center moratorium" @15)
+    #     is a BROADER signal and must survive as its own term, so it is NOT
+    #     collapsed.
+    collapsed_uni: set[str] = set()
+    collapsed_big: set[tuple[str, str]] = set()
+    for (a, b, c), n in promoted_tri.items():
+        collapsed_uni.update((a, b, c))
+        for pair in ((a, b), (b, c)):
+            if win_big.get(pair, 0) <= n:
+                collapsed_big.add(pair)
+
+    # 2) Promote BIGRAMS over the threshold, except those fully subsumed by a
+    #    promoted trigram. Each surviving promoted bigram collapses its unigrams.
     promoted_pairs = {
-        pair: n for pair, n in win_big.items() if n > adjacency_min
+        pair: n for pair, n in win_big.items()
+        if n > adjacency_min and pair not in collapsed_big
     }
-
-    # Collapse set: every unigram that is a constituent of a promoted pair
-    # is removed from the standalone list and represented by the pair.
-    collapsed: set[str] = set()
     for a, b in promoted_pairs:
-        collapsed.add(a)
-        collapsed.add(b)
+        collapsed_uni.add(a)
+        collapsed_uni.add(b)
 
     terms: list[AttentionTerm] = []
+
+    # Promoted trigrams (widest signal first in the tiebreak sense).
+    for (a, b, c), n in promoted_tri.items():
+        prior_n = prior_tri.get((a, b, c), 0)
+        terms.append(AttentionTerm(
+            text=f"{a} {b} {c}", kind="trigram",
+            window_count=n, prior_count=prior_n,
+            delta_ratio=_delta_ratio(n, prior_n),
+        ))
 
     # Promoted bigrams.
     for (a, b), n in promoted_pairs.items():
         prior_n = prior_big.get((a, b), 0)
         terms.append(AttentionTerm(
-            text=f"{a} {b}",
-            kind="bigram",
-            window_count=n,
-            prior_count=prior_n,
+            text=f"{a} {b}", kind="bigram",
+            window_count=n, prior_count=prior_n,
             delta_ratio=_delta_ratio(n, prior_n),
         ))
 
-    # Surviving Tier-C unigrams (those not swallowed by a promoted pair).
+    # Surviving Tier-C unigrams (not swallowed by a promoted bigram/trigram).
     for tok, n in win_uni.items():
-        if tok in collapsed:
+        if tok in collapsed_uni:
             continue
         prior_n = prior_uni.get(tok, 0)
         terms.append(AttentionTerm(
-            text=tok,
-            kind="unigram",
-            window_count=n,
-            prior_count=prior_n,
+            text=tok, kind="unigram",
+            window_count=n, prior_count=prior_n,
             delta_ratio=_delta_ratio(n, prior_n),
         ))
 
@@ -251,5 +344,6 @@ __all__ = [
     "ADJACENCY_MIN",
     "AttentionTerm",
     "build_attention_list",
+    "normalize_term",
     "tokenize_ordered",
 ]

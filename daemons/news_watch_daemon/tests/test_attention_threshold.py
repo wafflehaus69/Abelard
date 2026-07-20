@@ -24,7 +24,7 @@ def _counts(window: dict[str, int], prior: dict[str, int]) -> TermCounts:
 
 
 def test_threshold_fires_at_exactly_window_min_with_zero_prior():
-    """count=10 window, count=0 prior → fires (10 >= 10 AND 0 < 3)."""
+    """count==WINDOW_MIN window, count=0 prior → fires (>= floor AND 0 < 3)."""
     c = _counts({"hormuz": COLD_START_WINDOW_MIN}, {})
     crossings = evaluate_threshold(c)
     assert len(crossings) == 1
@@ -60,7 +60,7 @@ def test_threshold_does_not_fire_at_prior_above_max():
 
 def test_threshold_handles_term_missing_from_prior_as_zero():
     """A term absent from prior dict is treated as count=0, which passes < 3."""
-    c = _counts({"hormuz": 12}, {"unrelated": 8})
+    c = _counts({"hormuz": COLD_START_WINDOW_MIN}, {"unrelated": 8})
     crossings = evaluate_threshold(c)
     assert len(crossings) == 1
     assert crossings[0].term == "hormuz"
@@ -68,13 +68,17 @@ def test_threshold_handles_term_missing_from_prior_as_zero():
 
 
 def test_threshold_orders_by_window_count_descending():
-    c = _counts({"alpha": 15, "beta": 10, "gamma": 12}, {})
+    # Values expressed relative to the floor so the ordering assertion is
+    # robust to threshold tuning (NW-SRC-3 raised the floor 10 -> 12).
+    m = COLD_START_WINDOW_MIN
+    c = _counts({"alpha": m + 5, "beta": m, "gamma": m + 2}, {})
     crossings = evaluate_threshold(c)
     assert [x.term for x in crossings] == ["alpha", "gamma", "beta"]
 
 
 def test_threshold_ties_broken_alphabetically():
-    c = _counts({"zebra": 10, "alpha": 10, "mango": 10}, {})
+    m = COLD_START_WINDOW_MIN
+    c = _counts({"zebra": m, "alpha": m, "mango": m}, {})
     crossings = evaluate_threshold(c)
     assert [x.term for x in crossings] == ["alpha", "mango", "zebra"]
 

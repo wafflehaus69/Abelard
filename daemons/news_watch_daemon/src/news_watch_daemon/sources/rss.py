@@ -33,6 +33,45 @@ _FEED_ID_SLUG_MAX = 64
 _FEED_ID_HASH_LEN = 6
 
 
+# ---------- Google News publisher-suffix strip (Order NW-SRC-3, Fix 1) ----------
+
+# Google News RSS appends " - <Publisher>" to every headline title, where
+# <Publisher> equals the item's <source> element (feedparser: entry.source.title).
+# Left in place this defeats dedup (16 syndicated copies of one wire story hash
+# to 16 distinct values) and injects publisher-name tokens into the Pass E
+# attention counter. We strip the suffix at the source-parse layer — BEFORE the
+# orchestrator computes dedupe_hash and derives tagging text — so the clean
+# headline propagates uniformly. Attribution is preserved: the publisher moves
+# into FetchedItem.raw_source, it is only removed from the visible title.
+#
+# Position-aware + source-matched: the tail is removed ONLY when it exactly
+# equals " - <this item's own source title>". A headline that legitimately
+# contains " - Something Else" is untouched (Something Else != the item source).
+# GN feeds only — guarded on the feed host in __init__.
+
+_GOOGLE_NEWS_HOST = "news.google.com"
+
+
+def _strip_google_news_publisher(title: str, publisher: str | None) -> str:
+    """Remove a trailing ' - <publisher>' from a GN title, source-matched.
+
+    Returns the title unchanged when there is no publisher, when the title
+    does not end with the exact ' - <publisher>' suffix, or when stripping
+    would leave an empty string (degenerate headline that is only a byline).
+    """
+    if not publisher:
+        return title
+    pub = publisher.strip()
+    if not pub:
+        return title
+    suffix = f" - {pub}"
+    if len(title) > len(suffix) and title.endswith(suffix):
+        stripped = title[: -len(suffix)].rstrip()
+        if stripped:
+            return stripped
+    return title
+
+
 def derive_feed_id(feed_url: str) -> str:
     """Stable, filesystem-safe slug from a feed URL.
 
@@ -72,6 +111,12 @@ class RssSource(SourcePlugin):
         self._http = http_client
         self._feed_url = feed_url
         self._feed_id = feed_id or derive_feed_id(feed_url)
+        # Google News feeds carry a per-item <source> publisher and append a
+        # " - <Publisher>" suffix to every title; the suffix is stripped and
+        # the publisher promoted to raw_source (Order NW-SRC-3, Fix 1). Guarded
+        # on the feed host so Al Jazeera / Yahoo / other RSS titles are never
+        # touched.
+        self._is_google_news = _GOOGLE_NEWS_HOST in feed_url.lower()
 
     @property
     def name(self) -> str:
@@ -208,6 +253,24 @@ class RssSource(SourcePlugin):
         title = entry.get("title")
         if not isinstance(title, str) or not title.strip():
             return None
+
+        # Google News: pull the per-item publisher from the <source> element,
+        # strip the " - <Publisher>" suffix from the title (source-matched), and
+        # promote the publisher to raw_source so attribution survives while the
+        # dedup/tagging/attention surfaces all see the clean headline
+        # (Order NW-SRC-3, Fix 1). Non-GN feeds keep the feed-title raw_source
+        # passed in by _parse_feed and their titles untouched.
+        if self._is_google_news:
+            source_elem = entry.get("source")
+            publisher = None
+            if isinstance(source_elem, dict):
+                st = source_elem.get("title")
+                if isinstance(st, str) and st.strip():
+                    publisher = st.strip()
+            title = _strip_google_news_publisher(title, publisher)
+            if publisher:
+                raw_source = publisher
+
         link = entry.get("link")
         url = link if isinstance(link, str) and link else None
 

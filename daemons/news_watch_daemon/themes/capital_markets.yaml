@@ -1,0 +1,137 @@
+theme_id: capital_markets
+display_name: Capital Markets — Deals, IPOs & Flows
+status: active
+created_at: 2026-07-15
+
+brief: |
+  Tracks capital-markets PLUMBING — the machinery by which capital is raised,
+  deployed, and consolidated: IPOs and equity capital markets, M&A, private
+  equity and buyouts, bank/dealmaking earnings, and assets-under-management
+  milestones. This is the reframe of the generic "Wall Street" label: NOT a
+  catch-all for anything finance (that would just overlap fed/tokenized/
+  ai_capex), but the specific, currently-homeless signal of deals and flows —
+  the SpaceX IPO, the Stripe/PayPal $53B takeover, BlackRock crossing $15T AUM.
+
+  The thesis is that the deal cycle — issuance windows, M&A waves, PE dry-powder
+  deployment, and the bulge-bracket banks that intermediate them — is a distinct
+  read on risk appetite and the cost of capital that the macro (fed) and
+  thematic (ai_capex, tokenized) lenses miss. When ECM reopens and takeover
+  premiums expand, that is its own signal.
+
+  Material signals: IPO filings/pricings and direct listings; M&A announcements,
+  takeover bids, and deal breaks; PE/LBO activity and buyout-fund raises; private
+  credit expansion; bank and investment-banking earnings (dealmaking, trading,
+  IPO fees); AUM milestones; share buybacks; secondary and follow-on offerings;
+  bond issuance and syndicated-loan activity; named principals of the
+  bulge-bracket banks and major PE shops.
+
+  MULTI-TAG IS CORRECT, NOT A BUG. Overlap with fed (macro), tokenized
+  (a Circle/DTCC IPO), and ai_capex (a chip-name deal) is expected and desired —
+  a Circle IPO is legitimately both capital_markets AND tokenized. No aggressive
+  exclusions are used to force single-tagging. This theme is built WIDE and
+  MEASURED: the retag pass reports its overlap with fed/tokenized/ai_capex and
+  a catch sample so the matcher can be tightened on evidence if it balloons on
+  generic financial chatter.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  # Case-sensitivity is AUTOMATIC for 2+ consecutive uppercase (IPO, ECM, LBO,
+  # SPAC, AUM) — written BARE, not as literal (?-i:...). "M&A" has no
+  # 2-consecutive-cap run so it tags case-insensitively; "mergers and
+  # acquisitions" is included as the robust long form.
+  primary:
+    - "IPO"
+    - "initial public offering"
+    - "direct listing"
+    - "equity capital markets"
+    - "ECM"
+    - "M&A"
+    - "mergers and acquisitions"
+    - "private equity"
+    - "leveraged buyout"
+    - "LBO"
+    - "SPAC"
+    - "assets under management"
+    - "AUM"
+    - "takeover bid"
+    - "share buyback"
+    - "stock buyback"
+    - "private credit"
+    - "secondary offering"
+    - "merger"
+  secondary:
+    - "underwriting"
+    - "bookrunner"
+    - "deal financing"
+    - "acquisition financing"
+    - "syndicated loan"
+    - "bond issuance"
+    - "debt offering"
+    - "equity raise"
+    - "block trade"
+    - "follow-on offering"
+    - "going public"
+    - "bank earnings"
+    - "investment banking revenue"
+    - "dealmaking"
+    - "record AUM"
+    - "buyout fund"
+  exclusions:
+    # Deliberately minimal (order §5): overlap with fed / tokenized / ai_capex
+    # is expected and correct; multi-tag is the intended behavior. Do NOT add
+    # aggressive exclusions to force single-tagging. Trim on retag evidence
+    # only if it balloons on generic chatter.
+    []
+
+tracked_entities:
+  # Reference metadata for ticker extraction — does NOT gate theme tagging.
+  tickers:
+    - GS
+    - MS
+    - JPM
+    - BLK
+    - BX
+    - KKR
+    - APO
+  companies:
+    # Bulge-bracket banks.
+    - Goldman Sachs
+    - Morgan Stanley
+    - JPMorgan
+    - BlackRock
+    # Major private equity.
+    - Blackstone
+    - KKR
+    - Apollo
+    - Advent
+  countries:
+    - United States
+  commodities: []
+  people:
+    - Jamie Dimon
+    - David Solomon
+    - Larry Fink
+    - Stephen Schwarzman
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # Deals/earnings are a steady flow — moderate-high baseline.
+  velocity_baseline_headlines_per_day: 25.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+# No dedicated feeds — capital-markets deal flow is densely covered by the
+# existing wires (Reuters/AP/WSJ/Bloomberg) + Finnhub; global tagging surfaces
+# it. Add a dedicated ECM/deals feed later only if warranted.
+rss_feeds: []
+telegram_channels: []

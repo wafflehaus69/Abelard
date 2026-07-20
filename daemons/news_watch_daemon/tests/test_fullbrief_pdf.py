@@ -25,7 +25,56 @@ from news_watch_daemon.fullbrief.brief import (
     ThemeSynthesisSection,
     WindowSection,
 )
-from news_watch_daemon.fullbrief.pdf import PdfRenderError, render_full_brief_pdf
+from news_watch_daemon.fullbrief.pdf import (
+    PdfRenderError,
+    _first_sentences,
+    render_full_brief_pdf,
+)
+
+
+# ---------- _first_sentences (truncation helper) ----------
+
+def test_first_sentences_returns_all_when_under_cap():
+    txt = "One thing happened. Two things happened. Three things."
+    assert _first_sentences(txt, 5) == txt
+
+
+def test_first_sentences_caps_at_n():
+    txt = "A. B. C. D. E. F. G."
+    out = _first_sentences(txt, 3)
+    assert out == "A. B. C."
+
+
+def test_first_sentences_does_not_split_on_us_abbreviation():
+    # The bug: a cut right after "U.S." must not read the abbreviation period as
+    # a sentence end and truncate mid-thought. "U.S. export controls" is one
+    # sentence; with a cap of 2 the second sentence must survive whole.
+    txt = (
+        "Markets rose sharply today. "
+        "Nvidia chips reach China despite U.S. export controls tightening. "
+        "A third development followed."
+    )
+    out = _first_sentences(txt, 2)
+    assert out.endswith("tightening.")
+    assert "U.S." in out           # abbreviation restored intact
+    assert "\x00" not in out       # mask fully cleaned up
+
+
+def test_first_sentences_shields_multiple_abbreviations():
+    txt = (
+        "The U.K. and E.U. signed a pact. "
+        "Mr. Smith of Acme Corp. met Gov. Lee at 9 a.m. yesterday. "
+        "Talks continue."
+    )
+    # cap of 2 must keep the whole second sentence (full of abbreviations)
+    out = _first_sentences(txt, 2)
+    assert out.endswith("yesterday.")
+    assert "\x00" not in out
+
+
+def test_first_sentences_empty_is_empty():
+    assert _first_sentences("", 5) == ""
+    assert _first_sentences(None, 5) == ""
 
 
 def _health() -> FullBriefEnvelopeHealth:
