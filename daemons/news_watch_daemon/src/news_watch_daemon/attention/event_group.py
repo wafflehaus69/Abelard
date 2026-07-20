@@ -24,10 +24,19 @@ merely contains a narrow one. Empirically calibrated on the live corpus
 scored 0.16 — a wide gap, so `MIN_JACCARD = 0.5` sits safely between them.
 
 Grouping is transitive (union-find): A~B and B~C put all three in one group.
+
+Two merge criteria feed the same union-find:
+  1. Singular/plural identity — "prediction market" / "prediction markets" are
+     one concept but their clusters are DISJOINT (a headline uses one spelling
+     or the other, measured 22 vs 16 with zero overlap), so Jaccard cannot see
+     them. Terms are singular-folded (adjacency.normalize_term) and exact
+     matches merged regardless of cluster overlap.
+  2. Cluster-overlap (Jaccard) — the "same event, different phrasing" case.
 """
 
 from __future__ import annotations
 
+from .adjacency import normalize_term
 from .threshold import CrossingTerm
 
 
@@ -71,6 +80,18 @@ def group_convergent_crossings(
     def union(x: int, y: int) -> None:
         parent[find(x)] = find(y)
 
+    # Pass 1 — singular/plural identity. "prediction market" and "prediction
+    # markets" are the SAME concept but have DISJOINT clusters (a headline uses
+    # one spelling or the other), so Jaccard is 0 and Pass 2 never merges them.
+    # Normalize each term (singular-fold every word) and union exact matches —
+    # independent of cluster overlap.
+    norm = [normalize_term(c.term) for c in crossings]
+    for i in range(n):
+        for j in range(i + 1, n):
+            if norm[i] == norm[j]:
+                union(i, j)
+
+    # Pass 2 — same event, different phrasing. Cluster-overlap (Jaccard) merge.
     for i in range(n):
         si = cluster_id_sets.get(crossings[i].term) or set()
         if not si:

@@ -82,5 +82,28 @@ def test_no_convergence_preserves_order():
     assert [g[0].term for g in groups] == ["a", "b", "c"]
 
 
+def test_singular_plural_variants_merge_despite_disjoint_clusters():
+    # The reported bug: "prediction market" (22 headlines) and "prediction
+    # markets" (16 headlines) share ZERO headlines (Jaccard 0), so the
+    # cluster-overlap pass can't see them — but they are one concept and must
+    # collapse to a single synthesis via the singular/plural identity pass.
+    crossings = [_c("prediction market", 22), _c("prediction markets", 16)]
+    ids = {"prediction market": _ids(0, 22), "prediction markets": _ids(22, 38)}
+    assert not (ids["prediction market"] & ids["prediction markets"])   # disjoint
+    groups = group_convergent_crossings(crossings, ids)
+    assert len(groups) == 1
+    assert groups[0][0].term == "prediction market"          # rep = higher window
+    assert {c.term for c in groups[0]} == {"prediction market", "prediction markets"}
+
+
+def test_singular_plural_identity_does_not_overmerge_distinct_terms():
+    # Two genuinely different terms that happen to both be plural must NOT merge
+    # just because the identity pass runs — their normalized forms differ.
+    crossings = [_c("sanctions", 20), _c("tariffs", 18)]
+    ids = {"sanctions": _ids(0, 20), "tariffs": _ids(20, 38)}
+    groups = group_convergent_crossings(crossings, ids)
+    assert len(groups) == 2
+
+
 def test_empty_input():
     assert group_convergent_crossings([], {}) == []

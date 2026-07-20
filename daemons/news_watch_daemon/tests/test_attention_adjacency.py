@@ -11,7 +11,9 @@ from __future__ import annotations
 from news_watch_daemon.attention.adjacency import (
     ADJACENCY_MIN,
     AttentionTerm,
+    _singularize,
     build_attention_list,
+    normalize_term,
     tokenize_ordered,
 )
 
@@ -191,6 +193,38 @@ def test_trigram_promotes_and_collapses_its_constituents():
     # constituent unigrams + exclusive bigrams collapse into the trigram
     assert "defense" not in terms and "industrial" not in terms and "base" not in terms
     assert "defense industrial" not in terms and "industrial base" not in terms
+
+
+# ---------- singular/plural fold on the count key (2026-07-20) ----------
+
+def test_singularize_folds_regular_plurals():
+    assert _singularize("markets") == "market"
+    assert _singularize("sanctions") == "sanction"
+    assert _singularize("tariffs") == "tariff"
+    assert _singularize("yields") == "yield"
+    assert _singularize("prices") == "price"      # -es plural, singular ends in e
+    assert _singularize("chips") == "chip"
+
+
+def test_singularize_leaves_singular_s_nouns_untouched():
+    # The families the keep-suffixes and length guard protect from corruption.
+    for w in ("gas", "news", "odds", "lens",           # <= 4 chars
+              "consensus", "status", "campus", "virus", # us
+              "analysis", "basis", "crisis",            # is
+              "politics", "physics",                    # ics
+              "series", "species",                      # ies
+              "atlas", "kudos"):                        # as / os
+        assert _singularize(w) == w, w
+
+
+def test_normalize_term_folds_multiword_plurals():
+    # The grouping key that merges singular/plural crossings. Every word is
+    # folded, so both spellings normalize to the same string.
+    assert normalize_term("prediction markets") == "prediction market"
+    assert normalize_term("prediction market") == "prediction market"
+    assert normalize_term("chip sanctions") == "chip sanction"
+    # singular-in-'s' words are preserved (no false merge)
+    assert normalize_term("gas crisis") == "gas crisis"
 
 
 def test_broad_bigram_survives_a_promoted_trigram():

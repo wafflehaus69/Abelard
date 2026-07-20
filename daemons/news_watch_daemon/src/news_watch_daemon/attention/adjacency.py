@@ -64,6 +64,42 @@ ADJACENCY_MIN = 5
 # two tokenizers in lockstep so unigram counts reconcile across modules.
 _TOKEN_RE = re.compile(r"\b[a-zA-Z]{2,}\b")
 
+# Singular/plural fold (2026-07-20). The counter treats "prediction market" and
+# "prediction markets" as two distinct bigrams: they clear the threshold
+# separately, and — measured 22 vs 16 headlines with ZERO overlap — convergence
+# grouping (Jaccard >= 0.5) cannot merge them, so each fired its own attention
+# synthesis and both surfaced as crossings. This helper feeds a term-identity
+# pass in event_group.py that merges such variants at grouping time (NOT in the
+# counter: the term text is a downstream search key for cluster_for_term, and a
+# singular key would not match plural headline text).
+#
+# CONSERVATIVE by construction — it must never corrupt a singular noun that
+# ends in 's'. Words <= 4 chars are left alone (gas, news, odds, lens), as are
+# the singular-in-'s' families below. So it folds markets->market,
+# sanctions->sanction, tariffs->tariff, yields->yield, prices->price, but
+# leaves consensus / analysis / series / politics / status / campus intact.
+_PLURAL_KEEP_SUFFIXES = ("ss", "us", "is", "ics", "ies", "as", "os")
+
+
+def _singularize(word: str) -> str:
+    """Fold a regular English plural to its singular. Leaves short words and
+    singular-in-'s' families (consensus/analysis/series/gas) untouched — see
+    _PLURAL_KEEP_SUFFIXES."""
+    if len(word) <= 4:
+        return word
+    if word.endswith(_PLURAL_KEEP_SUFFIXES):
+        return word
+    if word.endswith("s"):
+        return word[:-1]
+    return word
+
+
+def normalize_term(term: str) -> str:
+    """Singular-fold every word of a (possibly multi-word) attention term, so
+    "prediction markets" and "prediction market" normalize to one key. Used by
+    convergence grouping to merge singular/plural variants of the same term."""
+    return " ".join(_singularize(w) for w in term.split())
+
 # Tier A — tokenizer fragments. The `\b[a-zA-Z]{2,}\b` regex splits
 # contractions on the apostrophe: "we're" -> ["we", "re"], "doesn't" ->
 # ["doesn", "t"] (the 1-char "t" is dropped by the 2-char floor). These
@@ -308,5 +344,6 @@ __all__ = [
     "ADJACENCY_MIN",
     "AttentionTerm",
     "build_attention_list",
+    "normalize_term",
     "tokenize_ordered",
 ]

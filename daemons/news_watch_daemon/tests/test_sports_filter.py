@@ -83,3 +83,70 @@ def test_empty_and_none():
 def test_returns_the_matched_term():
     term = classify_sports("Lionel Messi and Argentina reach the World Cup final")
     assert term is not None and term.lower() in ("world cup", "lamine yamal", "kylian")
+
+
+# ---------- prediction-markets guard (2026-07-19) ----------
+
+
+def test_prediction_market_stories_survive_a_sports_token():
+    # The regression that motivated the guard: dropped live on 2026-07-19.
+    assert classify_sports(
+        "Prediction Markets Swell to 27% of Sports Bets During World Cup"
+    ) is None
+    # Platform-named business/regulatory stories pinned to a sports event.
+    assert classify_sports(
+        "Kalshi Picks Up World Cup Sponsorship Deal at a Deep Discount"
+    ) is None
+    assert classify_sports(
+        "Massachusetts AG files amended lawsuit against Kalshi over sports betting"
+    ) is None
+    assert classify_sports(
+        "Polymarket volumes hit records on Super Bowl and World Cup markets"
+    ) is None
+    assert classify_sports(
+        "CFTC weighs sports event contracts as Super Bowl volume climbs"
+    ) is None
+
+
+def test_hyphenated_prediction_market_compound_survives():
+    # Regression, live 2026-07-20: the compound adjective is hyphenated, and
+    # word-boundary matching treats "-" as a break, so the space spelling alone
+    # let this drop. This was the day's best volume-signal headline.
+    assert classify_sports(
+        "Argentina-Spain World Cup Final Drives $5.69B in Prediction-Market Volume"
+    ) is None
+    assert classify_sports(
+        "Prediction-Markets Volume Sets a Record During the World Cup"
+    ) is None
+
+
+def test_plain_sports_gambling_still_drops():
+    # The guard is PM-specific: ordinary sports-betting coverage carries no
+    # platform/instrument token and must still be dropped as noise.
+    assert classify_sports("Sportsbooks post record World Cup handle") is not None
+    assert classify_sports("Best betting odds for the NBA finals tonight") is not None
+    assert classify_sports("Spain beat France to reach the World Cup final") is not None
+
+
+# ---------- affiliate/promo spam drops outright (rides in via the PM guard) ----------
+
+
+def test_affiliate_promo_drops_even_with_a_prediction_market_token():
+    # Real examples pulled from the live Google News PM query (2026-07-19).
+    # Each carries a PM platform name, so the guard would otherwise KEEP them.
+    assert classify_sports(
+        "Polymarket Promo Code SBWIRE Get $50 Bonus for Sports, Politics & More"
+    ) is not None
+    assert classify_sports("Kalshi World Cup 2026: how to bet on the final") is not None
+    assert classify_sports("Kalshi bonus code unlocks a risk-free bet this week") is not None
+    assert classify_sports("Polymarket parlay picks for Sunday's slate") is not None
+
+
+def test_promo_rule_does_not_eat_idiomatic_markets_copy():
+    # "best bet" / bare "odds" are ordinary finance idiom — must NOT drop.
+    assert classify_sports("Gold is analysts' best bet for the second half") is None
+    assert classify_sports("Traders raise the odds of a September rate cut") is None
+    # And a genuine PM markets story stays kept.
+    assert classify_sports(
+        "Kalshi and Polymarket saw $5.7B wagered on the World Cup final"
+    ) is None

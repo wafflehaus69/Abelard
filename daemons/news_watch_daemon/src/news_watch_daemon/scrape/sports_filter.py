@@ -83,6 +83,36 @@ _GUARD_TERMS = [
     "defence", "budget", "dollar", "bond", "yield", "stablecoin", "tokeniz",
     "semiconductor", "Nvidia", "chip", "datacenter", "data center", "diplomat",
     "parliament", "sovereign", "peso", "currency", "OPEC", "recession",
+    # Prediction markets (2026-07-19). PM stories are pinned to sports events
+    # far more often than any other markets thread — World Cup volume records,
+    # Kalshi's sports-betting litigation, Kalshi's World Cup sponsorship. Without
+    # these the sports token silently drops the most CONSENSUS-relevant content
+    # in the feed ("Prediction Markets Swell to 27% of Sports Bets During World
+    # Cup" was dropped on 2026-07-19). Platform names and the instrument term are
+    # unambiguous — a pure match report never carries them — so this does not
+    # reopen the sports floodgates. NOT included: "betting"/"odds"/"sportsbook",
+    # which would keep ordinary sports-gambling coverage.
+    # HYPHENATED FORM IS LOAD-BEARING: headlines routinely write the compound
+    # adjective ("$5.69B in Prediction-Market Volume", 2026-07-20). Word-boundary
+    # matching treats the hyphen as a break, so "prediction market" does NOT
+    # match "Prediction-Market" — both spellings must be listed.
+    "prediction market", "prediction-market",
+    "Polymarket", "Kalshi", "PredictIt", "event contract",
+]
+
+# Affiliate / betting-promo spam — never signal, and (as of the prediction-
+# markets guard above) able to EVADE the sports drop by name-dropping a PM
+# platform: "Polymarket Promo Code SBWIRE Get $50 Bonus" (Golfweek), "Kalshi
+# World Cup 2026: how to bet" (CBS Sports). These tells are unambiguous
+# marketing artifacts, so they drop OUTRIGHT — guard or no guard.
+#
+# Deliberately EXCLUDES idiomatic finance phrasing that reads as promo but
+# isn't: "best bet" ("gold is the best bet for H2"), bare "odds", bare "props".
+# The bias stays toward keeping — only unmistakable affiliate copy drops.
+_PROMO_TERMS = [
+    "promo code", "bonus code", "sign-up bonus", "signup bonus",
+    "deposit bonus", "free bet", "risk-free bet", "parlay", "player prop",
+    "betting guide", "how to bet", "picks and prediction", "betting promo",
 ]
 
 # Optional inflection suffix: plural / past / gerund / -ian(s). Tight enough
@@ -104,17 +134,26 @@ def _compile(terms: list[str]) -> re.Pattern[str]:
 
 _SPORTS_RE = _compile(_SPORTS_TERMS)
 _GUARD_RE = _compile(_GUARD_TERMS)
+_PROMO_RE = _compile(_PROMO_TERMS)
 
 
 def classify_sports(headline: str | None) -> str | None:
-    """Return the matched sports term if `headline` is pure sports noise, else None.
+    """Return the matched noise term if `headline` is drop-worthy, else None.
 
-    Pure sports noise = a strong sports token matches AND no markets/geopolitics
-    guard token matches. The returned term is the specific sports keyword that
-    triggered the drop, for the audit trail's `matched_pattern`.
+    Two drop rules:
+      1. affiliate/betting-promo copy matches -> drop OUTRIGHT (these evade the
+         sports rule below by name-dropping a prediction-markets platform), or
+      2. a strong sports token matches AND no markets/geopolitics guard token
+         matches (pure sports noise).
+
+    The returned term is the specific keyword that triggered the drop, for the
+    audit trail's `matched_pattern`.
     """
     if not headline:
         return None
+    promo = _PROMO_RE.search(headline)
+    if promo is not None:
+        return promo.group(0)  # affiliate spam is never signal
     m = _SPORTS_RE.search(headline)
     if m is None:
         return None

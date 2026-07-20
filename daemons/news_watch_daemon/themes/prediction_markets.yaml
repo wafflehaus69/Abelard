@@ -1,0 +1,150 @@
+theme_id: prediction_markets
+display_name: Prediction Markets — Event Contracts & Market Structure
+status: active
+created_at: 2026-07-19
+
+brief: |
+  Tracks PREDICTION MARKETS as a market-structure story: the venues (Kalshi,
+  Polymarket, PredictIt, and the incumbents moving in), the instrument (CFTC-
+  regulated event contracts), the regulatory fight that decides where they may
+  operate, and the price signal they emit. This is a genuinely homeless thread
+  today — its headlines scatter across tokenized_finance (crypto-rail framing),
+  capital_markets (the Robinhood/CME angle), and political_volatility (election
+  markets), so no single lens carries the narrative.
+
+  The thesis is that event contracts are becoming a real asset class and a real
+  information source at the same time, and that both halves are market-moving.
+  As a VENUE story it is a live regulatory question with jurisdiction-by-
+  jurisdiction outcomes. As a SIGNAL story, prediction-market pricing is now
+  routinely cited as the market's read on macro prints, earnings, and policy —
+  a sentiment instrument that leads or contradicts the cash markets.
+
+  Material signals — six observed sub-threads (2026-07 corpus):
+    1. REGULATORY: national blocks and licensing fights (France/ANJ ordering
+       ISPs to block Polymarket; South Korea; ESMA's EU retail-ban warning),
+       US state-vs-CFTC preemption battles (Massachusetts, Michigan, New York),
+       and the sports-contract litigation that is the legal front line.
+    2. VENUE EXPANSION: new contract classes — clinical trials and FDA
+       decisions, flight cancellations, AI compute — plus incumbents entering
+       (Robinhood, CME, Coinbase) and the revenue lines analysts now model.
+    3. INTEGRITY / INSIDER FLOW: insider-trading and information-advantage
+       cases (a Google employee trading on internal data; a White House
+       teleprompter operator; employer bans on staff participation), and the
+       venues' compliance responses. An emerging market-integrity regime.
+    4. PRICE-AS-SIGNAL: prediction-market odds cited as the read on macro
+       prints, earnings, and policy outcomes.
+    5. PARTICIPANT STRUCTURE: who actually profits — the professional cohort,
+       arbitrage spreads, and concentration of winnings.
+    6. VOLUME / ADOPTION: notional traded, user growth, and share of the wider
+       betting complex; the clearest read on whether this is a durable venue.
+
+  SCOPE DISCIPLINE. This theme is the MARKET, not the underlying subject: a
+  contract ON an election is prediction_markets; ordinary election coverage is
+  political_volatility. Sports appear ONLY where the market itself is the story
+  (volume records, sports-contract litigation) — never game outcomes or picks,
+  which the ingest sports/promo filters drop upstream.
+
+  Deliberately NOT keyed on "CFTC": corpus evidence (2026-07) shows 5 of 6 CFTC
+  headlines are non-prediction-market derivatives/crypto matters (tokenized MMF
+  collateral, CME 24/7 oil futures, pool-operator fraud), while the one genuine
+  PM story names Kalshi directly. CFTC stays reference metadata, not a matcher.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  # Case-sensitivity is AUTOMATIC for 2+ consecutive uppercase — none of these
+  # carry a 2-cap run, so all tag case-insensitively. Multi-word terms are
+  # word-boundary anchored, so PLURALS AND HYPHENATED FORMS ARE LISTED
+  # EXPLICITLY ("prediction market" does NOT match "prediction markets").
+  primary:
+    - "prediction market"
+    - "prediction markets"
+    - "prediction-market"
+    - "prediction-markets"
+    - "Polymarket"
+    - "Kalshi"
+    - "PredictIt"
+    - "event contract"
+    - "event contracts"
+  secondary:
+    - "event derivatives"
+    - "election market"
+    - "election markets"
+    - "political betting"
+    - "forecasting market"
+    - "forecasting markets"
+    - "binary event contract"
+    - "sports event contract"
+    - "sports event contracts"
+    - "Metaculus"
+    - "Manifold Markets"
+  exclusions:
+    # Minimal by design, mirroring capital_markets: overlap with tokenized
+    # (crypto rails), capital_markets (Robinhood/CME) and political_volatility
+    # (election markets) is EXPECTED and correct — multi-tag is intended.
+    # Affiliate/picks spam is dropped upstream at ingest by the scrape-layer
+    # promo + sports filters, so it does not need an exclusion here.
+    []
+
+tracked_entities:
+  # Reference metadata for ticker/entity extraction — does NOT gate tagging.
+  tickers:
+    - HOOD
+    - CME
+    - COIN
+    - DKNG
+  companies:
+    # Pure-play venues.
+    - Kalshi
+    - Polymarket
+    - PredictIt
+    - Metaculus
+    # Incumbents moving in.
+    - Robinhood
+    - CME Group
+    - Coinbase
+    - DraftKings
+    - Hyperliquid
+    # Regulators / supervisors driving the venue question.
+    - CFTC
+    - ESMA
+    - ANJ
+  countries:
+    - United States
+    - France
+    - South Korea
+  commodities: []
+  people:
+    - Tarek Mansour
+    - Shayne Coplan
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 4
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # Baseline from the observed corpus: ~2/day via the existing wires, plus the
+  # dedicated Google News query below. Start conservative and retune on
+  # measured volume once the theme has run a few cycles.
+  velocity_baseline_headlines_per_day: 8.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds:
+  # Dedicated Google News query — verified live 2026-07-19 (HTTP 200, 100
+  # items/24h, keyless). The NEGATIVE terms are load-bearing: the bare query
+  # returned ~50% affiliate/picks spam (promo codes, parlays, game picks from
+  # Golfweek/Syracuse/CBS Sports). With the negatives it runs ~80% signal —
+  # NYT/CNBC/Benzinga/qz on volume records, user growth, the France ISP block,
+  # insider-trading compliance, and arbitrage spreads. Placement is
+  # organizational only (global fetch-dedup by feed_id; global tagging).
+  - url: "https://news.google.com/rss/search?q=%28Polymarket%20OR%20Kalshi%20OR%20%22prediction%20market%22%20OR%20%22event%20contracts%22%29%20-%22promo%20code%22%20-parlay%20-props%20-%22best%20bet%22%20-picks%20-%22how%20to%22%20when%3A24h&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_prediction_markets
+
+telegram_channels: []
