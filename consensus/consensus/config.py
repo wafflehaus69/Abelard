@@ -121,6 +121,19 @@ class CollectorConfig(_Strict):
     # backfill; that needs a periodic margin=0 reconciliation pass, not a bigger
     # routine margin. Set to 0 to disable the skip entirely (full INSERT-OR-IGNORE).
     late_arrival_margin_minutes: int = Field(ge=0, default=60)
+    # Stray adjudication is O(unresolved strays) per enumeration — each pending
+    # stray costs up to 2 gamma /markets lookups. Strays the global feed shows
+    # but gamma never recognises (frequently malformed condition ids) are left
+    # unresolved and re-fetched EVERY pass, accumulating without bound; on Basilic
+    # (2026-07-20) 5.7k such strays made enumeration ≈31 min and dominated pass
+    # duration. Bound it two ways: adjudicate at most this many per run (least-
+    # attempted first, so a backlog rotates through)...
+    stray_adjudication_max_per_run: int = Field(ge=1, default=500)
+    # ...and abandon a stray after this many "unknown to gamma" lookups (transient
+    # lookup errors do NOT count), marking it resolved so it stops being re-fetched.
+    # Safe: a real target market is adopted by the normal tag-page enumeration
+    # walk, not only via the stray path, so abandoning an unknown cid loses nothing.
+    stray_max_attempts: int = Field(ge=1, default=3)
     tiers: CollectorTiersConfig = CollectorTiersConfig()
 
 

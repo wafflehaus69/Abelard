@@ -105,7 +105,8 @@ CREATE TABLE IF NOT EXISTS l2_strays (
     condition_id  TEXT PRIMARY KEY,
     first_seen_ts INTEGER NOT NULL,
     fill_count    INTEGER NOT NULL DEFAULT 0,
-    resolved      INTEGER NOT NULL DEFAULT 0    -- 1 once enumerator adjudicated it
+    resolved      INTEGER NOT NULL DEFAULT 0,   -- 1 once enumerator adjudicated it
+    attempts      INTEGER NOT NULL DEFAULT 0    -- failed "unknown to gamma" lookups
 );
 
 CREATE TABLE IF NOT EXISTS l2_meta (
@@ -164,6 +165,7 @@ class TapeStore:
             ("l2_polls", "skipped_records", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_polls", "unparsed_records", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_polls", "presumed_records", "INTEGER NOT NULL DEFAULT 0"),
+            ("l2_strays", "attempts", "INTEGER NOT NULL DEFAULT 0"),
         ):
             cols = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
             if column not in cols:
@@ -457,6 +459,27 @@ class TapeStore:
         return [r[0] for r in self._conn.execute(
             "SELECT condition_id FROM l2_strays WHERE resolved = 0"
         ).fetchall()]
+
+    def strays_pending_adjudication(self, *, limit: int | None = None) -> list[tuple[str, int]]:
+        """Unresolved strays to adjudicate this pass, as (condition_id, attempts).
+        Least-attempted first (then oldest), so a per-run ``limit`` rotates
+        through the backlog and every stray still advances toward the give-up
+        threshold — bounding what would otherwise be an O(unresolved) gamma-fetch
+        loop every enumeration."""
+        q = ("SELECT condition_id, attempts FROM l2_strays WHERE resolved = 0"
+             " ORDER BY attempts ASC, first_seen_ts ASC")
+        params: tuple[Any, ...] = ()
+        if limit is not None:
+            q += " LIMIT ?"
+            params = (limit,)
+        return [(r[0], r[1]) for r in self._conn.execute(q, params).fetchall()]
+
+    def bump_stray_attempt(self, condition_id: str) -> None:
+        self._conn.execute(
+            "UPDATE l2_strays SET attempts = attempts + 1 WHERE condition_id = ?",
+            (condition_id,),
+        )
+        self._conn.commit()
 
     def resolve_stray(self, condition_id: str) -> None:
         self._conn.execute(

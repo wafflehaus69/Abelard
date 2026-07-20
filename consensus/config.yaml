@@ -113,6 +113,14 @@ collector:
   # reconciliation pass. Set to 0 to disable the skip.
   late_arrival_margin_minutes: 60
 
+  # Stray adjudication (markets seen in the global feed but not tracked) costs up
+  # to 2 gamma lookups each. Strays gamma never recognises (often malformed cids)
+  # would otherwise re-fetch every pass and accumulate without bound — the
+  # dominant pass-duration cost seen 2026-07-20 (5.7k strays ≈ 31 min/pass). Cap
+  # per run (least-attempted first) and abandon after N unknown-to-gamma lookups.
+  stray_adjudication_max_per_run: 500
+  stray_max_attempts: 3
+
   tiers:
     # Worst observed per-market burst rolls a 4k window in ~13.7 min; hot at
     # 2 min gives >5x margin. Dormant markets are protected by the global

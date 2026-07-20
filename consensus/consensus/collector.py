@@ -196,7 +196,9 @@ class Collector:
         decision is logged; a market gamma doesn't know at all stays
         unresolved for retry rather than being silently discarded."""
         strays_adopted = 0
-        for cid in self.tape.unresolved_strays():
+        cap = self.cfg.stray_adjudication_max_per_run
+        max_attempts = self.cfg.stray_max_attempts
+        for cid, attempts in self.tape.strays_pending_adjudication(limit=cap):
             market_rec: dict[str, Any] | None = None
             closed_lookup = False
             lookup_failed = False
@@ -218,14 +220,27 @@ class Collector:
                     closed_lookup = bool(extra)
                     break
             if lookup_failed:
-                continue  # transient: retry next enumeration
+                continue  # transient: retry next enumeration, no attempt counted
             if market_rec is None:
-                # Unknown to gamma both open and closed — keep unresolved for
-                # retry; log so the sighting is never silently forgotten.
-                self.log.warning(
-                    "stray %s unknown to gamma (open+closed lookup empty); "
-                    "left unresolved for retry", cid,
-                )
+                # Unknown to gamma both open and closed. Count the attempt and
+                # give up after ``max_attempts`` so a permanently-unknown stray
+                # (usually a malformed cid from the global feed) stops being
+                # re-fetched every enumeration — that unbounded accumulation was
+                # the dominant pass-duration cost (2026-07-20). A real target
+                # market is still adopted by the tag-page enumeration walk, so
+                # abandoning an unknown cid loses no coverage.
+                if attempts + 1 >= max_attempts:
+                    self.tape.resolve_stray(cid)
+                    self.log.warning(
+                        "stray %s abandoned after %d gamma lookups (never known); "
+                        "stop re-adjudicating", cid, attempts + 1,
+                    )
+                else:
+                    self.tape.bump_stray_attempt(cid)
+                    self.log.info(
+                        "stray %s unknown to gamma (attempt %d/%d); will retry",
+                        cid, attempts + 1, max_attempts,
+                    )
                 continue
             cat = (market_rec.get("category") or "").lower()
             if any(t in cat for t in self.cfg.tags) or cat in self.cfg.tags:

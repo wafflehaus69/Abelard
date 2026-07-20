@@ -55,6 +55,32 @@ def test_enumeration_adopts_markets(collector, requests_mock):
     assert collector.enumeration_due(1_000_000 + 31 * 60) is True
 
 
+def test_stray_abandoned_after_max_attempts(collector, requests_mock):
+    """2026-07-20: a stray gamma never recognises is abandoned after
+    stray_max_attempts lookups, not re-fetched forever (the O(unresolved)
+    accumulation that dominated pass duration)."""
+    collector.tape.record_stray("0xGHOST", now_ts=1, fills=3)
+    requests_mock.get(_EVENTS_URL, json=[])
+    requests_mock.get(_MARKETS_URL, json=[])  # gamma knows nothing, ever
+    k = collector.cfg.stray_max_attempts
+    for i in range(k - 1):
+        collector.run_enumeration(now_ts=1_000_000 + i)
+        assert collector.tape.unresolved_strays() == ["0xGHOST"], f"pending at try {i+1}"
+    collector.run_enumeration(now_ts=2_000_000)
+    assert collector.tape.unresolved_strays() == [], "abandoned after max attempts"
+
+
+def test_strays_pending_adjudication_capped_and_ordered(collector):
+    """The per-run cap bounds the gamma-fetch loop; least-attempted first so a
+    backlog rotates through instead of starving newer strays."""
+    for i in range(5):
+        collector.tape.record_stray(f"0xS{i}", now_ts=i, fills=1)
+    collector.tape.bump_stray_attempt("0xS0")  # already tried once
+    pending = collector.tape.strays_pending_adjudication(limit=3)
+    assert len(pending) == 3, "cap honored"
+    assert "0xS0" not in [p[0] for p in pending], "already-attempted stray deprioritized"
+
+
 def test_enumeration_adjudicates_strays(collector, requests_mock):
     collector.tape.record_stray("0xSTRAY", now_ts=1, fills=5)
     requests_mock.get(_EVENTS_URL, json=[])
