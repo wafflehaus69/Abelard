@@ -121,6 +121,13 @@ collector:
   stray_adjudication_max_per_run: 500
   stray_max_attempts: 3
 
+  # Resolution sweep: per enumeration, confirm-and-stamp up to this many tracked
+  # markets that dropped out of the open (closed=false) enumeration (whole-event
+  # closures the open feed never shows), via one gamma closed=true lookup each.
+  # Persists the winning outcome so the Detector-A confirmation pass reads it
+  # from the tape. Bounded + most-stale-first, like stray adjudication.
+  resolution_sweep_max_per_run: 200
+
   tiers:
     # Worst observed per-market burst rolls a 4k window in ~13.7 min; hot at
     # 2 min gives >5x margin. Dormant markets are protected by the global
@@ -145,6 +152,21 @@ m5:
   latency_scores: [1.0, 0.6, 0.2, 0.02]
   fp_curve_thresholds_min: [1, 5, 15, 60, 240, 1440]
   request_spacing_ms: 250            # Etherscan free tier ~3-5 calls/s
+
+m10:
+  # M10 live UNUSUAL_ACTIVITY scan (Detector B): on-command dossiers of fresh-
+  # wallet informed-money footprints over the L2 tape. NO EV, never a trade
+  # signal, permanently excluded from M9. All keys have code defaults; tune here.
+  unusual_lookback_hours: 48
+  size_floor_usdc: 10000
+  factor_weights: {}                 # {} -> reuse m0f.factor_weights
+  tier_thresholds: {WATCH: 0.30, ELEVATED: 0.50, CRITICAL: 0.70}
+  latency_tight_minutes: 60          # funded->bet <= this -> elevator applies
+  latency_elevator_boost: 1.5        # multiplicative lift (v1.7 §1: swept)
+  enrichment_max_wallets_per_scan: 40  # v1.6 §3.3 chain-enrichment gate
+  cluster_window_hours: 12
+  cross_market_record_only: true     # v1.3: cluster records, never scores
+  excluded_categories: []
 
 m0f:
   # M0-F Feb-28 footprint backtest (v1.0 §M0-F + v1.2 §3). Historical study on

@@ -30,10 +30,15 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .errors import CacheError
+
+# SQLite bind-variable cap is 999 (older builds); chunk market-id IN lists well
+# under it. The tracked roster is ~15k, so window reads chunk the id set.
+_IN_CHUNK = 900
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS l2_trades (
@@ -71,7 +76,8 @@ CREATE TABLE IF NOT EXISTS l2_markets (
     last_polled_ts  INTEGER NOT NULL DEFAULT 0,
     newest_fill_ts  INTEGER NOT NULL DEFAULT 0,
     last_new_fills  INTEGER NOT NULL DEFAULT 0,
-    close_seen_ts   INTEGER NOT NULL DEFAULT 0    -- when enumeration first saw it closed
+    close_seen_ts   INTEGER NOT NULL DEFAULT 0,   -- when enumeration first saw it closed
+    resolution      TEXT                          -- raw gamma outcome JSON (who won); NULL until swept
 );
 
 CREATE TABLE IF NOT EXISTS l2_polls (
@@ -168,6 +174,7 @@ class TapeStore:
             ("l2_polls", "unparsed_records", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_polls", "presumed_records", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_strays", "attempts", "INTEGER NOT NULL DEFAULT 0"),
+            ("l2_markets", "resolution", "TEXT"),
         ):
             cols = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
             if column not in cols:
@@ -304,6 +311,185 @@ class TapeStore:
             ).fetchone()
         return row[0] if row and row[0] is not None else None
 
+    # -- read helpers (M10 scan + data-sufficiency readout) --------------------
+    # All pure reads: no commit, no writes. Consumers (M10, the supply readout)
+    # are read-only clients and must never call the write/upsert/deactivate path.
+
+    def fills_in_window(
+        self,
+        *,
+        lo_ts: int,
+        hi_ts: int,
+        condition_ids: set[str] | None = None,
+        parsed_only: bool = True,
+        include_raw: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Return l2_trades rows with ``lo_ts <= timestamp <= hi_ts`` as column
+        dicts, optionally restricted to a market set and to parsed fills. The
+        primary fill reader — powers the M10 window scan and roster/edge material.
+
+        Unparsed rows carry NULL timestamp so the range predicate already excludes
+        them; ``parsed_only`` adds the explicit ``parse_ok=1`` for clarity. A fill
+        is one row keyed by fill_key regardless of which lane inserted it (dedup by
+        INSERT-OR-IGNORE), and within-tx real duplicates keep their #2/#3 suffix —
+        so callers must NOT filter by lane and should include those rows. The
+        market set is chunked under SQLite's bind-variable cap and the merged
+        result re-sorted by timestamp."""
+        cols = ("fill_key, condition_id, proxy_wallet, side, asset, outcome, price,"
+                " size, timestamp, transaction_hash, slug, parse_ok, lane")
+        if include_raw:
+            cols += ", raw"
+        where = "timestamp >= ? AND timestamp <= ?"
+        if parsed_only:
+            where += " AND parse_ok = 1"
+        try:
+            if condition_ids is None:
+                cur = self._conn.execute(
+                    f"SELECT {cols} FROM l2_trades WHERE {where} ORDER BY timestamp",
+                    (lo_ts, hi_ts),
+                )
+                names = [d[0] for d in cur.description]
+                return [dict(zip(names, r)) for r in cur.fetchall()]
+            ids = list(condition_ids)
+            rows: list[dict[str, Any]] = []
+            names: list[str] = []
+            for i in range(0, len(ids), _IN_CHUNK):
+                chunk = ids[i:i + _IN_CHUNK]
+                ph = ",".join("?" * len(chunk))
+                cur = self._conn.execute(
+                    f"SELECT {cols} FROM l2_trades WHERE {where}"
+                    f" AND condition_id IN ({ph})",
+                    (lo_ts, hi_ts, *chunk),
+                )
+                names = [d[0] for d in cur.description]
+                rows.extend(dict(zip(names, r)) for r in cur.fetchall())
+            rows.sort(key=lambda r: r["timestamp"] if r["timestamp"] is not None else 0)
+            return rows
+        except sqlite3.Error as exc:
+            raise CacheError(f"tape fills_in_window failed: {exc}") from exc
+
+    def gaps_overlapping(
+        self, *, lo_ts: int, hi_ts: int, condition_ids: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return l2_gaps rows whose declared interval intersects ``[lo_ts,
+        hi_ts]``. NULL lo_ts means open-below (-inf), NULL hi_ts open-above
+        (+inf). Global-lane gaps (condition_id IS NULL) are ALWAYS returned — a
+        global gap can bias any window. The coverage-integrity gate: a reader
+        must never silently scan across a declared gap; overlaps are stamped into
+        the output as caveats (Rule 1)."""
+        try:
+            cur = self._conn.execute(
+                "SELECT id, lane, condition_id, lo_ts, hi_ts, declared_ts, reason"
+                " FROM l2_gaps WHERE (lo_ts IS NULL OR lo_ts <= ?)"
+                " AND (hi_ts IS NULL OR hi_ts >= ?)",
+                (hi_ts, lo_ts),
+            )
+            names = [d[0] for d in cur.description]
+            gaps = [dict(zip(names, r)) for r in cur.fetchall()]
+        except sqlite3.Error as exc:
+            raise CacheError(f"tape gaps_overlapping failed: {exc}") from exc
+        if condition_ids is None:
+            return gaps
+        return [g for g in gaps
+                if g["condition_id"] is None or g["condition_id"] in condition_ids]
+
+    def market_supply_counts(self, *, now_ts: int | None = None) -> dict[str, int]:
+        """One-query resolved-supply aggregate over l2_markets. ``close_seen`` and
+        ``drained`` UNDERCOUNT true resolutions — enumeration queries gamma with
+        closed=false, so whole-event closures are caught only by the resolution
+        sweep — hence ``end_date_passed`` is surfaced as the complementary
+        heuristic (ISO end_date sorts chronologically for a lexical compare)."""
+        try:
+            counts = {
+                "total": self._conn.execute("SELECT COUNT(*) FROM l2_markets").fetchone()[0],
+                "active": self._conn.execute(
+                    "SELECT COUNT(*) FROM l2_markets WHERE active=1").fetchone()[0],
+                "close_seen": self._conn.execute(
+                    "SELECT COUNT(*) FROM l2_markets WHERE close_seen_ts>0").fetchone()[0],
+                "drained": self._conn.execute(
+                    "SELECT COUNT(*) FROM l2_markets WHERE active=0").fetchone()[0],
+                "resolved_outcome": self._conn.execute(
+                    "SELECT COUNT(*) FROM l2_markets"
+                    " WHERE resolution IS NOT NULL AND resolution != ''").fetchone()[0],
+                "end_date_passed": 0,
+            }
+            if now_ts is not None:
+                iso_now = datetime.fromtimestamp(now_ts, tz=timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ")
+                counts["end_date_passed"] = self._conn.execute(
+                    "SELECT COUNT(*) FROM l2_markets"
+                    " WHERE end_date IS NOT NULL AND end_date != '' AND end_date < ?",
+                    (iso_now,),
+                ).fetchone()[0]
+        except sqlite3.Error as exc:
+            raise CacheError(f"tape market_supply_counts failed: {exc}") from exc
+        return counts
+
+    def wallet_fill_counts(
+        self, *, lo_ts: int | None = None, hi_ts: int | None = None, min_fills: int = 1,
+    ) -> list[dict[str, Any]]:
+        """Per-wallet fill tallies (roster raw-material sizing): proxy_wallet,
+        n_fills, first_ts, last_ts. Optionally windowed. NOTE: this is
+        participation volume, not skill — the winning outcome needed for realized
+        edge is not on the tape until the resolution sweep persists it."""
+        q = ("SELECT proxy_wallet, COUNT(*) AS n_fills, MIN(timestamp) AS first_ts,"
+             " MAX(timestamp) AS last_ts FROM l2_trades"
+             " WHERE proxy_wallet IS NOT NULL AND parse_ok = 1")
+        params: list[Any] = []
+        if lo_ts is not None:
+            q += " AND timestamp >= ?"; params.append(lo_ts)
+        if hi_ts is not None:
+            q += " AND timestamp <= ?"; params.append(hi_ts)
+        q += " GROUP BY proxy_wallet HAVING COUNT(*) >= ? ORDER BY n_fills DESC"
+        params.append(min_fills)
+        try:
+            cur = self._conn.execute(q, params)
+            names = [d[0] for d in cur.description]
+            return [dict(zip(names, r)) for r in cur.fetchall()]
+        except sqlite3.Error as exc:
+            raise CacheError(f"tape wallet_fill_counts failed: {exc}") from exc
+
+    def polls(
+        self, *, lane: str | None = None, lo_ts: int | None = None, hi_ts: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Read l2_polls rows (previously write-only). Poll cadence per lane over
+        a window is the collector's liveness/coverage record."""
+        q = "SELECT * FROM l2_polls WHERE 1=1"
+        params: list[Any] = []
+        if lane is not None:
+            q += " AND lane = ?"; params.append(lane)
+        if lo_ts is not None:
+            q += " AND invoked_ts >= ?"; params.append(lo_ts)
+        if hi_ts is not None:
+            q += " AND invoked_ts <= ?"; params.append(hi_ts)
+        q += " ORDER BY invoked_ts"
+        try:
+            cur = self._conn.execute(q, params)
+            names = [d[0] for d in cur.description]
+            return [dict(zip(names, r)) for r in cur.fetchall()]
+        except sqlite3.Error as exc:
+            raise CacheError(f"tape polls failed: {exc}") from exc
+
+    def fill_histogram(
+        self, *, bucket_seconds: int, lo_ts: int | None = None, hi_ts: int | None = None,
+    ) -> list[tuple[int, int]]:
+        """(bucket_start_ts, fill_count) over parsed fills, bucketed by
+        ``bucket_seconds`` — activity density over time."""
+        if bucket_seconds <= 0:
+            raise CacheError("fill_histogram: bucket_seconds must be > 0")
+        q = ("SELECT (timestamp / ?) * ? AS bucket, COUNT(*) FROM l2_trades"
+             " WHERE parse_ok = 1 AND timestamp IS NOT NULL")
+        params: list[Any] = [bucket_seconds, bucket_seconds]
+        if lo_ts is not None:
+            q += " AND timestamp >= ?"; params.append(lo_ts)
+        if hi_ts is not None:
+            q += " AND timestamp <= ?"; params.append(hi_ts)
+        q += " GROUP BY bucket ORDER BY bucket"
+        try:
+            return [(int(r[0]), int(r[1])) for r in self._conn.execute(q, params).fetchall()]
+        except sqlite3.Error as exc:
+            raise CacheError(f"tape fill_histogram failed: {exc}") from exc
+
     # -- markets ---------------------------------------------------------------
 
     def upsert_market(
@@ -371,6 +557,23 @@ class TapeStore:
             )
             self._conn.commit()
         return ids
+
+    def record_resolution(self, condition_id: str, *, resolution: str, now_ts: int) -> bool:
+        """Persist a tracked market's RESOLUTION outcome (raw gamma outcome JSON —
+        who won) and stamp close_seen_ts if not already set. Written by the
+        collector's closed-market sweep, which catches whole-event closures that
+        the open (closed=false) enumeration never sees (adversarial scout
+        2026-07-20). Returns True if a row was updated. The confirmation pass
+        reads the winning side from ``resolution`` (Rule 1: raw values, parsed at
+        analysis time) instead of re-fetching thousands of markets."""
+        cur = self._conn.execute(
+            "UPDATE l2_markets SET resolution=?,"
+            " close_seen_ts = CASE WHEN close_seen_ts = 0 THEN ? ELSE close_seen_ts END"
+            " WHERE condition_id=?",
+            (resolution, now_ts, condition_id),
+        )
+        self._conn.commit()
+        return bool(cur.rowcount)
 
     def markets(self, *, active_only: bool = True) -> list[dict[str, Any]]:
         q = "SELECT * FROM l2_markets"

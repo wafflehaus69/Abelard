@@ -118,6 +118,13 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         help="Owner-facing tape summary: fills, tiers, declared gaps, strays.",
     )
+    sup = collect_cmds.add_parser(
+        "supply",
+        help="Data-sufficiency readout: window coverage, resolved supply, roster, "
+             "freshness, gaps -> is there enough tape to run the analysis?",
+    )
+    sup.add_argument("--lookback-hours", type=int, default=168,
+                     help="Window for the fills-in-window / coverage figures (default 168).")
 
     m0c = groups.add_parser(
         "m0c",
@@ -165,6 +172,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--limit-wallets", type=int, default=None,
                    help="Cap the batch (labeled wallets always kept). Omit for the full ~900.")
+    p.add_argument("--replay", action="store_true",
+                   help="Serve every chain fetch from the cache (offline; loud on miss).")
+
+    m10 = groups.add_parser(
+        "m10",
+        help="M10 live UNUSUAL_ACTIVITY scan (Detector B): fresh-wallet dossiers over the L2 tape.",
+    )
+    m10_cmds = m10.add_subparsers(dest="command", required=True)
+    p = m10_cmds.add_parser(
+        "scan",
+        help="One on-command scan of the recent L2 window -> JSON envelope + human dossier.",
+    )
+    p.add_argument("--lookback-hours", type=int, default=None,
+                   help="Override config m10.unusual_lookback_hours.")
+    p.add_argument("--max-wallets", type=int, default=None,
+                   help="Cap chain enrichment (v1.6 §3.3 gate); default from config.")
     p.add_argument("--replay", action="store_true",
                    help="Serve every chain fetch from the cache (offline; loud on miss).")
 
@@ -624,6 +647,105 @@ def _render_collect_status_human(s: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+# Data-sufficiency calibration placeholders. "Enough" is a judgment the metrics
+# inform, not a hard line — these are the knobs to revise as the tape matures
+# (the Detector-A confirmation pass is the calendar item they gate; see
+# docs/m0c_report.md and the supply readout below).
+_SUPPLY_SKEW_S = 300
+_SUPPLY_SCORABLE_MIN_FILLS = 20
+_SUPPLY_FRESH_MAX_S = 2 * 3600
+_SUPPLY_MIN_RESOLVED_OUTCOME = 200
+_SUPPLY_MIN_SCORABLE_WALLETS = 1000
+
+
+def cmd_collect_supply(loaded: LoadedConfig, *, lookback_hours: int = 168) -> dict[str, Any]:
+    """Data-sufficiency readout: is there enough clean forward tape to run the
+    Detector-A confirmation pass (and to scan with M10 now)? Reports window
+    coverage, resolved-market supply WITH outcomes, roster material, overlapping
+    declared gaps, freshness, and a coarse SUFFICIENT/THIN/EMPTY verdict against
+    the calibration placeholders above. Pure tape read."""
+    import time
+    from .tape import TapeStore
+
+    now = int(time.time())
+    hi = now + _SUPPLY_SKEW_S
+    lo = now - lookback_hours * 3600
+    tape = TapeStore(loaded.tape_path)
+    try:
+        stats = tape.stats()
+        supply = tape.market_supply_counts(now_ts=now)
+        window_fills = len(tape.fills_in_window(lo_ts=lo, hi_ts=hi))
+        window_gaps = tape.gaps_overlapping(lo_ts=lo, hi_ts=hi)
+        scorable = len(tape.wallet_fill_counts(min_fills=_SUPPLY_SCORABLE_MIN_FILLS))
+        distinct_wallets = tape._conn.execute(
+            "SELECT COUNT(DISTINCT proxy_wallet) FROM l2_trades"
+            " WHERE proxy_wallet IS NOT NULL"
+        ).fetchone()[0]
+    finally:
+        tape.close()
+
+    newest, oldest = stats.get("newest_fill_ts"), stats.get("oldest_fill_ts")
+    freshness_s = (now - newest) if isinstance(newest, int) else None
+    span_days = ((newest - oldest) / 86400.0
+                 if isinstance(newest, int) and isinstance(oldest, int) else None)
+
+    reasons: list[str] = []
+    if window_fills == 0:
+        verdict = "EMPTY"
+        reasons.append("no fills in the lookback window")
+    else:
+        ok = True
+        if freshness_s is None or freshness_s > _SUPPLY_FRESH_MAX_S:
+            ok = False
+            reasons.append(f"collector stale: {freshness_s}s since newest fill")
+        if supply["resolved_outcome"] < _SUPPLY_MIN_RESOLVED_OUTCOME:
+            ok = False
+            reasons.append(f"resolved-with-outcome {supply['resolved_outcome']} "
+                           f"< {_SUPPLY_MIN_RESOLVED_OUTCOME}")
+        if scorable < _SUPPLY_MIN_SCORABLE_WALLETS:
+            ok = False
+            reasons.append(f"scorable wallets {scorable} < {_SUPPLY_MIN_SCORABLE_WALLETS}")
+        verdict = "SUFFICIENT" if ok else "THIN"
+        if ok:
+            reasons.append("resolved supply, roster, and freshness all clear the bar")
+    return {
+        "kind": "collect.supply",
+        "now": now,
+        "window": {"lookback_hours": lookback_hours, "lo_ts": lo, "hi_ts": hi},
+        "tape": stats,
+        "window_fills": window_fills,
+        "window_gaps": len(window_gaps),
+        "span_days": span_days,
+        "freshness_s": freshness_s,
+        "supply": supply,
+        "roster": {"distinct_wallets": distinct_wallets, "scorable_wallets": scorable},
+        "verdict": verdict,
+        "reasons": reasons,
+    }
+
+
+def _render_supply_human(s: dict[str, Any]) -> str:
+    t, sup, ros = s["tape"], s["supply"], s["roster"]
+    span = f"{s['span_days']:.1f}d" if s["span_days"] is not None else "unknown"
+    fresh = f"{s['freshness_s']}s" if s["freshness_s"] is not None else "unknown"
+    lines = [
+        f"CONSENSUS data-sufficiency readout  ->  VERDICT: {s['verdict']}",
+        f"  window : last {s['window']['lookback_hours']}h  "
+        f"({s['window_fills']} fills, {s['window_gaps']} overlapping declared gap(s))",
+        f"  span   : {span} of tape (NB includes per-market bootstrap backfill, not "
+        f"all continuous); freshness {fresh} since newest fill",
+        f"  markets: {sup['total']} total | {sup['active']} active | "
+        f"{sup['close_seen']} close-seen | {sup['drained']} drained",
+        f"  resolved w/ outcome: {sup['resolved_outcome']}   "
+        f"(end_date passed: {sup['end_date_passed']})  <- Detector-A scorable supply",
+        f"  roster : {ros['distinct_wallets']} distinct wallets, "
+        f"{ros['scorable_wallets']} with >= {_SUPPLY_SCORABLE_MIN_FILLS} fills",
+    ]
+    for r in s["reasons"]:
+        lines.append(f"  - {r}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # dispatch + main
 # ---------------------------------------------------------------------------
@@ -735,6 +857,19 @@ def main(argv: list[str] | None = None) -> int:
                 _emit(summary, as_json=True)
                 return 0
             raise ValueError(f"unknown m5 command: {args.command}")
+        if args.group == "m10":
+            from .m10 import render_dossier_human, run_scan
+            if args.command == "scan":
+                if args.replay:
+                    dl.replay = True
+                summary = run_scan(dl, loaded, lookback_hours=args.lookback_hours,
+                                   max_wallets=args.max_wallets)
+                if args.json:
+                    _emit(summary, as_json=True)  # orchestration envelope
+                else:
+                    sys.stdout.write(render_dossier_human(summary) + "\n")
+                return 0
+            raise ValueError(f"unknown m10 command: {args.command}")
         if args.group == "m0f":
             from .m0f import run_pull, run_score, run_universe
 
@@ -771,6 +906,13 @@ def main(argv: list[str] | None = None) -> int:
                     _emit(summary, as_json=True)
                 else:
                     sys.stdout.write(_render_collect_status_human(summary) + "\n")
+                return 0
+            if args.command == "supply":
+                summary = cmd_collect_supply(loaded, lookback_hours=args.lookback_hours)
+                if args.json:
+                    _emit(summary, as_json=True)
+                else:
+                    sys.stdout.write(_render_supply_human(summary) + "\n")
                 return 0
             raise ValueError(f"unknown collect command: {args.command}")
         summary = _dispatch(dl, loaded, args)

@@ -505,6 +505,51 @@ def test_closed_market_gets_drain_window_then_deactivates(collector, requests_mo
     assert m["active"] == 1 and m["close_seen_ts"] == 0
 
 
+def test_resolution_sweep_stamps_whole_event_closure(collector, requests_mock):
+    """Scout 2026-07-20 (Case 2): a tracked market whose WHOLE event closed drops
+    out of the open (closed=false) enumeration entirely. The sweep confirms
+    closure via a closed=true lookup, stamps close_seen_ts, and persists the
+    winning outcome for the Detector-A confirmation pass."""
+    collector.tape.upsert_market("0xGONE", slug="s", question="q", tags="geopolitics",
+                                 source="enumeration", now_ts=1)
+    requests_mock.get(_EVENTS_URL, json=[])  # whole event closed -> absent from open enum
+    requests_mock.get(_MARKETS_URL, json=[
+        {"conditionId": "0xGONE", "closed": True, "outcomePrices": "[\"1\", \"0\"]",
+         "outcomes": "[\"Yes\", \"No\"]", "umaResolutionStatus": "resolved"},
+    ])
+    r = collector.run_enumeration(now_ts=1_000_000)
+    assert r["resolved_stamped"] == 1
+    m = collector.tape.markets(active_only=True)[0]
+    assert m["close_seen_ts"] == 1_000_000
+    assert json.loads(m["resolution"])["outcomePrices"] == '["1", "0"]'
+
+
+def test_resolution_sweep_skips_when_tag_enumeration_failed(collector, requests_mock):
+    """Absence is ambiguous when a tag enumeration errored — the sweep must NOT
+    stamp, else it would falsely retire a still-open market (data loss)."""
+    collector.tape.upsert_market("0xMAYBE", slug="s", question="q", tags="geopolitics",
+                                 source="enumeration", now_ts=1)
+    requests_mock.get(_EVENTS_URL, status_code=500)               # tag fails
+    requests_mock.get(_MARKETS_URL, json=[{"conditionId": "0xMAYBE", "closed": True}])
+    r = collector.run_enumeration(now_ts=2_000_000)
+    assert r["resolved_stamped"] == 0
+    m = collector.tape.markets(active_only=True)[0]
+    assert m["close_seen_ts"] == 0 and not m["resolution"]
+
+
+def test_resolution_sweep_never_stamps_on_absence_alone(collector, requests_mock):
+    """A market absent from the open enum but NOT returned by closed=true (e.g. a
+    pagination flicker) is left active — never stamped on absence alone (Rule 1)."""
+    collector.tape.upsert_market("0xOPEN2", slug="s", question="q", tags="geopolitics",
+                                 source="enumeration", now_ts=1)
+    requests_mock.get(_EVENTS_URL, json=[])   # not seen open this pass
+    requests_mock.get(_MARKETS_URL, json=[])  # closed=true lookup finds nothing
+    r = collector.run_enumeration(now_ts=3_000_000)
+    assert r["resolved_stamped"] == 0
+    m = collector.tape.markets(active_only=True)[0]
+    assert m["close_seen_ts"] == 0 and not m["resolution"]
+
+
 def test_stray_closed_market_is_still_adopted(collector, requests_mock):
     """A target-category stray that closed before adjudication must be adopted
     (with a drain window), not silently resolved out of existence."""
@@ -571,6 +616,7 @@ def test_run_once_budget_and_oldest_first(collector, requests_mock):
         )
     object.__setattr__(collector.cfg, "max_markets_per_run", 2)
     requests_mock.get(_EVENTS_URL, json=[])
+    requests_mock.get(_MARKETS_URL, json=[])  # resolution sweep: none closed
     requests_mock.get(_TRADES_URL, json=[])
     env = collector.run_once()
     r = env["result"]
@@ -612,6 +658,7 @@ def test_run_once_prioritizes_hot_over_older_dormant_backlog(collector, requests
             last_polled_ts=now - 5 * 60, newest_fill_ts=now, last_new_fills=0)
     object.__setattr__(collector.cfg, "max_markets_per_run", 2)
     requests_mock.get(_EVENTS_URL, json=[])
+    requests_mock.get(_MARKETS_URL, json=[])  # resolution sweep: none closed
     requests_mock.get(_TRADES_URL, json=[])
     env = collector.run_once()
     assert env["result"]["markets_polled"] == 2
@@ -635,6 +682,7 @@ def test_run_once_polls_promoted_market_same_invocation(collector, requests_mock
         newest_fill_ts=0, last_new_fills=0,
     )
     requests_mock.get(_EVENTS_URL, json=[])
+    requests_mock.get(_MARKETS_URL, json=[])  # resolution sweep: none closed
     requests_mock.get(_TRADES_URL, json=[_fill(0, cid="0xCID", ts=now)])
     env = collector.run_once()
     assert env["result"]["markets_polled"] == 1

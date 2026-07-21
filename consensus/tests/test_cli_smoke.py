@@ -260,6 +260,36 @@ def test_collect_status_human_and_json(config_file, requests_mock, capsys):
     assert "tape" in out and "tiers" in out
 
 
+def test_m10_scan_cli_wiring(config_file, requests_mock, capsys):
+    _mock_collect_world(requests_mock)
+    assert main(["--config", str(config_file), "collect", "run"]) == 0  # create tape
+    capsys.readouterr()
+    assert main(["--config", str(config_file), "--json", "m10", "scan"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["daemon"] == "consensus_m10"
+    assert out["result"]["dossiers"] == []  # empty tape -> nothing surfaces
+    assert "not a validated trade signal" in out["caveat"].lower()
+    assert main(["--config", str(config_file), "m10", "scan", "--lookback-hours", "24"]) == 0
+    assert "M10 UNUSUAL_ACTIVITY scan" in capsys.readouterr().out
+
+
+def test_collect_supply_readout(config_file, requests_mock, capsys):
+    _mock_collect_world(requests_mock)
+    assert main(["--config", str(config_file), "collect", "run"]) == 0
+    capsys.readouterr()
+    assert main(["--config", str(config_file), "--json", "collect", "supply"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["kind"] == "collect.supply"
+    assert out["verdict"] in ("SUFFICIENT", "THIN", "EMPTY")
+    for key in ("supply", "roster", "window", "window_fills", "reasons"):
+        assert key in out
+    assert out["verdict"] == "EMPTY"  # empty mocked world -> no fills in window
+    # human path renders
+    assert main(["--config", str(config_file), "collect", "supply", "--lookback-hours", "48"]) == 0
+    text = capsys.readouterr().out
+    assert "data-sufficiency readout" in text and "VERDICT:" in text
+
+
 def test_trades_all_walks_pages_and_reports_range(config_file, requests_mock, capsys):
     def mk(i):
         return {"proxyWallet": f"0x{i:x}", "side": "BUY", "conditionId": "0xCID",

@@ -120,8 +120,14 @@ class Collector:
         added = refreshed = 0
         errors: list[str] = []
         any_page_ok = False
+        # The open (closed=false) enumeration pages the FULL open set per tag, so
+        # a tracked market of a fully-succeeded tag that is absent from seen_open
+        # has resolved (or delisted) — the hook the resolution sweep needs.
+        seen_open: set[str] = set()
+        succeeded_tags: set[str] = set()
         for tag in self.cfg.tags:
             offset = 0
+            tag_failed = False
             while True:
                 try:
                     events = self.dl.fetch(
@@ -136,6 +142,7 @@ class Collector:
                     )
                 except DataLayerError as exc:
                     errors.append(exc.to_error())
+                    tag_failed = True
                     break
                 if not isinstance(events, list):
                     # A 200 with a non-list body is a malformed upstream, not
@@ -145,6 +152,7 @@ class Collector:
                         f"data_layer.{_GAMMA}: /events tag={tag}: expected a JSON "
                         f"array, got {type(events).__name__}"
                     )
+                    tag_failed = True
                     break
                 any_page_ok = True
                 if not events:
@@ -154,6 +162,7 @@ class Collector:
                         cid = m.get("conditionId")
                         if not cid:
                             continue
+                        seen_open.add(cid)
                         inserted = self.tape.upsert_market(
                             cid,
                             slug=m.get("slug"),
@@ -169,8 +178,15 @@ class Collector:
                 if len(events) < self.cfg.gamma_page_limit:
                     break
                 offset += self.cfg.gamma_page_limit
+            # Only a tag that paged to its natural end without error can be
+            # trusted for "absent => gone"; a fetch failure makes absence
+            # ambiguous and must NOT drive a closed-sweep (would falsely retire
+            # still-open markets).
+            if not tag_failed:
+                succeeded_tags.add(tag)
 
         strays_adopted = self._adjudicate_strays(now_ts, errors)
+        resolved_stamped = self._sweep_resolved(now_ts, seen_open, succeeded_tags, errors)
 
         if any_page_ok:
             self.tape.set_meta(_LAST_ENUMERATION_KEY, str(now_ts))
@@ -183,8 +199,8 @@ class Collector:
             poll_id, new_records=added, error="; ".join(errors) or None
         )
         return {"markets_added": added, "markets_refreshed": refreshed,
-                "strays_adopted": strays_adopted, "stamped": any_page_ok,
-                "errors": errors}
+                "strays_adopted": strays_adopted, "resolved_stamped": resolved_stamped,
+                "stamped": any_page_ok, "errors": errors}
 
     def _adjudicate_strays(self, now_ts: int, errors: list[str]) -> int:
         """Adjudicate markets sighted in the global lane but not tracked.
@@ -258,6 +274,73 @@ class Collector:
                 self.log.info("stray %s adjudicated out-of-scope (category=%r)", cid, cat)
             self.tape.resolve_stray(cid)
         return strays_adopted
+
+    def _sweep_resolved(
+        self, now_ts: int, seen_open: set[str], succeeded_tags: set[str],
+        errors: list[str],
+    ) -> int:
+        """Catch tracked markets that RESOLVED by dropping out of the open
+        (closed=false) enumeration — the majority of resolutions, since gamma's
+        server-side filter omits any whole-event closure (adversarial scout
+        2026-07-20). For markets of FULLY-SUCCEEDED tags that were not seen open
+        this pass, confirm closure with an explicit ``closed=true`` gamma lookup
+        (never infer from absence — Rule 1) and persist the resolution outcome so
+        the Detector-A confirmation pass can read the winning side from the tape.
+
+        Bounded per run, most-stale-first — mirrors stray adjudication. Markets
+        with a resolution already recorded are skipped; once stamped, the drain
+        sweep retires them, so the presumed-gone pool drains and does not
+        re-lookup the same market forever."""
+        if not succeeded_tags:
+            return 0
+        cap = self.cfg.resolution_sweep_max_per_run
+        presumed = [
+            m for m in self.tape.markets(active_only=True)
+            if m.get("tags") in succeeded_tags
+            and m["condition_id"] not in seen_open
+            and not m.get("resolution")
+        ]
+        presumed.sort(key=lambda m: int(m.get("last_polled_ts") or 0))
+        stamped = 0
+        for m in presumed[:cap]:
+            cid = m["condition_id"]
+            try:
+                rows = self.dl.fetch(
+                    source=_GAMMA,
+                    base_url=self.dl.endpoints.polymarket_gamma_api,
+                    endpoint="/markets",
+                    request_params={"condition_ids": cid, "closed": "true"},
+                    persist=False,
+                )
+            except DataLayerError as exc:
+                errors.append(exc.to_error())
+                continue
+            if not (isinstance(rows, list) and rows):
+                # gamma returns nothing for a closed=true lookup of a still-open
+                # market: absent from the open enumeration for another reason
+                # (pagination flicker). Leave active; never stamp on absence.
+                continue
+            rec = rows[0]
+            if not bool(rec.get("closed")):
+                continue  # defensive: only a genuinely-closed record resolves it
+            resolution = json.dumps(
+                {
+                    "outcomePrices": rec.get("outcomePrices"),
+                    "outcomes": rec.get("outcomes"),
+                    "umaResolutionStatus": rec.get("umaResolutionStatus"),
+                    "swept_ts": now_ts,
+                },
+                default=str,
+            )
+            if self.tape.record_resolution(cid, resolution=resolution, now_ts=now_ts):
+                stamped += 1
+                self.log.info(
+                    "resolution swept: market %s closed (uma=%s)",
+                    cid, rec.get("umaResolutionStatus"),
+                )
+        if stamped:
+            self.log.info("resolution sweep stamped %d newly-resolved market(s)", stamped)
+        return stamped
 
     # -- market lane ---------------------------------------------------------------
 

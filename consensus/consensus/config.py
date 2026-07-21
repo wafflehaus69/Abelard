@@ -134,6 +134,12 @@ class CollectorConfig(_Strict):
     # Safe: a real target market is adopted by the normal tag-page enumeration
     # walk, not only via the stray path, so abandoning an unknown cid loses nothing.
     stray_max_attempts: int = Field(ge=1, default=3)
+    # Resolution sweep (bounded, most-stale-first, mirrors the stray cap). Each
+    # enumeration confirms closure of up to this many tracked markets that fell
+    # out of the open (closed=false) enumeration — catching whole-event closures
+    # the open enumeration never sees — via one gamma closed=true lookup each,
+    # persisting the winning outcome for the Detector-A confirmation pass.
+    resolution_sweep_max_per_run: int = Field(ge=1, default=200)
     tiers: CollectorTiersConfig = CollectorTiersConfig()
 
 
@@ -256,6 +262,31 @@ class M5Config(_Strict):
     request_spacing_ms: int = Field(ge=0, default=250)  # Etherscan free tier ~3-5/s
 
 
+class M10Config(_Strict):
+    """M10 live UNUSUAL_ACTIVITY scan (Detector B, spec §M10 + docs/m10_build_plan).
+    An on-command scan over the L2 tape that surfaces fresh-wallet informed-money
+    footprints as DOSSIERS. NO EV, never a trade signal, permanently excluded from
+    M9 staging. All fields default -> the yaml block is optional (tuning knobs)."""
+
+    unusual_lookback_hours: int = Field(ge=1, default=48)
+    size_floor_usdc: float = Field(gt=0, default=10_000)
+    # Fill-factor weights: empty -> reuse M0-F's factor_weights at runtime.
+    factor_weights: dict[str, float] = Field(default_factory=dict)
+    tier_thresholds: dict[str, float] = Field(
+        default_factory=lambda: {"WATCH": 0.30, "ELEVATED": 0.50, "CRITICAL": 0.70})
+    # Latency elevator (v1.5 §3): a wallet already past the fill-factor bar whose
+    # funded->bet latency is at/under latency_tight_minutes gets a multiplicative
+    # boost (discounted for CEX funders); loose/absent/errored latency -> no lift.
+    latency_tight_minutes: int = Field(ge=1, default=60)
+    latency_elevator_boost: float = Field(ge=1.0, default=1.5)
+    # v1.6 §3.3 enrichment gate: chain-enrich at most this many fill-bar-passing
+    # wallets per scan (a few dozen Etherscan calls, never hundreds).
+    enrichment_max_wallets_per_scan: int = Field(ge=1, default=40)
+    cluster_window_hours: int = Field(ge=1, default=12)
+    cross_market_record_only: bool = True   # v1.3: cluster records, never scores
+    excluded_categories: list[str] = Field(default_factory=list)
+
+
 class Config(_Strict):
     meta: MetaConfig
     logging: LoggingConfig
@@ -265,6 +296,7 @@ class Config(_Strict):
     m0f: M0FConfig
     m5: M5Config = M5Config()
     m0c: M0CConfig
+    m10: M10Config = M10Config()
 
     # Populated by the loader, not the yaml. Excluded from the strict model to
     # keep validation of the file itself clean.
