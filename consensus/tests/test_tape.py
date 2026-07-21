@@ -108,6 +108,30 @@ def test_fill_histogram_buckets(tape):
     assert dict(tape.fill_histogram(bucket_seconds=1000)) == {1000: 2, 2000: 1}
 
 
+def test_count_fills_in_window_matches_fills_in_window(tape):
+    tape.store_page([_fill(0, cid="0xA", timestamp=1000), _fill(1, cid="0xA", timestamp=2000),
+                     _fill(2, cid="0xB", timestamp=3000)],
+                    lane="market", poll_id=1, parsed_by=Trade.from_api)
+    assert tape.count_fills_in_window(lo_ts=0, hi_ts=9999) == 3
+    assert tape.count_fills_in_window(lo_ts=1500, hi_ts=9999) == 2
+    assert tape.count_fills_in_window(lo_ts=0, hi_ts=9999, condition_ids={"0xB"}) == 1
+
+
+def test_reopen_clears_resolution_and_close_stamp(tape):
+    """Review 2026-07-20: a resolved market re-listed as open is a genuine
+    re-list — resolution + close stamp cleared so it can't become an immortal
+    active market carrying a stale resolution."""
+    tape.upsert_market("0xR", slug="s", question="q", tags="geopolitics",
+                       source="enumeration", now_ts=1)
+    tape.record_resolution("0xR", resolution='{"outcomePrices": "[1, 0]"}', now_ts=500)
+    m = tape.markets()[0]
+    assert m["resolution"] and m["close_seen_ts"] == 500
+    tape.upsert_market("0xR", slug="s", question="q", tags="geopolitics",
+                       source="enumeration", now_ts=600, closed=False)
+    m = tape.markets()[0]
+    assert m["resolution"] is None and m["close_seen_ts"] == 0 and m["sweep_attempts"] == 0
+
+
 def test_unparseable_record_is_archived_not_dropped(tape):
     bad = _fill(3)
     del bad["price"]  # Trade.from_api returns None for this

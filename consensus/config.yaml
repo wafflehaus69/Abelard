@@ -127,6 +127,7 @@ collector:
   # Persists the winning outcome so the Detector-A confirmation pass reads it
   # from the tape. Bounded + most-stale-first, like stray adjudication.
   resolution_sweep_max_per_run: 200
+  resolution_sweep_max_attempts: 3   # give up on a market gamma never confirms closed
 
   tiers:
     # Worst observed per-market burst rolls a 4k window in ~13.7 min; hot at

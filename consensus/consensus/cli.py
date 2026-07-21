@@ -674,7 +674,7 @@ def cmd_collect_supply(loaded: LoadedConfig, *, lookback_hours: int = 168) -> di
     try:
         stats = tape.stats()
         supply = tape.market_supply_counts(now_ts=now)
-        window_fills = len(tape.fills_in_window(lo_ts=lo, hi_ts=hi))
+        window_fills = tape.count_fills_in_window(lo_ts=lo, hi_ts=hi)
         window_gaps = tape.gaps_overlapping(lo_ts=lo, hi_ts=hi)
         scorable = len(tape.wallet_fill_counts(min_fills=_SUPPLY_SCORABLE_MIN_FILLS))
         distinct_wallets = tape._conn.execute(

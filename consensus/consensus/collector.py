@@ -289,16 +289,25 @@ class Collector:
 
         Bounded per run, most-stale-first — mirrors stray adjudication. Markets
         with a resolution already recorded are skipped; once stamped, the drain
-        sweep retires them, so the presumed-gone pool drains and does not
-        re-lookup the same market forever."""
+        sweep retires them. A market gamma never confirms closed (delisted /
+        purged / unconfirmable) is NOT stamped; instead its sweep_attempts is
+        counted and, past ``resolution_sweep_max_attempts``, it ages out of the
+        pool (reset if it is ever seen open again) — so the pool provably drains
+        and never re-looks-up the same market forever."""
         if not succeeded_tags:
             return 0
         cap = self.cfg.resolution_sweep_max_per_run
+        max_attempts = self.cfg.resolution_sweep_max_attempts
         presumed = [
             m for m in self.tape.markets(active_only=True)
             if m.get("tags") in succeeded_tags
             and m["condition_id"] not in seen_open
             and not m.get("resolution")
+            # Stop re-looking-up a market gamma never confirms closed (delisted /
+            # purged / unconfirmable) after the cap, so the pool drains and can't
+            # burn a chain call on it forever — mirrors the stray give-up. Reset
+            # on re-list (upsert clears sweep_attempts). (review 2026-07-20)
+            and (m.get("sweep_attempts") or 0) < max_attempts
         ]
         presumed.sort(key=lambda m: int(m.get("last_polled_ts") or 0))
         stamped = 0
@@ -314,15 +323,14 @@ class Collector:
                 )
             except DataLayerError as exc:
                 errors.append(exc.to_error())
+                continue  # transient: retry next enumeration, no attempt counted
+            rec = rows[0] if isinstance(rows, list) and rows else None
+            if rec is None or not bool(rec.get("closed")):
+                # Not confirmed closed (gamma empty, or a non-closed record):
+                # never stamp on absence. Count the empty confirmation so an
+                # unconfirmable market ages out of the sweep pool.
+                self.tape.bump_sweep_attempt(cid)
                 continue
-            if not (isinstance(rows, list) and rows):
-                # gamma returns nothing for a closed=true lookup of a still-open
-                # market: absent from the open enumeration for another reason
-                # (pagination flicker). Leave active; never stamp on absence.
-                continue
-            rec = rows[0]
-            if not bool(rec.get("closed")):
-                continue  # defensive: only a genuinely-closed record resolves it
             resolution = json.dumps(
                 {
                     "outcomePrices": rec.get("outcomePrices"),

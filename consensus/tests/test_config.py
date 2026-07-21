@@ -16,6 +16,18 @@ def test_valid_config_validates():
     assert cfg.data_layer.http.max_retries == 2
 
 
+def test_m10_tier_thresholds_requires_all_keys():
+    """Review 2026-07-20: a partial tier_thresholds override must fail at LOAD,
+    not KeyError mid-scan (config doctrine: a bad knob is a startup error)."""
+    from consensus.config import M10Config
+    from pydantic import ValidationError
+
+    M10Config(tier_thresholds={"WATCH": 0.3, "ELEVATED": 0.5, "CRITICAL": 0.7})  # ok
+    M10Config()  # defaults are complete
+    with pytest.raises(ValidationError):
+        M10Config(tier_thresholds={"WATCH": 0.3, "ELEVATED": 0.5})  # missing CRITICAL
+
+
 def test_unknown_key_rejected():
     import copy
     bad = copy.deepcopy(BASE_CONFIG)

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from .errors import ConfigError
 
@@ -140,6 +140,10 @@ class CollectorConfig(_Strict):
     # the open enumeration never sees — via one gamma closed=true lookup each,
     # persisting the winning outcome for the Detector-A confirmation pass.
     resolution_sweep_max_per_run: int = Field(ge=1, default=200)
+    # Give up sweeping a market gamma never confirms closed (delisted/purged)
+    # after this many empty closed=true lookups, so the presumed-gone pool drains
+    # instead of re-looking-up an unconfirmable market every pass forever.
+    resolution_sweep_max_attempts: int = Field(ge=1, default=3)
     tiers: CollectorTiersConfig = CollectorTiersConfig()
 
 
@@ -285,6 +289,17 @@ class M10Config(_Strict):
     cluster_window_hours: int = Field(ge=1, default=12)
     cross_market_record_only: bool = True   # v1.3: cluster records, never scores
     excluded_categories: list[str] = Field(default_factory=list)
+
+    @field_validator("tier_thresholds")
+    @classmethod
+    def _require_tier_keys(cls, v: dict[str, float]) -> dict[str, float]:
+        # A partial/blanked override must fail at load, not KeyError mid-scan
+        # (assign_tiers indexes WATCH/ELEVATED/CRITICAL) — config doctrine: a
+        # bad knob is a startup error.
+        missing = {"WATCH", "ELEVATED", "CRITICAL"} - set(v)
+        if missing:
+            raise ValueError(f"m10.tier_thresholds missing required keys: {sorted(missing)}")
+        return v
 
 
 class Config(_Strict):

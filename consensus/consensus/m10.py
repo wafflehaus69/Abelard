@@ -74,6 +74,7 @@ def _build_scoring_cfg(loaded: Any, m10: Any) -> SimpleNamespace:
     attrs["cluster_window_hours"] = m10.cluster_window_hours
     attrs["cross_market_enabled"] = True     # record cross-market membership...
     attrs["cluster_boosts_score"] = False    # ...but never let it move the score (v1.3)
+    attrs["cross_market_scope_id"] = "m10-target-set"  # not the M0-F 'iran-cluster'
     if m10.factor_weights:
         attrs["factor_weights"] = m10.factor_weights
     return SimpleNamespace(**attrs)
@@ -113,7 +114,11 @@ def _latency_boost(wf: Any, m10: Any) -> float:
     if wf.latency_s > m10.latency_tight_minutes * 60:
         return 1.0
     boost = m10.latency_elevator_boost
-    if wf.funder_kind == "cex":
+    # Full lift only for a purpose-built (dedicated) funder. A CEX hot wallet, a
+    # nonpersonal infra funder, or an unclassified/unknown one (classification
+    # failed) is far less discriminating and must never earn the full elevator
+    # (v1.7 §1: low-confidence -> never treated as dedicated; review 2026-07-20).
+    if wf.funder_kind != "dedicated":
         boost = 1.0 + (boost - 1.0) * 0.5
     return boost
 
@@ -183,16 +188,24 @@ def run_scan(
         newest = tape.newest_fill_ts()
         as_of = min(started, newest) if isinstance(newest, int) else started
         hi = started + _SKEW_S
-        lo = as_of - lookback * 3600
+        scan_lo = as_of - lookback * 3600
+        # Load the WIDER of the scan window and the factor-S trailing baseline so
+        # trailing volume is a true _TRAILING_DAYS window, not truncated to the
+        # (often shorter) lookback — a short baseline inflates S and the composite
+        # (review 2026-07-20). Candidate extraction stays gated to the scan window.
+        load_lo = min(scan_lo, as_of - _TRAILING_DAYS * 86400)
         tracked = {m["condition_id"] for m in tape.markets(active_only=False)
                    if _in_scope(m, m10)}
-        rows = tape.fills_in_window(lo_ts=lo, hi_ts=hi, condition_ids=tracked, parsed_only=True)
-        window_gaps = tape.gaps_overlapping(lo_ts=lo, hi_ts=hi, condition_ids=tracked)
+        rows = tape.fills_in_window(lo_ts=load_lo, hi_ts=hi, condition_ids=tracked, parsed_only=True)
+        window_gaps = tape.gaps_overlapping(lo_ts=scan_lo, hi_ts=hi, condition_ids=tracked)
     finally:
         tape.close()
 
     per_market_gaps, global_gaps = _gap_index(window_gaps)
-    fills = [f for f in (_row_to_fill(r) for r in rows) if f is not None]
+    loaded_fills = [f for f in (_row_to_fill(r) for r in rows) if f is not None]
+    # Candidates from the scan window; factor-S trailing baseline from the full
+    # loaded (>= _TRAILING_DAYS) span (trailing_volumes filters to its own window).
+    fills = [f for f in loaded_fills if f.timestamp >= scan_lo]
 
     def _envelope(candidates: list[Any], enriched: int) -> dict[str, Any]:
         surfaced = sorted(
@@ -207,7 +220,7 @@ def run_scan(
             "started_ts": started,
             "finished_ts": _now_ts(),
             "result": {
-                "window": {"lookback_hours": lookback, "lo_ts": lo, "hi_ts": hi, "as_of": as_of},
+                "window": {"lookback_hours": lookback, "lo_ts": scan_lo, "hi_ts": hi, "as_of": as_of},
                 "fills_scanned": len(fills),
                 "candidates_scored": len(candidates),
                 "enriched": enriched,
@@ -225,7 +238,9 @@ def run_scan(
     if not fills:
         return _envelope([], 0)
 
-    trailing = trailing_volumes(fills, as_of=as_of, days=_TRAILING_DAYS)
+    # trailing baseline over the full loaded span (>= _TRAILING_DAYS); it filters
+    # to [as_of - days, as_of] internally, so the S denominator is a true 7-day vol.
+    trailing = trailing_volumes(loaded_fills, as_of=as_of, days=_TRAILING_DAYS)
     candidates = score_candidates_as_of(
         as_of=as_of, fills=fills, crossing_usdc={}, wallet_info={},
         market_trailing_vol=trailing, cfg=scoring_cfg,

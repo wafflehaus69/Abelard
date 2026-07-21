@@ -507,7 +507,9 @@ def apply_cluster_amplifier(
     # this over-fires in a high-activity window (docs/m0f_report.md §4), so it is
     # config-gated (default off pending a same-wallet or P-gated rule).
     if getattr(cfg, "cross_market_enabled", True):
-        _find(strong, "cross-market", "iran-cluster")
+        # scope_id is the M0-F study's cluster by default; a live caller (M10)
+        # overrides it so dossiers don't carry the stale 'iran-cluster' label.
+        _find(strong, "cross-market", getattr(cfg, "cross_market_scope_id", "iran-cluster"))
 
     # v1.3 §3.2: membership is recorded above (cluster_ids) as dossier evidence.
     # The composite boost is applied ONLY when cluster_boosts_score is enabled;

@@ -77,7 +77,8 @@ CREATE TABLE IF NOT EXISTS l2_markets (
     newest_fill_ts  INTEGER NOT NULL DEFAULT 0,
     last_new_fills  INTEGER NOT NULL DEFAULT 0,
     close_seen_ts   INTEGER NOT NULL DEFAULT 0,   -- when enumeration first saw it closed
-    resolution      TEXT                          -- raw gamma outcome JSON (who won); NULL until swept
+    resolution      TEXT,                         -- raw gamma outcome JSON (who won); NULL until swept
+    sweep_attempts  INTEGER NOT NULL DEFAULT 0    -- resolution-sweep closed-lookups that came back empty
 );
 
 CREATE TABLE IF NOT EXISTS l2_polls (
@@ -175,6 +176,7 @@ class TapeStore:
             ("l2_polls", "presumed_records", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_strays", "attempts", "INTEGER NOT NULL DEFAULT 0"),
             ("l2_markets", "resolution", "TEXT"),
+            ("l2_markets", "sweep_attempts", "INTEGER NOT NULL DEFAULT 0"),
         ):
             cols = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
             if column not in cols:
@@ -368,6 +370,34 @@ class TapeStore:
         except sqlite3.Error as exc:
             raise CacheError(f"tape fills_in_window failed: {exc}") from exc
 
+    def count_fills_in_window(
+        self, *, lo_ts: int, hi_ts: int, condition_ids: set[str] | None = None,
+        parsed_only: bool = True,
+    ) -> int:
+        """COUNT of l2_trades rows in ``[lo_ts, hi_ts]`` — O(1) memory (does not
+        materialize rows). Use to SIZE a window (e.g. the supply readout) instead
+        of len(fills_in_window(...)), which would load the whole window."""
+        where = "timestamp >= ? AND timestamp <= ?"
+        if parsed_only:
+            where += " AND parse_ok = 1"
+        try:
+            if condition_ids is None:
+                return int(self._conn.execute(
+                    f"SELECT COUNT(*) FROM l2_trades WHERE {where}", (lo_ts, hi_ts)
+                ).fetchone()[0])
+            total = 0
+            ids = list(condition_ids)
+            for i in range(0, len(ids), _IN_CHUNK):
+                chunk = ids[i:i + _IN_CHUNK]
+                ph = ",".join("?" * len(chunk))
+                total += int(self._conn.execute(
+                    f"SELECT COUNT(*) FROM l2_trades WHERE {where} AND condition_id IN ({ph})",
+                    (lo_ts, hi_ts, *chunk),
+                ).fetchone()[0])
+            return total
+        except sqlite3.Error as exc:
+            raise CacheError(f"tape count_fills_in_window failed: {exc}") from exc
+
     def gaps_overlapping(
         self, *, lo_ts: int, hi_ts: int, condition_ids: set[str] | None = None,
     ) -> list[dict[str, Any]]:
@@ -532,9 +562,14 @@ class TapeStore:
                     (slug, question, tags, end_date, now_ts, condition_id),
                 )
             else:
+                # Seen open again: a genuine re-list. Clear the close stamp AND
+                # any recorded resolution / sweep attempts (open wins), so a
+                # flicker-reopen after a stamp can't leave an immortal active
+                # market carrying a stale resolution (review 2026-07-20).
                 self._conn.execute(
                     "UPDATE l2_markets SET slug=?, question=?, tags=?, end_date=?,"
-                    " active=1, close_seen_ts=0 WHERE condition_id=?",
+                    " active=1, close_seen_ts=0, resolution=NULL, sweep_attempts=0"
+                    " WHERE condition_id=?",
                     (slug, question, tags, end_date, condition_id),
                 )
         self._conn.commit()
@@ -557,6 +592,18 @@ class TapeStore:
             )
             self._conn.commit()
         return ids
+
+    def bump_sweep_attempt(self, condition_id: str) -> None:
+        """Count a resolution-sweep closed-lookup that came back empty (gamma
+        does not confirm the market closed). After the configured cap the sweep
+        stops re-looking-up this market, so a delisted/unconfirmable market
+        cannot burn a chain call every pass forever (review 2026-07-20). Reset to
+        0 when the market is seen open again (upsert_market re-list branch)."""
+        self._conn.execute(
+            "UPDATE l2_markets SET sweep_attempts = sweep_attempts + 1 WHERE condition_id = ?",
+            (condition_id,),
+        )
+        self._conn.commit()
 
     def record_resolution(self, condition_id: str, *, resolution: str, now_ts: int) -> bool:
         """Persist a tracked market's RESOLUTION outcome (raw gamma outcome JSON —

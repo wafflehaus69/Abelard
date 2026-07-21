@@ -550,6 +550,25 @@ def test_resolution_sweep_never_stamps_on_absence_alone(collector, requests_mock
     assert m["close_seen_ts"] == 0 and not m["resolution"]
 
 
+def test_resolution_sweep_gives_up_after_max_attempts(collector, requests_mock):
+    """Review 2026-07-20: a market gamma never confirms closed (delisted/purged)
+    must age out of the sweep pool after resolution_sweep_max_attempts empty
+    lookups, not be re-looked-up forever."""
+    collector.tape.upsert_market("0xGHOSTMKT", slug="s", question="q", tags="geopolitics",
+                                 source="enumeration", now_ts=1)
+    requests_mock.get(_EVENTS_URL, json=[])   # never seen open
+    requests_mock.get(_MARKETS_URL, json=[])  # gamma never confirms closed
+    k = collector.cfg.resolution_sweep_max_attempts
+    for i in range(k):
+        assert collector.run_enumeration(now_ts=1_000_000 + i)["resolved_stamped"] == 0
+    assert collector.tape.markets(active_only=True)[0]["sweep_attempts"] == k
+    # Aged out: even though gamma NOW returns it closed, it is no longer swept.
+    requests_mock.get(_MARKETS_URL, json=[{"conditionId": "0xGHOSTMKT", "closed": True}])
+    r = collector.run_enumeration(now_ts=2_000_000)
+    assert r["resolved_stamped"] == 0
+    assert not collector.tape.markets(active_only=True)[0]["resolution"]
+
+
 def test_stray_closed_market_is_still_adopted(collector, requests_mock):
     """A target-category stray that closed before adjudication must be adopted
     (with a drain window), not silently resolved out of existence."""
