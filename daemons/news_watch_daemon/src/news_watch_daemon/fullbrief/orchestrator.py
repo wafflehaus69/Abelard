@@ -814,10 +814,16 @@ def _build_theme_segments(
     themes_covered: list[str],
     crossings: list[AttentionCrossing],
     model: str = "claude-sonnet-4-6",
-    # NW-SRC-4 §6: 1500 -> 2800 to fit the deeper 5-6 sentence active segments
-    # across the now-11 tracked themes (2 new themes + longer summaries) without
-    # truncating the batched output.
-    max_tokens: int = 2800,
+    # Budget for the SINGLE batched call that emits all themes as one JSON. If it
+    # truncates, the JSON is unterminated and ALL themes degrade to template
+    # lines (observed 2026-07-21: 12 themes at 5-6 dense sentences overran the old
+    # 2800 cap, cut at char ~12080 -> total degradation). Sized to the worst case
+    # (12 themes x ~6 dense sentences ~270 tok each + JSON/escaping overhead
+    # ~3600 tok) with generous headroom. This is a CAP not a target — Sonnet stops
+    # when the structured output is done, so unused budget is never billed.
+    # History: 1500 (NW-SRC-4 §6) -> 2800 (11 themes) -> 6000 (12 themes + density
+    # fix; also covers a few more themes before this needs revisiting).
+    max_tokens: int = 6000,
 ) -> tuple[ThemeSegmentsSection, Any | None]:
     """Step 6.5: one guaranteed segment per tracked theme.
 
