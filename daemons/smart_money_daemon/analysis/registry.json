@@ -1,0 +1,205 @@
+{
+  "as_of": "2026-07-20",
+  "entries": [
+    {
+      "person_id": 24,
+      "name": "Evans, Dwight",
+      "chamber": "house",
+      "status": "active",
+      "role": "performer",
+      "scores": {
+        "t_stat": 1.3237454957020516,
+        "wavg_excess_A63": 0.037111346480468176,
+        "wavg_excess_B63": 0.07686258654622848,
+        "hit_rate_63A": 0.5,
+        "n_events_completed": 42,
+        "n_open": 0,
+        "median_lag_days": 31.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 25,
+      "name": "Fields, Cleo",
+      "chamber": "house",
+      "status": "active",
+      "role": "performer",
+      "scores": {
+        "t_stat": 1.655693036695327,
+        "wavg_excess_A63": 0.09101187492247995,
+        "wavg_excess_B63": 0.13673709248797655,
+        "hit_rate_63A": 0.5636363636363636,
+        "n_events_completed": 55,
+        "n_open": 16,
+        "median_lag_days": 20.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 41,
+      "name": "Johnson, Julie",
+      "chamber": "house",
+      "status": "active",
+      "role": "performer",
+      "scores": {
+        "t_stat": 1.4015917604492112,
+        "wavg_excess_A63": 0.033654587980309396,
+        "wavg_excess_B63": 0.02311257812279482,
+        "hit_rate_63A": 0.5178571428571429,
+        "n_events_completed": 56,
+        "n_open": 0,
+        "median_lag_days": 28.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 62,
+      "name": "Moore, Tim",
+      "chamber": "house",
+      "status": "active",
+      "role": "performer",
+      "scores": {
+        "t_stat": 1.2718002104254944,
+        "wavg_excess_A63": 0.0658037002290198,
+        "wavg_excess_B63": 0.08075851953385983,
+        "hit_rate_63A": 0.5882352941176471,
+        "n_events_completed": 34,
+        "n_open": 10,
+        "median_lag_days": 17.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 411,
+      "name": "Mullin, Markwayne",
+      "chamber": "senate",
+      "status": "active",
+      "role": "performer",
+      "scores": {
+        "t_stat": 1.4446379919393122,
+        "wavg_excess_A63": 0.01950310827334369,
+        "wavg_excess_B63": 0.021008655865322405,
+        "hit_rate_63A": 0.5217391304347826,
+        "n_events_completed": 184,
+        "n_open": 1,
+        "median_lag_days": 29.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 7,
+      "name": "Beyer, Donald Sternoff",
+      "chamber": "house",
+      "status": "validation",
+      "role": "performer",
+      "scores": {
+        "t_stat": 1.3150111748653053,
+        "wavg_excess_A63": 0.08327384859274341,
+        "wavg_excess_B63": 0.127135079760899,
+        "hit_rate_63A": 0.589041095890411,
+        "n_events_completed": 73,
+        "n_open": 0,
+        "median_lag_days": 30.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 179,
+      "name": "Franklin, Scott",
+      "chamber": "house",
+      "status": "validation",
+      "role": "performer",
+      "scores": {
+        "t_stat": 2.0817715118181064,
+        "wavg_excess_A63": 0.06195583618561763,
+        "wavg_excess_B63": 0.028391869150329426,
+        "hit_rate_63A": 0.6153846153846154,
+        "n_events_completed": 13,
+        "n_open": 0,
+        "median_lag_days": 29.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 421,
+      "name": "Roberts, Pat",
+      "chamber": "senate",
+      "status": "validation",
+      "role": "performer",
+      "scores": {
+        "t_stat": 1.8567141152087308,
+        "wavg_excess_A63": 0.027994814026606547,
+        "wavg_excess_B63": 0.027535384414330944,
+        "hit_rate_63A": 0.5194805194805194,
+        "n_events_completed": 154,
+        "n_open": 0,
+        "median_lag_days": 18.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 432,
+      "name": "Sullivan, Dan",
+      "chamber": "senate",
+      "status": "validation",
+      "role": "performer",
+      "scores": {
+        "t_stat": 2.1361467831493193,
+        "wavg_excess_A63": 0.10418794817851534,
+        "wavg_excess_B63": 0.16212169216422367,
+        "hit_rate_63A": 0.7647058823529411,
+        "n_events_completed": 17,
+        "n_open": 0,
+        "median_lag_days": 29.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 407,
+      "name": "McCormick, David H.",
+      "chamber": "senate",
+      "status": "active",
+      "role": "btc_flow_sentinel",
+      "rationale": "cluster corrected picking t stat near zero tracked as crypto flow sentinel not a picker",
+      "scores": {
+        "t_stat": 0.023059415027331998,
+        "wavg_excess_A63": 0.004046382038495849,
+        "wavg_excess_B63": -0.011680672418001695,
+        "hit_rate_63A": 0.5,
+        "n_events_completed": 2,
+        "n_open": 0,
+        "median_lag_days": 19.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": 28,
+      "name": "Foxx, Virginia",
+      "chamber": "house",
+      "status": "active",
+      "role": "qualitative_watch",
+      "rationale": "non index book energy bdc shipping composition watch not skill claim",
+      "scores": {
+        "t_stat": 0.9970164079174164,
+        "wavg_excess_A63": 0.012131215512772835,
+        "wavg_excess_B63": 0.017610857716089983,
+        "hit_rate_63A": 0.5365853658536586,
+        "n_events_completed": 164,
+        "n_open": 2,
+        "median_lag_days": 22.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
+      "person_id": null,
+      "name": "Situational Awareness LP (Aschenbrenner)",
+      "cik": "0002045724",
+      "chamber": null,
+      "status": "active",
+      "role": "manager_13f",
+      "type": "manager_13f",
+      "scores": null,
+      "as_of": "2026-07-20"
+    }
+  ]
+}
