@@ -5,10 +5,38 @@ report: owner, asset_name, asset_type, comment, filing_id columns added —
 required by the SM-1 clause that non-stock assets are ingested but
 asset_type-tagged and by filing-ID resume safety.
 """
+import os
 import pathlib
 import sqlite3
 
-DB_PATH_DEFAULT = "data/cache/smart_money_v0.db"
+# SM-4 state home. Canonical DB lives under ~/.openclaw/smart_money/. Path from
+# SMART_MONEY_DB_PATH (env, or the daemon .env), with the new home as default.
+# One canonical home — no dual-read fallback.
+STATE_HOME = os.path.expanduser("~/.openclaw/smart_money")
+_DEFAULT = os.path.join(STATE_HOME, "smart_money_v0.db")
+
+
+def _load_env_var(key):
+    v = os.environ.get(key)
+    if v:
+        return v
+    for envp in (".env", os.path.join(os.path.dirname(__file__), "..", ".env")):
+        p = pathlib.Path(envp)
+        if p.exists():
+            for line in p.read_text().splitlines():
+                line = line.strip()
+                if line.startswith(key + "="):
+                    return line.split("=", 1)[1].strip()
+    return None
+
+
+def resolve_db_path():
+    return os.path.expanduser(_load_env_var("SMART_MONEY_DB_PATH") or _DEFAULT)
+
+
+DB_PATH_DEFAULT = resolve_db_path()
+SCANS_DIR = os.path.join(STATE_HOME, "scans")
+LOGS_DIR = os.path.join(STATE_HOME, "logs")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS persons(
@@ -76,6 +104,29 @@ CREATE TABLE IF NOT EXISTS ticker_status(
   last_trade_date TEXT,
   probed_at_unix INTEGER NOT NULL,
   heuristic TEXT
+);
+CREATE TABLE IF NOT EXISTS watermarks(
+  source TEXT PRIMARY KEY,
+  watermark_ts TEXT,
+  updated_at_unix INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS thirteenf_baseline(
+  cik TEXT PRIMARY KEY,
+  accession TEXT NOT NULL,
+  period TEXT,
+  filed_date TEXT,
+  holdings_json TEXT NOT NULL,
+  ingested_at_unix INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scan_events(
+  event_id TEXT PRIMARY KEY,
+  scan_id TEXT NOT NULL,
+  leg TEXT NOT NULL,
+  ticker TEXT,
+  side TEXT,
+  tx_date TEXT,
+  disclosure_date TEXT,
+  emitted_at_unix INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_trades_person ON congress_trades(person_id);
 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON congress_trades(ticker);
