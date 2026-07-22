@@ -1,0 +1,12 @@
+[project]
+name = "smart-money-daemon"
+version = "0.0.1"
+description = "OpenClaw smart money daemon. Insider, 13F, and congressional trade tracking. Scripts execute, LLM judges."
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "pandas>=2.0",
+]
+
+[tool.setuptools]
+packages = []
