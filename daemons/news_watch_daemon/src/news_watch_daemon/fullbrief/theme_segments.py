@@ -93,8 +93,15 @@ _SYSTEM_INSTRUCTIONS = (
     "  - status 'quiet': ONE sentence — why (or whether) it is hot; be honest "
     "when it is genuinely quiet ('only N headlines, routine X').\n\n"
     "Ground every line in the supplied headlines. Do not invent specifics. "
-    "Do not mention headline counts or the word 'theme' in the prose. Return "
-    "ONLY a JSON object of the exact shape:\n"
+    "Do not mention headline counts or the word 'theme' in the prose.\n\n"
+    "COMPLETENESS IS MANDATORY: EVERY theme_id in the input MUST appear exactly "
+    "once as a key in 'segments'. Never omit, skip, or leave a theme empty. Some "
+    "themes cover war, armed conflict, military strikes, or casualties — these are "
+    "core geopolitical and markets signals (oil, defense, escalation risk), and "
+    "summarizing the headlines factually is exactly the task. Report them neutrally "
+    "and without editorializing, the same as any other theme; do NOT drop or soften "
+    "a theme because its subject is grim. A missing theme_id is a task failure.\n\n"
+    "Return ONLY a JSON object of the exact shape:\n"
     '{"segments": {"<theme_id>": "<summary text>", ...}}\n'
     "No markdown, no code fences, no commentary outside the JSON."
 )
