@@ -98,3 +98,45 @@ def test_13f_diff():
     assert ("CCC", "exit") in kinds
     assert ("AAA", "value_2x_up") in kinds
     assert ("AAA", "directionality_flip") in kinds
+
+
+QUEUE_SCHEMA = """
+CREATE TABLE queue_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at_unix INTEGER NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL,
+  topic_key TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE,
+  payload_json TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending');
+"""
+
+
+def test_enqueue_notable_only_and_idempotent():
+    import sqlite3
+    from smart_money import scan
+    fd, qpath = tempfile.mkstemp(suffix=".db"); os.close(fd)
+    sqlite3.connect(qpath).executescript(QUEUE_SCHEMA)
+    os.environ["ABELARD_QUEUE_DB_PATH"] = qpath
+    try:
+        events = [
+            {"event_id": "e1", "ticker": "MSTR",
+             "flags": {"conviction_overlay": True, "watchlist_overlay": False,
+                       "cluster": None, "sentinel": None}},
+            {"event_id": "e2", "ticker": "BAC",
+             "flags": {"conviction_overlay": False, "watchlist_overlay": False,
+                       "cluster": None, "sentinel": None}},
+            {"event_id": "e3", "ticker": "BITB",
+             "flags": {"conviction_overlay": False, "watchlist_overlay": False,
+                       "cluster": None, "sentinel": {"role": "btc_flow_sentinel"}}},
+        ]
+        r1 = scan._enqueue({}, events)
+        assert r1["enqueued"] == 2, r1  # e1 overlay + e3 sentinel, not e2 quiet
+        n = sqlite3.connect(qpath).execute(
+            "SELECT COUNT(*) FROM queue_items").fetchone()[0]
+        assert n == 2
+        r2 = scan._enqueue({}, events)  # re-run
+        assert r2["enqueued"] == 0, r2  # idempotent by event_id
+        n2 = sqlite3.connect(qpath).execute(
+            "SELECT COUNT(*) FROM queue_items").fetchone()[0]
+        assert n2 == 2
+    finally:
+        del os.environ["ABELARD_QUEUE_DB_PATH"]
+        os.remove(qpath)

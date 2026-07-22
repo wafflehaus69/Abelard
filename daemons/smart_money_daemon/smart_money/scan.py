@@ -254,13 +254,45 @@ def run_scan(con, contact, raw_dir):
     return envelope, events
 
 
-def _enqueue(envelope):
-    """Soft-detect abelard_queue. Absent = envelope-noted, not fatal."""
+def _notable(ev):
+    """An event Abelard should judge: any overlay, cluster, or sentinel hit.
+    Quiet events stay in the envelope and scan_events but do not flood the
+    decision queue."""
+    f = ev.get("flags") or {}
+    return bool(f.get("conviction_overlay") or f.get("watchlist_overlay")
+                or f.get("cluster") or f.get("sentinel"))
+
+
+def _enqueue(envelope, events):
+    """Enqueue NOTABLE events to abelard_queue. Soft-detect: absent sink =
+    envelope-noted, not fatal (Orban lacks it). Idempotent by event_id via the
+    dedupe_key UNIQUE constraint, so re-scans never double-enqueue. The daemon
+    only enqueues; Abelard's consumer interprets and decides push or suppress."""
+    import sqlite3
     qpath = os.environ.get("ABELARD_QUEUE_DB_PATH") or \
         dbmod._load_env_var("ABELARD_QUEUE_DB_PATH")
     if not qpath or not os.path.exists(os.path.expanduser(qpath)):
-        return {"queue": "absent", "note": "no abelard_queue sink on this host"}
-    return {"queue": "present", "path": qpath, "note": "enqueue wired on deploy"}
+        return {"queue": "absent", "enqueued": 0,
+                "note": "no abelard_queue sink on this host"}
+    qpath = os.path.expanduser(qpath)
+    notable = [e for e in events if _notable(e)]
+    enq = 0
+    qcon = sqlite3.connect(qpath, timeout=30)
+    try:
+        for e in notable:
+            cur = qcon.execute(
+                "INSERT OR IGNORE INTO queue_items"
+                "(created_at_unix, source, kind, topic_key, dedupe_key, payload_json)"
+                " VALUES (?,?,?,?,?,?)",
+                (int(time.time()), "smart_money_daemon", "positioning_event",
+                 e.get("ticker") or "unknown", e["event_id"], json.dumps(e)))
+            enq += cur.rowcount
+        qcon.commit()
+    finally:
+        qcon.close()
+    return {"queue": "present", "path": qpath, "enqueued": enq,
+            "notable_total": len(notable),
+            "note": "notable events enqueued idempotently by event_id"}
 
 
 def main(argv=None):
@@ -279,7 +311,7 @@ def main(argv=None):
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     envelope, events = run_scan(con, contact, raw_dir)
-    envelope["queue"] = _enqueue(envelope)
+    envelope["queue"] = _enqueue(envelope, events)
 
     scans_dir = pathlib.Path(dbmod.SCANS_DIR)
     scans_dir.mkdir(parents=True, exist_ok=True)
