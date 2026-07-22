@@ -570,6 +570,12 @@ QUALITATIVE_SEEDS = [
         "rationale": "non index book energy bdc shipping composition watch not "
                      "skill claim",
     },
+    {
+        "name": "Guest, Michael Patrick",
+        "role": "performer_seeded",
+        "rationale": "fastest discloser 16d median lag dual benchmark positive "
+                     "t 2.01 seeded on abelard rec mando approved",
+    },
 ]
 SEED_ROLES = {s["name"]: s["role"] for s in QUALITATIVE_SEEDS}
 

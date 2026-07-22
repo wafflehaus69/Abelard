@@ -191,6 +191,24 @@
       "as_of": "2026-07-20"
     },
     {
+      "person_id": 32,
+      "name": "Guest, Michael Patrick",
+      "chamber": "house",
+      "status": "active",
+      "role": "performer_seeded",
+      "rationale": "fastest discloser 16d median lag dual benchmark positive t 2.01 seeded on abelard rec mando approved",
+      "scores": {
+        "t_stat": 2.006740203914792,
+        "wavg_excess_A63": 0.043280804127307754,
+        "wavg_excess_B63": 0.004321441193497812,
+        "hit_rate_63A": 0.55,
+        "n_events_completed": 40,
+        "n_open": 0,
+        "median_lag_days": 16.0
+      },
+      "as_of": "2026-07-20"
+    },
+    {
       "person_id": null,
       "name": "Situational Awareness LP (Aschenbrenner)",
       "cik": "0002045724",

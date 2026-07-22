@@ -71,6 +71,7 @@ Included in registry.json regardless of t-stat. Their signal value is compositio
 
 - McCormick, David H. (btc_flow_sentinel), cluster-corrected t-stat 0.02 — cluster corrected picking t stat near zero tracked as crypto flow sentinel not a picker
 - Foxx, Virginia (qualitative_watch), cluster-corrected t-stat 1.0 — non index book energy bdc shipping composition watch not skill claim
+- Guest, Michael Patrick (performer_seeded), cluster-corrected t-stat 2.01 — fastest discloser 16d median lag dual benchmark positive t 2.01 seeded on abelard rec mando approved
 
 ## Methodology notes
 

@@ -1,0 +1,35 @@
+# Overlay config — MANDO-OWNED. The daemon reads this, never writes it.
+# An event whose ticker is on a list gets that overlay flag. Unknown tickers
+# simply do not flag — no fuzzy matching. Disclosed-equity events can only ever
+# match listed tickers, so crypto exposure is tracked via listed proxies
+# (BITB/IBIT = BTC, ETHA = ETH).
+
+conviction_book:
+  - MSTR
+  - META
+  - COIN
+  - CRCL
+  - CRWV
+  - NOW
+  - ONDS
+  - TSLA
+  - BITB
+  - IBIT
+  - ETHA
+
+watchlist:
+  - NTR
+  - NEU
+  - GLD
+  - MOG.A
+  - LHX
+  - CORN
+  - WEAT
+  - LIN
+  - CTRA
+  - GFS
+
+# Cluster-flag thresholds (SM-4 STEP 3). Defaults 3 distinct persons / 30 days.
+cluster:
+  min_persons: 3
+  window_days: 30
