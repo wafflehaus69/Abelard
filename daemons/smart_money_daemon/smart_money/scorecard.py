@@ -620,20 +620,38 @@ def _write_registry(active, validation, by_name, anchor, path):
             "as_of": anchor,
         })
         placed.add(nm)
-    # 13F leg — one registry across all legs. Scores null, future work.
-    entries.append({
-        "person_id": None,
-        "name": "Situational Awareness LP (Aschenbrenner)",
-        "cik": "0002045724",
-        "chamber": None,
-        "status": "active",
-        "role": "manager_13f",
-        "type": "manager_13f",
-        "scores": None,
-        "as_of": anchor,
-    })
+    # 13F leg — Mando-confirmed filer set (SM-A1 Phase 2). One registry across
+    # all legs. Scores null until 13F scoring is built.
+    for m in MANAGER_13F_SEEDS:
+        entries.append({
+            "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
+            "status": "active", "role": "manager_13f", "type": "manager_13f",
+            "scores": None, "as_of": anchor})
+    # trump_network ownership persons (SM-A1 Phase 1, ratified). EDGAR CIK
+    # identity; not scored (ownership surface, not a picking-skill claim).
+    for m in TRUMP_NETWORK_SEEDS:
+        entries.append({
+            "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
+            "status": "active", "role": "trump_network", "type": "trump_network",
+            "scores": None, "as_of": anchor})
     with open(path, "w") as f:
         json.dump({"as_of": anchor, "entries": entries}, f, indent=2)
+
+
+# SM-A1 Phase 2 ratified 13F filer set + Phase 1 ratified trump_network persons.
+MANAGER_13F_SEEDS = [
+    {"name": "Duquesne Family Office LLC", "cik": "0001536411"},
+    {"name": "Thiel Macro LLC", "cik": "0001562087"},
+    {"name": "Founders Fund VII Management, LLC", "cik": "0001846021"},
+    {"name": "Founders Fund Growth II Management, LP", "cik": "0002106825"},
+    {"name": "Affinity Partners GP LP", "cik": "0002059583"},
+    {"name": "Situational Awareness LP (Aschenbrenner)", "cik": "0002045724"},
+]
+TRUMP_NETWORK_SEEDS = [
+    {"name": "TRUMP DONALD J", "cik": "0000947033"},
+    {"name": "Trump Donald J. JR", "cik": "0002016181"},
+    {"name": "THIEL PETER", "cik": "0001211060"},
+]
 
 
 if __name__ == "__main__":

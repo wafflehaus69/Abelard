@@ -225,18 +225,28 @@ def resolve_and_report(contact, out_path):
                     report["trump_network_issuers"].add(iss["ticker"].upper())
             entry["persons"].append({"cik": cik, "name": sub.get("name") or name, **pi})
         report["ownership"].append(entry)
-    # confirm-negative: resolve, report any ownership presence
+    # confirm-negative: a real ownership-surface presence requires a candidate
+    # whose parsed filings have reporting-owner CIK == the candidate (is_person).
+    # Ownership filings alone are insufficient — issuer CIKs also carry Form 4s.
     for t in CONFIRM_NEGATIVE:
         cands = {}
         for q in t["queries"]:
             for e in efts_entities(contact, q, forms="4"):
                 cands.setdefault(e["cik"], e["name"])
         checked = []
+        resolved_as_person = False
         for cik, name in list(cands.items())[:6]:
             sub = submissions(contact, cik)
             n_own = sum(1 for a, f, d in sub["forms"] if f in OWNERSHIP_FORMS) if sub else 0
-            checked.append({"cik": cik, "name": name, "ownership_filings": n_own})
-        report["confirm_negative"].append({"target": t, "checked": checked})
+            is_person = False
+            if n_own and sub:
+                is_person = person_issuers(contact, cik, sub, probe=4).get("is_person")
+                if is_person:
+                    resolved_as_person = True
+            checked.append({"cik": cik, "name": name, "ownership_filings": n_own,
+                            "is_reporting_person": is_person})
+        report["confirm_negative"].append(
+            {"target": t, "checked": checked, "resolved_as_person": resolved_as_person})
     report["trump_network_issuers"] = sorted(report["trump_network_issuers"])
     _render(report, out_path)
     # Machine-readable issuer set handed to SM-F4 Step 2 backfill scope.
@@ -287,13 +297,19 @@ def _render(r, path):
     for e in r["confirm_negative"]:
         t = e["target"]
         checked = e["checked"]
-        with_own = [c for c in checked if c["ownership_filings"] > 0]
-        m.append("- {} ({}): resolved {} candidate CIK(s); {} with ownership "
-                 "filings. {}".format(
-                     t["who"], t["expect"], len(checked), len(with_own),
-                     "PRESENT: " + ", ".join("CIK {} n={}".format(
-                         c["cik"], c["ownership_filings"]) for c in with_own)
-                     if with_own else "ABSENT from ownership surface as expected."))
+        persons = [c for c in checked if c.get("is_reporting_person")]
+        if e.get("resolved_as_person"):
+            m.append("- {} ({}): **PRESENT** — reporting-person match: {}".format(
+                t["who"], t["expect"],
+                ", ".join("CIK {} {}".format(c["cik"], c["name"]) for c in persons)))
+        else:
+            noise = [c for c in checked if c["ownership_filings"] > 0]
+            m.append("- {} ({}): **UNRESOLVED / ABSENT as expected.** {} name-match "
+                     "CIK(s) carry ownership filings but NONE is a reporting person "
+                     "(owner CIK != candidate — they are issuer entities or false "
+                     "name matches): {}".format(
+                         t["who"], t["expect"], len(noise),
+                         ", ".join("CIK " + c["cik"] for c in noise) or "none"))
     m.append("")
     m.append("## trump_network issuer set (union of discovered tickers) -> SM-F4 Step 2 scope")
     m.append("")

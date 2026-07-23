@@ -91,6 +91,7 @@ def parse_ownership(raw_xml):
     owner = txt(".//reportingOwner/reportingOwnerId/rptOwnerName")
     owner_cik = txt(".//reportingOwner/reportingOwnerId/rptOwnerCik")
     issuer = txt(".//issuer/issuerName")
+    issuer_cik = txt(".//issuer/issuerCik")
     symbol = txt(".//issuer/issuerTradingSymbol")
     plan = txt(".//aff10b5One") == "1"
     rel = ".//reportingOwner/reportingOwnerRelationship/"
@@ -117,6 +118,7 @@ def parse_ownership(raw_xml):
                 ".//postTransactionAmounts/sharesOwnedFollowingTransaction/value"),
         })
     return {"owner": owner, "owner_cik": owner_cik, "issuer": issuer,
+            "issuer_cik": issuer_cik.lstrip("0") or issuer_cik,
             "symbol": symbol, "plan_flag": plan, "role": role, "txns": txns}
 
 
@@ -148,10 +150,12 @@ def persist_transactions(con, accession, parsed, ticker, filed_date):
         value = round(shares * price, 2) if shares is not None and price is not None else None
         con.execute(
             "INSERT OR IGNORE INTO form4_transactions("
-            "accession, tx_index, reporting_person, reporting_cik, issuer, ticker,"
-            "code, plan_flag, shares, price, value, ownership_after, tx_date,"
-            "filed_date, role) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (accession, i, parsed.get("owner"), cik, parsed.get("issuer"), ticker,
+            "accession, tx_index, reporting_person, reporting_cik, issuer,"
+            "issuer_cik, ticker, code, plan_flag, shares, price, value,"
+            "ownership_after, tx_date, filed_date, role)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (accession, i, parsed.get("owner"), cik, parsed.get("issuer"),
+             parsed.get("issuer_cik") or None, ticker,
              t.get("code"), 1 if parsed.get("plan_flag") else 0, shares, price,
              value, _f(t.get("owned_after")), t.get("date"), filed_date,
              parsed.get("role") or None),

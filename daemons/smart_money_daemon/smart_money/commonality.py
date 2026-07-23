@@ -77,16 +77,17 @@ def g1_insider_convergence(con, anchor, overlay):
 # ---------------------------------------------------------------- g2
 def g2_cross_issuer_persons(con):
     src_rows = con.execute("SELECT COUNT(*) FROM form4_transactions").fetchone()[0]
-    # Count distinct issuer ENTITIES by ticker (falling back to issuer name only
-    # when no ticker). Keying on the issuer name inflates the count when a
-    # company renames (MicroStrategy -> Strategy) or a case/punct variant appears
-    # (FRACTYL HEALTH vs Fractyl Health) — those are one entity, not two.
+    # Count distinct issuer ENTITIES by issuer CIK — the stable identity. Ticker
+    # or name inflates the count on renames (MicroStrategy->Strategy, FB->META
+    # which failed to resolve in our own data) or case variants. Ticker is
+    # display-only in the concatenated list.
     rows = con.execute(
         "SELECT reporting_cik, MAX(reporting_person), "
-        "COUNT(DISTINCT COALESCE(ticker, issuer)) AS issuers, "
+        "COUNT(DISTINCT issuer_cik) AS issuers, "
         "GROUP_CONCAT(DISTINCT COALESCE(ticker, issuer)), "
         "MAX(role), MIN(tx_date), MAX(tx_date) "
         "FROM form4_transactions WHERE reporting_cik IS NOT NULL "
+        "AND issuer_cik IS NOT NULL "
         "GROUP BY reporting_cik HAVING issuers>=2 ORDER BY issuers DESC"
     ).fetchall()
     people = [

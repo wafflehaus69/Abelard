@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS form4_transactions(
   reporting_person TEXT,
   reporting_cik TEXT,
   issuer TEXT,
+  issuer_cik TEXT,
   ticker TEXT,
   code TEXT,
   plan_flag INTEGER,
@@ -236,4 +237,8 @@ def _migrate(con):
         con.execute(
             "ALTER TABLE congress_trades ADD COLUMN superseded INTEGER NOT NULL DEFAULT 0"
         )
+        con.commit()
+    f4cols = {r[1] for r in con.execute("PRAGMA table_info(form4_transactions)")}
+    if f4cols and "issuer_cik" not in f4cols:
+        con.execute("ALTER TABLE form4_transactions ADD COLUMN issuer_cik TEXT")
         con.commit()

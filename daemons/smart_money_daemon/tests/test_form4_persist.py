@@ -8,7 +8,7 @@ from smart_money.form4 import persist_transactions, parse_ownership
 SAMPLE_XML = """<?xml version="1.0"?>
 <ownershipDocument>
  <aff10b5One>0</aff10b5One>
- <issuer><issuerName>Acme Corp</issuerName>
+ <issuer><issuerCik>0000012345</issuerCik><issuerName>Acme Corp</issuerName>
   <issuerTradingSymbol>ACME</issuerTradingSymbol></issuer>
  <reportingOwner>
   <reportingOwnerId><rptOwnerCik>0001234567</rptOwnerCik>
@@ -44,8 +44,23 @@ def _fresh():
 def test_parse_captures_cik_role_ownership_after():
     p = parse_ownership(SAMPLE_XML)
     assert p["owner_cik"] == "0001234567"
+    assert p["issuer_cik"] == "12345"  # zero-stripped issuer CIK
     assert "officer:CEO" in p["role"] and "10pct" in p["role"]
     assert p["txns"][0]["owned_after"] == "5000"
+
+
+def test_persist_stores_issuer_cik():
+    path = _fresh()
+    try:
+        con = dbmod.connect(path)
+        persist_transactions(con, "0001-26-000009", parse_ownership(SAMPLE_XML),
+                             "ACME", "2026-06-12")
+        con.commit()
+        v = con.execute(
+            "SELECT DISTINCT issuer_cik FROM form4_transactions").fetchone()[0]
+        assert v == "12345", v
+    finally:
+        os.remove(path)
 
 
 def test_persist_idempotent_all_codes_and_person_upsert():
