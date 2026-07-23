@@ -155,10 +155,21 @@ def main(argv=None):
     if regp.exists():
         reg = json.loads(regp.read_text())
     # SM-A1 Phase 1 hands its discovered issuer set here; auto-include if present.
+    # Normalize raw Form 4 symbols (exchange prefixes, unit/OTC suffixes) so they
+    # resolve against EDGAR's clean ticker registry.
+    def _clean_ticker(t):
+        t = t.split(":")[-1].strip().upper()
+        parts = t.split()
+        t = parts[0] if parts else t
+        for suf in (".PK", ".OB", ".PINK", ".PP"):
+            if t.endswith(suf):
+                t = t[: -len(suf)]
+        return t
     tn_tickers = []
     tnp = pathlib.Path("scans/trump_network_issuers.json")
     if tnp.exists():
-        tn_tickers = json.loads(tnp.read_text()).get("tickers", [])
+        raw = json.loads(tnp.read_text()).get("tickers", [])
+        tn_tickers = sorted({_clean_ticker(t) for t in raw if _clean_ticker(t)})
     ciks = issuer_ciks(contact, overlay, reg)
     if tn_tickers:
         tk_cik = form4.ticker_to_cik(contact, tn_tickers)
