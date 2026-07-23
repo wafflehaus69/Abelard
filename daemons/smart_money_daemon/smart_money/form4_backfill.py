@@ -154,7 +154,18 @@ def main(argv=None):
     regp = pathlib.Path("analysis/registry.json")
     if regp.exists():
         reg = json.loads(regp.read_text())
+    # SM-A1 Phase 1 hands its discovered issuer set here; auto-include if present.
+    tn_tickers = []
+    tnp = pathlib.Path("scans/trump_network_issuers.json")
+    if tnp.exists():
+        tn_tickers = json.loads(tnp.read_text()).get("tickers", [])
     ciks = issuer_ciks(contact, overlay, reg)
+    if tn_tickers:
+        tk_cik = form4.ticker_to_cik(contact, tn_tickers)
+        for t, c in tk_cik.items():
+            ciks[c] = ciks.get(c, "trump_network:" + t)
+        print("[backfill] trump_network added {} tickers -> {} CIKs".format(
+            len(tn_tickers), len(tk_cik)))
     if args.only:
         want = {t.strip().upper() for t in args.only.split(",")}
         ciks = {c: l for c, l in ciks.items() if l.upper() in want}

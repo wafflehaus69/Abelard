@@ -17,3 +17,6 @@ logs_basilic/
 
 # Editor lock files (LibreOffice etc.) — never commit.
 .~lock.*#
+
+# scans/ holds tracked recon reports (*.md) + regenerable machine artifacts.
+scans/*.json
