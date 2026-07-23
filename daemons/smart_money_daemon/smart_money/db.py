@@ -163,6 +163,41 @@ CREATE TABLE IF NOT EXISTS form4_backfill_seen(
   accession TEXT PRIMARY KEY,
   seen_at_unix INTEGER NOT NULL
 );
+-- Durable per-holding 13F table (SM-A1 Phase 2). thirteenf_baseline keeps only
+-- the latest-quarter JSON blob per CIK for the scan's diff; this is the queryable
+-- multi-quarter home for cross-manager analysis. One row per (filer, filing,
+-- cusip, put/call bucket).
+CREATE TABLE IF NOT EXISTS thirteenf_holdings(
+  cik TEXT NOT NULL,
+  accession TEXT NOT NULL,
+  period TEXT,
+  filed_date TEXT,
+  cusip TEXT NOT NULL,
+  ticker TEXT,
+  issuer TEXT,
+  put_call TEXT NOT NULL DEFAULT 'long',
+  value INTEGER,
+  shares INTEGER,
+  ingested_at_unix INTEGER NOT NULL,
+  PRIMARY KEY(cik, accession, cusip, put_call)
+);
+CREATE INDEX IF NOT EXISTS idx_13fh_cik ON thirteenf_holdings(cik, period);
+CREATE INDEX IF NOT EXISTS idx_13fh_ticker ON thirteenf_holdings(ticker);
+CREATE INDEX IF NOT EXISTS idx_13fh_cusip ON thirteenf_holdings(cusip);
+-- CUSIP -> ticker cache (OpenFIGI). Unmapped stays NULL ticker; never dropped.
+CREATE TABLE IF NOT EXISTS cusip_ticker(
+  cusip TEXT PRIMARY KEY,
+  ticker TEXT,
+  name TEXT,
+  mapped_via TEXT,
+  mapped_at_unix INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS thirteenf_filings_seen(
+  cik TEXT NOT NULL,
+  accession TEXT NOT NULL,
+  seen_at_unix INTEGER NOT NULL,
+  PRIMARY KEY(cik, accession)
+);
 """
 
 
