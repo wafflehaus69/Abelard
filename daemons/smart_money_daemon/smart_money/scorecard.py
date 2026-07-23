@@ -65,10 +65,6 @@ def build_series(con, ticker, start, end):
     return {d: adj for d, _, adj, _ in rows}
 
 
-def midpoint(low, high):
-    return (low + high) / 2.0 if high is not None else float(low)
-
-
 def recency_weight(months: float) -> float:
     if months <= 24:
         return 1.0

@@ -6,10 +6,14 @@ __pycache__/
 *.pyc
 
 # Regenerable analysis outputs — the DB is the source of truth. Tracked by hand:
-# POLITICIAN_SCORECARD.md, DATA_QUALITY.md, registry.json, archive/*.md.
+# POLITICIAN_SCORECARD.md, DATA_QUALITY.md, COMMONALITY_COUNTERS.md,
+# registry.json, archive/*.md, scans/*.md.
 analysis/POLITICIAN_SCORECARD.csv
 analysis/archive/*.csv
 analysis/scorecard_bad_dates.csv
 analysis/scorecard_price_failures.json
 analysis/*.log
 logs_basilic/
+
+# Editor lock files (LibreOffice etc.) — never commit.
+.~lock.*#
