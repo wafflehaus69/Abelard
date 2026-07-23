@@ -128,12 +128,20 @@ CREATE TABLE IF NOT EXISTS scan_events(
   disclosure_date TEXT,
   emitted_at_unix INTEGER NOT NULL
 );
--- Persistent Form 4 transaction home (SM-A1). Empty until a Form 4 ingest lands.
--- The g1/g2 commonality counters read this; the scan's Leg B extracts every
--- field but does NOT yet persist here (that wiring + a historical backfill are
--- the follow-up that populates the counters).
+-- Persistent Form 4 transaction corpus (SM-A1 / SM-F4). The g1/g2 commonality
+-- counters read this; the scan Leg B persists here (SM-F4 Step 1) and the
+-- historical backfill (Step 2) fills it. Idempotent by (accession, tx_index).
+CREATE INDEX IF NOT EXISTS idx_trades_person ON congress_trades(person_id);
+CREATE INDEX IF NOT EXISTS idx_trades_ticker ON congress_trades(ticker);
+CREATE INDEX IF NOT EXISTS idx_spans_ticker ON price_spans(ticker);
+"""
+
+# Full Step-1 shape. Idempotent by (accession, tx_index). Kept separate so the
+# migration can recreate it after dropping the empty SM-4b-shape table.
+FORM4_DDL = """
 CREATE TABLE IF NOT EXISTS form4_transactions(
-  filing_ref TEXT NOT NULL,
+  accession TEXT NOT NULL,
+  tx_index INTEGER NOT NULL,
   reporting_person TEXT,
   reporting_cik TEXT,
   issuer TEXT,
@@ -143,16 +151,14 @@ CREATE TABLE IF NOT EXISTS form4_transactions(
   shares REAL,
   price REAL,
   value REAL,
+  ownership_after REAL,
   tx_date TEXT,
-  disclosure_date TEXT,
+  filed_date TEXT,
   role TEXT,
-  PRIMARY KEY(filing_ref, ticker, code, tx_date, shares)
+  PRIMARY KEY(accession, tx_index)
 );
 CREATE INDEX IF NOT EXISTS idx_f4_ticker ON form4_transactions(ticker);
 CREATE INDEX IF NOT EXISTS idx_f4_cik ON form4_transactions(reporting_cik);
-CREATE INDEX IF NOT EXISTS idx_trades_person ON congress_trades(person_id);
-CREATE INDEX IF NOT EXISTS idx_trades_ticker ON congress_trades(ticker);
-CREATE INDEX IF NOT EXISTS idx_spans_ticker ON price_spans(ticker);
 """
 
 
@@ -162,8 +168,25 @@ def connect(db_path: str = DB_PATH_DEFAULT) -> sqlite3.Connection:
     con = sqlite3.connect(str(p))
     con.execute("PRAGMA journal_mode=WAL")
     con.executescript(SCHEMA)
+    _migrate_form4(con)
+    con.executescript(FORM4_DDL)
     _migrate(con)
     return con
+
+
+def _migrate_form4(con):
+    """Recreate form4_transactions if the empty SM-4b-shape table (no tx_index)
+    is present. Refuses to drop a non-empty table — a populated old-shape corpus
+    means a real migration is needed, not a silent drop."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(form4_transactions)")}
+    if cols and "tx_index" not in cols:
+        n = con.execute("SELECT COUNT(*) FROM form4_transactions").fetchone()[0]
+        if n:
+            raise RuntimeError(
+                "form4_transactions has old shape with {} rows; "
+                "manual migration required".format(n))
+        con.execute("DROP TABLE form4_transactions")
+        con.commit()
 
 
 def _migrate(con):

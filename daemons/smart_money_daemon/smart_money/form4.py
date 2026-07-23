@@ -89,9 +89,19 @@ def parse_ownership(raw_xml):
         return (e.text or "").strip() if e is not None else ""
 
     owner = txt(".//reportingOwner/reportingOwnerId/rptOwnerName")
+    owner_cik = txt(".//reportingOwner/reportingOwnerId/rptOwnerCik")
     issuer = txt(".//issuer/issuerName")
     symbol = txt(".//issuer/issuerTradingSymbol")
     plan = txt(".//aff10b5One") == "1"
+    rel = ".//reportingOwner/reportingOwnerRelationship/"
+    roles = []
+    if txt(rel + "isDirector") == "1":
+        roles.append("director")
+    if txt(rel + "isOfficer") == "1":
+        roles.append("officer:" + (txt(rel + "officerTitle") or "?"))
+    if txt(rel + "isTenPercentOwner") == "1":
+        roles.append("10pct")
+    role = ",".join(roles)
     txns = []
     for t in root.findall(".//nonDerivativeTransaction"):
         def g(p):
@@ -103,6 +113,48 @@ def parse_ownership(raw_xml):
             "price": g(".//transactionPricePerShare/value"),
             "date": g(".//transactionDate/value"),
             "ad": g(".//transactionAcquiredDisposedCode/value"),
+            "owned_after": g(
+                ".//postTransactionAmounts/sharesOwnedFollowingTransaction/value"),
         })
-    return {"owner": owner, "issuer": issuer, "symbol": symbol,
-            "plan_flag": plan, "txns": txns}
+    return {"owner": owner, "owner_cik": owner_cik, "issuer": issuer,
+            "symbol": symbol, "plan_flag": plan, "role": role, "txns": txns}
+
+
+def _f(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def persist_transactions(con, accession, parsed, ticker, filed_date):
+    """SM-F4 Step 1: persist EVERY parsed transaction into form4_transactions and
+    upsert the reporting person (type=insider, CIK carried). Idempotent by
+    (accession, tx_index) — re-running the same filing is a no-op. Congress rows
+    are never touched. Returns (rows_persisted, person_upserted)."""
+    cik = parsed.get("owner_cik") or None
+    if parsed.get("owner"):
+        con.execute(
+            "INSERT INTO persons(name, type, cik_or_chamber, meta) "
+            "VALUES (?, 'insider', ?, ?) "
+            "ON CONFLICT(name) DO UPDATE SET "
+            "cik_or_chamber=COALESCE(excluded.cik_or_chamber, persons.cik_or_chamber)",
+            (parsed["owner"], cik, parsed.get("role") or None),
+        )
+    n = 0
+    for i, t in enumerate(parsed.get("txns", [])):
+        shares = _f(t.get("shares"))
+        price = _f(t.get("price"))
+        value = round(shares * price, 2) if shares is not None and price is not None else None
+        con.execute(
+            "INSERT OR IGNORE INTO form4_transactions("
+            "accession, tx_index, reporting_person, reporting_cik, issuer, ticker,"
+            "code, plan_flag, shares, price, value, ownership_after, tx_date,"
+            "filed_date, role) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (accession, i, parsed.get("owner"), cik, parsed.get("issuer"), ticker,
+             t.get("code"), 1 if parsed.get("plan_flag") else 0, shares, price,
+             value, _f(t.get("owned_after")), t.get("date"), filed_date,
+             parsed.get("role") or None),
+        )
+        n += 1
+    return n, bool(parsed.get("owner"))

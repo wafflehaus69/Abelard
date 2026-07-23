@@ -99,16 +99,19 @@ def test_g1_counts_discretionary_open_market_only():
         # 3 distinct CIKs buy EEE discretionary open-market -> qualifies at >=2
         for cik in ("C1", "C2", "C3"):
             con.execute(
-                "INSERT INTO form4_transactions(filing_ref, reporting_cik, ticker, "
-                "code, plan_flag, value, tx_date, shares) VALUES (?,?,?,?,?,?,?,?)",
-                (cik + "f", cik, "EEE", "P", 0, 10000, "2026-06-10", 100))
+                "INSERT INTO form4_transactions(accession, tx_index, reporting_cik, "
+                "ticker, code, plan_flag, value, tx_date, shares) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (cik + "f", 0, cik, "EEE", "P", 0, 10000, "2026-06-10", 100))
         # a plan buy and a sale must NOT count
         con.execute(
-            "INSERT INTO form4_transactions(filing_ref, reporting_cik, ticker, code, "
-            "plan_flag, value, tx_date, shares) VALUES ('x','C4','EEE','P',1,1,'2026-06-10',1)")
+            "INSERT INTO form4_transactions(accession, tx_index, reporting_cik, "
+            "ticker, code, plan_flag, value, tx_date, shares) "
+            "VALUES ('x',0,'C4','EEE','P',1,1,'2026-06-10',1)")
         con.execute(
-            "INSERT INTO form4_transactions(filing_ref, reporting_cik, ticker, code, "
-            "plan_flag, value, tx_date, shares) VALUES ('y','C5','EEE','S',0,1,'2026-06-10',1)")
+            "INSERT INTO form4_transactions(accession, tx_index, reporting_cik, "
+            "ticker, code, plan_flag, value, tx_date, shares) "
+            "VALUES ('y',0,'C5','EEE','S',0,1,'2026-06-10',1)")
         con.commit()
         g1 = cm.g1_insider_convergence(con, ANCHOR, OV)
         w90 = {r["ticker"]: r["distinct_buyers"] for r in g1["windows"][90]}

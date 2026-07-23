@@ -126,6 +126,12 @@ def leg_form4(con, scan_id, overlay, reg, contact):
                 if not parsed:
                     continue
                 ticker = parsed["symbol"] or cik_to_ticker.get(row["cik"].lstrip("0"))
+                # SM-F4 Step 1: persist the full parsed filing to the corpus. No
+                # scan discards parsed data from here on.
+                accession = row["path"].rsplit("/", 1)[-1].replace(".txt", "")
+                form4.persist_transactions(con, accession, parsed, ticker,
+                                           row["date"])
+                con.commit()
                 for t in parsed["txns"]:
                     code = t["code"]
                     if code not in form4.OPEN_MARKET:
