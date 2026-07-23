@@ -77,9 +77,14 @@ def g1_insider_convergence(con, anchor, overlay):
 # ---------------------------------------------------------------- g2
 def g2_cross_issuer_persons(con):
     src_rows = con.execute("SELECT COUNT(*) FROM form4_transactions").fetchone()[0]
+    # Count distinct issuer ENTITIES by ticker (falling back to issuer name only
+    # when no ticker). Keying on the issuer name inflates the count when a
+    # company renames (MicroStrategy -> Strategy) or a case/punct variant appears
+    # (FRACTYL HEALTH vs Fractyl Health) — those are one entity, not two.
     rows = con.execute(
         "SELECT reporting_cik, MAX(reporting_person), "
-        "COUNT(DISTINCT issuer) AS issuers, GROUP_CONCAT(DISTINCT issuer), "
+        "COUNT(DISTINCT COALESCE(ticker, issuer)) AS issuers, "
+        "GROUP_CONCAT(DISTINCT COALESCE(ticker, issuer)), "
         "MAX(role), MIN(tx_date), MAX(tx_date) "
         "FROM form4_transactions WHERE reporting_cik IS NOT NULL "
         "GROUP BY reporting_cik HAVING issuers>=2 ORDER BY issuers DESC"
@@ -203,21 +208,20 @@ def _render(anchor, g1, g2, g3_all, g3_reg, reg_names, intersection):
     m.append("")
     m.append("## SCOPE FINDING — Form 4 surface (READ THIS FIRST)")
     m.append("")
-    m.append("**form4_transactions holds {} rows.** There is no historical Form 4 "
-             "ingest in this daemon. The Form 4 leg of the scan extracts reporting "
-             "person, plan flag, code, and value at scan time, but persists only a "
-             "thin scan_events record (ticker, side, dates) and is overlay-scoped "
-             "to yesterday plus today. The SM-0 recon parsed a single filing that "
-             "was never persisted. persons holds zero insider CIKs (all 436 are "
-             "congress).".format(g1["source_rows"]))
-    m.append("")
-    m.append("Consequence: **g1 and g2 are code-complete but return zero — because "
-             "the corpus is empty, NOT because convergence was tested and found "
-             "rare.** To populate them requires ingest work outside this counter "
-             "amendment: (a) wire the scan Leg B to persist parsed transactions "
-             "into form4_transactions (forward accumulation, small), and (b) a "
-             "historical Form 4 backfill over the overlay/registry issuer set "
-             "(larger). Both are Mando decisions.")
+    f4 = g1["source_rows"]
+    if f4 == 0:
+        m.append("**form4_transactions holds 0 rows.** No Form 4 corpus yet — g1 "
+                 "and g2 are code-complete but return zero because the corpus is "
+                 "empty, NOT because convergence was tested and found rare. "
+                 "Populate via the SM-F4 backfill.")
+    else:
+        m.append("**form4_transactions holds {} rows** (SM-F4 backfill: overlay + "
+                 "registry + trump_network issuers, 36-month depth). g1/g2 below "
+                 "are computed over this real corpus. COVERAGE-LIMITED: the corpus "
+                 "spans only the backfilled issuer set, not all of EDGAR — a "
+                 "counter is only as universal as its ingest. Convergence not seen "
+                 "for an out-of-scope issuer means that issuer was not ingested, "
+                 "not that no insiders bought it.".format(f4))
     m.append("")
 
     # g1
@@ -230,7 +234,8 @@ def _render(anchor, g1, g2, g3_all, g3_reg, reg_names, intersection):
         m.append("")
         m.append("### {}d window".format(w))
         if not rows:
-            m.append("0 rows (source corpus empty — see scope finding).")
+            m.append("0 tickers with >= {} discretionary open-market buyers in "
+                     "this window.".format(G1_MIN_BUYERS))
         else:
             m.append(md_table(pd.DataFrame(rows)))
 
@@ -238,13 +243,15 @@ def _render(anchor, g1, g2, g3_all, g3_reg, reg_names, intersection):
     m.append("")
     m.append("## g2 — cross-issuer person counter (multi-board operators)")
     m.append("")
-    m.append("COVERAGE-LIMITED VIEW. Per reporting-person CIK, distinct issuers "
-             "ever filed against, issuer_count >= 2. This counter is only as "
-             "universal as the Form 4 ingest, which per the scope finding is "
-             "currently empty (0 insider persons in the corpus).")
+    m.append("COVERAGE-LIMITED VIEW. Per reporting-person CIK, distinct issuer "
+             "entities (by ticker) filed against, issuer_count >= 2. Only as "
+             "universal as the backfilled issuer set. NOTE: corporate 10pct "
+             "holders (e.g. a fund filing on its stakes) appear here as "
+             "'persons' — that is a valid strategic-stake signal, not a "
+             "mislabel to ignore.")
     m.append("")
     if not g2["people"]:
-        m.append("0 multi-board operators (source corpus empty — see scope finding).")
+        m.append("0 multi-board operators at >= 2 distinct issuers.")
     else:
         m.append(md_table(pd.DataFrame(g2["people"])))
 
@@ -297,12 +304,21 @@ def _render(anchor, g1, g2, g3_all, g3_reg, reg_names, intersection):
     m.append("The rarest join in the dataset. Tickers appearing in both g1 and g3 "
              "in overlapping windows.")
     m.append("")
+    g1_tk = sorted({r["ticker"] for w in G1_WINDOWS for r in g1["windows"][w]})
     if not intersection:
-        m.append("**0 rows.** This zero is dominated by g1 being empty (no Form 4 "
-                 "corpus), NOT by a tested-and-rare convergence. Once a Form 4 "
-                 "ingest lands this join becomes meaningful; today it is "
-                 "structurally empty and must not be read as a convergence "
-                 "finding.")
+        if g1["source_rows"] == 0:
+            m.append("**0 rows** — g1 is empty (no Form 4 corpus). Not a "
+                     "convergence finding; populate the corpus first.")
+        else:
+            m.append("**0 rows — a REAL finding.** g1 fired on {} (multi-insider "
+                     "buying) and g3 fired on {} congressional co-held tickers, but "
+                     "the two sets do not overlap in any window. True cross-surface "
+                     "convergence (congress co-buying AND multi-insider buying the "
+                     "same name at once) did not occur in the ingested scope — a "
+                     "genuine measure of how rare it is, subject to the "
+                     "coverage-limit above (g1 only sees backfilled issuers).".format(
+                         ", ".join(g1_tk) or "no tickers",
+                         sum(len(g3_all[w]) for w in G3_WINDOWS)))
     else:
         m.append("Tickers: {}".format(" ".join(intersection)))
     m.append("")
