@@ -128,6 +128,28 @@ CREATE TABLE IF NOT EXISTS scan_events(
   disclosure_date TEXT,
   emitted_at_unix INTEGER NOT NULL
 );
+-- Persistent Form 4 transaction home (SM-A1). Empty until a Form 4 ingest lands.
+-- The g1/g2 commonality counters read this; the scan's Leg B extracts every
+-- field but does NOT yet persist here (that wiring + a historical backfill are
+-- the follow-up that populates the counters).
+CREATE TABLE IF NOT EXISTS form4_transactions(
+  filing_ref TEXT NOT NULL,
+  reporting_person TEXT,
+  reporting_cik TEXT,
+  issuer TEXT,
+  ticker TEXT,
+  code TEXT,
+  plan_flag INTEGER,
+  shares REAL,
+  price REAL,
+  value REAL,
+  tx_date TEXT,
+  disclosure_date TEXT,
+  role TEXT,
+  PRIMARY KEY(filing_ref, ticker, code, tx_date, shares)
+);
+CREATE INDEX IF NOT EXISTS idx_f4_ticker ON form4_transactions(ticker);
+CREATE INDEX IF NOT EXISTS idx_f4_cik ON form4_transactions(reporting_cik);
 CREATE INDEX IF NOT EXISTS idx_trades_person ON congress_trades(person_id);
 CREATE INDEX IF NOT EXISTS idx_trades_ticker ON congress_trades(ticker);
 CREATE INDEX IF NOT EXISTS idx_spans_ticker ON price_spans(ticker);
