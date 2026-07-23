@@ -147,7 +147,8 @@ def main(argv=None):
             ingest_filer(con, cik10, contact, args.quarters, report)
         except Exception as exc:  # noqa: BLE001 - fail loud, per filer
             report["filers"][cik10] = {"name": CONFIRMED[cik10], "error": str(exc)[:150]}
-        print("[13f] {} {}".format(cik10, report["filers"].get(cik10)), flush=True)
+        print("[13f] {} {}".format(
+            cik10, report["filers"].get(str(int(cik10)))), flush=True)
     # unmapped CUSIP report
     unmapped = con.execute(
         "SELECT cusip, name FROM cusip_ticker WHERE ticker IS NULL").fetchall()
