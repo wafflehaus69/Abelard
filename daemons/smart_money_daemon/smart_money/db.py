@@ -159,6 +159,10 @@ CREATE TABLE IF NOT EXISTS form4_transactions(
 );
 CREATE INDEX IF NOT EXISTS idx_f4_ticker ON form4_transactions(ticker);
 CREATE INDEX IF NOT EXISTS idx_f4_cik ON form4_transactions(reporting_cik);
+CREATE TABLE IF NOT EXISTS form4_backfill_seen(
+  accession TEXT PRIMARY KEY,
+  seen_at_unix INTEGER NOT NULL
+);
 """
 
 
