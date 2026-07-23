@@ -1,6 +1,6 @@
 # COMMONALITY_COUNTERS — smart_money_daemon SM-A1 Phase 4(g)
 
-Anchor date 2026-07-22. Windows are trailing calendar days on tx_date. Raw counts and backing rows only, no composite scores.
+Anchor date 2026-07-23. Windows are trailing calendar days on tx_date. Raw counts and backing rows only, no composite scores.
 
 ## STRUCTURAL NOTE (verbatim)
 
@@ -8,28 +8,39 @@ Form 4 insiders file only on their own issuers, so cross-company common position
 
 ## SCOPE FINDING — Form 4 surface (READ THIS FIRST)
 
-**form4_transactions holds 0 rows.** There is no historical Form 4 ingest in this daemon. The Form 4 leg of the scan extracts reporting person, plan flag, code, and value at scan time, but persists only a thin scan_events record (ticker, side, dates) and is overlay-scoped to yesterday plus today. The SM-0 recon parsed a single filing that was never persisted. persons holds zero insider CIKs (all 436 are congress).
-
-Consequence: **g1 and g2 are code-complete but return zero — because the corpus is empty, NOT because convergence was tested and found rare.** To populate them requires ingest work outside this counter amendment: (a) wire the scan Leg B to persist parsed transactions into form4_transactions (forward accumulation, small), and (b) a historical Form 4 backfill over the overlay/registry issuer set (larger). Both are Mando decisions.
+**form4_transactions holds 22026 rows** (SM-F4 backfill: overlay + registry + trump_network issuers, 36-month depth). g1/g2 below are computed over this real corpus. COVERAGE-LIMITED: the corpus spans only the backfilled issuer set, not all of EDGAR — a counter is only as universal as its ingest. Convergence not seen for an out-of-scope issuer means that issuer was not ingested, not that no insiders bought it.
 
 ## g1 — ticker-level insider-buy convergence (discretionary open-market P)
 
 Distinct reporting persons with code P, plan_flag false, per ticker, trailing 30/90/180d. Threshold >= 2 buyers.
 
 ### 30d window
-0 rows (source corpus empty — see scope finding).
+0 tickers with >= 2 discretionary open-market buyers in this window.
 
 ### 90d window
-0 rows (source corpus empty — see scope finding).
+| ticker | distinct_buyers | total_value | overlay |
+|---|---|---|---|
+| GUTS | 5 | 127414.1600 | - |
+| MSTR | 2 | 1014221.4500 | conviction |
 
 ### 180d window
-0 rows (source corpus empty — see scope finding).
+| ticker | distinct_buyers | total_value | overlay |
+|---|---|---|---|
+| GUTS | 5 | 127414.1600 | - |
+| ABCL | 3 | 952096.3900 | - |
+| MSTR | 2 | 1264168.0300 | conviction |
 
 ## g2 — cross-issuer person counter (multi-board operators)
 
-COVERAGE-LIMITED VIEW. Per reporting-person CIK, distinct issuers ever filed against, issuer_count >= 2. This counter is only as universal as the Form 4 ingest, which per the scope finding is currently empty (0 insider persons in the corpus).
+COVERAGE-LIMITED VIEW. Per reporting-person CIK, distinct issuer entities (by ticker) filed against, issuer_count >= 2. Only as universal as the backfilled issuer set. NOTE: corporate 10pct holders (e.g. a fund filing on its stakes) appear here as 'persons' — that is a valid strategic-stake signal, not a mislabel to ignore.
 
-0 multi-board operators (source corpus empty — see scope finding).
+| cik | person | issuer_count | issuers | role | first_filing | last_filing |
+|---|---|---|---|---|---|---|
+| 0001321655 | Palantir Technologies Inc. | 3 | SRFM,LIFW,RBTC,RBT | 10pct | 2024-01-03 | 2025-06-18 |
+| 0002016181 | Trump Donald J. JR | 3 | DJT,PEW,PSQH | director,10pct | 2024-12-06 | 2026-07-09 |
+| 0001160077 | Andreessen Marc L | 2 | META,COIN | director | 2024-01-02 | 2026-06-16 |
+| 0001985206 | Masters Blake | 2 | PEW,PSQH | director | 2024-09-25 | 2026-07-09 |
+| 0002015472 | Wunderlich Dusty | 2 | PEW,PSQH | director,officer:Chief Strategy Officer | 2024-03-13 | 2026-06-23 |
 
 ## g3 — congressional co-holding counter (the surface with data)
 
@@ -65,7 +76,7 @@ Distinct members with stock purchases per ticker, trailing 90/180/365d, threshol
 | PG | 3 | - | Doggett, Lloyd (house, 1001-15000); Letlow, Julia (house, 1001-15000); Taylor, David J. (house, 1001-15000) |
 | SPCX | 3 | - | Cisneros, Gilbert (house, 1001-15000); McGuire, John (house, 1001-15000); Meuser, Daniel (house, 15001-50000) |
 
-### 365d window — 93 tickers
+### 365d window — 89 tickers
 | ticker | member_count | overlay | members |
 |---|---|---|---|
 | AMZN | 11 | - | Cisneros, Gilbert (house, 1001-15000/15001-50000); Fetterman, John (senate, 1001-15000); Fields, Cleo (house, 100001-250000/15001-50000/50001-100000); Greene, Marjorie Taylor (house, 1001-15000); Hoyle, Valerie (house, 1001-15000); Jackson, Jonathan (house, 1001-15000); Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000); Mullin, Markwayne (senate, 100001-250000); Pelosi, Nancy (house, 500001-1000000); Taylor, David J. (house, 1001-15000) |
@@ -80,10 +91,8 @@ Distinct members with stock purchases per ticker, trailing 90/180/365d, threshol
 | LLY | 7 | - | Boozman, John (senate, 1001-15000); Capito, Shelley Moore (senate, 1001-15000); Cisneros, Gilbert (house, 1001-15000/50001-100000); Donalds, Byron (house, 1001-15000); King, Angus (senate, 1001-15000); Mullin, Markwayne (senate, 15001-50000); Taylor, David J. (house, 1001-15000/15001-50000) |
 | AVGO | 6 | - | Capito, Shelley Moore (senate, 1001-15000); Cisneros, Gilbert (house, 1001-15000); Fields, Cleo (house, 15001-50000/50001-100000); McClain, Lisa (house, 1001-15000); Moskowitz, Jared (house, 1001-15000/15001-50000); Taylor, David J. (house, 1001-15000) |
 | BRK.B | 6 | - | Cisneros, Gilbert (house, 1001-15000); Greene, Marjorie Taylor (house, 1001-15000); McClain, Lisa (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000); Moran, Jerry (senate, 1001-15000); Pfluger, August Lee (house, 15001-50000) |
-| CSCO | 6 | - | Cisneros, Gilbert (house, 1001-15000); Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000); Moskowitz, Jared (house, 1001-15000/15001-50000); Salazar, Maria Elvira (house, 1001-15000/15001-50000) |
 | GS | 6 | - | Gottheimer, Josh (house, 1001-15000); Greene, Marjorie Taylor (house, 1001-15000); McClain, Lisa (house, 1001-15000); Moskowitz, Jared (house, 1001-15000/15001-50000); Mullin, Markwayne (senate, 15001-50000); Salazar, Maria Elvira (house, 15001-50000) |
 | JPM | 6 | - | Cisneros, Gilbert (house, 1001-15000); Jackson, Jonathan (house, 1001-15000); McClain, Lisa (house, 1001-15000); Mullin, Markwayne (senate, 50001-100000); Taylor, David J. (house, 1001-15000); Williams, Roger (house, 1001-15000) |
-| MU | 6 | - | Cisneros, Gilbert (house, 1001-15000); Fetterman, John (senate, 1001-15000); Fields, Cleo (house, 100001-250000); Gottheimer, Josh (house, 1001-15000); McClain, Lisa (house, 1001-15000); Whitehouse, Sheldon (senate, 1001-15000) |
 | PANW | 6 | - | Cisneros, Gilbert (house, 1001-15000); Gottheimer, Josh (house, 1001-15000); Greene, Marjorie Taylor (house, 1001-15000); Hickenlooper, John (senate, 100001-250000); Moskowitz, Jared (house, 1001-15000); Newhouse, Dan (house, 1001-15000) |
 | PG | 6 | - | Cisneros, Gilbert (house, 1001-15000); Doggett, Lloyd (house, 1001-15000); Greene, Marjorie Taylor (house, 15001-50000); Letlow, Julia (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000); Taylor, David J. (house, 1001-15000) |
 | TSM | 6 | - | Allen, Richard W. (house, 1001-15000); Cisneros, Gilbert (house, 100001-250000/1001-15000); Fields, Cleo (house, 100001-250000/1001-15000/15001-50000/250001-500000/50001-100000); Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000); Moskowitz, Jared (house, 1001-15000) |
@@ -92,6 +101,7 @@ Distinct members with stock purchases per ticker, trailing 90/180/365d, threshol
 | WMT | 6 | - | Boozman, John (senate, 1001-15000); Cisneros, Gilbert (house, 1001-15000); Jackson, Jonathan (house, 50001-100000); Larsen, Rick (house, 1001-15000); McClain, Lisa (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000) |
 | AXP | 5 | - | Allen, Richard W. (house, 1001-15000); Capito, Shelley Moore (senate, 1001-15000); McClain, Lisa (house, 1001-15000); Moskowitz, Jared (house, 1001-15000/15001-50000); Mullin, Markwayne (senate, 1001-15000) |
 | BRO | 5 | - | Cisneros, Gilbert (house, 1001-15000); Delaney, April McClain (house, 1001-15000); Donalds, Byron (house, 1001-15000); McClain, Lisa (house, 1001-15000); Newhouse, Dan (house, 1001-15000) |
+| CSCO | 5 | - | Cisneros, Gilbert (house, 1001-15000); Letlow, Julia (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000); Moskowitz, Jared (house, 1001-15000/15001-50000); Salazar, Maria Elvira (house, 1001-15000/15001-50000) |
 | CVX | 5 | - | Cisneros, Gilbert (house, 1001-15000/15001-50000); Greene, Marjorie Taylor (house, 1001-15000); Johnson, Julie (house, 1001-15000); Mullin, Markwayne (senate, 15001-50000); Taylor, David J. (house, 1001-15000) |
 | ETN | 5 | - | Boozman, John (senate, 1001-15000); Cisneros, Gilbert (house, 1001-15000); Hickenlooper, John (senate, 50001-100000); McClain, Lisa (house, 1001-15000); Taylor, David J. (house, 1001-15000) |
 | GOOG | 5 | - | Fetterman, John (senate, 1001-15000); Fields, Cleo (house, 100001-250000/1001-15000/15001-50000/50001-100000); Greene, Marjorie Taylor (house, 1001-15000); Johnson, Julie (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
@@ -99,6 +109,7 @@ Distinct members with stock purchases per ticker, trailing 90/180/365d, threshol
 | KO | 5 | - | Doggett, Lloyd (house, 1001-15000); Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000); Mullin, Markwayne (senate, 15001-50000); Whitehouse, Sheldon (senate, 1001-15000) |
 | LRCX | 5 | - | Donalds, Byron (house, 1001-15000); Fields, Cleo (house, 15001-50000); Jackson, Jonathan (house, 1001-15000); Mullin, Markwayne (senate, 50001-100000); Taylor, David J. (house, 1001-15000) |
 | MCK | 5 | - | Cisneros, Gilbert (house, 1001-15000); Hoyle, Valerie (house, 1001-15000); Larsen, Rick (house, 1001-15000); Moskowitz, Jared (house, 1001-15000); Mullin, Markwayne (senate, 15001-50000) |
+| MU | 5 | - | Cisneros, Gilbert (house, 1001-15000); Fetterman, John (senate, 1001-15000); Fields, Cleo (house, 100001-250000); Gottheimer, Josh (house, 1001-15000); Whitehouse, Sheldon (senate, 1001-15000) |
 | NFLX | 5 | - | Cisneros, Gilbert (house, 1001-15000); Donalds, Byron (house, 1001-15000); Fields, Cleo (house, 100001-250000/1001-15000/50001-100000); Greene, Marjorie Taylor (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 | NOW | 5 | conviction | Cisneros, Gilbert (house, 1001-15000); Donalds, Byron (house, 1001-15000); Gottheimer, Josh (house, 1001-15000); McClain, Lisa (house, 1001-15000); Mullin, Markwayne (senate, 1001-15000/15001-50000) |
 | PLTR | 5 | - | Boozman, John (senate, 1001-15000); Cisneros, Gilbert (house, 1001-15000/15001-50000); Fields, Cleo (house, 15001-50000/50001-100000); Jackson, Jonathan (house, 15001-50000); McClain, Lisa (house, 1001-15000) |
@@ -117,20 +128,17 @@ Distinct members with stock purchases per ticker, trailing 90/180/365d, threshol
 | MCD | 4 | - | Fields, Cleo (house, 15001-50000); McClain, Lisa (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000); Moskowitz, Jared (house, 1001-15000) |
 | PEP | 4 | - | Greene, Marjorie Taylor (house, 1001-15000); Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000) |
 | XOM | 4 | - | Cisneros, Gilbert (house, 50001-100000); Gottheimer, Josh (house, 1001-15000); McClain, Lisa (house, 1001-15000); Newhouse, Dan (house, 1001-15000) |
-| AMAT | 3 | - | McClain, Lisa (house, 1001-15000); Mullin, Markwayne (senate, 15001-50000); Newhouse, Dan (house, 1001-15000) |
 | AMGN | 3 | - | Greene, Marjorie Taylor (house, 1001-15000); Salazar, Maria Elvira (house, 15001-50000); Taylor, David J. (house, 1001-15000) |
 | APD | 3 | - | Gottheimer, Josh (house, 1001-15000); McClain, Lisa (house, 1001-15000); McCormick, Richard Dean Dr (house, 1001-15000) |
 | AZN | 3 | - | Cisneros, Gilbert (house, 1001-15000); Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 | BA | 3 | - | Cisneros, Gilbert (house, 1001-15000); Letlow, Julia (house, 1001-15000); Salazar, Maria Elvira (house, 1001-15000/15001-50000) |
 | BSX | 3 | - | Cisneros, Gilbert (house, 1001-15000); McClain, Lisa (house, 1001-15000); Mullin, Markwayne (senate, 15001-50000) |
 | C | 3 | - | Jackson, Jonathan (house, 1001-15000/15001-50000/50001-100000); Mullin, Markwayne (senate, 15001-50000); Salazar, Maria Elvira (house, 1001-15000/15001-50000) |
-| CAG | 3 | - | Cisneros, Gilbert (house, 1001-15000); McClain, Lisa (house, 1001-15000); Peters, Gary (senate, 1001-15000) |
 | CMG | 3 | - | Cisneros, Gilbert (house, 1001-15000); Donalds, Byron (house, 1001-15000); Letlow, Julia (house, 1001-15000) |
 | CMI | 3 | - | Gottheimer, Josh (house, 1001-15000); Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 | COHR | 3 | - | Cisneros, Gilbert (house, 1001-15000); McClain, Lisa (house, 1001-15000); Whitehouse, Sheldon (senate, 15001-50000) |
 | CVLT | 3 | - | Cisneros, Gilbert (house, 1001-15000); Gottheimer, Josh (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 | DDOG | 3 | - | Cisneros, Gilbert (house, 1001-15000); McClain, Lisa (house, 1001-15000); Salazar, Maria Elvira (house, 1001-15000/15001-50000) |
-| DHR | 3 | - | Johnson, Julie (house, 1001-15000); Kean, Thomas H. (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 | FCX | 3 | - | Cisneros, Gilbert (house, 1001-15000); Gottheimer, Josh (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 | FDX | 3 | - | Cisneros, Gilbert (house, 1001-15000); Greene, Marjorie Taylor (house, 15001-50000); Salazar, Maria Elvira (house, 1001-15000/15001-50000) |
 | FN | 3 | - | Cisneros, Gilbert (house, 1001-15000/15001-50000); Gottheimer, Josh (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
@@ -160,7 +168,6 @@ Distinct members with stock purchases per ticker, trailing 90/180/365d, threshol
 | TYL | 3 | - | Cisneros, Gilbert (house, 1001-15000); Hoyle, Valerie (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 | URI | 3 | - | Hoyle, Valerie (house, 1001-15000); Letlow, Julia (house, 1001-15000); Salazar, Maria Elvira (house, 1001-15000) |
 | VST | 3 | - | Letlow, Julia (house, 1001-15000); McClain, Lisa (house, 1001-15000); Pelosi, Nancy (house, 100001-250000) |
-| ZTS | 3 | - | Cisneros, Gilbert (house, 1001-15000); Donalds, Byron (house, 1001-15000); McClain, Lisa (house, 1001-15000) |
 
 ## g3 second cut — REGISTRY MEMBERS ONLY (not pooled with universe)
 
@@ -181,5 +188,5 @@ Same counter restricted to the 12 registry members. Registry co-holding is a dif
 
 The rarest join in the dataset. Tickers appearing in both g1 and g3 in overlapping windows.
 
-**0 rows.** This zero is dominated by g1 being empty (no Form 4 corpus), NOT by a tested-and-rare convergence. Once a Form 4 ingest lands this join becomes meaningful; today it is structurally empty and must not be read as a convergence finding.
+**0 rows — a REAL finding.** g1 fired on ABCL, GUTS, MSTR (multi-insider buying) and g3 fired on 111 congressional co-held tickers, but the two sets do not overlap in any window. True cross-surface convergence (congress co-buying AND multi-insider buying the same name at once) did not occur in the ingested scope — a genuine measure of how rare it is, subject to the coverage-limit above (g1 only sees backfilled issuers).
 

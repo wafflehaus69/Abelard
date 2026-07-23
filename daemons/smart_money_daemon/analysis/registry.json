@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-07-20",
+  "as_of": "2026-07-22",
   "entries": [
     {
       "person_id": 24,
@@ -8,15 +8,15 @@
       "status": "active",
       "role": "performer",
       "scores": {
-        "t_stat": 1.3237454957020516,
-        "wavg_excess_A63": 0.037111346480468176,
-        "wavg_excess_B63": 0.07686258654622848,
+        "t_stat": 1.3166986285582,
+        "wavg_excess_A63": 0.03698458918302652,
+        "wavg_excess_B63": 0.07675695614061447,
         "hit_rate_63A": 0.5,
         "n_events_completed": 42,
         "n_open": 0,
         "median_lag_days": 31.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 25,
@@ -25,15 +25,15 @@
       "status": "active",
       "role": "performer",
       "scores": {
-        "t_stat": 1.655693036695327,
-        "wavg_excess_A63": 0.09101187492247995,
-        "wavg_excess_B63": 0.13673709248797655,
+        "t_stat": 1.6556931608213532,
+        "wavg_excess_A63": 0.09101188351447612,
+        "wavg_excess_B63": 0.13660038980721328,
         "hit_rate_63A": 0.5636363636363636,
         "n_events_completed": 55,
-        "n_open": 16,
+        "n_open": 13,
         "median_lag_days": 20.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 41,
@@ -42,15 +42,15 @@
       "status": "active",
       "role": "performer",
       "scores": {
-        "t_stat": 1.4015917604492112,
-        "wavg_excess_A63": 0.033654587980309396,
-        "wavg_excess_B63": 0.02311257812279482,
+        "t_stat": 1.4015207741019358,
+        "wavg_excess_A63": 0.033653440129953714,
+        "wavg_excess_B63": 0.023112904377677247,
         "hit_rate_63A": 0.5178571428571429,
         "n_events_completed": 56,
         "n_open": 0,
         "median_lag_days": 28.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 62,
@@ -59,15 +59,15 @@
       "status": "active",
       "role": "performer",
       "scores": {
-        "t_stat": 1.2718002104254944,
-        "wavg_excess_A63": 0.0658037002290198,
-        "wavg_excess_B63": 0.08075851953385983,
+        "t_stat": 1.2718010154786226,
+        "wavg_excess_A63": 0.06580374804608911,
+        "wavg_excess_B63": 0.08075847680042932,
         "hit_rate_63A": 0.5882352941176471,
         "n_events_completed": 34,
         "n_open": 10,
         "median_lag_days": 17.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 411,
@@ -76,15 +76,15 @@
       "status": "active",
       "role": "performer",
       "scores": {
-        "t_stat": 1.4446379919393122,
-        "wavg_excess_A63": 0.01950310827334369,
-        "wavg_excess_B63": 0.021008655865322405,
+        "t_stat": 1.4436601792775405,
+        "wavg_excess_A63": 0.019492901137238013,
+        "wavg_excess_B63": 0.021001734119248057,
         "hit_rate_63A": 0.5217391304347826,
         "n_events_completed": 184,
         "n_open": 1,
         "median_lag_days": 29.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 7,
@@ -93,15 +93,15 @@
       "status": "validation",
       "role": "performer",
       "scores": {
-        "t_stat": 1.3150111748653053,
-        "wavg_excess_A63": 0.08327384859274341,
-        "wavg_excess_B63": 0.127135079760899,
+        "t_stat": 1.3149205489694464,
+        "wavg_excess_A63": 0.0833001061085332,
+        "wavg_excess_B63": 0.12719124865799689,
         "hit_rate_63A": 0.589041095890411,
         "n_events_completed": 73,
         "n_open": 0,
         "median_lag_days": 30.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 179,
@@ -110,15 +110,15 @@
       "status": "validation",
       "role": "performer",
       "scores": {
-        "t_stat": 2.0817715118181064,
-        "wavg_excess_A63": 0.06195583618561763,
-        "wavg_excess_B63": 0.028391869150329426,
+        "t_stat": 2.081641387300432,
+        "wavg_excess_A63": 0.06194973573680699,
+        "wavg_excess_B63": 0.02839436952855458,
         "hit_rate_63A": 0.6153846153846154,
         "n_events_completed": 13,
         "n_open": 0,
         "median_lag_days": 29.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 421,
@@ -127,15 +127,15 @@
       "status": "validation",
       "role": "performer",
       "scores": {
-        "t_stat": 1.8567141152087308,
-        "wavg_excess_A63": 0.027994814026606547,
-        "wavg_excess_B63": 0.027535384414330944,
+        "t_stat": 1.8567139535353314,
+        "wavg_excess_A63": 0.02799481339565818,
+        "wavg_excess_B63": 0.02753528460692942,
         "hit_rate_63A": 0.5194805194805194,
         "n_events_completed": 154,
         "n_open": 0,
         "median_lag_days": 18.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 432,
@@ -144,15 +144,15 @@
       "status": "validation",
       "role": "performer",
       "scores": {
-        "t_stat": 2.1361467831493193,
-        "wavg_excess_A63": 0.10418794817851534,
-        "wavg_excess_B63": 0.16212169216422367,
+        "t_stat": 2.136227359815223,
+        "wavg_excess_A63": 0.10418953445351116,
+        "wavg_excess_B63": 0.1621179563286029,
         "hit_rate_63A": 0.7647058823529411,
         "n_events_completed": 17,
         "n_open": 0,
         "median_lag_days": 29.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 407,
@@ -162,15 +162,15 @@
       "role": "btc_flow_sentinel",
       "rationale": "cluster corrected picking t stat near zero tracked as crypto flow sentinel not a picker",
       "scores": {
-        "t_stat": 0.023059415027331998,
-        "wavg_excess_A63": 0.004046382038495849,
-        "wavg_excess_B63": -0.011680672418001695,
+        "t_stat": 0.023059970049214104,
+        "wavg_excess_A63": 0.004046479545247836,
+        "wavg_excess_B63": -0.0116806191815671,
         "hit_rate_63A": 0.5,
         "n_events_completed": 2,
         "n_open": 0,
         "median_lag_days": 19.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 28,
@@ -180,15 +180,15 @@
       "role": "qualitative_watch",
       "rationale": "non index book energy bdc shipping composition watch not skill claim",
       "scores": {
-        "t_stat": 0.9970164079174164,
-        "wavg_excess_A63": 0.012131215512772835,
-        "wavg_excess_B63": 0.017610857716089983,
+        "t_stat": 0.9958770156335041,
+        "wavg_excess_A63": 0.012116384179229755,
+        "wavg_excess_B63": 0.017618363253085505,
         "hit_rate_63A": 0.5365853658536586,
         "n_events_completed": 164,
         "n_open": 2,
         "median_lag_days": 22.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
     },
     {
       "person_id": 32,
@@ -198,15 +198,70 @@
       "role": "performer_seeded",
       "rationale": "fastest discloser 16d median lag dual benchmark positive t 2.01 seeded on abelard rec mando approved",
       "scores": {
-        "t_stat": 2.006740203914792,
-        "wavg_excess_A63": 0.043280804127307754,
-        "wavg_excess_B63": 0.004321441193497812,
+        "t_stat": 2.006936741802074,
+        "wavg_excess_A63": 0.04328183898409625,
+        "wavg_excess_B63": 0.004326343703675632,
         "hit_rate_63A": 0.55,
         "n_events_completed": 40,
         "n_open": 0,
         "median_lag_days": 16.0
       },
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "Duquesne Family Office LLC",
+      "cik": "0001536411",
+      "chamber": null,
+      "status": "active",
+      "role": "manager_13f",
+      "type": "manager_13f",
+      "scores": null,
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "Thiel Macro LLC",
+      "cik": "0001562087",
+      "chamber": null,
+      "status": "active",
+      "role": "manager_13f",
+      "type": "manager_13f",
+      "scores": null,
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "Founders Fund VII Management, LLC",
+      "cik": "0001846021",
+      "chamber": null,
+      "status": "active",
+      "role": "manager_13f",
+      "type": "manager_13f",
+      "scores": null,
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "Founders Fund Growth II Management, LP",
+      "cik": "0002106825",
+      "chamber": null,
+      "status": "active",
+      "role": "manager_13f",
+      "type": "manager_13f",
+      "scores": null,
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "Affinity Partners GP LP",
+      "cik": "0002059583",
+      "chamber": null,
+      "status": "active",
+      "role": "manager_13f",
+      "type": "manager_13f",
+      "scores": null,
+      "as_of": "2026-07-22"
     },
     {
       "person_id": null,
@@ -217,7 +272,40 @@
       "role": "manager_13f",
       "type": "manager_13f",
       "scores": null,
-      "as_of": "2026-07-20"
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "TRUMP DONALD J",
+      "cik": "0000947033",
+      "chamber": null,
+      "status": "active",
+      "role": "trump_network",
+      "type": "trump_network",
+      "scores": null,
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "Trump Donald J. JR",
+      "cik": "0002016181",
+      "chamber": null,
+      "status": "active",
+      "role": "trump_network",
+      "type": "trump_network",
+      "scores": null,
+      "as_of": "2026-07-22"
+    },
+    {
+      "person_id": null,
+      "name": "THIEL PETER",
+      "cik": "0001211060",
+      "chamber": null,
+      "status": "active",
+      "role": "trump_network",
+      "type": "trump_network",
+      "scores": null,
+      "as_of": "2026-07-22"
     }
   ]
 }
