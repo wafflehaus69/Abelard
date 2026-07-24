@@ -35,7 +35,7 @@ from ..config import (
     DEFAULT_WORD_TICKER_ALLOWLIST,
     HAIKU_MODEL_ID,
 )
-from ..matching import Matcher, audit_name_match, build_name_map  # re-exported below
+from ..matching import Matcher, build_name_map  # re-exported below
 from ..schema import CostTelemetry, Metrics, NormalizedRecord, Sentiment
 from ..sentiment import AnthropicProvider, SentimentError, classify_stance
 from ..watchlist import WatchlistConfig
@@ -44,8 +44,8 @@ from .base import ScanContext, SourceResult
 SOURCE_NAME = "smg"
 WINDOW_LABEL = "24h"
 
-# Re-exported for callers/tests that import the audit + name-map helpers from here.
-__all__ = ["SmgSource", "audit_name_match", "build_name_map"]
+# Re-exported for callers/tests that import the name-map helper from here.
+__all__ = ["SmgSource", "build_name_map"]
 
 _TAG_RE = re.compile(r"<[^>]+>")
 

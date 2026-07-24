@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
 from abelard_common import ticker_noise
 from abelard_common.company_aliases import NameResolver, build_name_resolver
@@ -21,6 +22,19 @@ from .watchlist import WatchlistConfig
 # Provenance: the cashtag path, mirroring ticker_noise's cashtag regex so callers
 # can tag `matched_by` without reaching into the shared module's internals.
 _CASHTAG_RE = re.compile(r"\$([A-Za-z]{1,5}(?:\.[A-Za-z])?)\b")
+
+_NONWORD_RE = re.compile(r"[^a-z0-9]+")
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def normalize_title(text: str, *, strip_urls: bool = False) -> str:
+    """Cross-source dedup key for a headline/tweet: lowercase, URLs optionally stripped,
+    punctuation -> spaces, whitespace collapsed. One home for what the Yahoo/Finnhub dedup, the
+    news summarizer, and Twitter's dedupe-key (strip_urls=True) all need."""
+    s = text.lower()
+    if strip_urls:
+        s = _URL_RE.sub(" ", s)
+    return " ".join(_NONWORD_RE.sub(" ", s).split())
 
 
 def build_name_map(watchlist: WatchlistConfig, shared_map: dict[str, str]) -> dict[str, str]:
@@ -44,20 +58,11 @@ def build_name_map(watchlist: WatchlistConfig, shared_map: dict[str, str]) -> di
     return out
 
 
-def audit_name_match(
-    watchlist: WatchlistConfig, shared_map: dict[str, str]
-) -> dict[str, list[str]]:
-    """`{symbol: resolved_names}` for every `name_match:true` ticker. A symbol
-    mapping to `[]` resolves NOTHING — the silent can't-match bug the audit forbids."""
-    name_map = build_name_map(watchlist, shared_map)
-    inverted: dict[str, list[str]] = {}
-    for name, sym in name_map.items():
-        inverted.setdefault(sym, []).append(name)
-    return {
-        spec.symbol: sorted(inverted.get(spec.symbol, []))
-        for spec in watchlist.active_tickers
-        if spec.name_match
-    }
+@lru_cache(maxsize=512)
+def _symbol_boundary_re(symbol: str) -> re.Pattern[str]:
+    r"""Compiled `\b<sym>\b` matcher, cached per symbol — title_mentions_ticker runs in nested
+    loops, so recompiling per call was tens of thousands of re.compile per watchlist."""
+    return re.compile(rf"\b{re.escape(symbol.lower())}\b")
 
 
 def title_mentions_ticker(title: str, symbol: str, aliases=None) -> bool:
@@ -66,7 +71,7 @@ def title_mentions_ticker(title: str, symbol: str, aliases=None) -> bool:
     source of truth for 'direct mention', shared by the report's headline-relevance filter
     (Order 11) and the Finnhub news-summary gate (Order 15)."""
     t = title.lower()
-    if symbol and re.search(rf"\b{re.escape(symbol.lower())}\b", t):
+    if symbol and _symbol_boundary_re(symbol).search(t):
         return True
     return any(a and a in t for a in (aliases or ()))
 

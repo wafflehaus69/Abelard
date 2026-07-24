@@ -34,17 +34,17 @@ from chatter_daemon.schema import (
 )
 
 
-def _wsig(source, *, count=0, i24=None, i7=None, im=None, headlines=None, state="building", sentiment=None, st_aggregate=None, news_summary=None, observed_window=None, twitter_summary=None, news_sentiment=None):
+def _wsig(source, *, count=0, headlines=None, state="building", sentiment=None, st_aggregate=None, news_summary=None, observed_window=None, twitter_summary=None, news_sentiment=None):
     return SourceSignal(
         source=source,
-        metrics=Metrics(mention_count=count, interest_24h=i24, interest_7d=i7, interest_monthly=im, headlines=headlines),
+        metrics=Metrics(mention_count=count, headlines=headlines),
         sentiment=sentiment or Sentiment(method="none"),
         st_aggregate=st_aggregate,
         news_summary=news_summary,
         observed_window=observed_window,
         twitter_summary=twitter_summary,
         news_sentiment=news_sentiment,
-        anomaly=Anomaly(kind="trend" if source == "google_trends" else "count", state=state),
+        anomaly=Anomaly(kind="count", state=state),
     )
 
 
@@ -79,9 +79,9 @@ def _wresult(tickers, *, degraded=False, sources=None):
 
 def test_ranking_peak_magnitude_beats_diversity():
     nvda = _wt("NVDA", [_wsig("finnhub_news", count=218)], 1)  # loud on ONE source
-    weak = _wt("XYZ", [_wsig("smg", count=2), _wsig("stocktwits", count=1), _wsig("google_trends", i24=5.0)], 3)
+    weak = _wt("XYZ", [_wsig("smg", count=2), _wsig("stocktwits", count=1)], 2)
     ranked = rank_watchlist(_wresult([weak, nvda]))
-    assert [t.ticker for t in ranked] == ["NVDA", "XYZ"]  # 218 outranks the weak triple
+    assert [t.ticker for t in ranked] == ["NVDA", "XYZ"]  # 218 outranks the weak pair
 
 
 def test_quiet_tail_is_diversity_zero():
@@ -93,9 +93,9 @@ def test_quiet_tail_is_diversity_zero():
 def test_degraded_banner():
     sources = [
         SourceStatus(source="stocktwits", ok=True, record_count=5),
-        SourceStatus(source="google_trends", ok=False, record_count=0, error="429"),
+        SourceStatus(source="finnhub_news", ok=False, record_count=0, error="429"),
     ]
-    assert degraded_banner(sources, True) == "Partial scan: Google Trends unavailable this run."
+    assert degraded_banner(sources, True) == "Partial scan: Finnhub news unavailable this run."
     assert degraded_banner(sources, False) is None
 
 
@@ -146,7 +146,7 @@ def test_render_watchlist_pdf_is_valid(tmp_path):
     res = _wresult(
         [nvda, _wt("BAI", [], 0)],
         degraded=True,
-        sources=[SourceStatus(source="google_trends", ok=False, record_count=0, error="429")],
+        sources=[SourceStatus(source="finnhub_news", ok=False, record_count=0, error="429")],
     )
     out = tmp_path / "report.pdf"
     render_report(res, out)
@@ -199,10 +199,9 @@ def test_no_stance_for_method_none():
     from chatter_daemon.report import _social_band_html, _stance_phrase
 
     fin = _wsig("finnhub_news", count=10, headlines=[Headline(title="x", url="http://x")])
-    trend = _wsig("google_trends", i24=50.0)
-    # Finnhub/Trends carry no stance — absent from the digest stance AND the social band.
-    assert _stance_phrase(fin) is None and _stance_phrase(trend) is None
-    assert _social_band_html(fin) is None and _social_band_html(trend) is None
+    # Finnhub carries no stance — absent from the digest stance AND the social band.
+    assert _stance_phrase(fin) is None
+    assert _social_band_html(fin) is None
 
 
 def test_divergence_callout_fires_on_disagreement():
@@ -301,7 +300,7 @@ def test_utf8_headline_roundtrips_persist_load_render(tmp_path):
 
 def _blze_agg():
     return _stagg(sent_now_norm=98, sent_now_label="EXTREMELY_BULLISH", sent_24h_norm=40,
-                  sent_24h_label="BEARISH", sent_gap=58, vol_now_norm=98, vol_now_raw=41730,
+                  sent_gap=58, vol_now_norm=98, vol_now_raw=41730,
                   participation_norm=74, confidence="high")
 
 
@@ -435,11 +434,10 @@ def test_meta_bits_compact_counts_no_titles():
 
     t = _wt("MU", [
         _wsig("finnhub_news", count=131, headlines=[Headline(title="x", url="http://x")]),
-        _wsig("google_trends", i24=48.2),
         _wsig("smg", count=47, sentiment=_sent("haiku", 14, 19, 0)),
         _wsig("stocktwits", st_aggregate=_blze_agg()),
-    ], 4)
-    assert _meta_bits(t) == ["131 headlines", "interest 48", "47 /smg/"]  # no titles, no ST count
+    ], 3)
+    assert _meta_bits(t) == ["131 headlines", "47 /smg/"]  # no titles, no ST count
 
 
 def test_news_lines_omits_absent_smg():
@@ -591,7 +589,7 @@ def test_banded_pdf_renders_valid(tmp_path):
         _wsig("stocktwits", st_aggregate=_blze_agg(), state="spike"),
     ], 3)
     res = _wresult([mu, _wt("BAI", [], 0)], degraded=True,
-                   sources=[SourceStatus(source="google_trends", ok=False, record_count=0, error="429")])
+                   sources=[SourceStatus(source="finnhub_news", ok=False, record_count=0, error="429")])
     out = tmp_path / "banded.pdf"
     render_report(res, out)
     data = out.read_bytes()

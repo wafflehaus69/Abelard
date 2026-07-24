@@ -21,7 +21,7 @@ W = derive_windows(FIXED)
 FLOORS = {"finnhub_news": 3, "smg": 3, "stocktwits": 10}
 
 
-def _rec(ticker, source, *, count=0, i24=None, i7=None, im=None, flags=None, window="24h"):
+def _rec(ticker, source, *, count=0, flags=None, window="24h"):
     return NormalizedRecord(
         watchlist="w",
         scan_mode="watchlist",
@@ -30,7 +30,7 @@ def _rec(ticker, source, *, count=0, i24=None, i7=None, im=None, flags=None, win
         source=source,
         ticker=ticker,
         matched_by=[],
-        metrics=Metrics(mention_count=count, interest_24h=i24, interest_7d=i7, interest_monthly=im),
+        metrics=Metrics(mention_count=count),
         sentiment=Sentiment(method="none"),
         flags=flags or [],
     )

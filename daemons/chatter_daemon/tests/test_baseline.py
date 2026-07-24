@@ -24,7 +24,7 @@ def _append(conn, ts, count, *, ticker="NVDA", source="stocktwits"):
     )
 
 
-def _read(conn, *, window=20, now=10_000, ticker="NVDA", source="stocktwits", max_age_s=None):
+def _read(conn, *, window=20, now=10_000, ticker="NVDA", source="stocktwits"):
     return read_baseline(
         conn,
         watchlist="w",
@@ -32,7 +32,6 @@ def _read(conn, *, window=20, now=10_000, ticker="NVDA", source="stocktwits", ma
         source=source,
         window=window,
         now=now,
-        max_age_s=max_age_s,
     )
 
 
@@ -98,12 +97,3 @@ def test_rerun_overwrites(tmp_path):
     _append(conn, 100, 20)  # same ts -> overwrite, not a second row
     b = _read(conn, now=999)
     assert b.n == 1 and b.mean == 20.0
-
-
-def test_max_age_bounds_lookback(tmp_path):
-    conn = _store(tmp_path)
-    _append(conn, 1_000, 5)  # old
-    _append(conn, 9_000, 15)  # recent
-    # now=10_000, max_age 2_000 -> only ts >= 8_000 (the 9_000 obs)
-    b = _read(conn, now=10_000, max_age_s=2_000)
-    assert b.n == 1 and b.mean == 15.0

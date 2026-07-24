@@ -1,4 +1,4 @@
-"""/smg/ plugin — dual-scan, boundary discipline, rarity, decode, audit, raises."""
+"""/smg/ plugin — dual-scan, boundary discipline, rarity, decode, raises."""
 
 from __future__ import annotations
 
@@ -8,18 +8,16 @@ import pytest
 import requests
 
 from abelard_common import fourchan_fetch
-from abelard_common.company_aliases import load_name_map
 from abelard_common.fourchan_fetch import FourchanError, NoSmgThreadError
 from chatter_daemon.config import (
     _default_common_words_path,
     _default_company_names_path,
     _default_slang_blacklist_path,
-    _default_watchlists_dir,
 )
 from chatter_daemon.orchestrator import run_scan
 from chatter_daemon.sources.base import ScanContext
-from chatter_daemon.sources.smg import SmgSource, audit_name_match
-from chatter_daemon.watchlist import WatchlistConfig, load_watchlist
+from chatter_daemon.sources.smg import SmgSource
+from chatter_daemon.watchlist import WatchlistConfig
 from chatter_daemon.windows import derive_windows, iso_z
 
 FIXED = 1_718_733_600
@@ -163,14 +161,6 @@ def test_malformed_thread_raises():
         _smg(_fetcher([_FakeResp(200, _CATALOG), _FakeResp(200, bad_thread)])).fetch(
             WL, context=_ctx()
         )
-
-
-def test_audit_clean_on_barber_growth():
-    wl = load_watchlist("barber_growth", watchlists_dir=_default_watchlists_dir())
-    shared = load_name_map(_default_company_names_path())
-    audit = audit_name_match(wl, shared)
-    empty = [sym for sym, names in audit.items() if not names]
-    assert empty == []  # no name_match:true ticker resolves nothing
 
 
 def test_end_to_end_via_run_scan():

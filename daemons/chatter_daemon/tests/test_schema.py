@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from chatter_daemon.schema import NormalizedRecord, ScanEnvelope
-from chatter_daemon.sources.base import ChatterPost, Source, SourceResult
+from chatter_daemon.sources.base import Source, SourceResult
 
 _WINDOW = {"start": "2026-06-17T18:00:00Z", "end": "2026-06-18T18:00:00Z", "label": "24h"}
 
@@ -85,10 +85,7 @@ def test_source_protocol_runtime_checkable():
     assert not isinstance(object(), Source)
 
 
-def test_chatterpost_and_sourceresult_construct():
-    post = ChatterPost(source="stocktwits", post_id="t3_abc", text="GME to the moon")
-    assert post.explicit_symbols == ()
-    assert post.meta == {}
+def test_sourceresult_construct():
     res = SourceResult(source="stocktwits", warnings=["degraded"], error=None)
     assert res.records == []
     assert res.warnings == ["degraded"]

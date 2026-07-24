@@ -21,7 +21,6 @@ in the aggregate; keeps Chatter's locked per-ticker architecture.
 from __future__ import annotations
 
 import logging
-import re
 from datetime import timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -35,7 +34,12 @@ from ..config import (
     DEFAULT_YAHOO_ROUNDUP_MAX,
     DEFAULT_YAHOO_STALE_AFTER_H,
 )
-from ..matching import count_named_tickers, title_mentions_ticker, watchlist_alias_map
+from ..matching import (
+    count_named_tickers,
+    normalize_title,
+    title_mentions_ticker,
+    watchlist_alias_map,
+)
 from ..schema import Headline, Metrics, NormalizedRecord, Sentiment
 from ..watchlist import WatchlistConfig
 from .base import ScanContext, SourceResult
@@ -48,12 +52,6 @@ _BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
-_NONWORD_RE = re.compile(r"[^a-z0-9]+")
-
-
-def _norm_title(title: str) -> str:
-    """Normalized title key for the dedup vs Finnhub — lowercase, punctuation-stripped, ws-collapsed."""
-    return " ".join(_NONWORD_RE.sub(" ", title.lower()).split())
 
 
 def _parse_items(xml_text: str) -> list[dict]:
@@ -182,7 +180,7 @@ class YahooRssSource:
                 continue  # this ticker not named IN THE TITLE (Yahoo's ?s= feed is mixed)
             if self._roundup_max and count_named_tickers(title, alias_map) >= self._roundup_max:
                 continue  # a market roundup naming many tickers -> drop (the cross-ticker dup)
-            key = _norm_title(title)
+            key = normalize_title(title)
             if not key or key in seen_fin or key in seen_local:
                 continue  # blank, already in Finnhub (dedup), or a within-feed duplicate
             seen_local.add(key)
@@ -215,7 +213,7 @@ class YahooRssSource:
             if getattr(r, "source", None) != "finnhub_news":
                 continue
             heads = getattr(r.metrics, "headlines", None) or []
-            out.setdefault(r.ticker.upper(), set()).update(_norm_title(h.title) for h in heads)
+            out.setdefault(r.ticker.upper(), set()).update(normalize_title(h.title) for h in heads)
         return out
 
     def _aliases(self, watchlist: WatchlistConfig) -> dict[str, list[str]]:

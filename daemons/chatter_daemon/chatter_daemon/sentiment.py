@@ -236,6 +236,28 @@ def _first_text(response: Any) -> str:
     return ""
 
 
+def _summarize(*, system: str, user: str, max_tokens: int, model, client, cost, label: str) -> str:
+    """One Anthropic call -> a one-paragraph summary; the shared spine of summarize_news +
+    summarize_tweets. Caches the system prompt, accumulates token usage immediately (doctrine
+    #8), and fails loud (SentimentError) on a transport / empty-text failure so the caller
+    degrades to None + a warning."""
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": user}],
+        )
+    except Exception as exc:  # SDK / transport — degrade to None, never fabricate.
+        raise SentimentError(f"{label} call failed: {exc}") from exc
+    cost.haiku_calls += 1
+    _accumulate_usage(getattr(response, "usage", None), cost)
+    text = _first_text(response)
+    if not text:
+        raise SentimentError(f"{label} returned no text")
+    return text
+
+
 # --- Order 15: named-news one-paragraph summary (factual cause, no stance) -------------
 
 _SUMMARY_SYSTEM = (
@@ -265,21 +287,10 @@ def summarize_news(*, titles, ticker, company, client, model, cost) -> str:
         f"Ticker: {ticker}\nCompany: {company or ticker}\n\nHeadlines:\n"
         + "\n".join(f"- {t}" for t in titles)
     )
-    try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=_SUMMARY_MAX_TOKENS,
-            system=[{"type": "text", "text": _SUMMARY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": user}],
-        )
-    except Exception as exc:  # SDK / transport — degrade to None, never fabricate.
-        raise SentimentError(f"news summary call failed: {exc}") from exc
-    cost.haiku_calls += 1
-    _accumulate_usage(getattr(response, "usage", None), cost)
-    text = _first_text(response)
-    if not text:
-        raise SentimentError("news summary returned no text")
-    return text
+    return _summarize(
+        system=_SUMMARY_SYSTEM, user=user, max_tokens=_SUMMARY_MAX_TOKENS,
+        model=model, client=client, cost=cost, label="news summary",
+    )
 
 
 # --- Order 18: Twitter commentary summary (<=3 sentences, crowd talk, no stance) --------
@@ -308,21 +319,10 @@ def summarize_tweets(*, texts, ticker, client, model, cost) -> str:
     if not texts:
         return ""
     user = f"Ticker: {ticker}\n\nTweets:\n" + "\n".join(f"- {t}" for t in texts)
-    try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=_TWEET_SUMMARY_MAX_TOKENS,
-            system=[{"type": "text", "text": _TWEET_SUMMARY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": user}],
-        )
-    except Exception as exc:  # SDK / transport — degrade to None, never fabricate.
-        raise SentimentError(f"tweet summary call failed: {exc}") from exc
-    cost.haiku_calls += 1
-    _accumulate_usage(getattr(response, "usage", None), cost)
-    text = _first_text(response)
-    if not text:
-        raise SentimentError("tweet summary returned no text")
-    return text
+    return _summarize(
+        system=_TWEET_SUMMARY_SYSTEM, user=user, max_tokens=_TWEET_SUMMARY_MAX_TOKENS,
+        model=model, client=client, cost=cost, label="tweet summary",
+    )
 
 
 def summary_cost_usd(cost) -> float:

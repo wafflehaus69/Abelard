@@ -3,8 +3,8 @@ anomaly layer z-scores against.
 
 Mirrors BizDaemon's `storage.py` (WAL, autocommit, `INSERT ... ON CONFLICT`). One
 observation row per `(watchlist, ticker, source, canonical_unix)` carrying that
-scan's count. The trailing baseline (mean mu, std sigma over the last K observations,
-optionally bounded to the last D days) is computed per `(watchlist, ticker, source)`.
+scan's count. The trailing baseline (mean mu, std sigma over the last K observations)
+is computed per `(watchlist, ticker, source)`.
 
 ORDERING INVARIANT: `read_baseline` excludes the current scan — it reads rows with
 `canonical_unix < now`. The orchestrator reads the baseline, computes the anomaly,
@@ -113,25 +113,16 @@ def read_baseline(
     source: str,
     window: int,
     now: int,
-    max_age_s: int | None = None,
 ) -> Baseline:
     """Trailing baseline over the last `window` observations strictly BEFORE `now`.
 
-    `max_age_s`, when set, additionally bounds the lookback to `[now - max_age_s, now)`
-    (the "last D days" knob). Returns `Baseline(0, 0.0, 0.0)` when there is no prior
-    history.
+    Returns `Baseline(0, 0.0, 0.0)` when there is no prior history.
     """
-    params: list[object] = [watchlist, ticker, source, int(now)]
-    age_clause = ""
-    if max_age_s is not None:
-        age_clause = " AND canonical_unix >= ?"
-        params.append(int(now) - int(max_age_s))
-    params.append(int(window))
+    params: list[object] = [watchlist, ticker, source, int(now), int(window)]
     rows = conn.execute(
         "SELECT count FROM observations "
-        "WHERE watchlist=? AND ticker=? AND source=? AND canonical_unix < ?"
-        + age_clause
-        + " ORDER BY canonical_unix DESC LIMIT ?",
+        "WHERE watchlist=? AND ticker=? AND source=? AND canonical_unix < ? "
+        "ORDER BY canonical_unix DESC LIMIT ?",
         params,
     ).fetchall()
 

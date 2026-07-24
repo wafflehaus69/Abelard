@@ -3,7 +3,7 @@ AggregatedScanResult, mirroring News Watch's read-brief.
 
 Pure: takes the validated result, returns a string (the CLI owns IO + fail-loud
 loading). Counts are labeled by SOURCE SEMANTICS — "N headlines" (Finnhub), "N
-mentions" (Reddit, /smg/), "interest X (7d Y / mo Z)" (Trends). Bull/bear shown where
+mentions" (Reddit, /smg/). Bull/bear shown where
 `method != none`. Per ticker: `source_diversity` + per-source anomaly tag + flags.
 
 Surfaces the run's `degraded` + per-source state + a cost summary — closing
@@ -56,15 +56,8 @@ def render_chatter(result: AggregatedScanResult) -> str:
 
 
 def _render_signal(sig: SourceSignal) -> str:
-    if sig.source == "google_trends":
-        m = sig.metrics
-        if m.interest_24h is None:
-            body = "interest n/a"
-        else:
-            body = f"interest {m.interest_24h} (7d {m.interest_7d} / mo {m.interest_monthly})"
-    else:
-        noun = _COUNT_NOUN.get(sig.source, "items")
-        body = f"{sig.metrics.mention_count} {noun}"
+    noun = _COUNT_NOUN.get(sig.source, "items")
+    body = f"{sig.metrics.mention_count} {noun}"
 
     sent = ""
     if sig.sentiment.method != "none":
@@ -82,11 +75,9 @@ def _anomaly_tag(a: Anomaly) -> str:
     if a.state == "spike":
         if a.kind == "count" and a.z is not None:
             tag = f"SPIKE z={a.z}"
-        elif a.kind == "trend" and a.ratio is not None:
-            tag = f"SPIKE x{a.ratio}"
         else:
             tag = "SPIKE"
-        return tag + (" (discounted)" if a.discounted else "")
+        return tag
     if a.state == "building":
         return f"building {a.observations} obs"
     if a.state == "thin":
@@ -96,8 +87,6 @@ def _anomaly_tag(a: Anomaly) -> str:
     # ok
     if a.kind == "count" and a.z is not None:
         return f"ok z={a.z}"
-    if a.kind == "trend" and a.ratio is not None:
-        return f"ok x{a.ratio}" + (" (discounted)" if a.discounted else "")
     return f"ok ({a.note})" if a.note else "ok"
 
 

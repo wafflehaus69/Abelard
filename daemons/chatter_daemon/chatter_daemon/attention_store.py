@@ -70,21 +70,14 @@ def read_baseline(
     source: str,
     window: int,
     now: int,
-    max_age_s: int | None = None,
 ) -> Baseline:
     """Trailing baseline over the last `window` observations strictly BEFORE `now`
     (the velocity substrate; current scan excluded). Sample std (n-1); 0.0 when n<2."""
-    params: list[object] = [ticker, source, int(now)]
-    age_clause = ""
-    if max_age_s is not None:
-        age_clause = " AND scan_ts >= ?"
-        params.append(int(now) - int(max_age_s))
-    params.append(int(window))
+    params: list[object] = [ticker, source, int(now), int(window)]
     rows = conn.execute(
         "SELECT count FROM attention_observations "
-        "WHERE ticker=? AND source=? AND scan_ts < ?"
-        + age_clause
-        + " ORDER BY scan_ts DESC LIMIT ?",
+        "WHERE ticker=? AND source=? AND scan_ts < ? "
+        "ORDER BY scan_ts DESC LIMIT ?",
         params,
     ).fetchall()
 

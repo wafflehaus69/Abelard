@@ -18,14 +18,13 @@ logic; a ticker's summary sees only its own headlines)."""
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
 from abelard_common.company_aliases import load_name_map
 
 from .config import DEFAULT_SUMMARY_COST_CAP_USD, DEFAULT_SUMMARY_MODEL
-from .matching import title_mentions_ticker, watchlist_alias_map
+from .matching import normalize_title, title_mentions_ticker, watchlist_alias_map
 from .schema import CostTelemetry, NormalizedRecord
 from .sentiment import AnthropicProvider, SentimentError, summarize_news, summary_cost_usd
 from .watchlist import WatchlistConfig
@@ -34,13 +33,6 @@ from .watchlist import WatchlistConfig
 # keeps it). Social sources (/smg/, StockTwits, Twitter) carry posts, not articles — excluded.
 NEWS_SOURCES = ("yahoo_rss", "finnhub_news", "alpha_vantage")
 _SUMMARY_HEADLINE_CAP = 15  # top-N titles per summary call (freshest-feed-first)
-_NONWORD_RE = re.compile(r"[^a-z0-9]+")
-
-
-def _norm_title(title: str) -> str:
-    """Dedup key — lowercase, punctuation-stripped, whitespace-collapsed (matches the Yahoo/Finnhub
-    dedup normalization, so the same story across feeds folds to one input line)."""
-    return " ".join(_NONWORD_RE.sub(" ", title.lower()).split())
 
 
 class NewsSummarizer:
@@ -138,7 +130,7 @@ class NewsSummarizer:
             merged: list[str] = []
             for src in NEWS_SOURCES:  # freshest feed first
                 for title in per_src[src].get(key, ()):
-                    nk = _norm_title(title)
+                    nk = normalize_title(title)
                     if nk and nk not in seen:
                         seen.add(nk)
                         merged.append(title)

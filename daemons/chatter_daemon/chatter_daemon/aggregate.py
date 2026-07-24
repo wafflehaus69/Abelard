@@ -24,10 +24,8 @@ from .schema import (
     SourceSignal,
 )
 
-# Sources whose signal is a count z-scored against the baseline store. StockTwits is
-# left OUT (Order 12) — its velocity is the aggregate's now-vs-24h gap, not a rolling
-# count, so it never touches the rolling store.
-COUNT_SOURCES = frozenset({"finnhub_news", "smg", "yahoo_rss", "alpha_vantage"})
+# StockTwits is left OUT of the count-z-score path (Order 12) — its velocity is the
+# aggregate's now-vs-24h gap, not a rolling count, so it never touches the rolling store.
 STOCKTWITS_SOURCE = "stocktwits"
 ST_GAP_SPIKE = 15  # |now - 24h| sentiment points that flags an igniting/cooling name
 
@@ -52,7 +50,6 @@ def build_aggregate(
     baseline_min_obs: int,
     spike_z_threshold: float,
     now: int,
-    max_age_s: int | None = None,
     news_summaries: dict[tuple[str, str], str] | None = None,
 ) -> AggregatedScanResult:
     """Build the persisted aggregate from one scan envelope + the baseline store.
@@ -93,7 +90,6 @@ def build_aggregate(
                     source=rec.source,
                     window=baseline_window,
                     now=now,
-                    max_age_s=max_age_s,
                 )
                 anomaly = compute_count_anomaly(
                     baseline,
@@ -113,7 +109,6 @@ def build_aggregate(
                     metrics=rec.metrics,
                     sentiment=rec.sentiment,
                     st_aggregate=rec.st_aggregate,
-                    news_summary=rec.news_summary,
                     observed_window=rec.observed_window,
                     twitter_summary=rec.twitter_summary,
                     news_sentiment=rec.news_sentiment,
@@ -152,4 +147,4 @@ def build_aggregate(
     )
 
 
-__all__ = ["COUNT_SOURCES", "build_aggregate"]
+__all__ = ["build_aggregate"]

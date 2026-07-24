@@ -25,7 +25,7 @@ alone when StockTwits is dark.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from abelard_common import fourchan_fetch
 
@@ -33,8 +33,6 @@ from .matching import Matcher
 
 SMG_SOURCE = "smg_freq"
 STOCKTWITS_SOURCE = "stocktwits_trending"
-
-_DAY_SECONDS = 24 * 60 * 60
 
 
 @dataclass
@@ -49,15 +47,6 @@ class SurfaceCounts:
     counts: dict[str, int] = field(default_factory=dict)
     warning: str | None = None
     meta: dict[str, dict] = field(default_factory=dict)
-
-
-@runtime_checkable
-class StockTwitsTrendingClient(Protocol):
-    def trending(self) -> list[dict]:
-        """Return the current trending symbol objects (top-30, pre-ranked). Each is a
-        dict with at least `symbol`; `rank` / `trending_score` / `watchlist_count` /
-        `sector` and a nullable `trends.summary` ride along. Raises on a CF wall."""
-        ...
 
 
 def pull_smg_frequency(fetcher: Any, matcher: Matcher) -> SurfaceCounts:
@@ -168,7 +157,6 @@ def format_distribution(results: list[SurfaceCounts]) -> str:
 __all__ = [
     "SMG_SOURCE",
     "STOCKTWITS_SOURCE",
-    "StockTwitsTrendingClient",
     "SurfaceCounts",
     "format_distribution",
     "pull_smg_frequency",

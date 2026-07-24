@@ -211,7 +211,7 @@ def test_parser_now_primary_not_24h():
     # BLZE: now EXTREMELY_BULLISH 98; 24h is the stale BEARISH 40. We report NOW.
     a = parse_sentiment_aggregate(_gateway("BLZE"))
     assert a.sent_now_norm == 98 and a.sent_now_label == "EXTREMELY_BULLISH"
-    assert a.sent_24h_norm == 40 and a.sent_24h_label == "BEARISH"  # baseline, NOT the headline
+    assert a.sent_24h_norm == 40  # baseline, NOT the headline
     # XOVR: now EXTREMELY_BEARISH 14
     x = parse_sentiment_aggregate(_gateway("XOVR"))
     assert x.sent_now_norm == 14 and x.sent_now_label == "EXTREMELY_BEARISH"

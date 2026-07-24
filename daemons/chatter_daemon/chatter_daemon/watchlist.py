@@ -115,7 +115,6 @@ class WatchlistConfig(BaseModel):
 # Portfolio CSV — the human-editable form (a spreadsheet round-trips it). `names` are
 # pipe-separated within their cell; booleans are true/false (blank -> the field default);
 # `notes` may contain commas (csv quoting handles them). Columns mirror TickerSpec.
-_CSV_HEADER = ["symbol", "names", "name_match", "is_etf", "enabled", "ambiguous_name", "notes"]
 
 
 def _watchlist_from_json(path: Path) -> WatchlistConfig:
@@ -170,25 +169,6 @@ def _watchlist_from_csv(path: Path) -> WatchlistConfig:
         return WatchlistConfig(name=path.stem, tickers=specs)
     except Exception as exc:  # pydantic ValidationError -> loud, with the detail
         raise WatchlistError(f"portfolio validation failed for {path}: {exc}") from exc
-
-
-def write_watchlist_csv(wl: WatchlistConfig, path: Path) -> None:
-    """Write a WatchlistConfig to the portfolio CSV format — the inverse of
-    `_watchlist_from_csv`, so a JSON list can be exported for spreadsheet editing."""
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    writer.writerow(_CSV_HEADER)
-    for t in wl.tickers:
-        writer.writerow([
-            t.symbol,
-            "|".join(t.names),
-            str(t.name_match).lower(),
-            str(t.is_etf).lower(),
-            str(t.enabled).lower(),
-            str(t.ambiguous_name).lower(),
-            t.notes or "",
-        ])
-    path.write_text(buf.getvalue(), encoding="utf-8")
 
 
 def load_watchlist(name: str, *, watchlists_dir: Path) -> WatchlistConfig:

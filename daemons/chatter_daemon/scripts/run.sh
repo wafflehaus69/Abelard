@@ -22,10 +22,18 @@ if [ -z "$PY" ]; then
 fi
 [ -n "$PY" ] && [ -x "$PY" ] || { echo "run.sh: no venv python found (set \$PYTHON)" >&2; exit 2; }
 
+# Self-heal the Twitter-CLI patch (idempotent). A pipx reinstall silently reverts it and the
+# Twitter lane goes dark with no obvious cause; re-applying here keeps runs repeatable. Best-effort.
+"$PY" scripts/patch_twitter_cli.py 2>&1 | sed 's/^/run.sh: twitter-patch: /' || true
+
+# Optional watchlist arg: `run.sh mando_watch_list` scans just that list; no arg = every list.
+WL="${1:-}"
+if [ -n "$WL" ]; then SCAN=(scan --watchlist "$WL"); else SCAN=(scan --all); fi
+
 TMP="${TMPDIR:-/tmp}"
-echo "=== chatter scan $(date -u +%FT%TZ) ==="
+echo "=== chatter scan [${WL:-all}] $(date -u +%FT%TZ) ==="
 start=$(date +%s)
-"$PY" -m chatter_daemon scan --all > "$TMP/chatter_scan.json" 2> "$TMP/chatter_scan.err"
+"$PY" -m chatter_daemon "${SCAN[@]}" > "$TMP/chatter_scan.json" 2> "$TMP/chatter_scan.err"
 rc=$?
 echo "scan exit: $rc  wall: $(( $(date +%s) - start ))s"
 

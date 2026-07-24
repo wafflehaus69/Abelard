@@ -8,7 +8,7 @@ through different doors; this proves they stay decoupled.
 
 from __future__ import annotations
 
-from chatter_daemon.matching import Matcher, audit_name_match, build_name_map
+from chatter_daemon.matching import Matcher, build_name_map
 from chatter_daemon.watchlist import WatchlistConfig
 
 _EMPTY = frozenset()
@@ -54,19 +54,6 @@ def test_name_match_true_still_matches_by_name():
     wl = WatchlistConfig(name="t", tickers=[{"symbol": "NVDA", "names": ["Nvidia"]}])
     m = _matcher(wl)
     assert "NVDA" in m.match("nvidia keeps ripping")  # name_match:true -> name matches
-
-
-def test_audit_only_covers_name_match_true():
-    wl = WatchlistConfig(
-        name="t",
-        tickers=[
-            {"symbol": "NVDA", "names": ["Nvidia"]},
-            {"symbol": "CAT", "name_match": False, "names": ["Caterpillar"]},
-        ],
-    )
-    audit = audit_name_match(wl, {})
-    assert audit.get("NVDA") == ["nvidia"]
-    assert "CAT" not in audit  # name_match:false tickers aren't audited
 
 
 def test_for_universe_proposes_any_symbol_in_set():

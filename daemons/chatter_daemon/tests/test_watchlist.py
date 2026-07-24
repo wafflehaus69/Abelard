@@ -12,7 +12,6 @@ from chatter_daemon.watchlist import (
     WatchlistError,
     load_all_watchlists,
     load_watchlist,
-    write_watchlist_csv,
 )
 
 
@@ -139,13 +138,6 @@ def test_csv_parses_fields_and_defaults(tmp_path):
     assert by["MU"].name_match is False and by["MU"].notes == "collision-word; ticker-only"
     assert by["BAI"].is_etf is True and by["PLM"].enabled is False
     assert by["NVDA"].name_match is True and by["NVDA"].names == []  # blank cells -> defaults
-
-
-def test_csv_round_trips_through_write(tmp_path):
-    wl = load_watchlist("pf", watchlists_dir=_write_csv(tmp_path, "pf", _CSV))
-    write_watchlist_csv(wl, tmp_path / "again.csv")
-    wl2 = load_watchlist("again", watchlists_dir=tmp_path)
-    assert [t.model_dump() for t in wl.tickers] == [t.model_dump() for t in wl2.tickers]
 
 
 def test_csv_missing_header_fails_loud(tmp_path):

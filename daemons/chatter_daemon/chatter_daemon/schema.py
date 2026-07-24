@@ -29,7 +29,7 @@ SCHEMA_VERSION = "1"
 
 # Closed contract vocabularies. A value outside these is a validation error.
 SourceName = Literal[
-    "stocktwits", "smg", "finnhub_news", "google_trends", "twitter", "yahoo_rss", "alpha_vantage"
+    "stocktwits", "smg", "finnhub_news", "twitter", "yahoo_rss", "alpha_vantage"
 ]
 ScanMode = Literal["watchlist", "attention"]
 MatchedBy = Literal["symbol", "cashtag", "name"]
@@ -75,9 +75,6 @@ class Metrics(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mention_count: int = Field(default=0, ge=0)
-    interest_24h: float | None = None
-    interest_7d: float | None = None
-    interest_monthly: float | None = None
     headlines: list[Headline] | None = None
 
 
@@ -126,11 +123,9 @@ class StockTwitsAggregate(BaseModel):
     sent_now_norm: int | None = None       # 0-100 (50=neutral, <25 extreme-bear, >75 extreme-bull)
     sent_now_label: str | None = None      # labelNormalized, 5-band
     sent_24h_norm: int | None = None       # trailing baseline
-    sent_24h_label: str | None = None
     sent_gap: int | None = None            # signed now - 24h (the spike signal)
     vol_now_norm: int | None = None        # 0-100 volume band
     vol_now_raw: int | None = None         # real message count (retires the page-size 30)
-    vol_change: float | None = None
     participation_norm: int | None = None  # 0-100 (timeframes.1D) — the trust gate
     confidence: str | None = None          # high | quiet | low | pump_suspect
 
@@ -172,9 +167,6 @@ class NormalizedRecord(BaseModel):
     sentiment: Sentiment
     # StockTwits sentiment-API aggregate (Order 12) — present only on stocktwits records.
     st_aggregate: StockTwitsAggregate | None = None
-    # Haiku one-paragraph summary of the NAMED news (Order 15) — Finnhub records only; the
-    # factual "why", distinct from the source's method=none count contract.
-    news_summary: str | None = None
     # The actual span of surviving tweets (Twitter source, Order 17) — None when zero
     # tweets survived filtering. Round-trips to stdout via SourceSignal.
     observed_window: ObservedWindow | None = None
@@ -255,22 +247,19 @@ class Anomaly(BaseModel):
     """Mechanical anomaly read for one (ticker, source) — Abelard interprets it.
 
     `kind="count"` (Finnhub / /smg/ / StockTwits): z-score vs the trailing
-    baseline, gated by a min-volume floor + history depth. `kind="trend"` (Trends):
-    within-record elevation of interest_24h over its trailing windows. States:
+    baseline, gated by a min-volume floor + history depth. States:
     building (history < N_min) | thin (count < floor) | ok | spike | none (no signal
     to score). A sigma=0 baseline yields no z — flagged in `note`, never fabricated.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["count", "trend"]
+    kind: Literal["count"]
     state: AnomalyState
     z: float | None = None  # count: z-score (None when building/thin/sigma=0)
     mean: float | None = None  # count: baseline mu
     std: float | None = None  # count: baseline sigma
     observations: int = 0  # count: prior history depth
-    ratio: float | None = None  # trend: interest_24h / trailing-max
-    discounted: bool = False  # trend: noisy_query -> Abelard discounts
     note: str | None = None
 
 

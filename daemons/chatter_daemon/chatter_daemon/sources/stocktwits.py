@@ -51,12 +51,6 @@ STREAM_URL = API_BASE + "/streams/symbol/{symbol}.json"
 # impersonation clears it. StockTwits' OWN full-stream aggregate (now-primary).
 SENTIMENT_URL = "https://api-gw-prd.stocktwits.com/sentiment-api/v2/{symbol}/detail"
 
-# The browser UA curl_cffi presents (informational — the `impersonate` profile sets the
-# matching UA + TLS + HTTP2 fingerprint together; a UA alone does NOT pass CloudFlare).
-BROWSER_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-)
 
 # curl_cffi impersonation profile — the live-verified one past StockTwits' CloudFlare.
 DEFAULT_IMPERSONATE = "chrome"
@@ -249,12 +243,11 @@ def parse_sentiment_aggregate(raw: dict[str, Any]) -> StockTwitsAggregate | None
     )
 
     v_now = vol.get("now")
-    vol_now_norm = vol_now_raw = vol_change = None
+    vol_now_norm = vol_now_raw = None
     if isinstance(v_now, dict) and v_now.get("loaded"):
-        vn, vr, vc = v_now.get("valueNormalized"), v_now.get("value"), v_now.get("change")
+        vn, vr = v_now.get("valueNormalized"), v_now.get("value")
         vol_now_norm = int(round(vn)) if isinstance(vn, (int, float)) else None
         vol_now_raw = int(vr) if isinstance(vr, (int, float)) else None  # raw count IS the real volume
-        vol_change = float(vc) if isinstance(vc, (int, float)) else None
 
     # Participation lives in timeframes.1D (NOT a `now` block — the order's literal field
     # was off; 1D is < 1W so trustworthy, and the value matches the live page: BLZE 74,
@@ -275,11 +268,9 @@ def parse_sentiment_aggregate(raw: dict[str, Any]) -> StockTwitsAggregate | None
         sent_now_norm=sent_now_norm,
         sent_now_label=s_now[1] if s_now else None,
         sent_24h_norm=sent_24h_norm,
-        sent_24h_label=s_24h[1] if s_24h else None,
         sent_gap=gap,
         vol_now_norm=vol_now_norm,
         vol_now_raw=vol_now_raw,
-        vol_change=vol_change,
         participation_norm=part_norm,
         confidence=_confidence(vol_now_norm, part_norm),
     )
@@ -459,7 +450,6 @@ class StockTwitsSource:
 
 
 __all__ = [
-    "BROWSER_UA",
     "SENTIMENT_URL",
     "SOURCE_NAME",
     "STREAM_URL",

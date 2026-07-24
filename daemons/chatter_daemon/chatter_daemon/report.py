@@ -35,7 +35,6 @@ _DIGEST_LOUDEST = 5
 _SOURCE_LABEL = {
     "finnhub_news": "Finnhub news",
     "smg": "/smg/",
-    "google_trends": "Google Trends",
     "stocktwits": "StockTwits",
     "yahoo_rss": "Yahoo",
     "alpha_vantage": "AV news-sentiment",
@@ -61,19 +60,16 @@ def friendly_source(source: str) -> str:
 
 
 def watchlist_peak(ticker) -> float:
-    """Peak single-source magnitude — the largest real count across count-sources, or
-    the 24h Trends interest. The ranking key (loudest-on-any-source wins). StockTwits and
-    Twitter are EXCLUDED: StockTwits' count is a constant 30-message page (not volume),
-    and Twitter is a Detail-only social read (Order 20) — both contribute stance, not
-    rank. Ranking is driven by the true volume sources (Finnhub, /smg/) + Trends interest."""
+    """Peak single-source magnitude — the largest real count across count-sources. The
+    ranking key (loudest-on-any-source wins). StockTwits and Twitter are EXCLUDED:
+    StockTwits' count is a constant 30-message page (not volume), and Twitter is a
+    Detail-only social read (Order 20) — both contribute stance, not rank. Ranking is
+    driven by the true volume sources (Finnhub, /smg/)."""
     peak = 0.0
     for s in ticker.sources:
         if s.source in ("stocktwits", "twitter"):
             continue
-        if s.source == "google_trends":
-            peak = max(peak, s.metrics.interest_24h or 0.0)
-        else:
-            peak = max(peak, float(s.metrics.mention_count))
+        peak = max(peak, float(s.metrics.mention_count))
     return peak
 
 
@@ -112,17 +108,9 @@ def headline_sample(signal, ticker_symbol: str = "", aliases=None) -> tuple[int,
 
 
 def _watchlist_phrase(s, ticker_symbol: str = "", aliases=None) -> str | None:
-    """One source's VOLUME / interest contribution, source-labeled — or None if it
-    carries none. StockTwits returns None here: its count is page size, so StockTwits
-    speaks through `_stance_phrase`, not a volume figure."""
-    if s.source == "google_trends":
-        i = s.metrics.interest_24h
-        if i is None:
-            return None
-        extra = ""
-        if s.metrics.interest_7d is not None or s.metrics.interest_monthly is not None:
-            extra = f" (7d {s.metrics.interest_7d} / mo {s.metrics.interest_monthly})"
-        return f"interest {i}{extra}"
+    """One source's VOLUME contribution, source-labeled — or None if it carries none.
+    StockTwits returns None here: its count is page size, so StockTwits speaks through
+    `_stance_phrase`, not a volume figure."""
     if s.source == "stocktwits":
         return None  # page-size count is noise; stance carries StockTwits (see below)
     if s.source == "twitter":
@@ -313,9 +301,6 @@ def _meta_bits(ticker) -> list[str]:
     heads = (fin.metrics.mention_count if fin else 0) + (yah.metrics.mention_count if yah else 0)
     if heads > 0:
         bits.append(f"{heads} headlines")
-    tr = _src(ticker, "google_trends")
-    if tr and tr.metrics.interest_24h is not None:
-        bits.append(f"interest {int(round(tr.metrics.interest_24h))}")
     smg = _src(ticker, "smg")
     if smg and smg.metrics.mention_count > 0:
         bits.append(f"{smg.metrics.mention_count} /smg/")
@@ -668,8 +653,6 @@ def _watchlist_digest(result: AggregatedScanResult, aliases=None) -> list[str]:
 
 def _by_magnitude(ticker):
     def mag(s):
-        if s.source == "google_trends":
-            return s.metrics.interest_24h or 0.0
         if s.source == "stocktwits":
             return 0.0  # page size, not magnitude — don't let the constant 30 sort it up
         return float(s.metrics.mention_count)

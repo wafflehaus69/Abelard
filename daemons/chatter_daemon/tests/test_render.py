@@ -34,10 +34,10 @@ def _result(*, degraded=False, sources=None, tickers=None, errors=None, cost=Non
     )
 
 
-def _sig(source, anomaly, *, mention_count=0, i24=None, i7=None, im=None, sentiment=None, flags=None):
+def _sig(source, anomaly, *, mention_count=0, sentiment=None, flags=None):
     return SourceSignal(
         source=source,
-        metrics=Metrics(mention_count=mention_count, interest_24h=i24, interest_7d=i7, interest_monthly=im),
+        metrics=Metrics(mention_count=mention_count),
         sentiment=sentiment or Sentiment(method="none"),
         flags=flags or [],
         anomaly=anomaly,
@@ -48,7 +48,7 @@ def test_source_labeled_counts_and_sentiment():
     t = AggregatedTicker(
         watchlist="w",
         ticker="NVDA",
-        source_diversity=3,
+        source_diversity=2,
         sources=[
             _sig("finnhub_news", Anomaly(kind="count", state="ok", z=0.5, observations=8), mention_count=4),
             _sig(
@@ -58,16 +58,14 @@ def test_source_labeled_counts_and_sentiment():
                 sentiment=Sentiment(method="haiku", bullish=12, bearish=3, neutral=5),
                 flags=["sentiment_classified"],
             ),
-            _sig("google_trends", Anomaly(kind="trend", state="spike", ratio=2.0), i24=80.0, i7=40.0, im=30.0),
         ],
     )
     out = render_chatter(_result(tickers=[t]))
     assert "4 headlines" in out  # Finnhub semantics
     assert "20 messages" in out  # StockTwits semantics
-    assert "interest 80.0 (7d 40.0 / mo 30.0)" in out  # Trends semantics
     assert "12/3/5" in out  # bull/bear/neutral
-    assert "diversity 3" in out
-    assert "SPIKE z=3.2" in out and "SPIKE x2.0" in out
+    assert "diversity 2" in out
+    assert "SPIKE z=3.2" in out
 
 
 def test_surfaces_degraded_and_sources():
@@ -76,13 +74,13 @@ def test_surfaces_degraded_and_sources():
             degraded=True,
             sources=[
                 SourceStatus(source="stocktwits", ok=True, record_count=5),
-                SourceStatus(source="google_trends", ok=False, record_count=0, error="429"),
+                SourceStatus(source="finnhub_news", ok=False, record_count=0, error="429"),
             ],
         )
     )
     assert "DEGRADED" in out
     assert "stocktwits=ok(5)" in out
-    assert "google_trends=FAILED(0)" in out
+    assert "finnhub_news=FAILED(0)" in out
 
 
 def test_surfaces_cost():
@@ -105,19 +103,8 @@ def test_surfaces_rarity_and_building():
 
 
 def test_errors_listed():
-    out = render_chatter(_result(errors=["google_trends: 429 too many requests"]))
-    assert "google_trends: 429 too many requests" in out
-
-
-def test_etf_no_interest_renders_na():
-    t = AggregatedTicker(
-        watchlist="w",
-        ticker="ITA",
-        source_diversity=0,
-        sources=[_sig("google_trends", Anomaly(kind="trend", state="none", note="no interest"))],
-    )
-    out = render_chatter(_result(tickers=[t]))
-    assert "interest n/a" in out and "no signal" in out
+    out = render_chatter(_result(errors=["finnhub_news: 429 too many requests"]))
+    assert "finnhub_news: 429 too many requests" in out
 
 
 def test_render_attention_view():

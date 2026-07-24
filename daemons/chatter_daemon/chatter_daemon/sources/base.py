@@ -21,8 +21,8 @@ punctuation (em-dashes, smart quotes, accents) still extract. `requests` infers
 encoding from headers/chardet and falls back to a platform default (cp1252 on
 Windows) that mis-decodes UTF-8 into mojibake; corrupted bytes adjacent to a ticker
 eat its ``\\b`` word boundary and it silently fails to extract — this cost ~60% of
-tickers in BizDaemon before the fix. Enforced from Order 2 onward. `ChatterPost.text`
-is defined as ALREADY UTF-8-clean, so the shared matcher downstream can trust it.
+tickers in BizDaemon before the fix. Enforced from Order 2 onward. The text handed to
+the shared matcher downstream is defined as ALREADY UTF-8-clean, so it can trust it.
 """
 
 from __future__ import annotations
@@ -46,24 +46,6 @@ class ScanContext:
     canonical_unix: int
     canonical_ts: str  # ISO-8601 Z
     windows: dict[str, Window]  # label -> Window ("24h" / "7d" / "monthly")
-
-
-@dataclass(frozen=True)
-class ChatterPost:
-    """One raw post from a FREE-TEXT source (/smg/ / StockTwits), normalized for the
-    shared matcher. `text` is already cleaned and UTF-8-decoded (see the module
-    docstring's decode obligation). Symbol-keyed sources (StockTwits / Finnhub /
-    Trends) do not produce these — they count per queried ticker directly and emit
-    `NormalizedRecord`s without an intermediate post stream.
-    """
-
-    source: SourceName
-    post_id: str  # stable per-source id (string — ids are not all ints)
-    text: str
-    author: str | None = None
-    created_unix: int | None = None
-    explicit_symbols: tuple[str, ...] = ()  # source-tagged cashtags/symbols, if any
-    meta: dict = field(default_factory=dict)  # source-specific extras (score, etc.)
 
 
 @dataclass(frozen=True)

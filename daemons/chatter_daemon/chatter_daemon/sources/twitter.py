@@ -54,6 +54,7 @@ from ..config import (
     DEFAULT_TWITTER_WINDOW_HOURS,
     HAIKU_MODEL_ID,
 )
+from ..matching import normalize_title
 from ..schema import CostTelemetry, Metrics, NormalizedRecord, ObservedWindow, Sentiment
 from ..sentiment import (
     AnthropicProvider,
@@ -94,8 +95,6 @@ _EXPECTED_MAJOR: int | None = 0
 # Max surviving tweets fed to the <=3-sentence commentary summary (bounds the prompt).
 _SUMMARY_TWEET_CAP = 25
 
-_URL_RE = re.compile(r"https?://\S+")
-_NONWORD_RE = re.compile(r"[^a-z0-9]+")
 _VERSION_RE = re.compile(r"(\d+)(?:\.\d+)*")
 
 # Order 19: promotional / follow-bait / spam patterns dropped before stance + summary
@@ -174,14 +173,6 @@ def _parse_iso_unix(s: Any) -> int | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return int(dt.timestamp())
-
-
-def _dedupe_key(text: str) -> str:
-    """Normalized text key for near-identical dedupe: lowercase, strip URLs + punctuation,
-    collapse whitespace. Copypasta / RT-of-same-text collapse to one survivor."""
-    t = _URL_RE.sub(" ", text.lower())
-    t = _NONWORD_RE.sub(" ", t)
-    return " ".join(t.split())
 
 
 def _parse_major(version_text: str) -> int | None:
@@ -520,7 +511,7 @@ class TwitterSource:
                 text = str(text)
             if self._drop_promo and _is_promo(text):
                 continue  # Order 19: promotional / follow-bait / cashtag-spam
-            key = _dedupe_key(text)
+            key = normalize_title(text, strip_urls=True)
             if key and key in seen:
                 continue  # near-identical duplicate
             seen.add(key)
