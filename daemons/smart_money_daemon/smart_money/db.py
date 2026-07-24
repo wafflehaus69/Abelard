@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS form4_transactions(
   tx_date TEXT,
   filed_date TEXT,
   role TEXT,
+  ingest_regime TEXT NOT NULL DEFAULT 'watchlist',
   PRIMARY KEY(accession, tx_index)
 );
 CREATE INDEX IF NOT EXISTS idx_f4_ticker ON form4_transactions(ticker);
@@ -181,6 +182,16 @@ CREATE INDEX IF NOT EXISTS idx_f4_cik ON form4_transactions(reporting_cik);
 CREATE TABLE IF NOT EXISTS form4_backfill_seen(
   accession TEXT PRIMARY KEY,
   seen_at_unix INTEGER NOT NULL
+);
+-- Per-day watermark for the SM-U1 universal daily-index walk. A day is marked
+-- complete only after every Form 4 in its index is persisted; resume skips
+-- completed days. Parse failures counted per day, never guessed.
+CREATE TABLE IF NOT EXISTS form4_universal_days(
+  day TEXT PRIMARY KEY,
+  form4_count INTEGER,
+  persisted INTEGER,
+  parse_fail INTEGER,
+  completed_at_unix INTEGER NOT NULL
 );
 -- Durable per-holding 13F table (SM-A1 Phase 2). thirteenf_baseline keeps only
 -- the latest-quarter JSON blob per CIK for the scan's diff; this is the queryable
@@ -274,4 +285,10 @@ def _migrate(con):
     f4cols = {r[1] for r in con.execute("PRAGMA table_info(form4_transactions)")}
     if f4cols and "issuer_cik" not in f4cols:
         con.execute("ALTER TABLE form4_transactions ADD COLUMN issuer_cik TEXT")
+        con.commit()
+    if f4cols and "ingest_regime" not in f4cols:
+        # Existing rows are the issuer-scoped backfill = 'watchlist'; universal
+        # discovery rows tag 'universal'. One corpus, distinguishable by tag.
+        con.execute("ALTER TABLE form4_transactions ADD COLUMN ingest_regime TEXT "
+                    "NOT NULL DEFAULT 'watchlist'")
         con.commit()

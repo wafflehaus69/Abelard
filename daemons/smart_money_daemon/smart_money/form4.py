@@ -129,7 +129,8 @@ def _f(x):
         return None
 
 
-def persist_transactions(con, accession, parsed, ticker, filed_date):
+def persist_transactions(con, accession, parsed, ticker, filed_date,
+                         regime="watchlist"):
     """SM-F4 Step 1: persist EVERY parsed transaction into form4_transactions and
     upsert the reporting person (type=insider, CIK carried). Idempotent by
     (accession, tx_index) — re-running the same filing is a no-op. Congress rows
@@ -152,13 +153,13 @@ def persist_transactions(con, accession, parsed, ticker, filed_date):
             "INSERT OR IGNORE INTO form4_transactions("
             "accession, tx_index, reporting_person, reporting_cik, issuer,"
             "issuer_cik, ticker, code, plan_flag, shares, price, value,"
-            "ownership_after, tx_date, filed_date, role)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "ownership_after, tx_date, filed_date, role, ingest_regime)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (accession, i, parsed.get("owner"), cik, parsed.get("issuer"),
              parsed.get("issuer_cik") or None, ticker,
              t.get("code"), 1 if parsed.get("plan_flag") else 0, shares, price,
              value, _f(t.get("owned_after")), t.get("date"), filed_date,
-             parsed.get("role") or None),
+             parsed.get("role") or None, regime),
         )
         n += 1
     return n, bool(parsed.get("owner"))
