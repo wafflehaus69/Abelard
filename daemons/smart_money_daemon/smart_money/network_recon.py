@@ -327,7 +327,8 @@ def _render(r, path):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-A1 Phase 1 EDGAR network recon")
-    ap.add_argument("--out", default="scans/TRUMP_NETWORK_RESOLUTION.md")
+    ap.add_argument("--out", default=dbmod.artifact_path(
+        "TRUMP_NETWORK_RESOLUTION.md", "scans"))
     args = ap.parse_args(argv)
     env = load_env()
     contact = env.get("EDGAR_CONTACT")

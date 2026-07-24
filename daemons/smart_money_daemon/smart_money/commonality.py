@@ -99,8 +99,8 @@ def g2_cross_issuer_persons(con):
 
 
 # ---------------------------------------------------------------- g3
-def _registry_person_ids(path="analysis/registry.json"):
-    p = pathlib.Path(path)
+def _registry_person_ids(path=None):
+    p = pathlib.Path(path or dbmod.find_artifact("registry.json"))
     if not p.exists():
         return set(), []
     d = json.loads(p.read_text())
@@ -162,7 +162,7 @@ def g3_congress_coholding(con, anchor, overlay, person_filter=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-A1 commonality counters")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
-    ap.add_argument("--out", default="analysis/COMMONALITY_COUNTERS.md")
+    ap.add_argument("--out", default=dbmod.artifact_path("COMMONALITY_COUNTERS.md"))
     ap.add_argument("--anchor", default=dt.date.today().isoformat())
     args = ap.parse_args(argv)
     con = dbmod.connect(args.db)

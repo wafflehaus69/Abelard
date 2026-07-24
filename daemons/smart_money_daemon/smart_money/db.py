@@ -34,9 +34,27 @@ def resolve_db_path():
     return os.path.expanduser(_load_env_var("SMART_MONEY_DB_PATH") or _DEFAULT)
 
 
+def artifact_path(name, sub="analysis"):
+    """Where a run WRITES an artifact — the state home, never the repo tree."""
+    p = os.path.join(STATE_HOME, sub)
+    os.makedirs(p, exist_ok=True)
+    return os.path.join(p, name)
+
+
+def find_artifact(name, sub="analysis"):
+    """Where to READ an artifact — state home first, else the repo-relative copy
+    (committed deliverables live in the repo)."""
+    p = os.path.join(STATE_HOME, sub, name)
+    return p if os.path.exists(p) else os.path.join(sub, name)
+
+
 DB_PATH_DEFAULT = resolve_db_path()
 SCANS_DIR = os.path.join(STATE_HOME, "scans")
 LOGS_DIR = os.path.join(STATE_HOME, "logs")
+# SM-A1-fix: report artifacts write to the state home, not the repo tree, so
+# scheduled Basilic runs never dirty the working tree (which was blocking pulls).
+# Committing a deliverable snapshot is then a deliberate copy from here.
+ANALYSIS_DIR = os.path.join(STATE_HOME, "analysis")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS persons(

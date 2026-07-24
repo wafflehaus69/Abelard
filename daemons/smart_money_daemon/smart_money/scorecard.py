@@ -87,9 +87,9 @@ def wstats(values, weights):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Phase 2 politician scorecard")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
-    ap.add_argument("--csv", default="analysis/POLITICIAN_SCORECARD.csv")
-    ap.add_argument("--md", default="analysis/POLITICIAN_SCORECARD.md")
-    ap.add_argument("--registry", default="analysis/registry.json")
+    ap.add_argument("--csv", default=dbmod.artifact_path("POLITICIAN_SCORECARD.csv"))
+    ap.add_argument("--md", default=dbmod.artifact_path("POLITICIAN_SCORECARD.md"))
+    ap.add_argument("--registry", default=dbmod.artifact_path("registry.json"))
     ap.add_argument("--no-mtm", action="store_true", help="skip quote snapshot")
     args = ap.parse_args(argv)
 
@@ -120,13 +120,11 @@ def main(argv=None):
     n_neg_lag = int((~lag_ok).sum())
     if n_bad:
         bad = purchases[~good]
+        _bad_dates = dbmod.artifact_path("scorecard_bad_dates.csv")
         bad[["person_id", "name", "ticker", "tx_date", "disclosure_date"]].to_csv(
-            "analysis/scorecard_bad_dates.csv", index=False
-        )
-        print(
-            "[score] dropped {} purchases with out-of-range dates -> "
-            "analysis/scorecard_bad_dates.csv".format(n_bad)
-        )
+            _bad_dates, index=False)
+        print("[score] dropped {} purchases with out-of-range dates -> {}".format(
+            n_bad, _bad_dates))
     purchases = purchases[good].copy()
     # F4 regression guard: nothing malformed survives into scoring, both clocks.
     assert (purchases.disclosure_date >= purchases.tx_date).all(), \
@@ -538,7 +536,7 @@ def main(argv=None):
     with open(pathlib_md, "w") as f:
         f.write("\n".join(md) + "\n")
 
-    with open("analysis/scorecard_price_failures.json", "w") as f:
+    with open(dbmod.artifact_path("scorecard_price_failures.json"), "w") as f:
         json.dump(price_failures, f, indent=1, sort_keys=True)
 
     _write_registry(active, validation, by_name, anchor, args.registry)

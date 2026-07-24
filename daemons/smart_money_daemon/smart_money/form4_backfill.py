@@ -151,7 +151,7 @@ def main(argv=None):
     overlay = load_overlay()
     reg = {"entries": []}
     import pathlib
-    regp = pathlib.Path("analysis/registry.json")
+    regp = pathlib.Path(dbmod.find_artifact("registry.json"))
     if regp.exists():
         reg = json.loads(regp.read_text())
     # SM-A1 Phase 1 hands its discovered issuer set here; auto-include if present.
@@ -166,7 +166,7 @@ def main(argv=None):
                 t = t[: -len(suf)]
         return t
     tn_tickers = []
-    tnp = pathlib.Path("scans/trump_network_issuers.json")
+    tnp = pathlib.Path(dbmod.find_artifact("trump_network_issuers.json", "scans"))
     if tnp.exists():
         raw = json.loads(tnp.read_text()).get("tickers", [])
         tn_tickers = sorted({_clean_ticker(t) for t in raw if _clean_ticker(t)})

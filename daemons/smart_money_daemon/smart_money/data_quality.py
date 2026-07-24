@@ -13,7 +13,7 @@ from .mdfmt import md_table
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
-    ap.add_argument("--out", default="analysis/DATA_QUALITY.md")
+    ap.add_argument("--out", default=dbmod.artifact_path("DATA_QUALITY.md"))
     args = ap.parse_args(argv)
     con = dbmod.connect(args.db)
 

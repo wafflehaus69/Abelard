@@ -58,14 +58,33 @@ def _13f_ticker_periods(con):
 
 
 # ---------------------------------------------------------------- (a)
-def join_a_multi_principal(con):
-    rows = con.execute(
-        "SELECT ticker, period, COUNT(DISTINCT cik) AS n, GROUP_CONCAT(DISTINCT cik) "
-        "FROM thirteenf_holdings WHERE ticker IS NOT NULL AND put_call='long' "
-        "GROUP BY ticker, period HAVING n>=2 ORDER BY n DESC, ticker"
-    ).fetchall()
-    return [{"ticker": t, "period": p, "n_filers": n, "filer_ciks": c}
-            for t, p, n, c in rows]
+def join_a_multi_principal(con, bands=None):
+    """Direction-aware: per (ticker, period, filer) compute NET direction
+    (long+call value minus put value). Convergence requires 2+ filers on the
+    SAME side — a long-vs-short pair is a DISAGREEMENT, not convergence, and is
+    flagged rather than counted as agreement."""
+    net = defaultdict(lambda: defaultdict(float))  # (ticker,period) -> cik -> net
+    for tk, per, cik, pc, val in con.execute(
+        "SELECT ticker, period, cik, put_call, value FROM thirteenf_holdings "
+        "WHERE ticker IS NOT NULL"
+    ):
+        sign = -1 if pc == "put" else 1
+        net[(tk.upper(), per)][cik] += (val or 0) * sign
+    out = []
+    for (tk, per), ciks in net.items():
+        longs = sorted(c for c, v in ciks.items() if v > 0)
+        shorts = sorted(c for c, v in ciks.items() if v < 0)
+        if len(longs) < 2 and len(shorts) < 2:
+            continue
+        out.append({
+            "ticker": tk, "period": per,
+            "long_filers": len(longs), "short_filers": len(shorts),
+            "converge_dir": "long" if len(longs) >= 2 else "short",
+            "disagreement": bool(longs) and bool(shorts),
+            "long_ciks": ",".join(longs), "short_ciks": ",".join(shorts) or "-",
+            "band": (bands or {}).get(tk, "?"),
+        })
+    return sorted(out, key=lambda r: -max(r["long_filers"], r["short_filers"]))
 
 
 # ---------------------------------------------------------------- (b)
@@ -109,9 +128,9 @@ def join_c_inst_x_congress(con):
 
 
 # ---------------------------------------------------------------- (d)
-def join_d_new_positions(con):
+def join_d_new_positions(con, bands=None):
     """Per filer, quarter-over-quarter adds / exits / material (>2x) size changes.
-    Full-universe (SMID blocked)."""
+    Full-universe; SMID band annotated per row when available."""
     by_filer = defaultdict(lambda: defaultdict(dict))  # cik -> period -> {ticker: value}
     for cik, per, tk, val in con.execute(
         "SELECT cik, period, ticker, value FROM thirteenf_holdings "
@@ -125,16 +144,19 @@ def join_d_new_positions(con):
             prev, cur = ordered[i - 1], ordered[i]
             pv, cv = periods[prev], periods[cur]
             for tk in cv.keys() - pv.keys():
-                adds.append({"cik": cik, "period": cur, "ticker": tk, "value": cv[tk]})
+                adds.append({"cik": cik, "period": cur, "ticker": tk, "value": cv[tk],
+                             "band": (bands or {}).get(tk, "?")})
             for tk in pv.keys() - cv.keys():
-                exits.append({"cik": cik, "period": cur, "ticker": tk, "was_value": pv[tk]})
+                exits.append({"cik": cik, "period": cur, "ticker": tk, "was_value": pv[tk],
+                              "band": (bands or {}).get(tk, "?")})
             for tk in cv.keys() & pv.keys():
+                b = (bands or {}).get(tk, "?")
                 if pv[tk] > 0 and cv[tk] >= 2 * pv[tk]:
                     sizes.append({"cik": cik, "period": cur, "ticker": tk,
-                                  "from": pv[tk], "to": cv[tk], "dir": "up_2x"})
+                                  "from": pv[tk], "to": cv[tk], "dir": "up_2x", "band": b})
                 elif cv[tk] > 0 and pv[tk] >= 2 * cv[tk]:
                     sizes.append({"cik": cik, "period": cur, "ticker": tk,
-                                  "from": pv[tk], "to": cv[tk], "dir": "down_2x"})
+                                  "from": pv[tk], "to": cv[tk], "dir": "down_2x", "band": b})
     return {"adds": adds, "exits": exits, "size_changes": sizes}
 
 
@@ -178,12 +200,18 @@ def main(argv=None):
     args = ap.parse_args(argv)
     con = dbmod.connect(args.db)
     overlay = load_overlay()
-    out = args.out or "scans/PHASE4_OVERLAP_{}.md".format(args.now.replace("-", ""))
+    import os
+    out = args.out or os.path.join(
+        dbmod.SCANS_DIR, "PHASE4_OVERLAP_{}.md".format(args.now.replace("-", "")))
+    from . import marketcap
+    bands = marketcap.bands_for(con, [
+        r[0] for r in con.execute(
+            "SELECT DISTINCT ticker FROM thirteenf_holdings WHERE ticker IS NOT NULL")])
 
-    a = join_a_multi_principal(con)
+    a = join_a_multi_principal(con, bands)
     b = join_b_inst_x_insider(con, args.now)
     c = join_c_inst_x_congress(con)
-    d = join_d_new_positions(con)
+    d = join_d_new_positions(con, bands)
     f = join_f_named_cases(con)
 
     import pathlib
@@ -221,13 +249,20 @@ def _render(con, anchor, overlay, a, b, c, d, f):
              "issuer symbol / congress normalized). Cross-source symbol mismatch is "
              "a coverage limit — see gaps.")
     m.append("")
-    m.append("## SMID banding — BLOCKED-ON-METHOD")
+    m.append("## SMID banding — SEC companyfacts (Mando-ratified method)")
     m.append("")
-    m.append("Market-cap method is Mando's decision (recon candidate: SEC "
-             "companyfacts keyless). Not chosen at run time, so **(a) and (d) are "
-             "reported FULL-UNIVERSE ONLY** and the SMID cut is marked blocked. No "
-             "market-cap proxy is substituted. Proposed bands (pending): micro "
-             "<$300M, small $300M-$2B, mid $2B-$10B.")
+    m.append("Market cap = shares outstanding (SEC companyconcept dei/us-gaap, "
+             "keyless, same EDGAR client) x latest price. Bands: micro <$300M, "
+             "small $300M-$2B, mid $2B-$10B, large >=$10B. Multi-class names whose "
+             "shares are not in a single concept (e.g. META, MSTR) resolve to "
+             "UNBANDABLE and are reported, never guessed.")
+    m.append("")
+    bd = dict(con.execute("SELECT band, COUNT(*) FROM market_cap GROUP BY band").fetchall())
+    m.append("- Band distribution (all banded tickers): {}".format(bd or "none computed"))
+    m.append("- **AS-OF CAVEAT:** shares as-of the latest cover-page filing, price "
+             "as-of the latest quote. A stale or wrong price on a volatile small "
+             "cap is a labeled error source — bands near a boundary are soft.")
+    m.append("- SMID subset below = micro + small + mid (large and unbandable excluded).")
     m.append("")
 
     # per-principal holdings summary
@@ -243,15 +278,30 @@ def _render(con, anchor, overlay, a, b, c, d, f):
     m.append("")
 
     # (a)
-    m.append("## (a) Multi-principal convergence — 2+ tracked 13F filers, same period (full-universe)")
+    m.append("## (a) Multi-principal convergence — direction-aware, 2+ filers same side")
     m.append("")
-    m.append("{} (ticker, period) pairs held by >=2 confirmed filers.".format(len(a)))
+    disagreements = [r for r in a if r["disagreement"]]
+    m.append("{} (ticker, period) convergences (>=2 filers on the SAME side). "
+             "{} of them ALSO have a filer on the opposite side (disagreement — "
+             "flagged, not counted as agreement).".format(len(a), len(disagreements)))
     m.append("")
+    cols = ["ticker", "period", "converge_dir", "long_filers", "short_filers",
+            "disagreement", "band", "overlay"]
     if a:
-        m.append(md_table(pd.DataFrame([{**r, "overlay": _overlay_tag(overlay, r["ticker"])}
-                                        for r in a[:60]])))
+        m.append(md_table(pd.DataFrame(
+            [{**r, "overlay": _overlay_tag(overlay, r["ticker"])} for r in a[:60]])[cols]))
         if len(a) > 60:
             m.append("\n(showing 60 of {})".format(len(a)))
+    m.append("")
+    smid_a = [r for r in a if r["band"] in ("micro", "small", "mid")]
+    m.append("### (a) SMID subset — {} convergences on micro/small/mid names".format(len(smid_a)))
+    m.append("")
+    if smid_a:
+        m.append(md_table(pd.DataFrame(
+            [{**r, "overlay": _overlay_tag(overlay, r["ticker"])} for r in smid_a])[cols]))
+    else:
+        m.append("None in micro/small/mid (the confirmed filers' convergences are "
+                 "large-cap or unbandable — see coverage).")
     m.append("")
 
     # (b)
@@ -267,6 +317,14 @@ def _render(con, anchor, overlay, a, b, c, d, f):
                 [{**r, "overlay": _overlay_tag(overlay, r["ticker"])} for r in b[w]])))
         else:
             m.append("None.")
+    m.append("")
+    m.append("> **Selection-effect note (ABCL / GUTS).** ABCL and GUTS surface "
+             "here and in the g1 insider-buy counter, but that is largely a "
+             "SELECTION ARTIFACT: both are Thiel-network issuers we deliberately "
+             "backfilled, so Thiel-adjacent insider buying was always going to "
+             "appear on them. Their presence is NOT independent corroboration — "
+             "we looked precisely where we expected to find it. Treat as "
+             "coverage-shaped, not as a discovered convergence.")
     m.append("")
 
     # (c)
