@@ -38,3 +38,20 @@ the 12-month universal backfill extrapolates to ~42h, 3.5x the ~12h threshold.**
 No proxy, no silent proceed. PH2-PH5 are NOT run. Machinery is committed
 (form4_universal.py) but the backfill is not executed. Awaiting Mando's choice
 of depth / optimization / acceptance.
+
+## RE-PROBE (single-fetch optimization applied, 2026-07-24)
+Mando chose Option 2 (optimize) then 3 (accept resumable), proceed if under ~20h.
+Single-fetch via the submission .txt (inline ownership XML, no index.json
+round-trip) is now live and validated (byte-identical parse, 1 request/filing).
+- per-filing: 0.264s (was 0.515s — halved).
+- **est 12mo wall-clock: 21.5h** (was 41.9h). DB growth unchanged (~454K rows).
+- **Marginally OVER the ~20h proceed bar (by ~1.5h).** Depth stays 12mo (3mo
+  would leave PH4 with too few gradeable events).
+
+Options at this margin:
+- **Proceed as resumable anyway** — it is per-day watermarked and
+  accession-idempotent, so 21.5h across sittings is exactly the Option-3 shape.
+- **Tighten pace** from 0.15s (6.7 req/s, conservative) toward the 10 req/s cap:
+  0.12s -> ~18.7h, clearly under 20, still under the EDGAR cap. Cheap change,
+  isolated to the universal path.
+Awaiting Mando: proceed at 21.5h, or tighten pace to land under 20 first.
