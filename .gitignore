@@ -35,9 +35,6 @@ daemons/news_watch_daemon/tests/fixtures/telegram_real_*.json
 # Defensive generic — catches any future daemon's _real.* convention.
 **/tests/fixtures/*_real.*
 
-# graphify knowledge-graph output (regenerated locally; do not commit)
-graphify-out/
-
 # Linux venv variant that the .venv/ rule above does not match (bare name = any depth)
 .venv-linux/
 

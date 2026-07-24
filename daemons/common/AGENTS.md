@@ -10,6 +10,20 @@ editable install (`pip install -e ../common`) — not a published dependency.
 A convergence-debt target (research_daemon still keeps its own copies of some
 primitives).
 
+> **`http_client` hoist — 3rd independent confirmation (2026-07-23).** Not new
+> work: the `HttpClient` hoist is already filed; this logs its third independent
+> sighting. All three triangulate the same debt, target
+> `abelard_common.http_client.HttpClient`:
+> 1. *This doctrine* — research_daemon keeps its own `HttpClient` copy.
+> 2. *SM-D1 Phase B sweep* (`smart_money_daemon/scans/VESTIGIAL_INVENTORY.md` §5)
+>    — smart_money re-implements the client inline ×5–6.
+> 3. *AST centrality pass (god-node / betweenness)* — `HttpClient` surfaces as
+>    3 distinct `class HttpClient` defs (`abelard_common`, `news_watch_daemon`,
+>    `research_daemon`) + ~20 call-sites across four daemons, and ranks among the
+>    most-connected abstractions in the tree. This pass additionally caught the
+>    **news_watch_daemon** duplicate class the smart_money-scoped sweep never
+>    looked at — widening the known footprint, not opening a new debt.
+
 ## What it is
 
 Shared mechanical primitives extracted from BizDaemon so multiple daemons
