@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -44,12 +45,12 @@ from pydantic import ValidationError
 from ..alert.factory import AlertSinkFactoryError, build_alert_sink
 from ..alert.sink import AlertSink
 from ..config import Config
-from ..llm_text import strip_code_fences
+from ..llm_text import extract_text_blocks, extract_usage, strip_code_fences
 from ..synthesize.archive import write_brief
 from ..synthesize.brief import Dispatch, SynthesisMetadata
 from ..synthesize.config import SynthesisConfigError, load_synthesis_config
 from ..synthesize.synthesize import SynthesisError, build_anthropic_client
-from .brief_schema import AttentionBrief, AttentionShape
+from .brief_schema import AttentionBrief
 from .cluster import ClusterHeadline, cluster_for_term
 from .counter import TermCounts, count_terms_collapsed
 from .event_group import group_convergent_crossings
@@ -169,22 +170,6 @@ def _parse_attention_response(text: str) -> dict[str, Any]:
     return data
 
 
-def _extract_text_from_response(response: Any) -> str:
-    """Concatenate text from TextBlock items in `response.content`.
-
-    Mirrors `synthesize.llm_client._extract_text_from_response` — Sonnet
-    may emit thinking blocks (though we disable thinking); only
-    `type=='text'` blocks contribute.
-    """
-    parts: list[str] = []
-    for block in getattr(response, "content", None) or []:
-        if getattr(block, "type", None) == "text":
-            text_value = getattr(block, "text", None)
-            if isinstance(text_value, str):
-                parts.append(text_value)
-    return "".join(parts)
-
-
 def _call_attention_llm(
     *,
     client: Any,
@@ -207,7 +192,7 @@ def _call_attention_llm(
     ) as stream:
         response = stream.get_final_message()
 
-    text = _extract_text_from_response(response).strip()
+    text = extract_text_blocks(response).strip()
     if not text:
         stop_reason = getattr(response, "stop_reason", "unknown")
         usage = getattr(response, "usage", None)
@@ -223,17 +208,13 @@ def _call_attention_llm(
         )
 
     parsed = _parse_attention_response(text)
-    usage = getattr(response, "usage", None)
+    u = extract_usage(response, model)
     usage_dict = {
-        "model_used": getattr(response, "model", model) or model,
-        "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
-        "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
-        "cache_creation_input_tokens": int(
-            getattr(usage, "cache_creation_input_tokens", 0) or 0
-        ),
-        "cache_read_input_tokens": int(
-            getattr(usage, "cache_read_input_tokens", 0) or 0
-        ),
+        "model_used": u.model_used,
+        "input_tokens": u.input_tokens,
+        "output_tokens": u.output_tokens,
+        "cache_creation_input_tokens": u.cache_creation_input_tokens,
+        "cache_read_input_tokens": u.cache_read_input_tokens,
     }
     return parsed, usage_dict
 
@@ -640,6 +621,24 @@ def _process_one_term(
 DEFAULT_ATTENTION_MAX_TOKENS = 2048
 
 
+def _attention_max_tokens() -> int:
+    """Resolve the attention per-call output cap.
+
+    Honors the documented `NEWS_WATCH_ATTENTION_MAX_TOKENS` override (it was
+    advertised in the comment above but previously read nowhere, so an operator
+    tuning it got no effect). Falls back to the default on unset/non-integer.
+    """
+    raw = os.environ.get("NEWS_WATCH_ATTENTION_MAX_TOKENS", "").strip()
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            _log.warning(
+                "ignoring non-integer NEWS_WATCH_ATTENTION_MAX_TOKENS=%r", raw
+            )
+    return DEFAULT_ATTENTION_MAX_TOKENS
+
+
 def attention_outcome_to_dict(result: AttentionRunResult) -> dict[str, Any]:
     """Render AttentionRunResult as a JSON-friendly dict.
 
@@ -794,13 +793,22 @@ def run_attention_cycle(
         stopwords=stopwords,
         anthropic_client=client,
         model=synth_cfg.synthesis.default_model,
-        max_tokens=DEFAULT_ATTENTION_MAX_TOKENS,
+        max_tokens=_attention_max_tokens(),
         archive_root=cfg.brief_archive_path,
         sink=sink,
         top_candidates_limit=top_candidates_limit,
     )
     outcome = attention_outcome_to_dict(result)
-    outcome["status"] = "ok"
+    if result.per_term and all(not o.success for o in result.per_term):
+        # Crossings were evaluated but EVERY per-term LLM call failed (e.g. a
+        # rate-limit burst during the attention phase). That is a real Pass E
+        # failure, not a genuinely quiet cycle (which has an empty per_term) —
+        # so surface it. full-brief maps a non-"ok" attention status to a
+        # failed Pass E step (exit 2) rather than a silent exit 0.
+        outcome["status"] = "degraded"
+        outcome["reason"] = f"all {len(result.per_term)} attention crossing(s) failed"
+    else:
+        outcome["status"] = "ok"
     return outcome
 
 

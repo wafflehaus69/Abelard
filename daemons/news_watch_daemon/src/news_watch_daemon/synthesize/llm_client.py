@@ -53,7 +53,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from ..llm_text import strip_code_fences
+from ..llm_text import extract_text_blocks, extract_usage, strip_code_fences
 
 
 @dataclass(frozen=True)
@@ -126,22 +126,6 @@ def parse_synthesis_response(text: str) -> tuple[list[dict[str, Any]], str]:
     return events, narrative
 
 
-def _extract_text_from_response(response: Any) -> str:
-    """Concatenate text from TextBlock items in `response.content`.
-
-    Sonnet may emit thinking blocks (adaptive thinking is enabled);
-    those are silently skipped. Only `type=="text"` blocks contribute.
-    Anthropic's SDK returns `content` as a list of typed blocks.
-    """
-    parts: list[str] = []
-    for block in getattr(response, "content", None) or []:
-        if getattr(block, "type", None) == "text":
-            text_value = getattr(block, "text", None)
-            if isinstance(text_value, str):
-                parts.append(text_value)
-    return "".join(parts)
-
-
 def call_synthesis_llm(
     *,
     client: Any,
@@ -195,7 +179,7 @@ def call_synthesis_llm(
     ) as stream:
         response = stream.get_final_message()
 
-    text = _extract_text_from_response(response).strip()
+    text = extract_text_blocks(response).strip()
     if not text:
         # Diagnostic detail — the first live-smoke failure (2026-05-14)
         # hit this path because max_tokens=2048 was exhausted in
@@ -221,19 +205,15 @@ def call_synthesis_llm(
 
     events, narrative = parse_synthesis_response(text)
 
-    usage = getattr(response, "usage", None)
+    u = extract_usage(response, model)
     return SynthesisResponse(
         events_payload=events,
         narrative=narrative,
-        model_used=getattr(response, "model", model) or model,
-        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
-        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
-        cache_creation_input_tokens=int(
-            getattr(usage, "cache_creation_input_tokens", 0) or 0
-        ),
-        cache_read_input_tokens=int(
-            getattr(usage, "cache_read_input_tokens", 0) or 0
-        ),
+        model_used=u.model_used,
+        input_tokens=u.input_tokens,
+        output_tokens=u.output_tokens,
+        cache_creation_input_tokens=u.cache_creation_input_tokens,
+        cache_read_input_tokens=u.cache_read_input_tokens,
     )
 
 

@@ -33,6 +33,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from ..timefmt import iso_from_unix
 from .brief import Trigger
 from .cluster import Cluster
 
@@ -236,11 +237,6 @@ counter-reading you skipped.
 # ---------- helpers ----------
 
 
-def _iso_from_unix(ts: int) -> str:
-    """Render `published_at_unix` back to the ISO-8601 string format Sonnet
-    will echo into Event.source_headlines.published_at."""
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def _format_cluster(cluster: Cluster, index: int) -> str:
     """Render one cluster as a text block Sonnet can read.
@@ -254,7 +250,7 @@ def _format_cluster(cluster: Cluster, index: int) -> str:
     url = leader.url or "?"
     out = [
         f"### Cluster {index} ({cluster.size} headline" + ("s" if cluster.size != 1 else "") + ")",
-        f"LEADER: {pub} | {_iso_from_unix(leader.published_at_unix)} | {url}",
+        f"LEADER: {pub} | {iso_from_unix(leader.published_at_unix)} | {url}",
         f"  {leader.headline}",
     ]
     if cluster.size > 1:
@@ -263,7 +259,7 @@ def _format_cluster(cluster: Cluster, index: int) -> str:
             mpub = member.publisher or "?"
             murl = member.url or "?"
             out.append(
-                f"  - {mpub} | {_iso_from_unix(member.published_at_unix)} | "
+                f"  - {mpub} | {iso_from_unix(member.published_at_unix)} | "
                 f"{murl} | {member.headline}"
             )
     # Magnitude-awareness (2026-07-07): one mechanically-extracted line,

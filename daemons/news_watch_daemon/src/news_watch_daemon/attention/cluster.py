@@ -34,6 +34,10 @@ class ClusterHeadline:
     url: str | None
     publisher: str | None
     published_at_unix: int
+    # Original-content language ('en' or a source language). Folded into the
+    # cluster row so Pass F's cross-language check needs no second per-crossing
+    # language query. Defaults None for callers that don't need it.
+    language: str | None = None
 
 
 def _compile_term_pattern(term: str) -> re.Pattern[str]:
@@ -67,7 +71,7 @@ def cluster_for_term(
     like_pattern = f"%{term}%"
     rows = conn.execute(
         "SELECT headline_id, source, COALESCE(headline_en, headline) AS headline, "
-        "       url, raw_source, published_at_unix "
+        "       url, raw_source, published_at_unix, language "
         "FROM headlines "
         "WHERE published_at_unix >= ? AND published_at_unix <= ? "
         "AND COALESCE(headline_en, headline) LIKE ? "
@@ -87,6 +91,7 @@ def cluster_for_term(
             url=row[3],
             publisher=row[4],
             published_at_unix=row[5],
+            language=row[6],
         ))
     return out
 

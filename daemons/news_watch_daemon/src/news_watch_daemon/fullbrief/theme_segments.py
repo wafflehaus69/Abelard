@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from ..llm_text import strip_code_fences
+from ..llm_text import extract_text_blocks, extract_usage, strip_code_fences
 
 
 # A theme with at least this many tagged headlines in-window is treated as
@@ -171,16 +171,6 @@ def parse_segment_response(text: str, expected_ids: list[str]) -> dict[str, str]
     return out
 
 
-def _extract_text(response: Any) -> str:
-    parts: list[str] = []
-    for block in getattr(response, "content", None) or []:
-        if getattr(block, "type", None) == "text":
-            val = getattr(block, "text", None)
-            if isinstance(val, str):
-                parts.append(val)
-    return "".join(parts)
-
-
 def synthesize_theme_segments(
     *,
     client: Any,
@@ -206,23 +196,32 @@ def synthesize_theme_segments(
     ) as stream:
         response = stream.get_final_message()
 
-    text = _extract_text(response).strip()
+    text = extract_text_blocks(response).strip()
+    stop_reason = getattr(response, "stop_reason", None)
     if not text:
-        stop_reason = getattr(response, "stop_reason", "unknown")
         raise ThemeSegmentsError(
             f"theme-segments response had no text (stop_reason={stop_reason!r}, "
             f"max_tokens={max_tokens})"
         )
+    if stop_reason == "max_tokens":
+        # Truncated with text. Even when the partial JSON happens to still
+        # parse, trailing themes are silently missing -> template lines. Make
+        # truncation an EXPLICIT reason instead of an ambiguous "missing keys"
+        # fallback; the budget lives in _build_theme_segments(max_tokens).
+        raise ThemeSegmentsError(
+            f"theme-segments output hit max_tokens ({max_tokens}) and was "
+            "truncated; raise the theme-segments budget"
+        )
 
     summaries = parse_segment_response(text, [i.theme_id for i in inputs])
 
-    usage = getattr(response, "usage", None)
+    u = extract_usage(response, model)
     metadata = ThemeSegmentsMetadata(
-        model_used=getattr(response, "model", model) or model,
-        input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
-        output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
-        cache_creation_input_tokens=int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
-        cache_read_input_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+        model_used=u.model_used,
+        input_tokens=u.input_tokens,
+        output_tokens=u.output_tokens,
+        cache_creation_input_tokens=u.cache_creation_input_tokens,
+        cache_read_input_tokens=u.cache_read_input_tokens,
     )
     return summaries, metadata
 

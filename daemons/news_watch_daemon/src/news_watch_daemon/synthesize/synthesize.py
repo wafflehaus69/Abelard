@@ -37,7 +37,8 @@ from typing import Any, Callable, Literal
 
 from pydantic import ValidationError
 
-from ..alert.factory import AlertSinkFactoryError, build_alert_sink
+from ..timefmt import iso_from_unix
+from ..alert.factory import AlertSinkFactoryError
 from ..alert.sink import AlertSink
 from .archive import ArchiveError, write_brief
 from .brief import (
@@ -326,10 +327,6 @@ def synthesize_brief(
 # ---------------------------------------------------------------------------
 
 
-def _iso_from_unix(ts: int) -> str:
-    """Format a unix timestamp as ISO-8601 UTC with `Z` suffix."""
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def _query_window_headlines(
     conn: sqlite3.Connection,
@@ -586,8 +583,8 @@ def synthesize_window(
             type="pull",
             reason=f"pull-trigger for {pull_theme}",
             window=TriggerWindow(
-                since=_iso_from_unix(window_since),
-                until=_iso_from_unix(window_until),
+                since=iso_from_unix(window_since),
+                until=iso_from_unix(window_until),
             ),
         )
     else:
@@ -621,8 +618,8 @@ def synthesize_window(
             type="event",
             reason=trigger_decision.reason,
             window=TriggerWindow(
-                since=_iso_from_unix(window_since),
-                until=_iso_from_unix(window_until),
+                since=iso_from_unix(window_since),
+                until=iso_from_unix(window_until),
             ),
         )
 

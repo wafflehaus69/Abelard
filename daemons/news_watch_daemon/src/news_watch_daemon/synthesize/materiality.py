@@ -45,7 +45,6 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from ..scrape.dedup import compute_dedupe_hash
 from .archive import ArchiveError, list_brief_ids, read_brief

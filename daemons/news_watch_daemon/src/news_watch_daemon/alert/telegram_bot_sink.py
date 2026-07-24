@@ -35,7 +35,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Optional
 
 from ..attention.brief_schema import AttentionBrief
 from ..synthesize.brief import Brief

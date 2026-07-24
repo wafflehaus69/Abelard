@@ -276,7 +276,7 @@ def render_full_brief_pdf(envelope: FullBriefEnvelope, out_path: Path | str) -> 
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import (
-        KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+        Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
     )
 
     S = _styles()

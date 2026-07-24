@@ -46,7 +46,7 @@ from ..sources.base import FetchedItem, FetchResult, SourcePlugin
 from ..sources.noise_filter_log import write_filter_entry
 from ..sources.telegram import PLUGIN_PREFIX as TELEGRAM_PLUGIN_PREFIX
 from ..theme_config import ThemeConfig
-from ..translation import TranslationResult, run_translation_pass
+from ..translation import run_translation_pass
 from .content_blocklist import classify_blocklist
 from .cross_source_log import write_observation as write_cross_source_observation
 from .dedup import compute_dedupe_hash

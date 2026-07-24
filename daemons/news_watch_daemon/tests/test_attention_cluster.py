@@ -20,7 +20,8 @@ def _make_conn() -> sqlite3.Connection:
         "headline_en TEXT, "
         "url TEXT, "
         "raw_source TEXT, "
-        "published_at_unix INTEGER)"
+        "published_at_unix INTEGER, "
+        "language TEXT)"
     )
     return conn
 

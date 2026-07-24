@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from ..timefmt import iso_from_unix
 from ..alert.sink import AlertSink
 from ..attention.brief_schema import AttentionBrief
 from ..attention.cluster import cluster_for_term
@@ -49,7 +50,7 @@ from ..attention.counter import count_terms_collapsed
 from ..attention.orchestrator import run_attention_cycle
 from ..attention.stopwords import StopwordsError, load_stopwords
 from ..config import Config
-from ..db import connect, schema_version
+from ..db import connect
 from ..http_client import HttpClient
 from ..scrape.factory import build_sources
 from ..scrape.orchestrator import ScrapeCycleResult, scrape_cycle
@@ -137,10 +138,6 @@ _PASS_F_FOOTPRINT_UNAVAILABLE = PassFFootprint(
     attention_crossings_enabled_by_pass_f=[],
 )
 
-
-def _iso_from_unix(ts: int) -> str:
-    """Format a unix timestamp as ISO-8601 UTC with `Z` suffix."""
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ---------------------------------------------------------------------------
@@ -878,12 +875,13 @@ def _build_theme_segments(
             degraded_reason = f"segment call errored: {exc}"
 
     segments: list[ThemeSegment] = []
-    missing_summary = False
+    template_count = 0
     for inp in inputs:
         summary = summaries.get(inp.theme_id)
-        if not summary:
+        is_template = not summary
+        if is_template:
             summary = template_summary(inp)
-            missing_summary = True
+            template_count += 1
         segments.append(ThemeSegment(
             theme_id=inp.theme_id,
             display_name=inp.display_name,
@@ -892,14 +890,16 @@ def _build_theme_segments(
             in_pass_c_scope=inp.in_scope,
             summary=summary,
             convergence_terms=inp.convergence_terms,
+            is_template=is_template,
         ))
 
-    llm_degraded = degraded_reason is not None or missing_summary
+    llm_degraded = degraded_reason is not None or template_count > 0
     return (
         ThemeSegmentsSection(
             status="ok",
             segments=segments,
             llm_degraded=llm_degraded,
+            template_count=template_count,
             failure_reason=degraded_reason,
         ),
         metadata,
@@ -1025,8 +1025,8 @@ def _compute_attention_crossings_enabled_by_pass_f(
     discipline: uses canonical_now_unix (NOT time.time()) so the cluster
     re-derivation sees the same row-set the original cluster saw.
 
-    For each crossing's cluster, batch-query language for the cluster's
-    headline_ids. Count rows with language != 'en'. If translated/total
+    For each crossing's cluster, count rows whose language != 'en' (language
+    is carried on the cluster row, so no separate query). If translated/total
     > _PASS_F_ENABLED_THRESHOLD (0.50), the crossing is enabled-by-Pass-F.
 
     Returns the enabled terms in the SAME ORDER as attention_briefs (input
@@ -1049,18 +1049,10 @@ def _compute_attention_crossings_enabled_by_pass_f(
         if not cluster:
             continue
 
-        ids = [c.headline_id for c in cluster]
-        placeholders = ",".join("?" * len(ids))
-        rows = conn.execute(
-            f"SELECT headline_id, language FROM headlines "
-            f"WHERE headline_id IN ({placeholders})",
-            ids,
-        ).fetchall()
-        language_by_id: dict[str, str] = {r[0]: r[1] for r in rows}
-
+        # Language travels on the cluster row now (folded into cluster_for_term's
+        # SELECT), so the separate per-crossing language query is gone.
         translated_count = sum(
-            1 for ch in cluster
-            if language_by_id.get(ch.headline_id, "en") != "en"
+            1 for ch in cluster if (ch.language or "en") != "en"
         )
         if translated_count / len(cluster) > _PASS_F_ENABLED_THRESHOLD:
             enabled.append(ab.triggering_term)
@@ -1199,8 +1191,8 @@ def assemble_full_brief(
 
     # Step 1: Window definition.
     window_section = WindowSection(
-        since=_iso_from_unix(now_unix - window_hours * 3600),
-        until=_iso_from_unix(now_unix),
+        since=iso_from_unix(now_unix - window_hours * 3600),
+        until=iso_from_unix(now_unix),
         duration_hours=window_hours,
     )
 
@@ -1325,6 +1317,20 @@ def assemble_full_brief(
             pass_failures.append(PassFailure(
                 step="theme_segments",
                 reason=theme_segments_section.failure_reason or "unknown",
+                recovered=True,
+            ))
+        elif theme_segments_section.llm_degraded:
+            # Degraded-but-rendered: some/all themes fell back to template
+            # lines. Previously invisible (status stayed "ok", exit 0, empty
+            # pass_failures) — the silent surface that shipped two incidents.
+            # Record it as a RECOVERED failure so a scheduled run can see it
+            # without string-matching the PDF.
+            n = theme_segments_section.template_count
+            total = len(theme_segments_section.segments)
+            pass_failures.append(PassFailure(
+                step="theme_segments",
+                reason=theme_segments_section.failure_reason
+                or f"{n}/{total} theme segment(s) degraded to template lines",
                 recovered=True,
             ))
 

@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import re
 import time
 from typing import Any
@@ -55,7 +54,7 @@ from typing import Any
 from telethon import errors
 from telethon.tl.functions.messages import TranslateTextRequest
 
-from .types import TranslationResult, TranslationStatus
+from .types import TranslationResult
 
 
 _LOG = logging.getLogger("news_watch_daemon.translation.telegram_native")

@@ -37,6 +37,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from ..timefmt import iso_from_unix
 from ..theme_config import ThemeConfig
 
 
@@ -132,10 +133,6 @@ Field details:
 # ---------- helpers ----------
 
 
-def _iso_from_unix(ts: int) -> str:
-    """Render Unix-seconds back to ISO-8601 for the prompt's headline list."""
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def _format_theme_block(theme: ThemeConfig, brief_excerpt_chars: int = 500) -> str:
     """Render one theme as a block Haiku can reference.
@@ -201,7 +198,7 @@ def build_user_prompt(
     else:
         for i, (publisher, headline, ts_unix) in enumerate(untagged, start=1):
             pub = publisher or "?"
-            sections.append(f"{i}. [{pub} | {_iso_from_unix(ts_unix)}] {headline}")
+            sections.append(f"{i}. [{pub} | {iso_from_unix(ts_unix)}] {headline}")
     sections.append("")
 
     sections.append("[CONSTRAINTS]")

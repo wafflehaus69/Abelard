@@ -17,7 +17,6 @@ so typos within a known section are caught.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator

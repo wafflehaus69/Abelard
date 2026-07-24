@@ -2341,6 +2341,41 @@ def _handle_full_brief(args: argparse.Namespace, cfg: Config) -> int:
 # stdout-render semantics + exit codes, so main() special-cases it too.
 
 
+def _acquire_run_lock(
+    lock_path: Path, log: logging.Logger, *, stale_after_s: int = 1800
+) -> int | None:
+    """Advisory single-instance lock for `run` (prevents concurrent DB writers).
+
+    Returns an open fd on success, or None if another FRESH run holds it (the
+    caller should skip this invocation). A lock older than `stale_after_s`
+    (1800s — comfortably longer than any real run) is treated as stale and
+    stolen, so a crashed/killed run never wedges every future run. OS-agnostic:
+    keys on lockfile mtime age, not on process-liveness syscalls.
+    """
+    for attempt in (1, 2):
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+            os.write(fd, f"pid={os.getpid()} ts={int(time.time())}\n".encode())
+            return fd
+        except FileExistsError:
+            try:
+                age = time.time() - os.path.getmtime(lock_path)
+            except OSError:
+                age = 0.0
+            if attempt == 1 and age > stale_after_s:
+                log.warning(
+                    "run: stealing stale lock (age %.0fs > %ds) at %s",
+                    age, stale_after_s, lock_path,
+                )
+                try:
+                    os.unlink(lock_path)
+                except OSError:
+                    pass
+                continue
+            return None
+    return None
+
+
 def _handle_run(args: argparse.Namespace, cfg: Config) -> int:
     """One-pass operating cycle. Returns an exit code directly (like full-brief).
 
@@ -2356,28 +2391,52 @@ def _handle_run(args: argparse.Namespace, cfg: Config) -> int:
     """
     log = logging.getLogger("news_watch_daemon.cli")
 
-    init_env = _handle_db_init(args, cfg)
-    if init_env["status"] != "ok":
+    # Single-instance guard: a scheduled run that runs long can overlap the next
+    # cron tick (or a manual run can overlap the schedule); two processes then
+    # scrape and write the same SQLite DB, risking `database is locked` and two
+    # briefs for the same window. Skip cleanly if another run holds the lock.
+    lock_path = cfg.db_path.parent / "run.lock"
+    lock_fd = _acquire_run_lock(lock_path, log)
+    if lock_fd is None:
         sys.stderr.write(
-            f"ERROR: run aborted at ensure-schema: {init_env['error_detail']}\n"
+            f"run: another run is already in progress (lock at {lock_path}); "
+            "skipping this invocation to avoid a concurrent DB writer.\n"
         )
         sys.stderr.flush()
-        return 1
-    log.info("run: schema ready (v%s)", init_env["data"].get("schema_version"))
+        return 0
 
-    themes_env = _handle_themes_load(args, cfg)
-    if themes_env["status"] != "ok":
-        sys.stderr.write(
-            f"ERROR: run aborted at ensure-themes: {themes_env['error_detail']}\n"
+    try:
+        init_env = _handle_db_init(args, cfg)
+        if init_env["status"] != "ok":
+            sys.stderr.write(
+                f"ERROR: run aborted at ensure-schema: {init_env['error_detail']}\n"
+            )
+            sys.stderr.flush()
+            return 1
+        log.info("run: schema ready (v%s)", init_env["data"].get("schema_version"))
+
+        themes_env = _handle_themes_load(args, cfg)
+        if themes_env["status"] != "ok":
+            sys.stderr.write(
+                f"ERROR: run aborted at ensure-themes: {themes_env['error_detail']}\n"
+            )
+            sys.stderr.flush()
+            return 1
+        log.info(
+            "run: %s theme(s) loaded from %s",
+            themes_env["data"].get("loaded_count"), cfg.themes_dir,
         )
-        sys.stderr.flush()
-        return 1
-    log.info(
-        "run: %s theme(s) loaded from %s",
-        themes_env["data"].get("loaded_count"), cfg.themes_dir,
-    )
 
-    return _handle_full_brief(args, cfg)
+        return _handle_full_brief(args, cfg)
+    finally:
+        try:
+            os.close(lock_fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(lock_path)
+        except OSError:
+            pass
 
 
 # ---------- read-brief subcommand (reload + render persisted artifact) -------

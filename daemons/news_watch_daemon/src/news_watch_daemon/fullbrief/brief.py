@@ -151,6 +151,10 @@ class ThemeSegment(BaseModel):
     in_pass_c_scope: bool
     summary: str
     convergence_terms: list[str] = Field(default_factory=list)
+    # True when `summary` is the deterministic fallback template (the LLM
+    # dropped/failed this theme), not real synthesis. Makes partial degradation
+    # countable without string-matching the template sentence.
+    is_template: bool = False
 
 
 class ThemeSegmentsSection(BaseModel):
@@ -163,7 +167,11 @@ class ThemeSegmentsSection(BaseModel):
 
     `llm_degraded` flags that the batched summary call failed and the
     summaries are deterministic templates — surfaced so the operator
-    knows the lines are counts, not interpretation.
+    knows the lines are counts, not interpretation. `template_count` is
+    HOW MANY of the `segments` fell back to a template — 0 is fully clean,
+    == len(segments) is total degradation, in between is a partial drop
+    (the "silently dropped a theme" mode). It is the countable signal the
+    post-run health check keys on.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -171,6 +179,7 @@ class ThemeSegmentsSection(BaseModel):
     status: Literal["ok", "skipped", "failed"]
     segments: list[ThemeSegment] = Field(default_factory=list)
     llm_degraded: bool = False
+    template_count: int = Field(ge=0, default=0)
     failure_reason: Optional[str] = None
 
 

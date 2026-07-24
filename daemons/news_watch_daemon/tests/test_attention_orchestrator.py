@@ -34,7 +34,8 @@ def _make_conn() -> sqlite3.Connection:
         # it NULL, COALESCE(headline_en, headline) returns headline.
         "CREATE TABLE headlines ("
         "headline_id TEXT PRIMARY KEY, source TEXT, headline TEXT, "
-        "headline_en TEXT, url TEXT, raw_source TEXT, published_at_unix INTEGER)"
+        "headline_en TEXT, url TEXT, raw_source TEXT, published_at_unix INTEGER, "
+        "language TEXT)"
     )
     return conn
 

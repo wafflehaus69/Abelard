@@ -27,7 +27,6 @@ FullBriefEnvelope; this module just composes the text.
 
 from __future__ import annotations
 
-from typing import Iterable
 
 from .brief import (
     AttentionCrossing,

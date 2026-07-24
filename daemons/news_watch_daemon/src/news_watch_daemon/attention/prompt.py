@@ -17,6 +17,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from ..timefmt import iso_from_unix
 from .cluster import ClusterHeadline
 
 
@@ -194,10 +195,6 @@ caveats.
 """
 
 
-def _iso_from_unix(ts: int) -> str:
-    """Render `published_at_unix` back to the ISO-8601 string for the prompt."""
-    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def _format_cluster_headline(h: ClusterHeadline, index: int) -> str:
     """Render one headline in the cluster as a text block Sonnet can read."""
@@ -206,7 +203,7 @@ def _format_cluster_headline(h: ClusterHeadline, index: int) -> str:
     return (
         f"### Headline {index}\n"
         f"SOURCE: {h.source} | PUBLISHER: {pub} | "
-        f"{_iso_from_unix(h.published_at_unix)} | {url}\n"
+        f"{iso_from_unix(h.published_at_unix)} | {url}\n"
         f"  {h.headline}"
     )
 
