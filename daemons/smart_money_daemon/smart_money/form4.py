@@ -36,11 +36,11 @@ def ticker_to_cik(contact, tickers):
     return out
 
 
-def daily_form4(contact, date):
+def daily_form4(contact, date, pace=None):
     """(cik, issuer, path) Form 4 rows for a date (datetime.date)."""
     q = (date.month - 1) // 3 + 1
     url = DAILY_IDX.format(y=date.year, q=q, ymd=date.strftime("%Y%m%d"))
-    time.sleep(PACE)
+    time.sleep(PACE if pace is None else pace)
     r = requests.get(url, headers=_ua(contact), timeout=30)
     if r.status_code != 200:
         return None  # index may not exist yet (weekend/holiday/today-early)
@@ -84,12 +84,12 @@ def fetch_form4_xml(contact, path):
 ARCHIVES = "https://www.sec.gov/Archives/{path}"
 
 
-def fetch_form4_from_txt(contact, path):
+def fetch_form4_from_txt(contact, path, pace=None):
     """SINGLE-fetch path (SM-U1 PH1 optimization): pull the full submission .txt
     directly from the daily-index path and extract the inline ownership XML,
     skipping the index.json round-trip. Halves EDGAR requests per filing.
-    Returns parsed dict or None."""
-    time.sleep(PACE)
+    Returns parsed dict or None. `pace` overrides the inter-request sleep."""
+    time.sleep(PACE if pace is None else pace)
     r = requests.get(ARCHIVES.format(path=path), headers=_ua(contact), timeout=30)
     if r.status_code != 200:
         return None

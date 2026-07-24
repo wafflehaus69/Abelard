@@ -16,6 +16,10 @@ from . import db as dbmod
 from . import form4
 from .efd_ingest import load_env
 
+# Universal path runs alone and is the dominant EDGAR consumer; 0.12s = 8.3 req/s,
+# a safe margin under EDGAR's 10 req/s cap. Lands the 12mo estimate under ~20h.
+UNIVERSAL_PACE = 0.12
+
 
 def _trading_days_back(anchor_iso, n):
     """n calendar days back from anchor, newest first (weekends yield empty
@@ -32,7 +36,7 @@ def cost_probe(contact, anchor_iso, days=30, sample=40):
     sample_paths = []
     idx_fetches = 0
     for d in _trading_days_back(anchor_iso, days):
-        rows = form4.daily_form4(contact, dt.date.fromisoformat(d))
+        rows = form4.daily_form4(contact, dt.date.fromisoformat(d), pace=UNIVERSAL_PACE)
         idx_fetches += 1
         if rows is None:
             continue
@@ -46,7 +50,7 @@ def cost_probe(contact, anchor_iso, days=30, sample=40):
     txns = 0
     for p in sample_paths:
         try:
-            pr = form4.fetch_form4_from_txt(contact, p)  # single-fetch (PH1 opt)
+            pr = form4.fetch_form4_from_txt(contact, p, pace=UNIVERSAL_PACE)
             if pr:
                 parsed_ok += 1
                 txns += len(pr.get("txns", []))
@@ -82,7 +86,7 @@ def cost_probe(contact, anchor_iso, days=30, sample=40):
 def backfill_day(con, contact, day):
     """Persist every Form 4 in a day's index (all codes). Idempotent by
     accession. Returns (form4_count, persisted, parse_fail)."""
-    rows = form4.daily_form4(contact, dt.date.fromisoformat(day))
+    rows = form4.daily_form4(contact, dt.date.fromisoformat(day), pace=UNIVERSAL_PACE)
     if rows is None:
         return None
     seen = {r[0] for r in con.execute("SELECT accession FROM form4_backfill_seen")}
@@ -93,7 +97,7 @@ def backfill_day(con, contact, day):
         if accession in seen:
             continue
         try:
-            parsed = form4.fetch_form4_from_txt(contact, r["path"])  # single-fetch
+            parsed = form4.fetch_form4_from_txt(contact, r["path"], pace=UNIVERSAL_PACE)
             if parsed:
                 ticker = parsed.get("symbol")
                 n, _ = form4.persist_transactions(con, accession, parsed, ticker,
