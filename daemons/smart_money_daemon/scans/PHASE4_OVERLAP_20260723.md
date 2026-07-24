@@ -9,9 +9,13 @@ Generated 2026-07-23. Raw counts and row-level backing only. NO composite score,
 - **Congress**: 35548 stock rows, tx 2012-09-13..3031-04-30.
 - Join key = uppercased ticker across surfaces (13F OpenFIGI / Form 4 issuer symbol / congress normalized). Cross-source symbol mismatch is a coverage limit — see gaps.
 
-## SMID banding — BLOCKED-ON-METHOD
+## SMID banding — SEC companyfacts (Mando-ratified method)
 
-Market-cap method is Mando's decision (recon candidate: SEC companyfacts keyless). Not chosen at run time, so **(a) and (d) are reported FULL-UNIVERSE ONLY** and the SMID cut is marked blocked. No market-cap proxy is substituted. Proposed bands (pending): micro <$300M, small $300M-$2B, mid $2B-$10B.
+Market cap = shares outstanding (SEC companyconcept dei/us-gaap, keyless, same EDGAR client) x latest price. Bands: micro <$300M, small $300M-$2B, mid $2B-$10B, large >=$10B. Multi-class names whose shares are not in a single concept (e.g. META, MSTR) resolve to UNBANDABLE and are reported, never guessed.
+
+- Band distribution (all banded tickers): {'large': 109, 'micro': 11, 'mid': 46, 'small': 21, 'unbandable': 64}
+- **AS-OF CAVEAT:** shares as-of the latest cover-page filing, price as-of the latest quote. A stale or wrong price on a volatile small cap is a labeled error source — bands near a boundary are soft.
+- SMID subset below = micro + small + mid (large and unbandable excluded).
 
 ## Per-principal 13F holdings summary
 
@@ -24,31 +28,32 @@ Market-cap method is Mando's decision (recon candidate: SEC companyfacts keyless
 | 2059583 | 6 | 6 | 1 | 2026-03-31 |
 | 2106825 | 1 | 1 | 1 | 2025-12-31 |
 
-## (a) Multi-principal convergence — 2+ tracked 13F filers, same period (full-universe)
+## (a) Multi-principal convergence — direction-aware, 2+ filers same side
 
-19 (ticker, period) pairs held by >=2 confirmed filers.
+16 (ticker, period) convergences (>=2 filers on the SAME side). 0 of them ALSO have a filer on the opposite side (disagreement — flagged, not counted as agreement).
 
-| ticker | period | n_filers | filer_ciks | overlay |
-|---|---|---|---|---|
-| AMZN | 2024-12-31 | 2 | 1536411,1562087 |  |
-| AVGO | 2025-06-30 | 2 | 1536411,2045724 |  |
-| BE | 2025-12-31 | 2 | 1536411,2045724 |  |
-| BE | 2026-03-31 | 2 | 1536411,2045724 |  |
-| EQT | 2025-03-31 | 2 | 1536411,2045724 |  |
-| EQT | 2025-06-30 | 2 | 1536411,2045724 |  |
-| EQT | 2025-09-30 | 2 | 1536411,2045724 |  |
-| INTC | 2026-03-31 | 2 | 1536411,2045724 |  |
-| MU | 2026-03-31 | 2 | 1536411,2045724 |  |
-| SEI | 2025-09-30 | 2 | 1536411,2045724 |  |
-| SNDK | 2025-09-30 | 2 | 1536411,2045724 |  |
-| SNDK | 2026-03-31 | 2 | 1536411,2045724 |  |
-| TSLA | 2024-12-31 | 2 | 1536411,1562087 | conviction |
-| TSLA | 2025-03-31 | 2 | 1536411,1562087 | conviction |
-| TSM | 2026-03-31 | 2 | 1536411,2045724 |  |
-| VST | 2024-12-31 | 2 | 1536411,2045724 |  |
-| VST | 2025-03-31 | 2 | 1562087,2045724 |  |
-| VST | 2025-06-30 | 2 | 1562087,2045724 |  |
-| VST | 2025-09-30 | 2 | 1536411,2045724 |  |
+| ticker | period | converge_dir | long_filers | short_filers | disagreement | band | overlay |
+|---|---|---|---|---|---|---|---|
+| BE | 2026-03-31 | long | 2 | 0 | False | large |  |
+| SNDK | 2026-03-31 | long | 2 | 0 | False | large |  |
+| BE | 2025-12-31 | long | 2 | 0 | False | large |  |
+| EQT | 2025-09-30 | long | 2 | 0 | False | large |  |
+| SNDK | 2025-09-30 | long | 2 | 0 | False | large |  |
+| SEI | 2025-09-30 | long | 2 | 0 | False | unbandable |  |
+| VST | 2025-09-30 | long | 2 | 0 | False | large |  |
+| AVGO | 2025-06-30 | long | 2 | 0 | False | large |  |
+| EQT | 2025-06-30 | long | 2 | 0 | False | large |  |
+| EQT | 2025-03-31 | long | 2 | 0 | False | large |  |
+| TSLA | 2025-03-31 | long | 2 | 0 | False | large | conviction |
+| AMZN | 2024-12-31 | long | 2 | 0 | False | large |  |
+| TSLA | 2024-12-31 | long | 2 | 0 | False | large | conviction |
+| VST | 2024-12-31 | long | 2 | 0 | False | large |  |
+| VST | 2025-06-30 | long | 2 | 0 | False | large |  |
+| VST | 2025-03-31 | long | 2 | 0 | False | large |  |
+
+### (a) SMID subset — 0 convergences on micro/small/mid names
+
+None in micro/small/mid (the confirmed filers' convergences are large-cap or unbandable — see coverage).
 
 ## (b) Institutional x insider — 13F holding + discretionary open-market Form 4 buy
 
@@ -63,6 +68,8 @@ Excludes 10b5-1 planned transactions (plan_flag=0 only). The highest-interest jo
 | ticker | insider_buys | distinct_buyers | n_13f_filers | buyers | overlay |
 |---|---|---|---|---|---|
 | ABCL | 4 | 3 | 1 | Montalbano John S.,Thermopylae Holdings Ltd.,Booth Andrew |  |
+
+> **Selection-effect note (ABCL / GUTS).** ABCL and GUTS surface here and in the g1 insider-buy counter, but that is largely a SELECTION ARTIFACT: both are Thiel-network issuers we deliberately backfilled, so Thiel-adjacent insider buying was always going to appear on them. Their presence is NOT independent corroboration — we looked precisely where we expected to find it. Treat as coverage-shaped, not as a discovered convergence.
 
 ## (c) Institutional x congressional — 13F holding intersects a congressional disclosure
 
@@ -136,170 +143,170 @@ Excludes 10b5-1 planned transactions (plan_flag=0 only). The highest-interest jo
 Adds, exits, and >=2x size changes reported SEPARATELY.
 
 ### Adds — 207
-| cik | period | ticker | value |
-|---|---|---|---|
-| 1536411 | 2024-09-30 | TFC | 9987 |
-| 1536411 | 2024-09-30 | ABCB | 9608 |
-| 1536411 | 2024-09-30 | HBAN | 9867 |
-| 1536411 | 2024-09-30 | SBUX | 5099 |
-| 1536411 | 2024-09-30 | USB | 9942 |
-| 1536411 | 2024-09-30 | FT2 | 9624 |
-| 1536411 | 2024-09-30 | RARE | 4746 |
-| 1536411 | 2024-09-30 | TSM | 9961 |
-| 1536411 | 2024-09-30 | VRNA | 19738 |
-| 1536411 | 2024-09-30 | PCVX | 4910 |
-| 1536411 | 2024-09-30 | TRP | 5485 |
-| 1536411 | 2024-09-30 | CNM | 21099 |
-| 1536411 | 2024-09-30 | FCNCA | 9542 |
-| 1536411 | 2024-09-30 | ADSK | 10027 |
-| 1536411 | 2024-09-30 | KRE | 116218 |
-| 1536411 | 2024-09-30 | CFG | 9799 |
-| 1536411 | 2024-09-30 | ARM | 3090 |
-| 1536411 | 2024-09-30 | AVGO | 41397 |
-| 1536411 | 2024-09-30 | TRVC | 20495 |
-| 1536411 | 2024-09-30 | SPRY | 7785 |
-| 1536411 | 2024-09-30 | TEVA | 25732 |
-| 1536411 | 2024-09-30 | WDC | 4876 |
-| 1536411 | 2024-09-30 | USX1 | 23427 |
-| 1536411 | 2024-09-30 | XPO | 4999 |
-| 1536411 | 2024-09-30 | KEY | 9780 |
-| 1536411 | 2024-09-30 | MTB | 10010 |
-| 1536411 | 2024-12-31 | BWXT | 33325 |
-| 1536411 | 2024-12-31 | LLY | 48011 |
-| 1536411 | 2024-12-31 | WBD | 49231 |
-| 1536411 | 2024-12-31 | LYV | 10313 |
-| 1536411 | 2024-12-31 | WFC | 11035 |
-| 1536411 | 2024-12-31 | AAL | 16034 |
-| 1536411 | 2024-12-31 | TSLA | 15215 |
-| 1536411 | 2024-12-31 | PCT | 16323 |
-| 1536411 | 2024-12-31 | SNREN | 5736 |
-| 1536411 | 2024-12-31 | DAL | 49473 |
-| 1536411 | 2024-12-31 | GOOGL | 14516 |
-| 1536411 | 2024-12-31 | UAL | 101353 |
-| 1536411 | 2024-12-31 | IQV | 4225 |
-| 1536411 | 2024-12-31 | MIR | 5980 |
-| 1536411 | 2024-12-31 | AMZN | 72048 |
-| 1536411 | 2024-12-31 | MU | 34412 |
-| 1536411 | 2024-12-31 | SKAA | 72272 |
-| 1536411 | 2024-12-31 | BN | 35057 |
-| 1536411 | 2024-12-31 | SLM | 69509 |
-| 1536411 | 2024-12-31 | ELF | 4683 |
-| 1536411 | 2025-03-31 | EXE | 10876 |
-| 1536411 | 2025-03-31 | CCC | 50523 |
-| 1536411 | 2025-03-31 | COF | 35442 |
-| 1536411 | 2025-03-31 | AR | 10450 |
+| cik | period | ticker | value | band |
+|---|---|---|---|---|
+| 1536411 | 2024-09-30 | CNM | 21099 | unbandable |
+| 1536411 | 2024-09-30 | SBUX | 5099 | large |
+| 1536411 | 2024-09-30 | SPRY | 7785 | small |
+| 1536411 | 2024-09-30 | ABCB | 9608 | mid |
+| 1536411 | 2024-09-30 | ARM | 3090 | large |
+| 1536411 | 2024-09-30 | WDC | 4876 | large |
+| 1536411 | 2024-09-30 | USB | 9942 | large |
+| 1536411 | 2024-09-30 | HBAN | 9867 | large |
+| 1536411 | 2024-09-30 | AVGO | 41397 | large |
+| 1536411 | 2024-09-30 | XPO | 4999 | large |
+| 1536411 | 2024-09-30 | ADSK | 10027 | large |
+| 1536411 | 2024-09-30 | FT2 | 9624 | unbandable |
+| 1536411 | 2024-09-30 | USX1 | 23427 | unbandable |
+| 1536411 | 2024-09-30 | VRNA | 19738 | unbandable |
+| 1536411 | 2024-09-30 | KEY | 9780 | large |
+| 1536411 | 2024-09-30 | TRP | 5485 | large |
+| 1536411 | 2024-09-30 | MTB | 10010 | large |
+| 1536411 | 2024-09-30 | PCVX | 4910 | mid |
+| 1536411 | 2024-09-30 | TRVC | 20495 | unbandable |
+| 1536411 | 2024-09-30 | KRE | 116218 | unbandable |
+| 1536411 | 2024-09-30 | TEVA | 25732 | large |
+| 1536411 | 2024-09-30 | TSM | 9961 | large |
+| 1536411 | 2024-09-30 | CFG | 9799 | large |
+| 1536411 | 2024-09-30 | FCNCA | 9542 | unbandable |
+| 1536411 | 2024-09-30 | TFC | 9987 | large |
+| 1536411 | 2024-09-30 | RARE | 4746 | mid |
+| 1536411 | 2024-12-31 | MU | 34412 | large |
+| 1536411 | 2024-12-31 | WBD | 49231 | large |
+| 1536411 | 2024-12-31 | ELF | 4683 | mid |
+| 1536411 | 2024-12-31 | BN | 35057 | unbandable |
+| 1536411 | 2024-12-31 | AMZN | 72048 | large |
+| 1536411 | 2024-12-31 | AAL | 16034 | mid |
+| 1536411 | 2024-12-31 | DAL | 49473 | large |
+| 1536411 | 2024-12-31 | PCT | 16323 | small |
+| 1536411 | 2024-12-31 | SNREN | 5736 | unbandable |
+| 1536411 | 2024-12-31 | MIR | 5980 | small |
+| 1536411 | 2024-12-31 | LYV | 10313 | large |
+| 1536411 | 2024-12-31 | TSLA | 15215 | large |
+| 1536411 | 2024-12-31 | UAL | 101353 | large |
+| 1536411 | 2024-12-31 | WFC | 11035 | large |
+| 1536411 | 2024-12-31 | GOOGL | 14516 | large |
+| 1536411 | 2024-12-31 | SKAA | 72272 | unbandable |
+| 1536411 | 2024-12-31 | SLM | 69509 | mid |
+| 1536411 | 2024-12-31 | BWXT | 33325 | large |
+| 1536411 | 2024-12-31 | LLY | 48011 | large |
+| 1536411 | 2024-12-31 | IQV | 4225 | large |
+| 1536411 | 2025-03-31 | AR | 10450 | large |
+| 1536411 | 2025-03-31 | CZR | 38711 | mid |
+| 1536411 | 2025-03-31 | DOCU | 87477 | mid |
+| 1536411 | 2025-03-31 | CCC | 50523 | mid |
 
 (showing 50 of 207)
 
 ### Exits — 190
-| cik | period | ticker | was_value |
-|---|---|---|---|
-| 1536411 | 2024-09-30 | AAPL | 5139 |
-| 1536411 | 2024-09-30 | MSGE | 23763 |
-| 1536411 | 2024-09-30 | OPCH | 51849 |
-| 1536411 | 2024-09-30 | VCYT | 5633 |
-| 1536411 | 2024-09-30 | AES | 5530 |
-| 1536411 | 2024-09-30 | CNK | 8665 |
-| 1536411 | 2024-09-30 | IQV | 12763 |
-| 1536411 | 2024-09-30 | EQT | 4475 |
-| 1536411 | 2024-09-30 | LYV | 9665 |
-| 1536411 | 2024-09-30 | BAH | 12903 |
-| 1536411 | 2024-09-30 | GPCR | 1480 |
-| 1536411 | 2024-09-30 | TEO | 1034 |
-| 1536411 | 2024-09-30 | NWSA | 18852 |
-| 1536411 | 2024-09-30 | SPHR | 4292 |
-| 1536411 | 2024-09-30 | TPD | 4881 |
-| 1536411 | 2024-09-30 | NVDA | 26445 |
-| 1536411 | 2024-09-30 | SE | 4778 |
-| 1536411 | 2024-09-30 | BLDR | 4067 |
-| 1536411 | 2024-09-30 | NWS | 18052 |
-| 1536411 | 2024-09-30 | ANETEUR | 18321 |
-| 1536411 | 2024-12-31 | SBUX | 5099 |
-| 1536411 | 2024-12-31 | CPT | 35937 |
-| 1536411 | 2024-12-31 | NRIX | 993 |
-| 1536411 | 2024-12-31 | TRP | 5485 |
-| 1536411 | 2024-12-31 | SLN | 7043 |
-| 1536411 | 2024-12-31 | CNM | 21099 |
-| 1536411 | 2024-12-31 | MSFT | 18544 |
-| 1536411 | 2024-12-31 | ADSK | 10027 |
-| 1536411 | 2024-12-31 | BCYC | 4304 |
-| 1536411 | 2024-12-31 | CFG | 9799 |
-| 1536411 | 2024-12-31 | AVGO | 41397 |
-| 1536411 | 2024-12-31 | SPRY | 7785 |
-| 1536411 | 2024-12-31 | ADBE | 17861 |
-| 1536411 | 2024-12-31 | MAA | 37933 |
-| 1536411 | 2024-12-31 | XPO | 4999 |
-| 1536411 | 2024-12-31 | MTB | 10010 |
-| 1536411 | 2025-03-31 | TFC | 10129 |
-| 1536411 | 2025-03-31 | BWXT | 33325 |
-| 1536411 | 2025-03-31 | HBAN | 10920 |
-| 1536411 | 2025-03-31 | USB | 24087 |
-| 1536411 | 2025-03-31 | TLSI | 2139 |
-| 1536411 | 2025-03-31 | WBD | 49231 |
-| 1536411 | 2025-03-31 | LYV | 10313 |
-| 1536411 | 2025-03-31 | WFC | 11035 |
-| 1536411 | 2025-03-31 | PCVX | 7062 |
-| 1536411 | 2025-03-31 | GEV | 32811 |
-| 1536411 | 2025-03-31 | SNREN | 5736 |
-| 1536411 | 2025-03-31 | TRVC | 5114 |
-| 1536411 | 2025-03-31 | WDC | 24875 |
-| 1536411 | 2025-03-31 | PLTR | 3155 |
+| cik | period | ticker | was_value | band |
+|---|---|---|---|---|
+| 1536411 | 2024-09-30 | VCYT | 5633 | mid |
+| 1536411 | 2024-09-30 | NWS | 18052 | large |
+| 1536411 | 2024-09-30 | MSGE | 23763 | unbandable |
+| 1536411 | 2024-09-30 | BAH | 12903 | mid |
+| 1536411 | 2024-09-30 | NVDA | 26445 | large |
+| 1536411 | 2024-09-30 | TEO | 1034 | unbandable |
+| 1536411 | 2024-09-30 | TPD | 4881 | unbandable |
+| 1536411 | 2024-09-30 | AAPL | 5139 | large |
+| 1536411 | 2024-09-30 | SE | 4778 | micro |
+| 1536411 | 2024-09-30 | EQT | 4475 | large |
+| 1536411 | 2024-09-30 | AES | 5530 | large |
+| 1536411 | 2024-09-30 | GPCR | 1480 | large |
+| 1536411 | 2024-09-30 | CNK | 8665 | mid |
+| 1536411 | 2024-09-30 | OPCH | 51849 | mid |
+| 1536411 | 2024-09-30 | NWSA | 18852 | large |
+| 1536411 | 2024-09-30 | SPHR | 4292 | unbandable |
+| 1536411 | 2024-09-30 | LYV | 9665 | large |
+| 1536411 | 2024-09-30 | ANETEUR | 18321 | unbandable |
+| 1536411 | 2024-09-30 | IQV | 12763 | large |
+| 1536411 | 2024-09-30 | BLDR | 4067 | mid |
+| 1536411 | 2024-12-31 | CNM | 21099 | unbandable |
+| 1536411 | 2024-12-31 | SBUX | 5099 | large |
+| 1536411 | 2024-12-31 | SPRY | 7785 | small |
+| 1536411 | 2024-12-31 | ADBE | 17861 | large |
+| 1536411 | 2024-12-31 | AVGO | 41397 | large |
+| 1536411 | 2024-12-31 | MSFT | 18544 | large |
+| 1536411 | 2024-12-31 | NRIX | 993 | mid |
+| 1536411 | 2024-12-31 | XPO | 4999 | large |
+| 1536411 | 2024-12-31 | ADSK | 10027 | large |
+| 1536411 | 2024-12-31 | CPT | 35937 | large |
+| 1536411 | 2024-12-31 | BCYC | 4304 | micro |
+| 1536411 | 2024-12-31 | TRP | 5485 | large |
+| 1536411 | 2024-12-31 | MTB | 10010 | large |
+| 1536411 | 2024-12-31 | SLN | 7043 | small |
+| 1536411 | 2024-12-31 | CFG | 9799 | large |
+| 1536411 | 2024-12-31 | MAA | 37933 | large |
+| 1536411 | 2025-03-31 | MU | 34412 | large |
+| 1536411 | 2025-03-31 | WULF | 8333 | mid |
+| 1536411 | 2025-03-31 | ACLXGBX | 5683 | unbandable |
+| 1536411 | 2025-03-31 | WBD | 49231 | large |
+| 1536411 | 2025-03-31 | ELF | 4683 | mid |
+| 1536411 | 2025-03-31 | WDC | 24875 | large |
+| 1536411 | 2025-03-31 | CRNX | 6274 | mid |
+| 1536411 | 2025-03-31 | FT2 | 12481 | unbandable |
+| 1536411 | 2025-03-31 | USX1 | 54725 | unbandable |
+| 1536411 | 2025-03-31 | KEY | 9033 | large |
+| 1536411 | 2025-03-31 | SNREN | 5736 | unbandable |
+| 1536411 | 2025-03-31 | PCVX | 7062 | mid |
+| 1536411 | 2025-03-31 | MIR | 5980 | small |
+| 1536411 | 2025-03-31 | TRVC | 5114 | unbandable |
 
 (showing 50 of 190)
 
 ### Size changes (>=2x) — 97
-| cik | period | ticker | from | to | dir |
-|---|---|---|---|---|---|
-| 1536411 | 2024-09-30 | KMI | 134185 | 57699 | down_2x |
-| 1536411 | 2024-09-30 | VST | 225717 | 46391 | down_2x |
-| 1536411 | 2024-09-30 | GEV | 50950 | 7458 | down_2x |
-| 1536411 | 2024-09-30 | MSFT | 178999 | 18544 | down_2x |
-| 1536411 | 2024-09-30 | PANW | 30161 | 14941 | down_2x |
-| 1536411 | 2024-09-30 | GTM | 75112 | 22092 | down_2x |
-| 1536411 | 2024-09-30 | MAA | 91868 | 37933 | down_2x |
-| 1536411 | 2024-09-30 | PLTR | 19503 | 1552 | down_2x |
-| 1536411 | 2024-09-30 | NTRA | 213860 | 452812 | up_2x |
-| 1536411 | 2024-12-31 | USB | 9942 | 24087 | up_2x |
-| 1536411 | 2024-12-31 | ARGT | 18697 | 45369 | up_2x |
-| 1536411 | 2024-12-31 | TSM | 9961 | 21233 | up_2x |
-| 1536411 | 2024-12-31 | VRNA | 19738 | 41219 | up_2x |
-| 1536411 | 2024-12-31 | IVVD | 583 | 253 | down_2x |
-| 1536411 | 2024-12-31 | GEV | 7458 | 32811 | up_2x |
-| 1536411 | 2024-12-31 | IM8N | 1460 | 40973 | up_2x |
-| 1536411 | 2024-12-31 | YPF | 9122 | 71745 | up_2x |
-| 1536411 | 2024-12-31 | TECK/B | 53133 | 17491 | down_2x |
-| 1536411 | 2024-12-31 | KRE | 116218 | 33442 | down_2x |
-| 1536411 | 2024-12-31 | ARM | 3090 | 22007 | up_2x |
-| 1536411 | 2024-12-31 | TRVC | 20495 | 5114 | down_2x |
-| 1536411 | 2024-12-31 | TEVA | 25732 | 198303 | up_2x |
-| 1536411 | 2024-12-31 | WDC | 4876 | 24875 | up_2x |
-| 1536411 | 2024-12-31 | FCX | 68737 | 28899 | down_2x |
-| 1536411 | 2024-12-31 | USX1 | 23427 | 54725 | up_2x |
-| 1536411 | 2024-12-31 | CRNX | 15790 | 6274 | down_2x |
-| 1536411 | 2024-12-31 | PLTR | 1552 | 3155 | up_2x |
-| 1536411 | 2025-03-31 | UAL | 101353 | 25458 | down_2x |
-| 1536411 | 2025-03-31 | TSM | 21233 | 99397 | up_2x |
-| 1536411 | 2025-03-31 | AMZN | 72048 | 26021 | down_2x |
-| 1536411 | 2025-03-31 | AAL | 16034 | 1411 | down_2x |
-| 1536411 | 2025-03-31 | TSLA | 15215 | 4882 | down_2x |
-| 1536411 | 2025-03-31 | IM8N | 40973 | 104445 | up_2x |
-| 1536411 | 2025-03-31 | BN | 35057 | 16551 | down_2x |
-| 1536411 | 2025-03-31 | DAL | 49473 | 15048 | down_2x |
-| 1536411 | 2025-06-30 | BMA | 32606 | 15509 | down_2x |
-| 1536411 | 2025-06-30 | CCC | 50523 | 9485 | down_2x |
-| 1536411 | 2025-06-30 | APP | 10652 | 31317 | up_2x |
-| 1536411 | 2025-06-30 | IM8N | 104445 | 226786 | up_2x |
-| 1536411 | 2025-06-30 | ROKU | 34769 | 96723 | up_2x |
-| 1536411 | 2025-06-30 | YPF | 72722 | 22141 | down_2x |
-| 1536411 | 2025-06-30 | DAL | 15048 | 39025 | up_2x |
-| 1536411 | 2025-06-30 | BCS | 58634 | 28814 | down_2x |
-| 1536411 | 2025-06-30 | FCX | 38545 | 9745 | down_2x |
-| 1536411 | 2025-09-30 | LEN | 9944 | 35219 | up_2x |
-| 1536411 | 2025-09-30 | BAC | 16179 | 51035 | up_2x |
-| 1536411 | 2025-09-30 | DHI | 9978 | 34767 | up_2x |
-| 1536411 | 2025-09-30 | TWLO | 24931 | 51326 | up_2x |
-| 1536411 | 2025-09-30 | YPF | 22141 | 2786 | down_2x |
-| 1536411 | 2025-09-30 | CHYM | 16110 | 872 | down_2x |
+| cik | period | ticker | from | to | dir | band |
+|---|---|---|---|---|---|---|
+| 1536411 | 2024-09-30 | NTRA | 213860 | 452812 | up_2x | large |
+| 1536411 | 2024-09-30 | PANW | 30161 | 14941 | down_2x | large |
+| 1536411 | 2024-09-30 | KMI | 134185 | 57699 | down_2x | large |
+| 1536411 | 2024-09-30 | VST | 225717 | 46391 | down_2x | large |
+| 1536411 | 2024-09-30 | MSFT | 178999 | 18544 | down_2x | large |
+| 1536411 | 2024-09-30 | GTM | 75112 | 22092 | down_2x | small |
+| 1536411 | 2024-09-30 | GEV | 50950 | 7458 | down_2x | large |
+| 1536411 | 2024-09-30 | PLTR | 19503 | 1552 | down_2x | large |
+| 1536411 | 2024-09-30 | MAA | 91868 | 37933 | down_2x | large |
+| 1536411 | 2024-12-31 | ARM | 3090 | 22007 | up_2x | large |
+| 1536411 | 2024-12-31 | WDC | 4876 | 24875 | up_2x | large |
+| 1536411 | 2024-12-31 | USB | 9942 | 24087 | up_2x | large |
+| 1536411 | 2024-12-31 | TECK/B | 53133 | 17491 | down_2x | unbandable |
+| 1536411 | 2024-12-31 | CRNX | 15790 | 6274 | down_2x | mid |
+| 1536411 | 2024-12-31 | IM8N | 1460 | 40973 | up_2x | unbandable |
+| 1536411 | 2024-12-31 | USX1 | 23427 | 54725 | up_2x | unbandable |
+| 1536411 | 2024-12-31 | VRNA | 19738 | 41219 | up_2x | unbandable |
+| 1536411 | 2024-12-31 | IVVD | 583 | 253 | down_2x | micro |
+| 1536411 | 2024-12-31 | ARGT | 18697 | 45369 | up_2x | unbandable |
+| 1536411 | 2024-12-31 | TRVC | 20495 | 5114 | down_2x | unbandable |
+| 1536411 | 2024-12-31 | FCX | 68737 | 28899 | down_2x | large |
+| 1536411 | 2024-12-31 | KRE | 116218 | 33442 | down_2x | unbandable |
+| 1536411 | 2024-12-31 | GEV | 7458 | 32811 | up_2x | large |
+| 1536411 | 2024-12-31 | TEVA | 25732 | 198303 | up_2x | large |
+| 1536411 | 2024-12-31 | YPF | 9122 | 71745 | up_2x | large |
+| 1536411 | 2024-12-31 | PLTR | 1552 | 3155 | up_2x | large |
+| 1536411 | 2024-12-31 | TSM | 9961 | 21233 | up_2x | large |
+| 1536411 | 2025-03-31 | BN | 35057 | 16551 | down_2x | unbandable |
+| 1536411 | 2025-03-31 | TSLA | 15215 | 4882 | down_2x | large |
+| 1536411 | 2025-03-31 | UAL | 101353 | 25458 | down_2x | large |
+| 1536411 | 2025-03-31 | AMZN | 72048 | 26021 | down_2x | large |
+| 1536411 | 2025-03-31 | AAL | 16034 | 1411 | down_2x | mid |
+| 1536411 | 2025-03-31 | IM8N | 40973 | 104445 | up_2x | unbandable |
+| 1536411 | 2025-03-31 | DAL | 49473 | 15048 | down_2x | large |
+| 1536411 | 2025-03-31 | TSM | 21233 | 99397 | up_2x | large |
+| 1536411 | 2025-06-30 | BMA | 32606 | 15509 | down_2x | large |
+| 1536411 | 2025-06-30 | CCC | 50523 | 9485 | down_2x | mid |
+| 1536411 | 2025-06-30 | BCS | 58634 | 28814 | down_2x | large |
+| 1536411 | 2025-06-30 | IM8N | 104445 | 226786 | up_2x | unbandable |
+| 1536411 | 2025-06-30 | APP | 10652 | 31317 | up_2x | large |
+| 1536411 | 2025-06-30 | DAL | 15048 | 39025 | up_2x | large |
+| 1536411 | 2025-06-30 | ROKU | 34769 | 96723 | up_2x | large |
+| 1536411 | 2025-06-30 | FCX | 38545 | 9745 | down_2x | large |
+| 1536411 | 2025-06-30 | YPF | 72722 | 22141 | down_2x | large |
+| 1536411 | 2025-09-30 | LEN | 9944 | 35219 | up_2x | unbandable |
+| 1536411 | 2025-09-30 | ELVN | 9288 | 19393 | up_2x | mid |
+| 1536411 | 2025-09-30 | BAC | 16179 | 51035 | up_2x | large |
+| 1536411 | 2025-09-30 | TWLO | 24931 | 51326 | up_2x | large |
+| 1536411 | 2025-09-30 | CHYM | 16110 | 872 | down_2x | micro |
+| 1536411 | 2025-09-30 | DHI | 9978 | 34767 | up_2x | large |
 
 (showing 50 of 97)
 
