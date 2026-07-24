@@ -199,6 +199,21 @@ CREATE TABLE IF NOT EXISTS thirteenf_filings_seen(
   seen_at_unix INTEGER NOT NULL,
   PRIMARY KEY(cik, accession)
 );
+-- Market-cap + SMID band cache (SM-A1-fix SMID scan). shares from SEC
+-- companyconcept (dei then us-gaap fallback), cap = shares x price. Both as-of
+-- dates recorded; a stale cap on a volatile small cap is a labeled error source.
+CREATE TABLE IF NOT EXISTS market_cap(
+  ticker TEXT PRIMARY KEY,
+  cik TEXT,
+  shares INTEGER,
+  shares_asof TEXT,
+  concept TEXT,
+  price REAL,
+  price_asof_unix INTEGER,
+  cap REAL,
+  band TEXT NOT NULL,
+  computed_at_unix INTEGER NOT NULL
+);
 """
 
 
