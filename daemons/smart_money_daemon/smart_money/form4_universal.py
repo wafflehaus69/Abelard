@@ -46,7 +46,7 @@ def cost_probe(contact, anchor_iso, days=30, sample=40):
     txns = 0
     for p in sample_paths:
         try:
-            pr = form4.fetch_form4_xml(contact, p)
+            pr = form4.fetch_form4_from_txt(contact, p)  # single-fetch (PH1 opt)
             if pr:
                 parsed_ok += 1
                 txns += len(pr.get("txns", []))
@@ -93,7 +93,7 @@ def backfill_day(con, contact, day):
         if accession in seen:
             continue
         try:
-            parsed = form4.fetch_form4_xml(contact, r["path"])
+            parsed = form4.fetch_form4_from_txt(contact, r["path"])  # single-fetch
             if parsed:
                 ticker = parsed.get("symbol")
                 n, _ = form4.persist_transactions(con, accession, parsed, ticker,
@@ -134,6 +134,13 @@ def backfill(con, contact, months, anchor_iso):
                         totals["days"], totals["form4"], totals["persisted"],
                         totals["parse_fail"]), flush=True)
         day -= dt.timedelta(days=1)
+    # n_gradeable: distinct universal filings old enough for a full 126-trading-
+    # day (~176 calendar day) forward window from the filing date = the pool PH4
+    # can actually grade.
+    cutoff = (dt.date.fromisoformat(anchor_iso) - dt.timedelta(days=176)).isoformat()
+    totals["n_gradeable"] = con.execute(
+        "SELECT COUNT(DISTINCT accession) FROM form4_transactions "
+        "WHERE ingest_regime='universal' AND filed_date<=?", (cutoff,)).fetchone()[0]
     return totals
 
 

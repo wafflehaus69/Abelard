@@ -81,6 +81,24 @@ def fetch_form4_xml(contact, path):
     return parse_ownership(requests.get(url, headers=_ua(contact), timeout=30).text)
 
 
+ARCHIVES = "https://www.sec.gov/Archives/{path}"
+
+
+def fetch_form4_from_txt(contact, path):
+    """SINGLE-fetch path (SM-U1 PH1 optimization): pull the full submission .txt
+    directly from the daily-index path and extract the inline ownership XML,
+    skipping the index.json round-trip. Halves EDGAR requests per filing.
+    Returns parsed dict or None."""
+    time.sleep(PACE)
+    r = requests.get(ARCHIVES.format(path=path), headers=_ua(contact), timeout=30)
+    if r.status_code != 200:
+        return None
+    m = re.search(r"<ownershipDocument>.*?</ownershipDocument>", r.text, re.S)
+    if not m:
+        return None
+    return parse_ownership(m.group(0))
+
+
 def parse_ownership(raw_xml):
     root = ET.fromstring(raw_xml.encode())
 
