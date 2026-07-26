@@ -30,6 +30,11 @@ from .grade_case import forward_excess
 from .overlay import load_overlay
 
 WINDOWS = (30, 90, 180)
+# Floor >=3 distinct P-buyers is the ratified EXPLORATORY floor (PH5 gate,
+# 2026-07-26): a bookkeeping/analysis threshold only, NOT a live-alert trigger.
+# One blind PH4 pass showed no independent edge, so discovery never enters the
+# scheduled scan's alert path (scan.py ingests the corpus but emits no cluster
+# events); this floor governs manual exploration and the accruing joins prior.
 DEFAULT_FLOOR = 3
 HZ = (21, 63, 126)
 
