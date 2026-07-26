@@ -33,6 +33,23 @@ WINDOWS = (30, 90, 180)
 DEFAULT_FLOOR = 3
 HZ = (21, 63, 126)
 
+# Data-quality counters populated by _p_buys (surfaced in the honesty section):
+# some EDGAR transactionDate values carry a trailing TZ offset
+# ('2024-12-27-05:00') that date.fromisoformat rejects. We normalize to the
+# YYYY-MM-DD head and drop-and-count anything still unparseable — never coerce.
+_DQ = {"rows_seen": 0, "rows_dropped_bad_date": 0}
+
+
+def _iso10(s):
+    """Normalize an EDGAR date value to a valid YYYY-MM-DD, tolerating trailing
+    timezone offsets. Returns None if the 10-char head is not a real date."""
+    s = (s or "")[:10]
+    try:
+        dt.date.fromisoformat(s)
+        return s
+    except ValueError:
+        return None
+
 
 def _p_buys(con, regime):
     """All discretionary open-market buys (code P, plan_flag 0) in the regime,
@@ -40,9 +57,28 @@ def _p_buys(con, regime):
     q = ("SELECT issuer_cik, ticker, reporting_cik, reporting_person, role, "
          "tx_date, filed_date, value FROM form4_transactions "
          "WHERE code='P' AND plan_flag=0 AND ticker IS NOT NULL")
-    if regime != "all":
+    if regime == "universal":
+        # Reclaim the small set of filings the universal walk actually fetched
+        # but that kept ingest_regime='watchlist' because of a PK collision with
+        # the earlier watchlist leg (SM-U1 form.idx double-fetch note). Those
+        # filings belong to the universal population; watchlist rows the
+        # universal walk never touched (accession not in the backfill ledger)
+        # correctly stay OUT.
+        q += (" AND (ingest_regime='universal' OR (ingest_regime='watchlist' AND "
+              "accession IN (SELECT accession FROM form4_backfill_seen)))")
+    elif regime != "all":
         q += " AND ingest_regime='{}'".format(regime)
-    return con.execute(q).fetchall()
+    out = []
+    for icik, tk, rcik, person, role, txd, fld, val in con.execute(q).fetchall():
+        _DQ["rows_seen"] += 1
+        ntx = _iso10(txd)
+        if ntx is None:  # cannot place in time — drop and count, never coerce
+            _DQ["rows_dropped_bad_date"] += 1
+            continue
+        # filed_date is the index day we assigned at ingest (clean); normalize
+        # defensively and fall back to tx_date if a filing ever lacks one.
+        out.append((icik, tk, rcik, person, role, ntx, _iso10(fld) or ntx, val))
+    return out
 
 
 def _issuer_key(issuer_cik, ticker):
@@ -50,10 +86,9 @@ def _issuer_key(issuer_cik, ticker):
 
 
 # ---------------------------------------------------------------- PH3
-def distribution(con, anchor, regime):
+def distribution(buys, anchor):
     """Per window: how many issuers have >=2/3/4/5 distinct P-buyers in the
     trailing window from anchor."""
-    buys = _p_buys(con, regime)
     out = {}
     for w in WINDOWS:
         start = (dt.date.fromisoformat(anchor) - dt.timedelta(days=w)).isoformat()
@@ -67,11 +102,10 @@ def distribution(con, anchor, regime):
     return out
 
 
-def clusters(con, floor, window_days, regime, overlay, pedigree):
+def clusters(buys, floor, window_days, overlay, pedigree):
     """One cluster per issuer per non-overlapping `window_days` tx-date window
     with >=floor distinct P-buyers. Event date = the filed_date at which the
     floor-th distinct buyer became observable (the copyable clock)."""
-    buys = _p_buys(con, regime)
     by_issuer = defaultdict(list)
     for icik, tk, rcik, person, role, txd, fld, val in buys:
         by_issuer[_issuer_key(icik, tk)].append(
@@ -177,19 +211,20 @@ def main(argv=None):
     tnp = dbmod.find_artifact("trump_network_issuers.json", "scans")
     if os.path.exists(tnp):
         pedigree |= {t.upper() for t in json.loads(open(tnp).read()).get("tickers", [])}
-    dist = distribution(con, args.anchor, args.regime)
-    cl = clusters(con, args.floor, 30, args.regime, overlay, pedigree)
+    buys = _p_buys(con, args.regime)  # single pass; DQ counters tallied here
+    dist = distribution(buys, args.anchor)
+    cl = clusters(buys, args.floor, 30, overlay, pedigree)
     graded, no_series = validate(con, cl)
     res = {h: _stats([g.get("x{}".format(h)) for g in graded]) for h in HZ}
     out = args.out or dbmod.artifact_path(
         "U1_DISCOVERY_{}.md".format(args.anchor.replace("-", "")), "scans")
-    _render(out, args.regime, args.floor, dist, cl, graded, no_series, res)
+    _render(out, args.regime, args.floor, dist, cl, graded, no_series, res, dict(_DQ))
     print("[discovery] regime={} clusters>={}={} graded={} no_series={} -> {}".format(
         args.regime, args.floor, len(cl), len(graded), len(no_series), out))
     return 0
 
 
-def _render(out, regime, floor, dist, cl, graded, no_series, res):
+def _render(out, regime, floor, dist, cl, graded, no_series, res, dq=None):
     m = ["# U1_DISCOVERY — SM-U1 PH3 counter + PH4 validation", "",
          "Regime: {}. Discretionary open-market P buys (plan_flag=0). NO threshold "
          "tuning, NO ranking — the distribution sets the threshold.".format(regime), ""]
@@ -239,6 +274,11 @@ def _render(out, regime, floor, dist, cl, graded, no_series, res):
                  len(no_series), len(cl)))
     m.append("- Selection/survivorship caveats from SM-2 apply: this is a "
              "funnel-narrowing prior, not demonstrated edge, not a sizing input.")
+    if dq:
+        m.append("- Data quality: {} P-buy rows scanned; {} dropped for an "
+                 "unparseable transaction date (EDGAR TZ-suffixed values), "
+                 "dropped-and-counted, never coerced.".format(
+                     dq.get("rows_seen", 0), dq.get("rows_dropped_bad_date", 0)))
     open(out, "w").write("\n".join(m) + "\n")
 
 
