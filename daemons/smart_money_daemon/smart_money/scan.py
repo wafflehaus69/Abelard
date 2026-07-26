@@ -12,7 +12,7 @@ import sys
 import time
 
 from . import db as dbmod
-from . import form4, thirteenf, watermarks
+from . import form4, form4_universal, thirteenf, watermarks
 from .events import load_registry, make_event
 from .overlay import load_overlay
 from .efd_ingest import load_env
@@ -198,7 +198,29 @@ def leg_13f(con, scan_id, overlay, reg, contact):
     return events, sources, counts
 
 
-def run_scan(con, contact, raw_dir):
+def leg_universal_ingest(con, contact):
+    """SM-U1 universal Form 4 corpus ingest. Discovery-mode: ingests ALL Form 4s
+    (every transaction code) tagged ingest_regime='universal', compounding the
+    unbiased corpus that makes the g2 counter honest and feeds SM-R1 sell-
+    baselines / ownership pressure. INGEST-ONLY BY DESIGN: returns ZERO events
+    and enqueues nothing. One blind PH4 validation pass (U1_DISCOVERY) showed no
+    independent cluster edge once calendar-clustering is accounted for, so
+    alerting on clusters would manufacture signal; the joins thesis waits on
+    accrued corpus, not on alerts. Bounded and resume-safe via the per-day
+    watermark. Returns (source_status, counts) — NO event list."""
+    counts = {"days": 0, "filings": 0, "rows": 0, "parse_fail": 0}
+    try:
+        tot = form4_universal.ingest_recent(con, contact)
+        counts = {"days": tot["days"], "filings": tot["form4"],
+                  "rows": tot["persisted"], "parse_fail": tot["parse_fail"]}
+        note = "days={days} filings={filings} rows={rows} parsefail={parse_fail}".format(
+            **counts)
+        return _src("edgar_form4_universal", "OK", note, counts["rows"]), counts
+    except Exception as exc:  # noqa: BLE001 - fail-loud into source status
+        return _src("edgar_form4_universal", "DEGRADED", str(exc)[:120]), counts
+
+
+def run_scan(con, contact, raw_dir, skip_universal=False):
     scan_start = int(time.time())
     scan_id = "scan_{}".format(scan_start)
     overlay = load_overlay()
@@ -211,8 +233,14 @@ def run_scan(con, contact, raw_dir):
     ev_a, src_a, cnt_a = leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir)
     ev_b, src_b, cnt_b = leg_form4(con, scan_id, overlay, reg, contact)
     ev_c, src_c, cnt_c = leg_13f(con, scan_id, overlay, reg, contact)
+    # Fourth leg: universal corpus ingest. Ingest-only — contributes a source
+    # status and counts but NO events, so it can never reach the decision queue.
+    if skip_universal:
+        src_u, cnt_u = _src("edgar_form4_universal", "SKIPPED", "disabled"), {}
+    else:
+        src_u, cnt_u = leg_universal_ingest(con, contact)
 
-    sources = src_a + src_b + src_c
+    sources = src_a + src_b + src_c + [src_u]
     all_events = ev_a + ev_b + ev_c
 
     # Event-level dedup across scans by event_id (scan_events ledger). A Form 4
@@ -253,7 +281,7 @@ def run_scan(con, contact, raw_dir):
         "watermarks": {"before": wm_before, "after": wm_after},
         "sources": sources,
         "counts": {"congress": cnt_a, "form4": cnt_b, "thirteenf": cnt_c,
-                   "events_total": len(events)},
+                   "universal_ingest": cnt_u, "events_total": len(events)},
         "events": events,
         "cost": 0.0,
     }
@@ -305,6 +333,9 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Smart money delta-scan")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
     ap.add_argument("--raw", default="data/raw")
+    ap.add_argument("--skip-universal", action="store_true",
+                    help="skip the universal corpus ingest leg (dev/ad-hoc runs "
+                         "where the ~1200-filing walk is not wanted)")
     args = ap.parse_args(argv)
 
     env = load_env()
@@ -316,7 +347,8 @@ def main(argv=None):
     raw_dir = pathlib.Path(args.raw) / "house"
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    envelope, events = run_scan(con, contact, raw_dir)
+    envelope, events = run_scan(con, contact, raw_dir,
+                                skip_universal=args.skip_universal)
     envelope["queue"] = _enqueue(envelope, events)
 
     scans_dir = pathlib.Path(dbmod.SCANS_DIR)
@@ -328,10 +360,14 @@ def main(argv=None):
     for s in envelope["sources"]:
         print("  [{}] {} {}".format(s["status"], s["source"], s["note"]))
 
-    # Exit spine: all sources failed => 1; anything else => 0.
-    statuses = [s["status"] for s in envelope["sources"]]
+    # Exit spine: all SIGNAL sources failed => 1; anything else => 0. The
+    # universal ingest is a collection leg, not a signal source — its status is
+    # logged but excluded here so an OK ingest can never mask all signal legs
+    # being down, nor a degraded ingest trip a false alarm.
+    statuses = [s["status"] for s in envelope["sources"]
+                if s["source"] != "edgar_form4_universal"]
     if statuses and all(st == "DEGRADED" for st in statuses):
-        print("[scan] ALL sources degraded", file=sys.stderr)
+        print("[scan] ALL signal sources degraded", file=sys.stderr)
         return 1
     return 0
 

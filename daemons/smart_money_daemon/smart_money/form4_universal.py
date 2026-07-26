@@ -156,6 +156,38 @@ def backfill(con, contact, months, anchor_iso):
     return totals
 
 
+def ingest_recent(con, contact, lookback_days=7, anchor_iso=None):
+    """Scheduled-scan incremental ingest. Walks the last `lookback_days` of daily
+    indexes ending YESTERDAY (never today: a same-day index is still filling, and
+    marking it done would lose late-posting filings) and backfills any day not
+    already watermarked. Bounded, resume-safe, ingest-only. The lookback is a
+    catch-up buffer for weekends/holidays/missed scans; already-done days are
+    skipped in O(1). Returns a totals dict; emits NO events (see leg_universal_
+    ingest in scan.py for why alerting is deliberately absent)."""
+    # Default anchor = yesterday. Days strictly before today have a settled index.
+    end = (dt.date.fromisoformat(anchor_iso) if anchor_iso
+           else dt.date.today() - dt.timedelta(days=1))
+    done = {r[0] for r in con.execute("SELECT day FROM form4_universal_days")}
+    totals = {"days": 0, "form4": 0, "persisted": 0, "parse_fail": 0, "skipped": 0}
+    for i in range(lookback_days):
+        diso = (end - dt.timedelta(days=i)).isoformat()
+        if diso in done:
+            totals["skipped"] += 1
+            continue
+        res = backfill_day(con, contact, diso)
+        if res is None:  # weekend/holiday/no index for that date
+            continue
+        fc, pers, pf = res
+        con.execute("INSERT OR REPLACE INTO form4_universal_days VALUES (?,?,?,?,?)",
+                    (diso, fc, pers, pf, int(time.time())))
+        con.commit()
+        totals["days"] += 1
+        totals["form4"] += fc
+        totals["persisted"] += pers
+        totals["parse_fail"] += pf
+    return totals
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-U1 universal Form 4 ingest")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
