@@ -89,11 +89,19 @@ def backfill_day(con, contact, day):
     rows = form4.daily_form4(contact, dt.date.fromisoformat(day), pace=UNIVERSAL_PACE)
     if rows is None:
         return None
+    # form.idx emits ONE line per filer entity (issuer + each reporting owner),
+    # so a single accession appears ~2x in a day's index. Collapse to distinct
+    # accessions up front so every filing is fetched from EDGAR exactly once
+    # (the (accession, tx_index) PK made the dup inserts harmless but they still
+    # doubled the request load). form4_count now reports distinct filings.
+    uniq = {}
+    for r in rows:
+        acc = r["path"].rsplit("/", 1)[-1].replace(".txt", "")
+        uniq.setdefault(acc, r)
     seen = {r[0] for r in con.execute("SELECT accession FROM form4_backfill_seen")}
     persisted = 0
     parse_fail = 0
-    for r in rows:
-        accession = r["path"].rsplit("/", 1)[-1].replace(".txt", "")
+    for accession, r in uniq.items():
         if accession in seen:
             continue
         try:
@@ -110,7 +118,7 @@ def backfill_day(con, contact, day):
         con.execute("INSERT OR IGNORE INTO form4_backfill_seen VALUES (?,?)",
                     (accession, int(time.time())))
         con.commit()
-    return len(rows), persisted, parse_fail
+    return len(uniq), persisted, parse_fail
 
 
 def backfill(con, contact, months, anchor_iso):
