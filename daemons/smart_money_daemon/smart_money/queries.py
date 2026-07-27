@@ -19,12 +19,24 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import sqlite3
 import sys
 from collections import defaultdict
 
 from . import db as dbmod  # path constants + find_artifact ONLY — never connect()
+
+# phase4_joins (join engines) and overlay are LAZY-imported inside the two
+# functions that use them: both are read-only (they only SELECT / read yaml), but
+# lazy-importing keeps `import queries` light and avoids pulling yaml for the five
+# functions that never touch them. Registry loading is re-implemented below rather
+# than importing events, which chains events -> scorecard -> prices (a write path).
+
+
+class QueryError(RuntimeError):
+    """A read-layer invariant failed loud (e.g. a registry seed orphaned by a
+    person merge). Never silently skipped."""
 
 # Trailing baseline for the sell-anomaly rate norm, the ratified baseline floor
 # (>=3 distinct 12mo sellers), and the "elevated" tint threshold (Gate 1, Mando
@@ -117,7 +129,17 @@ def _fetch_f4(con, codes, start, anchor, ticker=None):
     if ticker and ticker != "all":
         q += " AND UPPER(ticker)=?"
         params.append(ticker.upper())
-    rows = [dict(zip(_F4_COLS, r)) for r in con.execute(q, params).fetchall()]
+    rows = []
+    for raw in con.execute(q, params).fetchall():
+        r = dict(zip(_F4_COLS, raw))
+        # Normalize once here so every consumer gets clean YYYY-MM-DD dates —
+        # EDGAR transactionDate values can carry a trailing TZ offset. A row whose
+        # tx_date will not parse cannot be placed in time and is dropped.
+        r["tx_date"] = _iso10(r["tx_date"])
+        if r["tx_date"] is None:
+            continue
+        r["filed_date"] = _iso10(r["filed_date"]) or r["tx_date"]
+        rows.append(r)
     return _dedup_amendments(rows)
 
 
@@ -276,6 +298,251 @@ def _distribution_report(res):
             "histogram_meaningful_ge3sellers": _hist(meaningful),
             "top_meaningful": sorted(
                 meaningful, key=lambda r: -(r["rate_ratio"] or 0))[:15]}
+
+
+# ---------------------------------------------------------------- q_positioning_events
+def q_positioning_events(since=None, overlay_only=False, scans_dir=None):
+    """SM-R1 gap 3a: positioning events read from the scan ENVELOPE JSONs — the
+    only record carrying the rich event (person/role/amount/plan_flag/filing_ref +
+    the four computed flags conviction_overlay/watchlist_overlay/cluster/sentinel).
+    scan_events is a non-rejoinable dedup ledger, so it is deliberately NOT used.
+    Overlay/sentinel-flagged events sort first, then newest. The 'overlay-flagged
+    13F' predicate is intentionally absent — 13F events carry ticker=None and can
+    never be flagged (query thirteenf_holdings directly for that intent)."""
+    import glob
+    sdir = scans_dir or dbmod.SCANS_DIR
+    seen, events = set(), []
+    for path in sorted(glob.glob(os.path.join(sdir, "scan_*.json"))):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                env = json.load(fh)
+        except (OSError, ValueError):
+            continue  # a torn/partial envelope is skipped, never fabricated
+        for ev in env.get("events", []):
+            eid = ev.get("event_id")
+            if eid and eid in seen:
+                continue
+            if eid:
+                seen.add(eid)
+            events.append(ev)
+
+    def _edate(ev):
+        return ev.get("disclosure_date") or ev.get("tx_date") or ""
+
+    def _flagged(ev):
+        f = ev.get("flags") or {}
+        return bool(f.get("conviction_overlay") or f.get("watchlist_overlay")
+                    or f.get("sentinel") or f.get("cluster"))
+
+    if since:
+        events = [e for e in events if _edate(e) >= since]
+    if overlay_only:
+        events = [e for e in events if _flagged(e)]
+    events.sort(key=_edate, reverse=True)     # newest first ...
+    events.sort(key=lambda e: not _flagged(e))  # ... then flagged first (stable)
+    return {"as_of": _as_of(), "since": since, "count": len(events),
+            "source": "scan envelope JSONs (rich event lives only here)",
+            "rows": events}
+
+
+# ---------------------------------------------------------------- q_sentinel_log
+def _load_registry():
+    """Load the Mando-ratified registry, state-home first (where scorecard writes)
+    then the repo snapshot. Returns (entries, as_of). Fail-loud if absent."""
+    path = dbmod.find_artifact("registry.json", "analysis")
+    if not path or not os.path.exists(path):
+        raise QueryError("registry.json not found (looked via find_artifact)")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    return data.get("entries", []), data.get("as_of")
+
+
+def q_sentinel_log(con, window=180, anchor=None, entries=None):
+    """SM-R1: activity by every registry seed person/entity, newest first. Shape-A
+    (congress person_id) -> congress_trades; Shape-B (SEC entity cik) ->
+    thirteenf_holdings (manager_13f) or form4_transactions (trump_network). All
+    CIK joins CAST both sides to INTEGER (registry is zero-padded, holdings/form4
+    are not). A Shape-A person_id orphaned by a person-merge FAILS LOUD."""
+    anchor = anchor or dt.date.today().isoformat()
+    start = _win(anchor, window)
+    reg_asof = None
+    if entries is None:
+        entries, reg_asof = _load_registry()
+    rows = []
+    for e in entries:
+        name, role, pid = e.get("name"), e.get("role"), e.get("person_id")
+        if pid is not None:
+            if not con.execute("SELECT 1 FROM persons WHERE person_id=?", (pid,)).fetchone():
+                raise QueryError("registry person_id {} ({}) orphaned in persons "
+                                 "table — a merge ran after the registry froze".format(pid, name))
+            for tk, side, lo, hi, txd, disc, lag, owner in con.execute(
+                "SELECT ticker, side, amt_low, amt_high, tx_date, disclosure_date, "
+                "lag_days, owner FROM congress_trades WHERE person_id=? AND "
+                "superseded=0 AND disclosure_date>=? ORDER BY disclosure_date DESC",
+                (pid, start)):
+                rows.append({"seed": name, "role": role, "src": "congress",
+                             "event_date": disc, "tx_date": txd, "ticker": tk,
+                             "action": side, "amt_low": lo, "amt_high": hi,
+                             "lag_days": lag, "owner": owner})
+        elif role == "manager_13f":
+            for per, filed, tk, pc, val, sh in con.execute(
+                "SELECT period, filed_date, ticker, put_call, value, shares FROM "
+                "thirteenf_holdings WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) "
+                "AND filed_date>=? ORDER BY filed_date DESC, period DESC",
+                (e.get("cik"), start)):
+                rows.append({"seed": name, "role": role, "src": "13f",
+                             "event_date": filed, "period": per, "ticker": tk,
+                             "action": pc, "value": val, "shares": sh})
+        else:  # trump_network -> form4
+            for txd, filed, tk, code, val, plan, r_role in con.execute(
+                "SELECT tx_date, filed_date, ticker, code, value, plan_flag, role "
+                "FROM form4_transactions WHERE "
+                "CAST(reporting_cik AS INTEGER)=CAST(? AS INTEGER) AND filed_date>=? "
+                "ORDER BY filed_date DESC", (e.get("cik"), start)):
+                rows.append({"seed": name, "role": role, "src": "form4",
+                             "event_date": filed, "tx_date": txd, "ticker": tk,
+                             "action": code, "value": val, "plan_flag": plan})
+    rows.sort(key=lambda r: r.get("event_date") or "", reverse=True)
+    return {"as_of": _as_of(), "registry_as_of": reg_asof, "window_days": window,
+            "anchor": anchor, "count": len(rows), "rows": rows}
+
+
+# ---------------------------------------------------------------- q_principal_convergence
+def _qoq_disagreements(con, period=None):
+    """NEW cross-manager QoQ pairing (SM-R1 gap 3b): for a quarter transition, one
+    filer ADDING or sizing up a name while ANOTHER exits or sizes it down. Built on
+    join_d (long-only), so option positioning is out of this view. This is a
+    DIFFERENT notion from the intra-quarter directional disagreement and is never
+    pooled with it."""
+    from .phase4_joins import join_d_new_positions
+    d = join_d_new_positions(con)
+    acc, dist = defaultdict(set), defaultdict(set)
+    for r in d["adds"]:
+        acc[(r["ticker"], r["period"])].add(r["cik"])
+    for r in d["exits"]:
+        dist[(r["ticker"], r["period"])].add(r["cik"])
+    for r in d["size_changes"]:
+        (acc if r["dir"] == "up_2x" else dist)[(r["ticker"], r["period"])].add(r["cik"])
+    out = []
+    for key in set(acc) | set(dist):
+        a, di = acc.get(key, set()), dist.get(key, set())
+        if a and di and len(a | di) >= 2:  # >=2 distinct managers, opposite sides
+            out.append({"ticker": key[0], "period": key[1],
+                        "accumulating_ciks": sorted(a), "distributing_ciks": sorted(di)})
+    if period:
+        out = [r for r in out if r["period"] == period]
+    return sorted(out, key=lambda r: r["period"], reverse=True)
+
+
+def q_principal_convergence(con, period=None):
+    """SM-R1 gap 3b: TWO disagreement notions, LABELED SEPARATELY, never pooled.
+    (1) intra-quarter directional convergence + disagreement from the fixed join_a
+    (direction = net long+call minus put; labelled 'put-heavy', NOT 'short', since
+    13F reports no real shorts). (2) QoQ accumulate-vs-distribute disagreement — a
+    NEW cross-manager pairing on join_d. Universe = the 6 confirmed 13F CIKs."""
+    from .phase4_joins import join_a_multi_principal, convergence_accounting
+    convergences = join_a_multi_principal(con)
+    if period:
+        convergences = [r for r in convergences if r["period"] == period]
+    for r in convergences:  # rename in the human-facing layer
+        if r["converge_dir"] == "short":
+            r["converge_dir"] = "put-heavy"
+        r["short_filers_put_heavy"] = r.pop("short_filers")
+    acc = convergence_accounting(con)
+    intra = [r for r in acc["opposed"] if not period or r["period"] == period]
+    return {"as_of": _as_of(), "period": period,
+            "convergences": convergences,
+            "intra_quarter_disagreements": intra,
+            "qoq_accumulate_distribute_disagreements": _qoq_disagreements(con, period),
+            "note": "13F universe = 6 confirmed CIKs. 'put-heavy' = put value > "
+                    "long+call value, NOT a real short. The intra-quarter and QoQ "
+                    "disagreement notions answer different questions and are never "
+                    "pooled. QoQ pairing is long-only, so options are out of it."}
+
+
+# ---------------------------------------------------------------- q_cluster_context
+def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None):
+    """SM-R1: g1 buy-cluster CONTEXT with the capitulation-timeline read. A cluster
+    is a per-issuer non-overlapping `window_days` window with >=floor distinct
+    discretionary (plan_flag=0) P-buyers; `calendar_months` and the `capitulation`
+    flag (all buys in ONE month = a coordinated bottom-fishing read vs slow
+    accumulation) make the SM-verdict lesson visible. CONTEXT, never an alert."""
+    anchor = anchor or dt.date.today().isoformat()
+    start = _win(anchor, window)
+    by_issuer = defaultdict(list)
+    for r in _fetch_f4(con, ("P",), start, anchor):
+        by_issuer[_issuer_key(r)].append(r)
+    out = []
+    for key, rs in by_issuer.items():
+        rs.sort(key=lambda r: r["tx_date"])
+        used = 0
+        while used < len(rs):
+            wstart = rs[used]["tx_date"]
+            wend = (dt.date.fromisoformat(wstart) + dt.timedelta(days=window_days)).isoformat()
+            seg = [r for r in rs[used:] if r["tx_date"] <= wend]
+            distinct = {}
+            for r in seg:
+                distinct.setdefault(r["reporting_cik"] or r["reporting_person"], r)
+            if len(distinct) >= floor:
+                order = sorted(distinct.values(), key=lambda r: r["filed_date"])
+                months = sorted({r["tx_date"][:7] for r in seg})
+                out.append({
+                    "issuer_cik": key, "ticker": seg[0]["ticker"],
+                    "n_buyers": len(distinct), "n_buys": len(seg),
+                    "window_start": wstart, "event_filed": order[floor - 1]["filed_date"],
+                    "span_days": (dt.date.fromisoformat(seg[-1]["tx_date"])
+                                  - dt.date.fromisoformat(wstart)).days,
+                    "calendar_months": months, "capitulation": len(months) == 1,
+                    "total_value": sum((r["value"] or 0.0) for r in seg),
+                })
+                used += len(seg)  # collapse: consume the window
+            else:
+                used += 1
+    out.sort(key=lambda c: -c["n_buyers"])
+    return {"as_of": _as_of(), "window_days": window, "floor": floor,
+            "anchor": anchor, "count": len(out), "rows": out}
+
+
+# ---------------------------------------------------------------- q_ticker_panel
+def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=None):
+    """SM-R1: three-surface drill-down for one ticker — insider (Form 4 + the flow
+    pressure) | congressional | 13F principal positions (direction-netted) — plus a
+    price sparkline from a DIRECT read-only SELECT (never prices.eod(), a
+    write-through cache). Overlay membership stated."""
+    from .overlay import load_overlay
+    tk = ticker.upper()
+    conv, watch = load_overlay().match(tk)
+    insider = [{"code": c, "plan_flag": pf, "n": n, "shares": sh, "value": val,
+                "distinct_filers": nb} for c, pf, n, sh, val, nb in con.execute(
+        "SELECT code, plan_flag, COUNT(*), SUM(shares), SUM(value), "
+        "COUNT(DISTINCT reporting_cik) FROM form4_transactions WHERE UPPER(ticker)=? "
+        "GROUP BY code, plan_flag ORDER BY COUNT(*) DESC", (tk,))]
+    congress = [{"name": nm, "side": sd, "amt_low": lo, "amt_high": hi,
+                 "tx_date": txd, "disclosure_date": disc, "owner": ow}
+                for nm, sd, lo, hi, txd, disc, ow in con.execute(
+        "SELECT p.name, ct.side, ct.amt_low, ct.amt_high, ct.tx_date, "
+        "ct.disclosure_date, ct.owner FROM congress_trades ct JOIN persons p "
+        "USING(person_id) WHERE UPPER(ct.ticker)=? AND ct.superseded=0 "
+        "ORDER BY ct.tx_date DESC", (tk,))]
+    net13f = defaultdict(float)
+    for cik, per, pc, val in con.execute(
+        "SELECT cik, period, put_call, value FROM thirteenf_holdings WHERE UPPER(ticker)=?",
+        (tk,)):
+        net13f[(cik, per)] += (val or 0) * (-1 if pc == "put" else 1)
+    holdings = [{"cik": c, "period": p, "net_value": v}
+                for (c, p), v in sorted(net13f.items(),
+                                        key=lambda x: (x[0][1], x[0][0]), reverse=True)]
+    sstart = _win(anchor or dt.date.today().isoformat(), sparkline_days)
+    spark = [{"date": d, "adj_close": ac} for d, ac in con.execute(
+        "SELECT date, adj_close FROM prices WHERE ticker=? AND price_type='eod' "
+        "AND date>=? ORDER BY date", (tk, sstart))]
+    return {"as_of": _as_of(), "ticker": tk,
+            "overlay": {"conviction": conv, "watchlist": watch},
+            "insider_by_code": insider,
+            "ownership_pressure": q_ownership_pressure(con, tk, pressure_window, anchor)["rows"],
+            "congress": congress, "thirteenf_net": holdings, "price_sparkline": spark,
+            "note": "prices via direct read-only SELECT; 13F net = long+call-put "
+                    "per (cik, period); congress amounts are bands not points."}
 
 
 # ---------------------------------------------------------------- CLI

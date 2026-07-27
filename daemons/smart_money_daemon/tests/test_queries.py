@@ -1,6 +1,7 @@
 """SM-R1 P2 query-layer tests: flow-based ownership pressure (with the Form 4
 amendment-supersede case), distribution-first sell-anomaly, the mixed-padding
 CIK regression guard, and the structural read-only guarantee."""
+import json
 import os
 import sqlite3
 import tempfile
@@ -119,4 +120,126 @@ def test_connect_ro_blocks_writes():
         raised = True
         assert "readonly" in str(exc).lower() or "read-only" in str(exc).lower(), exc
     assert raised, "connect_ro must reject writes"
+    os.unlink(path)
+
+
+def test_positioning_events_from_envelope_flagged_first():
+    d = tempfile.mkdtemp()
+    env = {"scan_id": "scan_100", "events": [
+        {"event_id": "a", "leg": "form4", "ticker": "AAA", "tx_date": "2026-02-01",
+         "disclosure_date": "2026-02-02", "flags": {"conviction_overlay": False,
+          "watchlist_overlay": False, "cluster": None, "sentinel": None}},
+        {"event_id": "b", "leg": "congress", "ticker": "BBB", "tx_date": "2026-01-01",
+         "disclosure_date": "2026-01-15", "flags": {"conviction_overlay": True,
+          "watchlist_overlay": False, "cluster": None, "sentinel": None}},
+    ]}
+    with open(os.path.join(d, "scan_100.json"), "w", encoding="utf-8") as fh:
+        json.dump(env, fh)
+    res = q.q_positioning_events(scans_dir=d)
+    assert res["count"] == 2, res
+    assert res["rows"][0]["event_id"] == "b", res["rows"]   # flagged sorts first
+    # since filter drops the older event
+    res2 = q.q_positioning_events(since="2026-02-01", scans_dir=d)
+    assert res2["count"] == 1 and res2["rows"][0]["event_id"] == "a", res2
+
+
+def test_sentinel_log_cik_cast_match_and_orphan_failloud():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    # 13F row stores the CIK zero-STRIPPED; registry seed is zero-PADDED.
+    con.execute("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, "
+                "cusip, ticker, issuer, put_call, value, shares, ingested_at_unix) "
+                "VALUES('1536411','ACC','2026-03-31','2026-05-10','C','NVDA','Nvidia',"
+                "'long',100,10,0)")
+    con.commit(); con.close()
+    con = q.connect_ro(path)
+    entries = [{"person_id": None, "name": "Duquesne", "cik": "0001536411",
+                "role": "manager_13f"}]
+    res = q.q_sentinel_log(con, window=3650, anchor="2026-07-01", entries=entries)
+    assert res["count"] == 1 and res["rows"][0]["ticker"] == "NVDA", res  # CAST matched
+    # An orphaned Shape-A person_id must fail loud, never silently return nothing.
+    raised = False
+    try:
+        q.q_sentinel_log(con, entries=[{"person_id": 99999, "name": "Ghost",
+                                        "role": "qualitative_watch"}])
+    except q.QueryError:
+        raised = True
+    assert raised, "orphaned registry person_id must raise QueryError"
+    os.unlink(path)
+
+
+def test_principal_convergence_qoq_cross_manager_pairing():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    ins = ("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip, "
+           "ticker, issuer, put_call, value, shares, ingested_at_unix) VALUES"
+           "(?,?,?,?,?,?,?,?,?,?,0)")
+    # filer 1 adds X into 2025-06-30 (held Y before); filer 2 exits X (holds Y after).
+    con.executemany(ins, [
+        ("1", "A1", "2025-03-31", "2025-05-01", "cy", "Y", "Yco", "long", 50, 5),
+        ("1", "A2", "2025-06-30", "2025-08-01", "cx", "X", "Xco", "long", 100, 10),
+        ("2", "B1", "2025-03-31", "2025-05-01", "cx", "X", "Xco", "long", 80, 8),
+        ("2", "B2", "2025-06-30", "2025-08-01", "cy", "Y", "Yco", "long", 60, 6),
+    ])
+    con.commit(); con.close()
+    con = q.connect_ro(path)
+    res = q.q_principal_convergence(con)
+    qoq = res["qoq_accumulate_distribute_disagreements"]
+    hit = [r for r in qoq if r["ticker"] == "X" and r["period"] == "2025-06-30"]
+    assert hit, qoq
+    assert hit[0]["accumulating_ciks"] == ["1"] and hit[0]["distributing_ciks"] == ["2"], hit
+    # the 'short' label must never leak — it is renamed put-heavy
+    for c in res["convergences"]:
+        assert c["converge_dir"] != "short" and "short_filers" not in c, c
+    os.unlink(path)
+
+
+def test_cluster_context_capitulation_flag():
+    rows = [
+        # 3 distinct buyers on ZZZ all within one month -> cluster, capitulation.
+        _row("C1", "1", "P", 10, "2026-02-02", "2026-02-03", issuer_cik="9", ticker="ZZZ"),
+        _row("C2", "2", "P", 10, "2026-02-10", "2026-02-11", issuer_cik="9", ticker="ZZZ"),
+        _row("C3", "3", "P", 10, "2026-02-20", "2026-02-21", issuer_cik="9", ticker="ZZZ"),
+        # only 2 distinct buyers on WWW -> below floor 3, no cluster.
+        _row("D1", "4", "P", 10, "2026-02-02", "2026-02-03", issuer_cik="8", ticker="WWW"),
+        _row("D2", "5", "P", 10, "2026-02-10", "2026-02-11", issuer_cik="8", ticker="WWW"),
+    ]
+    path = _fresh_db(rows)
+    con = q.connect_ro(path)
+    res = q.q_cluster_context(con, window=180, floor=3, anchor="2026-03-31")
+    assert res["count"] == 1, res["rows"]
+    c = res["rows"][0]
+    assert c["ticker"] == "ZZZ" and c["n_buyers"] == 3, c
+    assert c["capitulation"] is True and c["calendar_months"] == ["2026-02"], c
+    os.unlink(path)
+
+
+def test_ticker_panel_assembles_surfaces():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    con.execute(_F4_INSERT, _row("T1", "1", "P", 100, "2026-06-01", "2026-06-02",
+                                 issuer_cik="5", ticker="TTT"))
+    con.execute("INSERT INTO persons(person_id, name, type, cik_or_chamber) "
+                "VALUES(1,'Doe, John','congress','house')")
+    con.execute("INSERT INTO congress_trades(person_id, ticker, side, amt_low, "
+                "amt_high, tx_date, disclosure_date, lag_days, chamber, source, "
+                "raw_ref, filing_id, asset_type, superseded) VALUES(1,'TTT',"
+                "'purchase',1000,15000,'2026-06-05','2026-06-20',15,'house','efd',"
+                "'r1',1,'Stock',0)")
+    con.execute("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, "
+                "cusip, ticker, issuer, put_call, value, shares, ingested_at_unix) "
+                "VALUES('5','Z','2026-03-31','2026-05-10','c','TTT','Tco','long',500,50,0)")
+    con.executemany("INSERT INTO prices(ticker, date, close, adj_close, price_type, "
+                    "asof_unix, fetched_at_unix, source) VALUES(?,?,?,?,?,?,?,?)", [
+        ("TTT", "2026-06-01", 10.0, 10.0, "eod", 0, 0, "y"),
+        ("TTT", "2026-06-02", 11.0, 11.0, "eod", 0, 0, "y")])
+    con.commit(); con.close()
+    con = q.connect_ro(path)
+    p = q.q_ticker_panel(con, "ttt", anchor="2026-07-01")
+    assert p["ticker"] == "TTT", p
+    assert p["insider_by_code"] and p["insider_by_code"][0]["code"] == "P", p
+    assert len(p["congress"]) == 1 and p["congress"][0]["side"] == "purchase", p
+    assert len(p["thirteenf_net"]) == 1 and p["thirteenf_net"][0]["net_value"] == 500, p
+    assert len(p["price_sparkline"]) == 2, p
+    assert "conviction" in p["overlay"], p
     os.unlink(path)
