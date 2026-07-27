@@ -15,6 +15,7 @@ is a known coverage limit, stated in the report.
 """
 import argparse
 import datetime as dt
+import os
 import sys
 from collections import defaultdict
 
@@ -79,12 +80,70 @@ def join_a_multi_principal(con, bands=None):
         out.append({
             "ticker": tk, "period": per,
             "long_filers": len(longs), "short_filers": len(shorts),
-            "converge_dir": "long" if len(longs) >= 2 else "short",
+            # FIX: a two-sided cluster (>=2 each) was silently labelled "long".
+            # Emit "both" so a genuine two-sided convergence is never hidden.
+            "converge_dir": ("both" if len(longs) >= 2 and len(shorts) >= 2
+                             else "long" if len(longs) >= 2 else "short"),
             "disagreement": bool(longs) and bool(shorts),
             "long_ciks": ",".join(longs), "short_ciks": ",".join(shorts) or "-",
             "band": (bands or {}).get(tk, "?"),
         })
     return sorted(out, key=lambda r: -max(r["long_filers"], r["short_filers"]))
+
+
+def convergence_accounting(con):
+    """Close the 19->16 debt. Reconcile the NAIVE co-holding baseline (2+ filers
+    holding a LONG position in the same (ticker, period) — what (a) counted before
+    the direction-aware rework) against direction-aware netting, classifying EVERY
+    naive pair so the total is conserved:
+      same-direction : >=2 filers net the SAME way (these are the surviving 16).
+      opposed        : one filer net long AND one net put-heavy on the same
+                       name/quarter — a 1-vs-1 opposition the >=2-same-side gate
+                       (join_a line ~77) silently discards without flagging.
+      excluded       : a put position netted a filer's long to <=0, leaving <2
+                       filers net-long — the pair drops with a stated reason.
+    Asserts same-direction + opposed + excluded == naive_total (nothing lost)."""
+    holdings = defaultdict(lambda: defaultdict(
+        lambda: {"long": 0.0, "call": 0.0, "put": 0.0}))
+    for tk, per, cik, pc, val in con.execute(
+        "SELECT ticker, period, cik, put_call, value FROM thirteenf_holdings "
+        "WHERE ticker IS NOT NULL"
+    ):
+        bucket = pc if pc in ("long", "call", "put") else "long"
+        holdings[(tk.upper(), per)][cik][bucket] += (val or 0)
+    naive, same_dir, opposed, excluded = 0, [], [], []
+    for (tk, per), ciks in holdings.items():
+        long_filers = [c for c, b in ciks.items() if b["long"] > 0]
+        if len(long_filers) < 2:
+            continue  # never a naive convergence
+        naive += 1
+        nets = {c: b["long"] + b["call"] - b["put"] for c, b in ciks.items()}
+        pos = sorted(c for c, n in nets.items() if n > 0)
+        neg = sorted(c for c, n in nets.items() if n < 0)
+        has_put = any(b["put"] > 0 for b in ciks.values())
+        rec = {"ticker": tk, "period": per, "long_filers": len(long_filers),
+               "net_long": len(pos), "net_put_heavy": len(neg), "put_present": has_put}
+        if len(pos) >= 2 or len(neg) >= 2:
+            rec["class"] = "same-direction"
+            rec["direction"] = "long" if len(pos) >= 2 else "put-heavy"
+            same_dir.append(rec)
+        elif pos and neg:
+            rec["class"] = "opposed"
+            rec["reason"] = ("1 filer net long, 1 net put-heavy on the same "
+                             "name/quarter — a 1v1 opposition the >=2-same-side "
+                             "gate drops without flagging")
+            opposed.append(rec)
+        else:
+            rec["class"] = "excluded"
+            rec["reason"] = ("a put position netted a long filer to <=0, leaving "
+                             "<2 net-long (net_long={} put_heavy={})".format(
+                                 len(pos), len(neg)))
+            excluded.append(rec)
+    assert len(same_dir) + len(opposed) + len(excluded) == naive, (
+        "accounting lost pairs: {} != {}".format(
+            len(same_dir) + len(opposed) + len(excluded), naive))
+    return {"naive_total": naive, "same_direction": same_dir,
+            "opposed": opposed, "excluded": excluded}
 
 
 # ---------------------------------------------------------------- (b)
@@ -192,15 +251,92 @@ def _overlay_tag(overlay, ticker):
     return ",".join(t)
 
 
+def _ticker_period_detail(con, ticker):
+    return con.execute(
+        "SELECT period, cik, put_call, value FROM thirteenf_holdings "
+        "WHERE UPPER(ticker)=? ORDER BY period, cik", (ticker.upper(),)).fetchall()
+
+
+def accounting_md(con, acc):
+    """Render the convergence accounting as a tracked markdown artifact — the
+    19->16 debt closed in writing. Includes the AVGO/INTC put-period detail."""
+    m = ["# CONVERGENCE ACCOUNTING — smart_money_daemon SM-A1 (a) rework", "",
+         "Closes the 19->16 debt from the direction-aware multi-principal join. "
+         "Reconciles every NAIVE co-holding (2+ filers holding a LONG position in "
+         "the same ticker and quarter) against direction-aware netting "
+         "(long+call value minus put value), classifying each so the total is "
+         "conserved. Regenerated by phase4_joins.convergence_accounting.", "",
+         "**NAIVE {} = same-direction {} + opposed {} + excluded {}** (assert-"
+         "conserved).".format(acc["naive_total"], len(acc["same_direction"]),
+                              len(acc["opposed"]), len(acc["excluded"])), ""]
+    m.append("## Opposed — 1 net-long vs 1 net-put-heavy, same name and quarter")
+    m.append("")
+    m.append("The pairs the >=2-same-side gate silently dropped in the 19->16 "
+             "rework. A put position flips one filer net-negative, leaving a 1v1 "
+             "opposition that never reached the convergence table. Now surfaced.")
+    m.append("")
+    m.append("| ticker | period | net_long | net_put_heavy |")
+    m.append("|---|---|---|---|")
+    for x in acc["opposed"]:
+        m.append("| {} | {} | {} | {} |".format(
+            x["ticker"], x["period"], x["net_long"], x["net_put_heavy"]))
+    m.append("")
+    m.append("## Excluded — a put netted a long filer to <=0")
+    m.append("")
+    if acc["excluded"]:
+        m.append("| ticker | period | reason |")
+        m.append("|---|---|---|")
+        for x in acc["excluded"]:
+            m.append("| {} | {} | {} |".format(x["ticker"], x["period"], x["reason"]))
+    else:
+        m.append("None.")
+    m.append("")
+    m.append("## Same-direction — the {} surviving convergences".format(
+        len(acc["same_direction"])))
+    m.append("")
+    m.append("| ticker | period | direction | net_long | net_put_heavy |")
+    m.append("|---|---|---|---|---|")
+    for x in acc["same_direction"]:
+        m.append("| {} | {} | {} | {} | {} |".format(
+            x["ticker"], x["period"], x["direction"], x["net_long"], x["net_put_heavy"]))
+    m.append("")
+    m.append("## AVGO / INTC put-period detail (explicit confirmation)")
+    m.append("")
+    m.append("Situational Awareness (2045724) writes large index-name puts; where "
+             "that overlaps a Duquesne (1536411) long in the same quarter it "
+             "creates the 1v1 opposition. INTC 2026-03-31 is one of the dropped "
+             "three; AVGO's put quarters had only one long filer so AVGO was never "
+             "a naive co-hold (its surviving convergence is 2025-06-30, both long).")
+    m.append("")
+    for tkr in ("AVGO", "INTC"):
+        m.append("- **{}**".format(tkr))
+        for per, cik, pc, val in _ticker_period_detail(con, tkr):
+            m.append("  - {} cik {} {} value {}".format(per, cik, pc, val))
+    m.append("")
+    return "\n".join(m) + "\n"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-A1 Phase 4 overlap joins")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
     ap.add_argument("--now", default=dt.date.today().isoformat())
     ap.add_argument("--out", default=None)
+    ap.add_argument("--accounting", action="store_true",
+                    help="write the convergence accounting artifact and exit")
     args = ap.parse_args(argv)
     con = dbmod.connect(args.db)
+    if args.accounting:
+        import pathlib
+        acc = convergence_accounting(con)
+        out = args.out or os.path.join(
+            os.path.dirname(__file__), "..", "scans", "CONVERGENCE_ACCOUNTING.md")
+        pathlib.Path(out).parent.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(out).write_text(accounting_md(con, acc), encoding="utf-8")
+        print("[accounting] naive={} same={} opposed={} excluded={} -> {}".format(
+            acc["naive_total"], len(acc["same_direction"]), len(acc["opposed"]),
+            len(acc["excluded"]), out))
+        return 0
     overlay = load_overlay()
-    import os
     out = args.out or os.path.join(
         dbmod.SCANS_DIR, "PHASE4_OVERLAP_{}.md".format(args.now.replace("-", "")))
     from . import marketcap
