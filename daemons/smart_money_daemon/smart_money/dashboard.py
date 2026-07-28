@@ -27,17 +27,19 @@ from urllib.parse import parse_qs, urlparse
 from . import db as dbmod
 from . import queries as q
 
-NAV = [("/", "Front"), ("/clusters", "Clusters"), ("/sentinels", "Sentinels"),
-       ("/ticker", "Ticker")]
+NAV = [("/", "Front"), ("/trades", "Trades"), ("/clusters", "Clusters"),
+       ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
 # Theme palettes. Default is light; dark applies automatically when the viewer's
 # system prefers dark, and can be forced either way via ?theme=dark|light (which
 # threads through the URL like the other filters). Pure CSS custom properties, no
 # JS — fits the stdlib, no-build ethos.
 _LIGHT = ("--bg:#ffffff;--fg:#1a1a1a;--border:#cccccc;--th-bg:#eeeeff;"
-          "--muted:#666666;--hot-bg:#fdecea;--hot-fg:#1a1a1a;--link:#0a58ca")
+          "--muted:#666666;--hot-bg:#fdecea;--hot-fg:#1a1a1a;--link:#0a58ca;"
+          "--pos:#1a8a3a;--neg:#c0392b;--reported:#c0392b")
 _DARK = ("--bg:#0f1216;--fg:#d7dce3;--border:#2b313b;--th-bg:#1a2130;"
-         "--muted:#8b93a1;--hot-bg:#3a2323;--hot-fg:#f3d9d6;--link:#6ea8fe")
+         "--muted:#8b93a1;--hot-bg:#3a2323;--hot-fg:#f3d9d6;--link:#6ea8fe;"
+         "--pos:#4ade80;--neg:#ff6b6b;--reported:#ff6b6b")
 _CSS = (
     ":root{" + _LIGHT + "}"
     "@media(prefers-color-scheme:dark){:root:not([data-theme]){" + _DARK + "}}"
@@ -54,8 +56,15 @@ _CSS = (
     ".muted{color:var(--muted);font-size:12px}"
     ".hot{background:var(--hot-bg);color:var(--hot-fg)}"
     "form{margin:.5rem 0;font-size:13px}"
-    "input,button{background:var(--bg);color:var(--fg);"
+    "input,button,select{background:var(--bg);color:var(--fg);"
     "border:1px solid var(--border);border-radius:3px;padding:2px 6px}"
+    ".badge{display:inline-block;font-size:10px;padding:0 4px;border-radius:3px;"
+    "margin-left:3px;border:1px solid var(--border)}"
+    ".plan{background:var(--hot-bg);color:var(--hot-fg)}"
+    ".smid{background:var(--th-bg)}"
+    ".reported{color:var(--reported);font-weight:bold}"
+    ".pos{color:var(--pos)} .neg{color:var(--neg)}"
+    ".expand a{margin-right:8px} .expand{margin:.3rem 0;font-size:12px}"
 )
 
 
@@ -80,9 +89,11 @@ def _page(title, body, params):
 
 
 def _qs(params, **override):
-    keep = {k: params.get(k) for k in ("window", "anchor", "floor", "symbol", "theme")}
-    keep.update(override)
-    keep = {k: v for k, v in keep.items() if v}
+    base = {k: params.get(k) for k in ("window", "anchor", "floor", "symbol",
+                                       "theme", "limit", "side", "plan")}
+    base["smid"] = "1" if params.get("smid") else None
+    base.update(override)
+    keep = {k: v for k, v in base.items() if v}
     if not keep:
         return ""
     return "?" + "&".join("{}={}".format(k, html.escape(str(v))) for k, v in keep.items())
@@ -128,10 +139,17 @@ def _params(qsd):
     def one(k, default=None):
         return qsd.get(k, [default])[0]
     theme = (one("theme") or "").lower().strip()
+    limit = one("limit")
+    side = (one("side") or "").lower()
+    plan = (one("plan") or "").lower()
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
-         "theme": theme if theme in ("dark", "light") else ""}
+         "theme": theme if theme in ("dark", "light") else "",
+         "limit": int(limit) if limit in ("25", "50", "100") else 25,
+         "side": side if side in ("buy", "sell", "all") else "buy",
+         "plan": plan if plan in ("all", "discretionary", "planned") else "all",
+         "smid": one("smid") == "1"}
     return p
 
 
@@ -222,7 +240,79 @@ def view_ticker(con, p):
     return _page("Smart Money — {}".format(sym), "".join(body), p)
 
 
-ROUTES = {"/": view_front, "/clusters": view_clusters,
+def _expand_links(params, total):
+    cur = params["limit"]
+    parts = []
+    for n in (25, 50, 100):
+        parts.append("<b>{}</b>".format(n) if n == cur
+                     else '<a href="{}">{}</a>'.format(_qs(params, limit=n), n))
+    return ("<div class='expand'>show top: {} &nbsp;&middot;&nbsp; {} matching in "
+            "window</div>".format(" ".join(parts), total))
+
+
+def _trade_filter_form(params):
+    def sel(name, cur, opts):
+        o = "".join("<option value='{}'{}>{}</option>".format(
+            v, " selected" if v == cur else "", v) for v in opts)
+        return "{} <select name='{}'>{}</select>".format(name, name, o)
+    return (
+        "<form method='get'>{side} {plan} "
+        "<label><input type='checkbox' name='smid' value='1'{smid}> SMID only</label> "
+        "window <input name='window' value='{w}' size='4'> "
+        "<input type='hidden' name='limit' value='{lim}'>"
+        "<input type='hidden' name='anchor' value='{a}'>"
+        "<input type='hidden' name='theme' value='{t}'>"
+        "<button>apply</button></form>"
+    ).format(side=sel("side", params["side"], ("buy", "sell", "all")),
+             plan=sel("plan", params["plan"], ("all", "discretionary", "planned")),
+             smid=" checked" if params["smid"] else "",
+             w=params["window"], lim=params["limit"],
+             a=html.escape(params["anchor"]), t=html.escape(params.get("theme") or ""))
+
+
+def view_trades(con, p):
+    res = q.q_insider_trades(con, side=p["side"], window=p["window"],
+                             anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
+                             limit=p["limit"])
+    body = ["<p class='muted'>Amendment-deduped Form 4 open-market trades, newest "
+            "first. Trade Date is the transaction date; a red Reported Date means "
+            "the trade date was unavailable and the filing date is shown instead. "
+            "% since = entry close on the trade date vs latest close.</p>",
+            _trade_filter_form(p), _expand_links(p, res["total_matching"]),
+            "<table><tr><th>person</th><th>ticker</th><th>side</th><th>trade date</th>"
+            "<th>reported</th><th>value</th><th>entry</th><th>latest</th><th>% since</th></tr>"]
+    for t in res["rows"]:
+        dcell = ('<span class="reported">{} (Reported)</span>'.format(
+                    html.escape(str(t["trade_date"] or "-")))
+                 if t["date_is_reported"] else html.escape(str(t["trade_date"] or "-")))
+        badges = ""
+        if t["plan_10b5_1"]:
+            badges += '<span class="badge plan">10b5-1</span>'
+        if t["smid_band"] in ("micro", "small", "mid"):
+            badges += '<span class="badge smid">{}</span>'.format(t["smid_band"])
+        if t["pct_since_trade"] is None:
+            pcell = "-"
+        else:
+            pcell = '<span class="{}">{:+.1%}</span>'.format(
+                "pos" if t["pct_since_trade"] >= 0 else "neg", t["pct_since_trade"])
+        lag = "" if t["lag_days"] is None else " (+{}d)".format(t["lag_days"])
+        body.append(
+            "<tr><td>{p}</td><td>{tk}{b}</td><td>{s}</td><td>{d}</td><td>{r}{lag}</td>"
+            "<td>{v}</td><td>{e}</td><td>{l}</td><td>{pct}</td></tr>".format(
+                p=html.escape(str(t["person"] or "-")),
+                tk=html.escape(str(t["ticker"] or "-")), b=badges,
+                s=html.escape(t["side"]), d=dcell,
+                r=html.escape(str(t["reported_date"] or "-")), lag=lag,
+                v=_fmt(t["value"]), e=_fmt(t["entry_close"]),
+                l=_fmt(t["latest_close"]), pct=pcell))
+    body.append("</table>")
+    if not res["rows"]:
+        body.append("<p class='muted'>No trades match this window and filter.</p>")
+    return _page("Insider trades — {} / {}".format(p["side"], p["plan"]),
+                 "".join(body), p)
+
+
+ROUTES = {"/": view_front, "/trades": view_trades, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
 
 

@@ -96,6 +96,46 @@ def test_sell_anomaly_distribution_first_no_verdict():
     os.unlink(path)
 
 
+def test_insider_trades_dedup_dates_plan_smid_price():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    # Same economic buy under two accessions in the UNIVERSAL regime — the
+    # regime-agnostic dedup must collapse them to the latest filing.
+    con.execute(_F4_INSERT, _row("A1", "111", "P", 100, "2026-06-01", "2026-06-02",
+                                 regime="universal", ticker="ZZZ", issuer_cik="9"))
+    con.execute(_F4_INSERT, _row("A2", "111", "P", 100, "2026-06-01", "2026-06-03",
+                                 regime="universal", ticker="ZZZ", issuer_cik="9"))
+    # A 10b5-1 planned sell.
+    con.execute(_F4_INSERT, _row("A3", "222", "S", 50, "2026-06-05", "2026-06-06",
+                                 plan_flag=1, ticker="ZZZ", issuer_cik="9"))
+    con.executemany(
+        "INSERT INTO prices(ticker, date, close, adj_close, price_type, asof_unix, "
+        "fetched_at_unix, source) VALUES(?,?,?,?,?,?,?,?)",
+        [("ZZZ", "2026-06-01", 10.0, 10.0, "eod", 0, 0, "y"),
+         ("ZZZ", "2026-06-26", 12.0, 12.0, "eod", 0, 0, "y")])
+    con.execute("INSERT INTO market_cap(ticker, cik, shares, band, computed_at_unix) "
+                "VALUES('ZZZ','9',100,'small',0)")
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    buys = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30", plan="all")
+    assert len(buys["rows"]) == 1, buys["rows"]          # A1/A2 collapsed
+    t = buys["rows"][0]
+    assert t["trade_date"] == "2026-06-01", t
+    assert t["reported_date"] == "2026-06-03", t           # latest filing kept
+    assert t["lag_days"] == 2, t
+    assert t["entry_close"] == 10.0 and t["latest_close"] == 12.0, t
+    assert abs(t["pct_since_trade"] - 0.2) < 1e-9, t        # +20%
+    assert t["smid_band"] == "small" and t["plan_10b5_1"] is False, t
+    planned = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30", plan="planned")
+    assert len(planned["rows"]) == 1 and planned["rows"][0]["plan_10b5_1"] is True, planned
+    disc = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30", plan="discretionary")
+    assert len(disc["rows"]) == 0, "the only sell is planned"
+    smid = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30", plan="all", smid_only=True)
+    assert len(smid["rows"]) == 1, "ZZZ is small-cap"
+    os.unlink(path)
+
+
 def test_cik_int_mixed_padding_join_guard():
     # The silent zero-row-join class: registry stores zero-padded, holdings/form4
     # store zero-stripped. cik_int must collapse them so a join never misses.

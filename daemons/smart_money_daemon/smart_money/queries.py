@@ -93,39 +93,44 @@ def cik_int(cik):
 
 
 def _dedup_amendments(rows):
-    """Read-side Form 4 amendment/supersede dedup (SM-R1 gap 3d). A 4/A carries a
-    DIFFERENT accession than its original 4 and both persist (no form_type marker
-    exists), so collapse rows sharing an economic key to the latest filing.
-    Scoped to ingest_regime='watchlist' — the universal daily-index walk cannot
-    ingest 4/A at all (its '^4\\s+' filter excludes it), so universal rows pass
-    through untouched. Residual (accepted): an amendment that CHANGES shares will
-    NOT collapse because shares is in the key — the safe under-dedup direction for
-    a count/flow metric (dropping shares would risk merging two genuine same-day
-    same-code trades). Keeps MAX(filed_date) then MAX(accession)."""
-    best, passthrough = {}, []
+    """Collapse rows reporting the SAME economic trade under different accessions
+    to the latest filing. REGIME-AGNOSTIC: this catches both 4/A amendments (a
+    different accession than the original 4, no form_type marker to key on) AND
+    the recurring-re-report artifact seen on the universal path — e.g. a
+    closed-end-fund director filing the same distribution across multiple
+    accessions, and identical repeated rows within one filing. Keys on (reporting
+    person/cik, issuer cik/ticker, tx_date, code, shares); keeps MAX(filed_date)
+    then MAX(accession). Order-preserving. Residual (accepted): an amendment that
+    CHANGES shares will not collapse — the safe under-dedup direction."""
+    best, order = {}, []
     for r in rows:
-        if r["ingest_regime"] != "watchlist":
-            passthrough.append(r)
-            continue
         key = (r["reporting_cik"] or r["reporting_person"],
                r["issuer_cik"] or r["ticker"], r["tx_date"], r["code"], r["shares"])
         rank = (r["filed_date"] or "", r["accession"] or "")
         cur = best.get(key)
-        if cur is None or rank > (cur["filed_date"] or "", cur["accession"] or ""):
+        if cur is None:
             best[key] = r
-    return passthrough + list(best.values())
+            order.append(key)
+        elif rank > (cur["filed_date"] or "", cur["accession"] or ""):
+            best[key] = r
+    return [best[k] for k in order]
 
 
-def _fetch_f4(con, codes, start, anchor, ticker=None):
-    """Discretionary (plan_flag=0) open-market rows of the given codes with a
-    tx_date in [start, anchor], amendment-deduped. Returns list of dicts."""
+def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
+    """Open-market rows of the given codes with a tx_date in [start, anchor],
+    amendment-deduped. plan: 'discretionary' (plan_flag=0, the default used by the
+    flow/cluster/sell aggregates), 'planned' (plan_flag=1, 10b5-1), or 'all'."""
     ph = ",".join("?" for _ in codes)
     q = ("SELECT accession, reporting_cik, reporting_person, issuer_cik, ticker, "
          "tx_date, code, plan_flag, shares, value, filed_date, ingest_regime "
-         "FROM form4_transactions WHERE code IN ({}) AND plan_flag=0 "
+         "FROM form4_transactions WHERE code IN ({}) "
          "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=? "
          "AND substr(tx_date,1,10)<=?".format(ph))
     params = list(codes) + [start, anchor]
+    if plan == "discretionary":
+        q += " AND plan_flag=0"
+    elif plan == "planned":
+        q += " AND plan_flag=1"
     if ticker and ticker != "all":
         q += " AND UPPER(ticker)=?"
         params.append(ticker.upper())
@@ -145,6 +150,79 @@ def _fetch_f4(con, codes, start, anchor, ticker=None):
 
 def _issuer_key(r):
     return r["issuer_cik"] or ("TK:" + (r["ticker"] or "?"))
+
+
+def _close_on(con, ticker, on_date):
+    """Split/dividend-adjusted close on or before `on_date` (direct read-only
+    SELECT, never the write-through prices.eod cache). (close, date) or (None,None)."""
+    r = con.execute(
+        "SELECT adj_close, date FROM prices WHERE ticker=? AND price_type='eod' "
+        "AND date<=? ORDER BY date DESC LIMIT 1", (ticker, on_date)).fetchone()
+    return (r[0], r[1]) if r else (None, None)
+
+
+def _latest_close(con, ticker):
+    r = con.execute(
+        "SELECT adj_close, date FROM prices WHERE ticker=? AND price_type='eod' "
+        "ORDER BY date DESC LIMIT 1", (ticker,)).fetchone()
+    return (r[0], r[1]) if r else (None, None)
+
+
+# ---------------------------------------------------------------- q_insider_trades
+def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
+                     smid_only=False, limit=100):
+    """SM-R1 insider-trades feed. A flat, amendment-deduped list of Form 4
+    open-market transactions with per-trade enrichment: the Trade Date (with a
+    red Reported-Date fallback when a trade date is absent), the entry close on
+    the trade date vs the latest close (+ % return), the 10b5-1 plan flag, and the
+    SMID band. Ranked newest-first; only the top `limit` rows are price-enriched
+    so the cost is bounded. side: buy | sell | all. plan: all | discretionary |
+    planned."""
+    anchor = anchor or dt.date.today().isoformat()
+    start = _win(anchor, window)
+    codes = {"buy": ("P",), "sell": ("S",)}.get(side, ("P", "S"))
+    rows = _fetch_f4(con, codes, start, anchor, plan=plan)
+    tks = sorted({(r["ticker"] or "").upper() for r in rows if r["ticker"]})
+    bands = {}
+    if tks:
+        ph = ",".join("?" for _ in tks)
+        for tk, band in con.execute(
+            "SELECT UPPER(ticker), band FROM market_cap WHERE UPPER(ticker) IN "
+            "({})".format(ph), tks):
+            bands[tk] = band
+    if smid_only:
+        rows = [r for r in rows
+                if bands.get((r["ticker"] or "").upper()) in ("micro", "small", "mid")]
+    rows.sort(key=lambda r: (r["tx_date"], r["filed_date"]), reverse=True)
+    out = []
+    for r in rows[:limit]:
+        tk = (r["ticker"] or "").upper()
+        trade_date = r["tx_date"]                 # Form 4 tx_date is the trade date
+        date_is_reported = trade_date is None
+        if date_is_reported:                      # fall back to the reported date
+            trade_date = r["filed_date"]
+        entry, entry_d = _close_on(con, tk, trade_date) if tk else (None, None)
+        latest, latest_d = _latest_close(con, tk) if tk else (None, None)
+        pct = ((latest - entry) / entry) if (entry and latest) else None
+        try:
+            lag = (dt.date.fromisoformat(r["filed_date"])
+                   - dt.date.fromisoformat(trade_date)).days
+        except (ValueError, TypeError):
+            lag = None
+        out.append({
+            "person": r["reporting_person"], "ticker": tk or "-",
+            "side": "buy" if r["code"] == "P" else "sell",
+            "trade_date": trade_date, "date_is_reported": date_is_reported,
+            "reported_date": r["filed_date"], "lag_days": lag,
+            "shares": r["shares"], "value": r["value"],
+            "plan_10b5_1": bool(r["plan_flag"]),
+            "entry_close": entry, "latest_close": latest,
+            "pct_since_trade": round(pct, 4) if pct is not None else None,
+            "smid_band": bands.get(tk),
+        })
+    return {"as_of": _as_of(), "side": side, "window_days": window, "anchor": anchor,
+            "plan": plan, "smid_only": smid_only, "returned": len(out),
+            "total_matching": len(rows), "rows": out}
 
 
 # ---------------------------------------------------------------- q_ownership_pressure
@@ -375,13 +453,16 @@ def q_sentinel_log(con, window=180, anchor=None, entries=None):
             if not con.execute("SELECT 1 FROM persons WHERE person_id=?", (pid,)).fetchone():
                 raise QueryError("registry person_id {} ({}) orphaned in persons "
                                  "table — a merge ran after the registry froze".format(pid, name))
-            for tk, side, lo, hi, txd, disc, lag, owner in con.execute(
+            for tk, side, lo, hi, txd, disc, lag, owner, aname in con.execute(
                 "SELECT ticker, side, amt_low, amt_high, tx_date, disclosure_date, "
-                "lag_days, owner FROM congress_trades WHERE person_id=? AND "
-                "superseded=0 AND disclosure_date>=? ORDER BY disclosure_date DESC",
+                "lag_days, owner, asset_name FROM congress_trades WHERE person_id=? "
+                "AND superseded=0 AND disclosure_date>=? ORDER BY disclosure_date DESC",
                 (pid, start)):
+                # asset_name distinguishes the many non-equity (ticker NULL) trades
+                # a single PTR can list — otherwise they render identically.
                 rows.append({"seed": name, "role": role, "src": "congress",
-                             "event_date": disc, "tx_date": txd, "ticker": tk,
+                             "event_date": disc, "tx_date": txd,
+                             "ticker": tk or (aname or "")[:40],
                              "action": side, "amt_low": lo, "amt_high": hi,
                              "lag_days": lag, "owner": owner})
         elif role == "manager_13f":

@@ -63,6 +63,23 @@ def test_html_escaping_blocks_injection():
     assert "<script>" not in page and "&lt;" in page
 
 
+def test_trades_view_and_expand_params():
+    path = _fixture_db()
+    con = q.connect_ro(path)
+    h = dash.view_trades(con, dash._params({"side": ["buy"]}))
+    assert h.startswith("<!doctype html>"), "trades page"
+    assert "Insider trades" in h and "trade date" in h and "reported" in h, h[:400]
+    assert "show top:" in h, "expand controls present"
+    # expand + filter param sanitizing
+    assert dash._params({"limit": ["50"]})["limit"] == 50
+    assert dash._params({"limit": ["999"]})["limit"] == 25       # clamped to default
+    assert dash._params({"side": ["hack"]})["side"] == "buy"     # sanitized
+    assert dash._params({"plan": ["planned"]})["plan"] == "planned"
+    assert dash._params({"smid": ["1"]})["smid"] is True
+    con.close()
+    os.unlink(path)
+
+
 def test_dark_mode_theme():
     # theme is sanitized to dark|light only.
     assert dash._params({"theme": ["dark"]})["theme"] == "dark"
