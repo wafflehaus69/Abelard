@@ -63,6 +63,21 @@ def test_html_escaping_blocks_injection():
     assert "<script>" not in page and "&lt;" in page
 
 
+def test_dark_mode_theme():
+    # theme is sanitized to dark|light only.
+    assert dash._params({"theme": ["dark"]})["theme"] == "dark"
+    assert dash._params({"theme": ["light"]})["theme"] == "light"
+    assert dash._params({"theme": ["hackerman"]})["theme"] == ""
+    # forced dark stamps data-theme on <html> and carries the dark palette + toggle.
+    page = dash._page("t", "body", dash._params({"theme": ["dark"]}))
+    assert 'data-theme="dark"' in page, "forced dark must set the html attribute"
+    assert "prefers-color-scheme:dark" in page, "auto dark media query must exist"
+    assert "theme=light" in page, "toggle must offer switching back to light"
+    # default (auto) leaves the <html> tag bare — it follows the system preference.
+    auto = dash._page("t", "body", dash._params({}))
+    assert "<html>" in auto and "theme=dark" in auto, "auto default + toggle to dark"
+
+
 def test_serve_refuses_public_bind():
     for bad in ("0.0.0.0", "::", ""):
         raised = False

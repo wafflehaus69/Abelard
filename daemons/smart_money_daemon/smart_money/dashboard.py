@@ -30,6 +30,34 @@ from . import queries as q
 NAV = [("/", "Front"), ("/clusters", "Clusters"), ("/sentinels", "Sentinels"),
        ("/ticker", "Ticker")]
 
+# Theme palettes. Default is light; dark applies automatically when the viewer's
+# system prefers dark, and can be forced either way via ?theme=dark|light (which
+# threads through the URL like the other filters). Pure CSS custom properties, no
+# JS — fits the stdlib, no-build ethos.
+_LIGHT = ("--bg:#ffffff;--fg:#1a1a1a;--border:#cccccc;--th-bg:#eeeeff;"
+          "--muted:#666666;--hot-bg:#fdecea;--hot-fg:#1a1a1a;--link:#0a58ca")
+_DARK = ("--bg:#0f1216;--fg:#d7dce3;--border:#2b313b;--th-bg:#1a2130;"
+         "--muted:#8b93a1;--hot-bg:#3a2323;--hot-fg:#f3d9d6;--link:#6ea8fe")
+_CSS = (
+    ":root{" + _LIGHT + "}"
+    "@media(prefers-color-scheme:dark){:root:not([data-theme]){" + _DARK + "}}"
+    ":root[data-theme='dark']{" + _DARK + "}"
+    ":root[data-theme='light']{" + _LIGHT + "}"
+    "body{font:14px system-ui,sans-serif;margin:1.5rem;max-width:1100px;"
+    "background:var(--bg);color:var(--fg)}"
+    "a{color:var(--link)}"
+    "h1{font-size:1.3rem}h2{font-size:1.05rem;margin-top:1.4rem}"
+    "table{border-collapse:collapse;width:100%;margin:.4rem 0}"
+    "td,th{border:1px solid var(--border);padding:3px 7px;text-align:left;font-size:13px}"
+    "th{background:var(--th-bg)}"
+    "nav{margin-bottom:1rem}.print{float:right}"
+    ".muted{color:var(--muted);font-size:12px}"
+    ".hot{background:var(--hot-bg);color:var(--hot-fg)}"
+    "form{margin:.5rem 0;font-size:13px}"
+    "input,button{background:var(--bg);color:var(--fg);"
+    "border:1px solid var(--border);border-radius:3px;padding:2px 6px}"
+)
+
 
 # ---------------------------------------------------------------- html helpers
 def _page(title, body, params):
@@ -38,24 +66,23 @@ def _page(title, body, params):
         '<a href="{}{}">{}</a>'.format(href, qs, html.escape(label))
         for href, label in NAV)
     printbtn = '<a class="print" href="/brief.pdf{}">Print brief (PDF)</a>'.format(qs)
+    dark = params.get("theme") == "dark"
+    toggle = '<a href="{}">{} mode</a>'.format(
+        _qs(params, theme=("light" if dark else "dark")), "Light" if dark else "Dark")
+    attr = ' data-theme="{}"'.format(params["theme"]) if params.get("theme") else ""
     return (
-        "<!doctype html><html><head><meta charset='utf-8'>"
-        "<title>{t}</title><style>"
-        "body{{font:14px system-ui,sans-serif;margin:1.5rem;max-width:1100px}}"
-        "h1{{font-size:1.3rem}} h2{{font-size:1.05rem;margin-top:1.4rem}}"
-        "table{{border-collapse:collapse;width:100%;margin:.4rem 0}}"
-        "td,th{{border:1px solid #ccc;padding:3px 7px;text-align:left;font-size:13px}}"
-        "th{{background:#eef}} nav{{margin-bottom:1rem}} .print{{float:right}}"
-        ".muted{{color:#666;font-size:12px}} .hot{{background:#fdecea}}"
-        "form{{margin:.5rem 0;font-size:13px}}</style></head><body>"
-        "<nav>{nav} {print}</nav><h1>{t}</h1>{filt}{body}</body></html>"
-    ).format(t=html.escape(title), nav=nav, print=printbtn,
-             filt=_filter_form(params), body=body)
+        "<!doctype html><html{attr}><head><meta charset='utf-8'>"
+        "<meta name='color-scheme' content='light dark'>"
+        "<title>{t}</title><style>{css}</style></head><body>"
+        "<nav>{nav} &middot; {toggle} {print}</nav><h1>{t}</h1>{filt}{body}</body></html>"
+    ).format(attr=attr, t=html.escape(title), css=_CSS, nav=nav, toggle=toggle,
+             print=printbtn, filt=_filter_form(params), body=body)
 
 
-def _qs(params):
-    keep = {k: params[k] for k in ("window", "anchor", "floor", "symbol")
-            if params.get(k)}
+def _qs(params, **override):
+    keep = {k: params.get(k) for k in ("window", "anchor", "floor", "symbol", "theme")}
+    keep.update(override)
+    keep = {k: v for k, v in keep.items() if v}
     if not keep:
         return ""
     return "?" + "&".join("{}={}".format(k, html.escape(str(v))) for k, v in keep.items())
@@ -100,9 +127,11 @@ def _fmt(v):
 def _params(qsd):
     def one(k, default=None):
         return qsd.get(k, [default])[0]
+    theme = (one("theme") or "").lower().strip()
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
-         "symbol": (one("symbol") or "").upper().strip()}
+         "symbol": (one("symbol") or "").upper().strip(),
+         "theme": theme if theme in ("dark", "light") else ""}
     return p
 
 
