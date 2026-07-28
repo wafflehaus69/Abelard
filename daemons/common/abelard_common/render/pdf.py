@@ -205,7 +205,9 @@ def eastern_stamp(iso_utc: str) -> str:
         dt = datetime.fromisoformat(iso_utc.replace("Z", "+00:00"))
         east = dt.astimezone(ZoneInfo("America/New_York"))
         return f"{east:%m-%d-%Y %H:%M} {east.tzname()}"
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, KeyError):
+        # KeyError covers ZoneInfoNotFoundError on a host without tzdata — honor
+        # the "never crashes" contract by returning the raw stamp.
         return iso_utc
 
 
