@@ -4,7 +4,11 @@
 # KeepAlive (restart-on-crash). Logs go to the state-home logs dir.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-HOST="$(tailscale ip -4 2>/dev/null | head -1)"
+# The tailscale CLI is not on the launchd PATH on macOS; it lives in the app
+# bundle. Resolve it robustly.
+TS_BIN="$(command -v tailscale || true)"
+[ -x "$TS_BIN" ] || TS_BIN="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+HOST="$("$TS_BIN" ip -4 2>/dev/null | head -1)"
 if [ -z "$HOST" ]; then
   echo "run_dash: no Tailscale IPv4 address - refusing to start" >&2
   exit 1
