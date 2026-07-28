@@ -243,12 +243,24 @@ class Handler(BaseHTTPRequestHandler):
     do_PUT = do_DELETE = do_PATCH = do_POST
 
 
+class _Dashboard(ThreadingHTTPServer):
+    """HTTPServer.server_bind() calls socket.getfqdn(host), a reverse-DNS lookup
+    that blocks for ~35s on this host when the resolver is slow — hanging startup.
+    We never use the FQDN, so skip it and bind instantly regardless of DNS."""
+
+    def server_bind(self):
+        from socketserver import TCPServer
+        TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
+
+
 def serve(db_path, host, port):
     if host in ("0.0.0.0", "::", ""):
         raise SystemExit("refusing to bind {} - LAN/Tailscale host only, never "
                          "a public interface".format(host or "<empty>"))
     Handler.db_path = os.path.expanduser(db_path)
-    httpd = ThreadingHTTPServer((host, port), Handler)
+    httpd = _Dashboard((host, port), Handler)
     sys.stderr.write("[dash] serving read-only on http://{}:{}\n".format(host, port))
     httpd.serve_forever()
 
