@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SM-R1 scheduled brief on Basilic. Fires at 23:15 local (Basilic = America/
+     New_York, matching the 22:30 scan) so it runs after the nightly scan
+     completes. Writes the full brief to state home; referenced, never emailed.
+     RunAtLoad false - it is a scheduled artifact, not a boot task. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.smart-money-brief</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon/scripts/run_brief.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>23</integer>
+    <key>Minute</key>
+    <integer>15</integer>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon</string>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/smart_money/logs/brief.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/smart_money/logs/brief.err.log</string>
+</dict>
+</plist>
