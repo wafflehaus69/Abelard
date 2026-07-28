@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SM-R1 read-only dashboard on Basilic. Auto-start, restart-on-crash. Binds to
+     the Tailscale IP only (run_dash.sh), never a public interface. Loaded at
+     Gate 2 after live cert passes; port 8787 documented in BASILIC_MANUAL. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.smart-money-dash</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon/scripts/run_dash.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon</string>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/smart_money/logs/dashboard.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/smart_money/logs/dashboard.err.log</string>
+</dict>
+</plist>
