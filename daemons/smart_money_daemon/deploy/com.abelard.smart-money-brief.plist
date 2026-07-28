@@ -10,6 +10,7 @@
   <string>com.abelard.smart-money-brief</string>
   <key>ProgramArguments</key>
   <array>
+    <string>/bin/bash</string>
     <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon/scripts/run_brief.sh</string>
   </array>
   <key>RunAtLoad</key>
