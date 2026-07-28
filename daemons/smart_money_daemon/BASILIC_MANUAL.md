@@ -128,3 +128,31 @@ Package source under `smart_money/`; `recon/SOURCE_VERDICTS.md` and
 `recon/EFD_WAF_FINDING.md` (why Senate is degraded); the monorepo `AGENTS.md` at
 the repo root. When in doubt, disk state and a fresh `scan` envelope override any
 assumption — verify against the running system, then act.
+
+## 11. SM-R1 reporting dashboard + brief (live-certified 2026-07-27)
+Read-only reporting layer on top of the corpus. Both surfaces open the DB
+`mode=ro` — they can never write, and there are no write endpoints.
+
+- **Dashboard.** `http://100.106.84.115:8787` — Basilic's Tailscale IP, reachable
+  from any tailnet machine, never a public interface. Five views: `/` (front page
+  = sentinels, principal convergence, ownership pressure, overlay-flagged events),
+  `/clusters` (buy clusters + sell context feed), `/sentinels`, `/ticker?symbol=X`.
+  Filter state is in the URL (`?window=&anchor=&floor=&symbol=`); the print button
+  is `GET /brief.pdf?<same params>`.
+- **launchd** `com.abelard.smart-money-dash` — always-on, restart-on-crash, binds
+  the Tailscale IP via `scripts/run_dash.sh`. Check: `launchctl list | grep
+  smart-money-dash` (column 2 = last exit, 0 = healthy). Logs:
+  `~/.openclaw/smart_money/logs/dashboard.{out,err}.log`. Restart:
+  `launchctl kickstart -k gui/$(id -u)/com.abelard.smart-money-dash`.
+- **Scheduled brief** `com.abelard.smart-money-brief` — 23:15 local (after the
+  22:30 scan), renders the full PDF brief to
+  `~/.openclaw/smart_money/scans/SMART_MONEY_BRIEF_<date>.pdf`. Referenced, never
+  emailed. Force a run: `launchctl start com.abelard.smart-money-brief`.
+- **Deps.** The venv needs `reportlab`, `pytest`, and the editable
+  `abelard_common` (`pip install -e ../common`) — installed at cert. The query
+  layer `smart_money/queries.py` is the SINGLE SOURCE OF TRUTH; no SQL lives in the
+  dashboard or the brief.
+- **Editorial line.** Clusters (buy and sell) are CONTEXT, never headlines, never
+  alerts. The sell feed's `elevated` tint (ratio >= 3.0, >=3 sellers/yr) is a
+  display cue on a ranked context feed, not a verdict. Nothing here writes to the
+  alert path.
