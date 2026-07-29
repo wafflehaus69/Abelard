@@ -69,16 +69,36 @@ def test_trades_view_and_expand_params():
     h = dash.view_trades(con, dash._params({"side": ["buy"], "scope": ["all"]}))
     assert h.startswith("<!doctype html>"), "trades page"
     assert "Insider trades" in h and "trade date" in h and "reported" in h, h[:400]
-    assert "show top:" in h, "expand controls present"
+    assert "per page:" in h and "page 1 of" in h, "pager present"
+    assert "/trades.csv" in h and "whole dataset CSV" in h, "csv export links present"
     assert "scope:" in h and "overlay" in h, "scope toggle present"
-    # expand + filter param sanitizing
-    assert dash._params({"limit": ["50"]})["limit"] == 50
-    assert dash._params({"limit": ["999"]})["limit"] == 25       # clamped to default
-    assert dash._params({"side": ["hack"]})["side"] == "buy"     # sanitized
+    # pagination + filter param sanitizing
+    assert dash._params({"per_page": ["250"]})["per_page"] == 250
+    assert dash._params({"per_page": ["999"]})["per_page"] == 100   # bad -> default 100
+    assert dash._params({"page": ["3"]})["page"] == 3
+    assert dash._params({"page": ["0"]})["page"] == 1               # <1 -> 1
+    assert dash._params({"page": ["x"]})["page"] == 1               # non-numeric -> 1
+    assert dash._params({"side": ["hack"]})["side"] == "buy"        # sanitized
     assert dash._params({"plan": ["planned"]})["plan"] == "planned"
     assert dash._params({"smid": ["1"]})["smid"] is True
     assert dash._params({"scope": ["all"]})["scope"] == "all"
-    assert dash._params({"scope": ["hack"]})["scope"] == "scoped"  # default
+    assert dash._params({"scope": ["hack"]})["scope"] == "scoped"   # default
+    con.close()
+    os.unlink(path)
+
+
+def test_trades_csv_export():
+    path = _fixture_db()
+    con = q.connect_ro(path)
+    p = dash._params({"side": ["buy"], "scope": ["all"]})
+    data = dash._build_trades_csv(con, p, full=False)
+    assert data.startswith("person,ticker,side,trade_date"), data[:60]
+    lines = data.strip().splitlines()
+    assert len(lines) >= 2, "header plus at least one row"
+    assert "ZZZ" in data, "the fixture buy is in the CSV"
+    # full export returns at least as many rows as the page
+    full = dash._build_trades_csv(con, p, full=True)
+    assert len(full.strip().splitlines()) >= len(lines)
     con.close()
     os.unlink(path)
 

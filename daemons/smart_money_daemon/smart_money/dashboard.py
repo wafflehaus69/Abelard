@@ -90,7 +90,8 @@ def _page(title, body, params):
 
 def _qs(params, **override):
     base = {k: params.get(k) for k in ("window", "anchor", "floor", "symbol",
-                                       "theme", "limit", "side", "plan", "scope")}
+                                       "theme", "per_page", "page", "side", "plan",
+                                       "scope")}
     base["smid"] = "1" if params.get("smid") else None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
@@ -139,7 +140,8 @@ def _params(qsd):
     def one(k, default=None):
         return qsd.get(k, [default])[0]
     theme = (one("theme") or "").lower().strip()
-    limit = one("limit")
+    pp = one("per_page")
+    pg = one("page")
     side = (one("side") or "").lower()
     plan = (one("plan") or "").lower()
     scope = (one("scope") or "").lower()
@@ -147,7 +149,8 @@ def _params(qsd):
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
          "theme": theme if theme in ("dark", "light") else "",
-         "limit": int(limit) if limit in ("25", "50", "100") else 25,
+         "per_page": int(pp) if pp in ("25", "50", "100", "250", "500") else 100,
+         "page": int(pg) if (pg or "").isdigit() and int(pg) >= 1 else 1,
          "side": side if side in ("buy", "sell", "all") else "buy",
          "plan": plan if plan in ("all", "discretionary", "planned") else "all",
          "scope": scope if scope in ("all", "scoped") else "scoped",
@@ -242,14 +245,26 @@ def view_ticker(con, p):
     return _page("Smart Money — {}".format(sym), "".join(body), p)
 
 
-def _expand_links(params, total):
-    cur = params["limit"]
-    parts = []
-    for n in (25, 50, 100):
-        parts.append("<b>{}</b>".format(n) if n == cur
-                     else '<a href="{}">{}</a>'.format(_qs(params, limit=n), n))
-    return ("<div class='expand'>show top: {} &nbsp;&middot;&nbsp; {} matching in "
-            "window</div>".format(" ".join(parts), total))
+def _pager(params, res):
+    pp, pg, pages, total = (res["per_page"], res["page"], res["pages"],
+                            res["total_matching"])
+    sizes = []
+    for n in (25, 50, 100, 250, 500):
+        sizes.append("<b>{}</b>".format(n) if n == pp
+                     else '<a href="{}">{}</a>'.format(_qs(params, per_page=n, page=1), n))
+    nav = []
+    if pg > 1:
+        nav.append('<a href="{}">&laquo; prev</a>'.format(_qs(params, page=pg - 1)))
+    nav.append("page {} of {}".format(pg, pages))
+    if pg < pages:
+        nav.append('<a href="{}">next &raquo;</a>'.format(_qs(params, page=pg + 1)))
+    csv_page = '<a href="/trades.csv{}">this page CSV</a>'.format(_qs(params))
+    csv_all = '<a href="/trades.csv{}">whole dataset CSV</a>'.format(
+        _qs(params, full="1"))
+    return ("<div class='expand'>per page: {sizes} &nbsp;&middot;&nbsp; {nav} "
+            "&nbsp;&middot;&nbsp; {total} total &nbsp;&middot;&nbsp; export: {cp} "
+            "| {ca}</div>".format(sizes=" ".join(sizes), nav=" ".join(nav),
+                                  total=total, cp=csv_page, ca=csv_all))
 
 
 def _trade_filter_form(params):
@@ -261,7 +276,8 @@ def _trade_filter_form(params):
         "<form method='get'>{side} {plan} "
         "<label><input type='checkbox' name='smid' value='1'{smid}> SMID only</label> "
         "window <input name='window' value='{w}' size='4'> "
-        "<input type='hidden' name='limit' value='{lim}'>"
+        "<input type='hidden' name='per_page' value='{pp}'>"
+        "<input type='hidden' name='page' value='1'>"
         "<input type='hidden' name='anchor' value='{a}'>"
         "<input type='hidden' name='theme' value='{t}'>"
         "<input type='hidden' name='scope' value='{sc}'>"
@@ -269,7 +285,7 @@ def _trade_filter_form(params):
     ).format(side=sel("side", params["side"], ("buy", "sell", "all")),
              plan=sel("plan", params["plan"], ("all", "discretionary", "planned")),
              smid=" checked" if params["smid"] else "",
-             w=params["window"], lim=params["limit"],
+             w=params["window"], pp=params["per_page"],
              a=html.escape(params["anchor"]), t=html.escape(params.get("theme") or ""),
              sc=html.escape(params["scope"]))
 
@@ -277,7 +293,7 @@ def _trade_filter_form(params):
 def view_trades(con, p):
     res = q.q_insider_trades(con, side=p["side"], window=p["window"],
                              anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
-                             limit=p["limit"], scope=p["scope"])
+                             per_page=p["per_page"], page=p["page"], scope=p["scope"])
     if p["scope"] == "all":
         scope_line = ('scope: <b>all issuers</b> &middot; <a href="{}">overlay + '
                       'trump_network only</a>'.format(_qs(p, scope="scoped")))
@@ -289,7 +305,7 @@ def view_trades(con, p):
             "the trade date was unavailable and the filing date is shown instead. "
             "% since = entry close on the trade date vs latest close.</p>",
             "<p class='muted'>{}</p>".format(scope_line),
-            _trade_filter_form(p), _expand_links(p, res["total_matching"]),
+            _trade_filter_form(p), _pager(p, res),
             "<table><tr><th>person</th><th>ticker</th><th>side</th><th>trade date</th>"
             "<th>reported</th><th>value</th><th>entry</th><th>latest</th><th>% since</th></tr>"]
     for t in res["rows"]:
@@ -319,8 +335,32 @@ def view_trades(con, p):
     body.append("</table>")
     if not res["rows"]:
         body.append("<p class='muted'>No trades match this window and filter.</p>")
+    else:
+        body.append(_pager(p, res))
     return _page("Insider trades — {} / {}".format(p["side"], p["plan"]),
                  "".join(body), p)
+
+
+_CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
+             "reported_date", "lag_days", "shares", "value", "plan_10b5_1",
+             "entry_close", "latest_close", "pct_since_trade", "smid_band"]
+
+
+def _build_trades_csv(con, p, full):
+    """CSV of the trades feed — the current page, or the whole dataset when
+    full=True. Same query, same filters/scope as the on-screen view."""
+    import csv
+    import io
+    res = q.q_insider_trades(con, side=p["side"], window=p["window"],
+                             anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
+                             scope=p["scope"], per_page=p["per_page"], page=p["page"],
+                             full=full)
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for row in res["rows"]:
+        w.writerow(row)
+    return buf.getvalue()
 
 
 ROUTES = {"/": view_front, "/trades": view_trades, "/clusters": view_clusters,
@@ -334,10 +374,12 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # quiet default logging to stderr line
         sys.stderr.write("[dash] {} {}\n".format(self.address_string(), fmt % args))
 
-    def _send(self, code, body, ctype="text/html; charset=utf-8"):
+    def _send(self, code, body, ctype="text/html; charset=utf-8", headers=None):
         data = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -349,6 +391,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path == "/brief.pdf":
                 return self._brief(con, p)
+            if u.path == "/trades.csv":
+                return self._trades_csv(con, p, parse_qs(u.query))
             view = ROUTES.get(u.path)
             if not view:
                 return self._send(404, _page("Not found", "<p>No such view.</p>", p))
@@ -358,6 +402,15 @@ class Handler(BaseHTTPRequestHandler):
                 html.escape(type(exc).__name__ + ": " + str(exc))), p))
         finally:
             con.close()
+
+    def _trades_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_trades_csv(con, p, full)
+        fname = "insider_trades_{}_{}_{}.csv".format(
+            p["side"], p["scope"], "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
 
     def _brief(self, con, p):
         from . import brief

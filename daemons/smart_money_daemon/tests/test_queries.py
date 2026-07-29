@@ -145,6 +145,31 @@ def test_insider_trades_dedup_dates_plan_smid_price():
     os.unlink(path)
 
 
+def test_insider_trades_pagination_and_full():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    for i in range(5):  # 5 distinct buys (distinct shares -> no dedup), dated 10..14
+        con.execute(_F4_INSERT, _row("P{}".format(i), str(100 + i), "P", 10 + i,
+                                     "2026-06-{:02d}".format(10 + i),
+                                     "2026-06-{:02d}".format(11 + i),
+                                     regime="universal", ticker="ZZZ", issuer_cik="9"))
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    r1 = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
+                            plan="all", scope="all", per_page=2, page=1)
+    assert r1["total_matching"] == 5 and r1["per_page"] == 2 and r1["pages"] == 3, r1
+    assert len(r1["rows"]) == 2, r1["rows"]
+    r3 = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
+                            plan="all", scope="all", per_page=2, page=3)
+    assert len(r3["rows"]) == 1, "last page holds the remainder"
+    assert r1["rows"][0]["trade_date"] > r3["rows"][0]["trade_date"], "newest first"
+    full = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
+                              plan="all", scope="all", per_page=2, full=True)
+    assert len(full["rows"]) == 5, "full returns every row regardless of per_page"
+    os.unlink(path)
+
+
 def test_cik_int_mixed_padding_join_guard():
     # The silent zero-row-join class: registry stores zero-padded, holdings/form4
     # store zero-stripped. cik_int must collapse them so a join never misses.

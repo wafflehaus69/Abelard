@@ -198,15 +198,16 @@ def _scoped_tickers():
 
 # ---------------------------------------------------------------- q_insider_trades
 def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
-                     smid_only=False, limit=100, scope="scoped"):
+                     smid_only=False, per_page=100, page=1, full=False,
+                     scope="scoped"):
     """SM-R1 insider-trades feed. A flat, amendment-deduped list of Form 4
     open-market transactions with per-trade enrichment: the Trade Date (with a
     red Reported-Date fallback when a trade date is absent), the entry close on
     the trade date vs the latest close (+ % return), the 10b5-1 plan flag, and the
-    SMID band. Ranked newest-first; only the top `limit` rows are price-enriched
-    so the cost is bounded. side: buy | sell | all. plan: all | discretionary |
-    planned. scope: 'scoped' (overlay + trump_network issuers, the default) or
-    'all' (the full universal corpus)."""
+    SMID band. Ranked newest-first; PAGINATED — only the requested page's rows are
+    price-enriched (or every row when full=True, for a whole-dataset CSV export).
+    side: buy | sell | all. plan: all | discretionary | planned. scope: 'scoped'
+    (overlay + trump_network issuers, the default) or 'all' (the full corpus)."""
     anchor = anchor or dt.date.today().isoformat()
     start = _win(anchor, window)
     codes = {"buy": ("P",), "sell": ("S",)}.get(side, ("P", "S"))
@@ -226,8 +227,16 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
         rows = [r for r in rows
                 if bands.get((r["ticker"] or "").upper()) in ("micro", "small", "mid")]
     rows.sort(key=lambda r: (r["tx_date"], r["filed_date"]), reverse=True)
+    total = len(rows)
+    per_page = max(1, per_page)
+    page = max(1, page)
+    if full:
+        page_rows = rows                          # every row (whole-dataset export)
+    else:
+        off = (page - 1) * per_page
+        page_rows = rows[off:off + per_page]
     out = []
-    for r in rows[:limit]:
+    for r in page_rows:
         tk = (r["ticker"] or "").upper()
         disp = _disp_ticker(tk)                   # '-' for NONE / N/A / empty
         real = disp != "-"
@@ -256,7 +265,9 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
         })
     return {"as_of": _as_of(), "side": side, "window_days": window, "anchor": anchor,
             "plan": plan, "smid_only": smid_only, "scope": scope,
-            "returned": len(out), "total_matching": len(rows), "rows": out}
+            "per_page": per_page, "page": page,
+            "pages": max(1, (total + per_page - 1) // per_page),
+            "returned": len(out), "total_matching": total, "rows": out}
 
 
 # ---------------------------------------------------------------- q_ownership_pressure
