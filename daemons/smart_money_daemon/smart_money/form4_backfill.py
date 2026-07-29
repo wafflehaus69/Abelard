@@ -89,18 +89,26 @@ def _fetch_and_persist(con, contact, cik10, accession, filed_date):
     parsed = form4.parse_ownership(
         requests.get(url, headers=_ua(contact), timeout=30).text)
     ticker = parsed.get("symbol")
+    # Every fetch persists BOTH tables from the same XML (Table I idempotently on a
+    # derivative re-run). Returns (non_derivative_rows, derivative_rows).
     n, _ = form4.persist_transactions(con, accession, parsed, ticker, filed_date)
-    return n
+    nd = form4.persist_derivatives(con, accession, parsed, ticker, filed_date)
+    return n, nd
 
 
-def backfill(con, contact, ciks, months, now_iso):
+SEEN_TABLES = {"form4_backfill_seen", "form4_deriv_backfill_seen"}
+
+
+def backfill(con, contact, ciks, months, now_iso, seen_table="form4_backfill_seen"):
+    # seen_table is chosen by main() from a fixed allow-list, never user text.
+    assert seen_table in SEEN_TABLES, seen_table
     since = (dt.date.fromisoformat(now_iso)
              - dt.timedelta(days=int(months * 30.44))).isoformat()
-    seen = {r[0] for r in con.execute("SELECT accession FROM form4_backfill_seen")}
+    seen = {r[0] for r in con.execute("SELECT accession FROM " + seen_table)}
     report = {}
     for cik10, label in ciks.items():
-        stats = {"filings": 0, "persisted_rows": 0, "parse_fail": 0,
-                 "skipped_seen": 0, "newest": None}
+        stats = {"filings": 0, "persisted_rows": 0, "persisted_deriv_rows": 0,
+                 "parse_fail": 0, "skipped_seen": 0, "newest": None}
         try:
             filings = list(_iter_filings(contact, cik10))
         except requests.RequestException as exc:
@@ -113,18 +121,20 @@ def backfill(con, contact, ciks, months, now_iso):
                 stats["skipped_seen"] += 1
                 continue
             try:
-                n = _fetch_and_persist(con, contact, cik10, acc, fdate)
-                if n is None:
+                res = _fetch_and_persist(con, contact, cik10, acc, fdate)
+                if res is None:
                     stats["parse_fail"] += 1
                 else:
-                    stats["persisted_rows"] += n
+                    n_nd, n_d = res
+                    stats["persisted_rows"] += n_nd
+                    stats["persisted_deriv_rows"] += n_d
                     stats["filings"] += 1
                     stats["newest"] = max(stats["newest"] or "", fdate)
             except Exception as exc:  # noqa: BLE001 - count, never guess
                 stats["parse_fail"] += 1
                 report.setdefault("_errors", []).append(
                     "{} {} {}".format(cik10, acc, str(exc)[:80]))
-            con.execute("INSERT OR IGNORE INTO form4_backfill_seen VALUES (?,?)",
+            con.execute("INSERT OR IGNORE INTO " + seen_table + " VALUES (?,?)",
                         (acc, int(time.time())))
             seen.add(acc)
             con.commit()
@@ -141,6 +151,9 @@ def main(argv=None):
     ap.add_argument("--months", type=float, default=36)
     ap.add_argument("--now", default=dt.date.today().isoformat())
     ap.add_argument("--only", help="comma-separated tickers to limit scope (smoke)")
+    ap.add_argument("--derivatives", action="store_true",
+                    help="SM-O1 P1 bounded Table II backfill (own seen-ledger, "
+                         "re-fetches the scoped issuers once)")
     args = ap.parse_args(argv)
     con = dbmod.connect(args.db)
     env = load_env()
@@ -180,15 +193,20 @@ def main(argv=None):
     if args.only:
         want = {t.strip().upper() for t in args.only.split(",")}
         ciks = {c: l for c, l in ciks.items() if l.upper() in want}
-    print("[backfill] {} issuer CIKs, {} months, since scope".format(
-        len(ciks), args.months))
-    rep = backfill(con, contact, ciks, args.months, args.now)
+    seen_table = "form4_deriv_backfill_seen" if args.derivatives else "form4_backfill_seen"
+    print("[backfill] {} issuer CIKs, {} months, mode={} ledger={}".format(
+        len(ciks), args.months,
+        "derivatives(Table II)" if args.derivatives else "standard(Table I)",
+        seen_table))
+    rep = backfill(con, contact, ciks, args.months, args.now, seen_table=seen_table)
     tot_rows = sum(v.get("persisted_rows", 0) for v in rep["issuers"].values()
                    if isinstance(v, dict))
+    tot_deriv = sum(v.get("persisted_deriv_rows", 0) for v in rep["issuers"].values()
+                    if isinstance(v, dict))
     tot_fil = sum(v.get("filings", 0) for v in rep["issuers"].values()
                   if isinstance(v, dict))
-    print("[backfill] since={} filings={} persisted_rows={}".format(
-        rep["since"], tot_fil, tot_rows))
+    print("[backfill] since={} filings={} table1_rows={} table2_deriv_rows={}".format(
+        rep["since"], tot_fil, tot_rows, tot_deriv))
     return 0
 
 

@@ -131,6 +131,8 @@ def leg_form4(con, scan_id, overlay, reg, contact):
                 accession = row["path"].rsplit("/", 1)[-1].replace(".txt", "")
                 form4.persist_transactions(con, accession, parsed, ticker,
                                            row["date"])
+                # SM-O1 P1: Table II persisted forward from the same filing.
+                form4.persist_derivatives(con, accession, parsed, ticker, row["date"])
                 con.commit()
                 for t in parsed["txns"]:
                     code = t["code"]

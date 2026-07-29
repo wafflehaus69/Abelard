@@ -183,6 +183,14 @@ CREATE TABLE IF NOT EXISTS form4_backfill_seen(
   accession TEXT PRIMARY KEY,
   seen_at_unix INTEGER NOT NULL
 );
+-- SM-O1 P1: separate ledger for the bounded Table II backfill. The Table I
+-- backfill already filled form4_backfill_seen for the scoped issuers, so the
+-- derivative backfill needs its own seen-set to re-fetch those filings once (and
+-- get two-run idempotence of its own).
+CREATE TABLE IF NOT EXISTS form4_deriv_backfill_seen(
+  accession TEXT PRIMARY KEY,
+  seen_at_unix INTEGER NOT NULL
+);
 -- Per-day watermark for the SM-U1 universal daily-index walk. A day is marked
 -- complete only after every Form 4 in its index is persisted; resume skips
 -- completed days. Parse failures counted per day, never guessed.
@@ -243,6 +251,37 @@ CREATE TABLE IF NOT EXISTS market_cap(
   band TEXT NOT NULL,
   computed_at_unix INTEGER NOT NULL
 );
+-- SM-O1 P1: Form 4 Table II (derivative) transactions — the option/warrant legs
+-- the non-derivative table omits. Same idempotence key (accession, tx_index) and
+-- regime tag as Table I; tx_index enumerates derivativeTransaction rows and is
+-- independent of Table I's tx_index (separate table).
+CREATE TABLE IF NOT EXISTS form4_derivatives(
+  accession TEXT NOT NULL,
+  tx_index INTEGER NOT NULL,
+  reporting_person TEXT,
+  reporting_cik TEXT,
+  issuer TEXT,
+  issuer_cik TEXT,
+  ticker TEXT,
+  security_title TEXT,
+  code TEXT,
+  plan_flag INTEGER,
+  shares REAL,
+  price REAL,
+  exercise_price REAL,
+  tx_date TEXT,
+  exercise_date TEXT,
+  expiration_date TEXT,
+  underlying_title TEXT,
+  underlying_shares REAL,
+  filed_date TEXT,
+  role TEXT,
+  ingest_regime TEXT NOT NULL DEFAULT 'watchlist',
+  PRIMARY KEY(accession, tx_index)
+);
+CREATE INDEX IF NOT EXISTS idx_f4d_ticker ON form4_derivatives(ticker);
+CREATE INDEX IF NOT EXISTS idx_f4d_cik ON form4_derivatives(reporting_cik);
+CREATE INDEX IF NOT EXISTS idx_f4d_issuer ON form4_derivatives(issuer_cik);
 """
 
 

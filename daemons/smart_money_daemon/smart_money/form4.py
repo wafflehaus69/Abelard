@@ -135,9 +135,30 @@ def parse_ownership(raw_xml):
             "owned_after": g(
                 ".//postTransactionAmounts/sharesOwnedFollowingTransaction/value"),
         })
+    # SM-O1 Table II: derivative transactions (options, warrants, rights). Some
+    # fields are legitimately empty for certain security types (a performance
+    # right has no exercise price or expiry) — recorded as empty, never guessed.
+    deriv_txns = []
+    for t in root.findall(".//derivativeTransaction"):
+        def gd(p):
+            e = t.find(p)
+            return (e.text or "").strip() if e is not None else ""
+        deriv_txns.append({
+            "security_title": gd(".//securityTitle/value"),
+            "code": gd(".//transactionCoding/transactionCode"),
+            "shares": gd(".//transactionShares/value"),
+            "price": gd(".//transactionPricePerShare/value"),
+            "exercise_price": gd(".//conversionOrExercisePrice/value"),
+            "date": gd(".//transactionDate/value"),
+            "exercise_date": gd(".//exerciseDate/value"),
+            "expiration_date": gd(".//expirationDate/value"),
+            "underlying_title": gd(".//underlyingSecurity/underlyingSecurityTitle/value"),
+            "underlying_shares": gd(".//underlyingSecurity/underlyingSecurityShares/value"),
+        })
     return {"owner": owner, "owner_cik": owner_cik, "issuer": issuer,
             "issuer_cik": issuer_cik.lstrip("0") or issuer_cik,
-            "symbol": symbol, "plan_flag": plan, "role": role, "txns": txns}
+            "symbol": symbol, "plan_flag": plan, "role": role, "txns": txns,
+            "deriv_txns": deriv_txns}
 
 
 def _f(x):
@@ -181,3 +202,33 @@ def persist_transactions(con, accession, parsed, ticker, filed_date,
         )
         n += 1
     return n, bool(parsed.get("owner"))
+
+
+def persist_derivatives(con, accession, parsed, ticker, filed_date,
+                        regime="watchlist"):
+    """SM-O1 P1: persist every Table II (derivative) transaction into
+    form4_derivatives. Idempotent by (accession, tx_index) — re-running a filing
+    is a no-op. Mirrors persist_transactions for the derivative leg; the person
+    upsert is left to persist_transactions (called alongside, even for
+    derivative-only filings). Returns rows_persisted."""
+    cik = parsed.get("owner_cik") or None
+    n = 0
+    for i, t in enumerate(parsed.get("deriv_txns", [])):
+        con.execute(
+            "INSERT OR IGNORE INTO form4_derivatives("
+            "accession, tx_index, reporting_person, reporting_cik, issuer,"
+            "issuer_cik, ticker, security_title, code, plan_flag, shares, price,"
+            "exercise_price, tx_date, exercise_date, expiration_date,"
+            "underlying_title, underlying_shares, filed_date, role, ingest_regime)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (accession, i, parsed.get("owner"), cik, parsed.get("issuer"),
+             parsed.get("issuer_cik") or None, ticker,
+             t.get("security_title") or None, t.get("code"),
+             1 if parsed.get("plan_flag") else 0, _f(t.get("shares")),
+             _f(t.get("price")), _f(t.get("exercise_price")), t.get("date"),
+             t.get("exercise_date") or None, t.get("expiration_date") or None,
+             t.get("underlying_title") or None, _f(t.get("underlying_shares")),
+             filed_date, parsed.get("role") or None, regime),
+        )
+        n += 1
+    return n

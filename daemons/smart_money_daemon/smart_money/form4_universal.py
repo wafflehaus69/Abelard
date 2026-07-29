@@ -110,6 +110,9 @@ def backfill_day(con, contact, day):
                 ticker = parsed.get("symbol")
                 n, _ = form4.persist_transactions(con, accession, parsed, ticker,
                                                   day, regime="universal")
+                # SM-O1 P1: persist Table II from the SAME fetch (free forward).
+                form4.persist_derivatives(con, accession, parsed, ticker, day,
+                                          regime="universal")
                 persisted += n
             else:
                 parse_fail += 1
