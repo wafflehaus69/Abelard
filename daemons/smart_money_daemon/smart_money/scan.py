@@ -222,6 +222,36 @@ def leg_universal_ingest(con, contact):
         return _src("edgar_form4_universal", "DEGRADED", str(exc)[:120]), counts
 
 
+def leg_enrich(con, contact):
+    """SM-O1/SM-R1 nightly enrichment leg. For the scoped ticker set (overlay +
+    trump_network issuers), compute market_cap SMID bands and refresh the EOD price
+    series so the trades feed's SMID badge and entry/latest-close columns are
+    covered — the bounded fix for both coverage caveats. ~60 tickers, ingest-only,
+    NO events. Prices use the crumb-free v8 chart endpoint; bands use SEC
+    companyconcept. First run fetches full series; later runs are span-cached."""
+    from . import queries as qmod, marketcap, prices
+    tickers = sorted(qmod._scoped_tickers())
+    counts = {"tickers": len(tickers), "bands": 0, "price_ok": 0, "price_fail": 0}
+    if not tickers:
+        return _src("enrich_scoped", "OK", "no scoped tickers", 0), counts
+    try:
+        marketcap.compute(con, tickers, contact)
+        counts["bands"] = len(marketcap.bands_for(con, tickers))
+    except Exception as exc:  # noqa: BLE001 - fail-loud into source status
+        return _src("enrich_scoped", "DEGRADED", "marketcap " + str(exc)[:100]), counts
+    end = dt.date.today().isoformat()
+    start = (dt.date.today() - dt.timedelta(days=400)).isoformat()
+    for tk in tickers:
+        try:
+            prices.eod(con, tk, start, end)
+            counts["price_ok"] += 1
+        except Exception:  # noqa: BLE001 - count, never guess
+            counts["price_fail"] += 1
+    return _src("enrich_scoped", "OK", "bands={} price_ok={} price_fail={}".format(
+        counts["bands"], counts["price_ok"], counts["price_fail"]),
+        counts["price_ok"]), counts
+
+
 def run_scan(con, contact, raw_dir, skip_universal=False):
     scan_start = int(time.time())
     scan_id = "scan_{}".format(scan_start)
@@ -239,10 +269,12 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
     # status and counts but NO events, so it can never reach the decision queue.
     if skip_universal:
         src_u, cnt_u = _src("edgar_form4_universal", "SKIPPED", "disabled"), {}
+        src_e, cnt_e = _src("enrich_scoped", "SKIPPED", "disabled"), {}
     else:
         src_u, cnt_u = leg_universal_ingest(con, contact)
+        src_e, cnt_e = leg_enrich(con, contact)  # bounded scoped bands+prices
 
-    sources = src_a + src_b + src_c + [src_u]
+    sources = src_a + src_b + src_c + [src_u, src_e]
     all_events = ev_a + ev_b + ev_c
 
     # Event-level dedup across scans by event_id (scan_events ledger). A Form 4
@@ -283,7 +315,8 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
         "watermarks": {"before": wm_before, "after": wm_after},
         "sources": sources,
         "counts": {"congress": cnt_a, "form4": cnt_b, "thirteenf": cnt_c,
-                   "universal_ingest": cnt_u, "events_total": len(events)},
+                   "universal_ingest": cnt_u, "enrich": cnt_e,
+                   "events_total": len(events)},
         "events": events,
         "cost": 0.0,
     }
@@ -367,7 +400,7 @@ def main(argv=None):
     # logged but excluded here so an OK ingest can never mask all signal legs
     # being down, nor a degraded ingest trip a false alarm.
     statuses = [s["status"] for s in envelope["sources"]
-                if s["source"] != "edgar_form4_universal"]
+                if s["source"] not in ("edgar_form4_universal", "enrich_scoped")]
     if statuses and all(st == "DEGRADED" for st in statuses):
         print("[scan] ALL signal sources degraded", file=sys.stderr)
         return 1
