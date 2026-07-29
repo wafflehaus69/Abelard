@@ -230,12 +230,30 @@ def leg_enrich(con, contact):
     NO events. Prices use the crumb-free v8 chart endpoint; bands use SEC
     companyconcept. First run fetches full series; later runs are span-cached."""
     from . import queries as qmod, marketcap, prices
-    tickers = sorted(qmod._scoped_tickers())
+    _NON = {"NONE", "N/A", "N.A.", "NA", ""}
+    tickers = set(qmod._scoped_tickers())
+    # Plus the active-convergence universe names (>=2 distinct open-market buyers
+    # in the trailing 90d) so the scope=all trades feed is covered where multi-
+    # buyer signal actually lives. Bounded (a few hundred); single-buyer noise
+    # names are left un-priced by design.
+    start90 = (dt.date.today() - dt.timedelta(days=90)).isoformat()
+    for (tk,) in con.execute(
+        "SELECT ticker FROM form4_transactions WHERE code='P' AND plan_flag=0 "
+        "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=? GROUP BY ticker "
+        "HAVING COUNT(DISTINCT reporting_cik)>=2", (start90,)):
+        t = (tk or "").upper().strip()
+        if t and t not in _NON:
+            tickers.add(t)
+    tickers = sorted(tickers)
     counts = {"tickers": len(tickers), "bands": 0, "price_ok": 0, "price_fail": 0}
     if not tickers:
-        return _src("enrich_scoped", "OK", "no scoped tickers", 0), counts
+        return _src("enrich_scoped", "OK", "no tickers", 0), counts
     try:
-        marketcap.compute(con, tickers, contact)
+        # Compute only MISSING bands (shares outstanding is stable) so later
+        # nightly runs do not re-hit EDGAR for the whole set.
+        need = [t for t in tickers if t not in marketcap.bands_for(con, tickers)]
+        if need:
+            marketcap.compute(con, need, contact)
         counts["bands"] = len(marketcap.bands_for(con, tickers))
     except Exception as exc:  # noqa: BLE001 - fail-loud into source status
         return _src("enrich_scoped", "DEGRADED", "marketcap " + str(exc)[:100]), counts
@@ -247,9 +265,10 @@ def leg_enrich(con, contact):
             counts["price_ok"] += 1
         except Exception:  # noqa: BLE001 - count, never guess
             counts["price_fail"] += 1
-    return _src("enrich_scoped", "OK", "bands={} price_ok={} price_fail={}".format(
-        counts["bands"], counts["price_ok"], counts["price_fail"]),
-        counts["price_ok"]), counts
+    return _src("enrich_scoped", "OK",
+                "tickers={} bands={} price_ok={} price_fail={}".format(
+                    counts["tickers"], counts["bands"], counts["price_ok"],
+                    counts["price_fail"]), counts["price_ok"]), counts
 
 
 def run_scan(con, contact, raw_dir, skip_universal=False):
