@@ -66,16 +66,19 @@ def test_html_escaping_blocks_injection():
 def test_trades_view_and_expand_params():
     path = _fixture_db()
     con = q.connect_ro(path)
-    h = dash.view_trades(con, dash._params({"side": ["buy"]}))
+    h = dash.view_trades(con, dash._params({"side": ["buy"], "scope": ["all"]}))
     assert h.startswith("<!doctype html>"), "trades page"
     assert "Insider trades" in h and "trade date" in h and "reported" in h, h[:400]
     assert "show top:" in h, "expand controls present"
+    assert "scope:" in h and "overlay" in h, "scope toggle present"
     # expand + filter param sanitizing
     assert dash._params({"limit": ["50"]})["limit"] == 50
     assert dash._params({"limit": ["999"]})["limit"] == 25       # clamped to default
     assert dash._params({"side": ["hack"]})["side"] == "buy"     # sanitized
     assert dash._params({"plan": ["planned"]})["plan"] == "planned"
     assert dash._params({"smid": ["1"]})["smid"] is True
+    assert dash._params({"scope": ["all"]})["scope"] == "all"
+    assert dash._params({"scope": ["hack"]})["scope"] == "scoped"  # default
     con.close()
     os.unlink(path)
 

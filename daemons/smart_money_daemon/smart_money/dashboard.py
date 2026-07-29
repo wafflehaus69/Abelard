@@ -90,7 +90,7 @@ def _page(title, body, params):
 
 def _qs(params, **override):
     base = {k: params.get(k) for k in ("window", "anchor", "floor", "symbol",
-                                       "theme", "limit", "side", "plan")}
+                                       "theme", "limit", "side", "plan", "scope")}
     base["smid"] = "1" if params.get("smid") else None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
@@ -142,6 +142,7 @@ def _params(qsd):
     limit = one("limit")
     side = (one("side") or "").lower()
     plan = (one("plan") or "").lower()
+    scope = (one("scope") or "").lower()
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
@@ -149,6 +150,7 @@ def _params(qsd):
          "limit": int(limit) if limit in ("25", "50", "100") else 25,
          "side": side if side in ("buy", "sell", "all") else "buy",
          "plan": plan if plan in ("all", "discretionary", "planned") else "all",
+         "scope": scope if scope in ("all", "scoped") else "scoped",
          "smid": one("smid") == "1"}
     return p
 
@@ -262,22 +264,31 @@ def _trade_filter_form(params):
         "<input type='hidden' name='limit' value='{lim}'>"
         "<input type='hidden' name='anchor' value='{a}'>"
         "<input type='hidden' name='theme' value='{t}'>"
+        "<input type='hidden' name='scope' value='{sc}'>"
         "<button>apply</button></form>"
     ).format(side=sel("side", params["side"], ("buy", "sell", "all")),
              plan=sel("plan", params["plan"], ("all", "discretionary", "planned")),
              smid=" checked" if params["smid"] else "",
              w=params["window"], lim=params["limit"],
-             a=html.escape(params["anchor"]), t=html.escape(params.get("theme") or ""))
+             a=html.escape(params["anchor"]), t=html.escape(params.get("theme") or ""),
+             sc=html.escape(params["scope"]))
 
 
 def view_trades(con, p):
     res = q.q_insider_trades(con, side=p["side"], window=p["window"],
                              anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
-                             limit=p["limit"])
+                             limit=p["limit"], scope=p["scope"])
+    if p["scope"] == "all":
+        scope_line = ('scope: <b>all issuers</b> &middot; <a href="{}">overlay + '
+                      'trump_network only</a>'.format(_qs(p, scope="scoped")))
+    else:
+        scope_line = ('scope: <b>overlay + trump_network issuers</b> &middot; '
+                      '<a href="{}">show all issuers</a>'.format(_qs(p, scope="all")))
     body = ["<p class='muted'>Amendment-deduped Form 4 open-market trades, newest "
             "first. Trade Date is the transaction date; a red Reported Date means "
             "the trade date was unavailable and the filing date is shown instead. "
             "% since = entry close on the trade date vs latest close.</p>",
+            "<p class='muted'>{}</p>".format(scope_line),
             _trade_filter_form(p), _expand_links(p, res["total_matching"]),
             "<table><tr><th>person</th><th>ticker</th><th>side</th><th>trade date</th>"
             "<th>reported</th><th>value</th><th>entry</th><th>latest</th><th>% since</th></tr>"]

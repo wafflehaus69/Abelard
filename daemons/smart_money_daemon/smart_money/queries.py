@@ -168,20 +168,52 @@ def _latest_close(con, ticker):
     return (r[0], r[1]) if r else (None, None)
 
 
+_NONTICKER = {"NONE", "N/A", "N.A.", "NA", ""}
+
+
+def _disp_ticker(tk):
+    """Display normalization (SM-R1 ruling): upper-case, and render an unmapped or
+    non-security placeholder (NONE / N/A / empty) as '-', never the raw string."""
+    tk = (tk or "").upper().strip()
+    return "-" if tk in _NONTICKER else tk
+
+
+def _scoped_tickers():
+    """The watchlist scope for the trades feed: overlay conviction+watchlist plus
+    the SM-A1 trump_network discovered issuers. Read-only (yaml + a state-home
+    JSON). registry manager_13f entries are funds, not Form 4 issuers, so they do
+    not contribute issuer tickers here."""
+    from .overlay import load_overlay
+    ov = load_overlay()
+    tks = {t.upper() for t in (ov.conviction | ov.watchlist)}
+    tnp = dbmod.find_artifact("trump_network_issuers.json", "scans")
+    if tnp and os.path.exists(tnp):
+        try:
+            tks |= {(t or "").upper()
+                    for t in json.loads(open(tnp).read()).get("tickers", [])}
+        except (OSError, ValueError):
+            pass
+    return {t for t in tks if t and t not in _NONTICKER}
+
+
 # ---------------------------------------------------------------- q_insider_trades
 def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
-                     smid_only=False, limit=100):
+                     smid_only=False, limit=100, scope="scoped"):
     """SM-R1 insider-trades feed. A flat, amendment-deduped list of Form 4
     open-market transactions with per-trade enrichment: the Trade Date (with a
     red Reported-Date fallback when a trade date is absent), the entry close on
     the trade date vs the latest close (+ % return), the 10b5-1 plan flag, and the
     SMID band. Ranked newest-first; only the top `limit` rows are price-enriched
     so the cost is bounded. side: buy | sell | all. plan: all | discretionary |
-    planned."""
+    planned. scope: 'scoped' (overlay + trump_network issuers, the default) or
+    'all' (the full universal corpus)."""
     anchor = anchor or dt.date.today().isoformat()
     start = _win(anchor, window)
     codes = {"buy": ("P",), "sell": ("S",)}.get(side, ("P", "S"))
     rows = _fetch_f4(con, codes, start, anchor, plan=plan)
+    if scope != "all":
+        scoped = _scoped_tickers()
+        rows = [r for r in rows if (r["ticker"] or "").upper() in scoped]
     tks = sorted({(r["ticker"] or "").upper() for r in rows if r["ticker"]})
     bands = {}
     if tks:
@@ -197,12 +229,14 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
     out = []
     for r in rows[:limit]:
         tk = (r["ticker"] or "").upper()
+        disp = _disp_ticker(tk)                   # '-' for NONE / N/A / empty
+        real = disp != "-"
         trade_date = r["tx_date"]                 # Form 4 tx_date is the trade date
         date_is_reported = trade_date is None
         if date_is_reported:                      # fall back to the reported date
             trade_date = r["filed_date"]
-        entry, entry_d = _close_on(con, tk, trade_date) if tk else (None, None)
-        latest, latest_d = _latest_close(con, tk) if tk else (None, None)
+        entry, entry_d = _close_on(con, tk, trade_date) if real else (None, None)
+        latest, latest_d = _latest_close(con, tk) if real else (None, None)
         pct = ((latest - entry) / entry) if (entry and latest) else None
         try:
             lag = (dt.date.fromisoformat(r["filed_date"])
@@ -210,7 +244,7 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
         except (ValueError, TypeError):
             lag = None
         out.append({
-            "person": r["reporting_person"], "ticker": tk or "-",
+            "person": r["reporting_person"], "ticker": disp,
             "side": "buy" if r["code"] == "P" else "sell",
             "trade_date": trade_date, "date_is_reported": date_is_reported,
             "reported_date": r["filed_date"], "lag_days": lag,
@@ -221,8 +255,8 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
             "smid_band": bands.get(tk),
         })
     return {"as_of": _as_of(), "side": side, "window_days": window, "anchor": anchor,
-            "plan": plan, "smid_only": smid_only, "returned": len(out),
-            "total_matching": len(rows), "rows": out}
+            "plan": plan, "smid_only": smid_only, "scope": scope,
+            "returned": len(out), "total_matching": len(rows), "rows": out}
 
 
 # ---------------------------------------------------------------- q_ownership_pressure

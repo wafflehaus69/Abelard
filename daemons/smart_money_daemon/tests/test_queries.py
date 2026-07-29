@@ -118,7 +118,9 @@ def test_insider_trades_dedup_dates_plan_smid_price():
     con.commit()
     con.close()
     con = q.connect_ro(path)
-    buys = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30", plan="all")
+    # ZZZ is not a scoped ticker, so the enrichment assertions use scope='all'.
+    buys = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
+                              plan="all", scope="all")
     assert len(buys["rows"]) == 1, buys["rows"]          # A1/A2 collapsed
     t = buys["rows"][0]
     assert t["trade_date"] == "2026-06-01", t
@@ -127,12 +129,19 @@ def test_insider_trades_dedup_dates_plan_smid_price():
     assert t["entry_close"] == 10.0 and t["latest_close"] == 12.0, t
     assert abs(t["pct_since_trade"] - 0.2) < 1e-9, t        # +20%
     assert t["smid_band"] == "small" and t["plan_10b5_1"] is False, t
-    planned = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30", plan="planned")
+    planned = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30",
+                                 plan="planned", scope="all")
     assert len(planned["rows"]) == 1 and planned["rows"][0]["plan_10b5_1"] is True, planned
-    disc = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30", plan="discretionary")
+    disc = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30",
+                              plan="discretionary", scope="all")
     assert len(disc["rows"]) == 0, "the only sell is planned"
-    smid = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30", plan="all", smid_only=True)
+    smid = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
+                              plan="all", smid_only=True, scope="all")
     assert len(smid["rows"]) == 1, "ZZZ is small-cap"
+    # scope='scoped' (default) filters ZZZ out — it is not an overlay/tn ticker.
+    scoped = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
+                                plan="all", scope="scoped")
+    assert len(scoped["rows"]) == 0, "ZZZ is out of the watchlist scope"
     os.unlink(path)
 
 
