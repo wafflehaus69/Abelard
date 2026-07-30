@@ -294,6 +294,79 @@ def test_net_flows_price_sanity_guard():
     os.unlink(path)
 
 
+def test_portfolio_holdings_and_qoq_deltas():
+    # Duquesne (0001536411) is a manager_13f filer in the committed registry.
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    HI = ("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip, "
+          "ticker, issuer, put_call, value, shares, ingested_at_unix) "
+          "VALUES('1536411',?,?,?,?,?,?,?,?,?,0)")
+
+    def ins(acc, period, cusip, ticker, pc, val, sh):
+        con.execute(HI, (acc, period, period, cusip, ticker, ticker or "Iss", pc, val, sh))
+    ins("p1", "2025-12-31", "CU_A", "AAA", "long", 1000, 100)
+    ins("p1", "2025-12-31", "CU_B", "BBB", "long", 500, 50)
+    ins("p1", "2025-12-31", "CU_D", "DDD", "long", 100, 10)     # will exit
+    ins("c1", "2026-03-31", "CU_A", "AAA", "long", 1500, 150)   # added (shares up)
+    ins("c1", "2026-03-31", "CU_B", "BBB", "long", 400, 40)     # trimmed (shares down)
+    ins("c1", "2026-03-31", "CU_C", "CCC", "long", 200, 20)     # new
+    ins("c1", "2026-03-31", "CU_E", "EEE", "put", 300, 0)       # new put (put-heavy)
+    ins("c1", "2026-03-31", "CU_F", None, "long", 250, 25)      # unmapped CUSIP
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    res = q.q_portfolio(con, filer_cik="0001536411", period="2026-03-31")
+    assert q.cik_int(res["filer_cik"]) == 1536411 and res["period"] == "2026-03-31"
+    assert res["prior_period"] == "2025-12-31" and res["has_deltas"] is True
+    assert res["book_value"] == 2650, res["book_value"]
+    assert res["long_value"] == 2350 and res["put_notional"] == 300 and res["call_notional"] == 0
+    assert res["unmapped_count"] == 1 and res["unmapped_value"] == 250
+    byk = {(r["cusip"], r["instrument"]): r for r in res["rows"]}
+    assert byk[("CU_A", "SH")]["badge"] == "added"
+    assert byk[("CU_B", "SH")]["badge"] == "trimmed"
+    assert byk[("CU_C", "SH")]["badge"] == "new"
+    assert byk[("CU_E", "PUT")]["badge"] == "new", "put-heavy new position"
+    assert byk[("CU_D", "SH")]["badge"] == "exited" and byk[("CU_D", "SH")]["value"] == 0
+    assert byk[("CU_F", "SH")]["unmapped"] is True and byk[("CU_F", "SH")]["ticker"] is None
+    assert abs(byk[("CU_A", "SH")]["pct_of_book"] - round(100 * 1500 / 2650, 2)) < 0.01
+    # single filing (prior=None) -> no deltas
+    solo = q.q_portfolio(con, filer_cik="0001536411", period="2025-12-31")
+    assert solo["prior_period"] is None and solo["has_deltas"] is False
+    assert all(r["badge"] is None for r in solo["rows"]), "no badges without a prior period"
+    con.close()
+    os.unlink(path)
+
+
+def test_portfolio_value_unit_normalization():
+    # 13F value units differ BY FILER but are consistent WITHIN a filer. The scale is
+    # detected once per filer from the newest price-covered period and applied to ALL
+    # periods, so an older period with no price coverage is not misread as dollars.
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    HI = ("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip, "
+          "ticker, issuer, put_call, value, shares, ingested_at_unix) "
+          "VALUES(?,?,?,?,?,?,?,'long',?,?,0)")
+    PX = "INSERT INTO prices VALUES(?,?,?,?,'eod',0,0,'y')"
+    # thousands filer 111: latest 2026-03-31 is priced; older 2024-09-30 has NO price
+    con.execute(HI, ("111", "x1", "2026-03-31", "2026-03-31", "CU_A", "AAA", "Aco", 150, 1000))
+    con.execute(HI, ("111", "x0", "2024-09-30", "2024-09-30", "CU_A", "AAA", "Aco", 120, 900))
+    con.execute(PX, ("AAA", "2026-03-31", 150, 150))          # only the latest period priced
+    # dollars filer 222
+    con.execute(HI, ("222", "dy", "2026-03-31", "2026-03-31", "CU_B", "BBB", "Bco", 150000, 1000))
+    con.execute(PX, ("BBB", "2026-03-31", 150, 150))
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    # scale detected from the newest covered period, applied filer-wide
+    assert q._filer_unit_scale(con, "111", ["2026-03-31", "2024-09-30"]) == 1000, "thousands"
+    assert q._filer_unit_scale(con, "222", ["2026-03-31"]) == 1, "dollars"
+    # the OLD uncovered period is still scaled x1000 (filer-level scale, not per-period)
+    assert q._scaled_holdings(con, "111", "2024-09-30", 1000)[("CU_A", "long")]["value"] == 120000
+    assert q._scaled_holdings(con, "111", "2026-03-31", 1000)[("CU_A", "long")]["value"] == 150000
+    con.close()
+    os.unlink(path)
+
+
 def test_cik_int_mixed_padding_join_guard():
     # The silent zero-row-join class: registry stores zero-padded, holdings/form4
     # store zero-stripped. cik_int must collapse them so a join never misses.

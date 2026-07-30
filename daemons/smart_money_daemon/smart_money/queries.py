@@ -757,6 +757,202 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
                     "per (cik, period); congress amounts are bands not points."}
 
 
+# ---------------------------------------------------------------- q_portfolio (SM-P1)
+_INSTRUMENT = {"long": "SH", "put": "PUT", "call": "CALL"}
+
+
+def _tracked_filers():
+    """The Mando-confirmed 13F filers from the registry (role manager_13f), in
+    registry order. (cik, name) pairs. Read-only (registry JSON) — queries.py must
+    not import thirteenf_ingest (a write-path module), so the set comes from the
+    registry the scorecard writes, not the ingest constant."""
+    entries, _ = _load_registry()
+    return [(e.get("cik"), e.get("name")) for e in entries
+            if e.get("role") == "manager_13f" and e.get("cik")]
+
+
+def _filer_periods(con, cik):
+    """Distinct reported periods for a filer, newest first."""
+    return [r[0] for r in con.execute(
+        "SELECT DISTINCT period FROM thirteenf_holdings "
+        "WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) AND period IS NOT NULL "
+        "ORDER BY period DESC", (cik,))]
+
+
+def _period_holdings(con, cik, period):
+    """{(cusip, put_call): holding-dict} for one filer/period."""
+    out = {}
+    for cusip, ticker, issuer, pc, val, sh in con.execute(
+        "SELECT cusip, ticker, issuer, put_call, value, shares FROM thirteenf_holdings "
+        "WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) AND period=?", (cik, period)):
+        out[(cusip, pc)] = {"cusip": cusip, "ticker": ticker, "issuer": issuer,
+                            "put_call": pc, "value": val or 0, "shares": sh or 0}
+    return out
+
+
+def _filer_unit_scale(con, cik, periods):
+    """13F `value` units are consistent WITHIN a filer but differ ACROSS filers — some
+    file in thousands, some in whole dollars (verified: Duquesne thousands,
+    Thiel/Situational/Affinity dollars). Detect the unit ONCE per filer, from the newest
+    period that has price coverage (the latest period is reliably priced), and apply it
+    to ALL the filer's periods — so an older period without a pre-period price row is
+    never silently misread as dollars, and every period (incl. the QoQ prior) compares
+    in one unit. Anchors implied price (value/shares) to the EOD close: dollars -> ~1,
+    thousands -> ~0.001. Returns the multiplier to dollars (1 or 1000); defaults to 1
+    (dollars, the majority) only when NO period has price coverage to anchor on."""
+    for period in periods:                          # newest first
+        ratios = []
+        for ticker, val, sh in con.execute(
+                "SELECT ticker, value, shares FROM thirteenf_holdings "
+                "WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) AND period=? AND "
+                "put_call='long' AND ticker IS NOT NULL AND shares>0 AND value>0 "
+                "ORDER BY value DESC LIMIT 20", (cik, period)):
+            close, _ = _close_on(con, ticker.upper(), period)
+            if close and close > 0:
+                ratios.append((val / sh) / close)
+        if ratios:
+            ratios.sort()
+            return 1000 if ratios[len(ratios) // 2] < 0.01 else 1
+    return 1
+
+
+def _scaled_holdings(con, cik, period, scale):
+    """Per-holding dict for a filer/period with `value` scaled to dollars by the
+    filer-level `scale` (from _filer_unit_scale) — the SAME scale for every period."""
+    h = _period_holdings(con, cik, period)
+    if scale != 1:
+        for x in h.values():
+            x["value"] = int(round(x["value"] * scale))
+    return h
+
+
+def q_portfolio_deltas(con, cik, prior, scale=1):
+    """Prior-period holdings {(cusip, put_call): holding} scaled to dollars by the
+    filer-level `scale` — the QoQ baseline. Empty when no prior period."""
+    return _scaled_holdings(con, cik, prior, scale) if prior else {}
+
+
+def _next_quarter_end(period_iso):
+    d = dt.date.fromisoformat(period_iso)
+    for m, day in ((3, 31), (6, 30), (9, 30), (12, 31)):
+        qe = dt.date(d.year, m, day)
+        if qe > d:
+            return qe
+    return dt.date(d.year + 1, 3, 31)
+
+
+def _days_to_next_13f(latest_period, anchor):
+    """Days until the next 13F is due — 45 days after the quarter end following the
+    latest reported period. Negative = the window has passed (a staleness signal)."""
+    try:
+        due = _next_quarter_end(latest_period) + dt.timedelta(days=45)
+        return (due - dt.date.fromisoformat(anchor)).days
+    except (ValueError, TypeError):
+        return None
+
+
+def q_portfolio(con, filer_cik=None, period=None):
+    """SM-P1 REPORTED PORTFOLIO for one tracked 13F filer. Per-holding rows from
+    thirteenf_holdings for the chosen filer/period: ticker (unmapped CUSIPs kept as
+    unmapped rows, counted, NEVER dropped), instrument SH/PUT/CALL, reported value,
+    shares, pct of reported book, and a QoQ badge new/added/trimmed/exited vs the
+    prior period. Long adds/trims are judged on SHARES (price-independent); option
+    adds/trims on notional value. Direction-netted header: long value vs put-notional
+    vs call-notional. put-heavy language, never 'short'.
+
+    CAVEATS (standing, surfaced by the view): reported book only — long US-listed, no
+    shorts/cash/privates; 45d stale; quarter-end marks; unmapped % shown; single-filing
+    filers get no deltas. This reads thirteenf_holdings, which is populated by
+    thirteenf_ingest — NOT the nightly Leg C (which only refreshes thirteenf_baseline),
+    so freshness depends on that ingest running."""
+    filers = _tracked_filers()
+    valid = {str(cik_int(c)): (c, n) for c, n in filers}
+    key = str(cik_int(filer_cik)) if filer_cik else None
+    if key and key in valid:
+        cik, name = valid[key]
+    elif filers:
+        cik, name = filers[0]
+    else:
+        return {"as_of": _as_of(), "filers": [], "period": None, "periods": [],
+                "rows": [], "count": 0, "has_deltas": False}
+    periods = _filer_periods(con, cik)
+    base = {"as_of": _as_of(), "filer_cik": cik, "filer_name": name, "filers": filers,
+            "periods": periods}
+    if not periods:
+        base.update({"period": None, "prior_period": None, "rows": [], "count": 0,
+                     "has_deltas": False, "book_value": 0, "long_value": 0,
+                     "put_notional": 0, "call_notional": 0, "unmapped_count": 0,
+                     "unmapped_value": 0})
+        return base
+    period = period if period in periods else periods[0]
+    idx = periods.index(period)
+    prior = periods[idx + 1] if idx + 1 < len(periods) else None
+    scale = _filer_unit_scale(con, cik, periods)  # one unit for the whole filer
+    cur = _scaled_holdings(con, cik, period, scale)
+    prior_h = q_portfolio_deltas(con, cik, prior, scale)
+    book = sum(h["value"] for h in cur.values()) or 0
+
+    def _row(h, badge, prior_val):
+        return {"cusip": h["cusip"], "ticker": h["ticker"],
+                "unmapped": h["ticker"] is None, "issuer": h["issuer"],
+                "instrument": _INSTRUMENT.get(h["put_call"], h["put_call"]),
+                "value": h["value"], "shares": h["shares"],
+                "pct_of_book": round(100.0 * h["value"] / book, 2) if book else None,
+                "badge": badge, "prior_value": prior_val}
+    rows = []
+    for k, h in cur.items():
+        pv = prior_h.get(k)
+        if not prior:
+            badge = None
+        elif pv is None:
+            badge = "new"
+        else:
+            if h["put_call"] == "long":
+                cm, pm = h["shares"], pv["shares"]
+            else:
+                cm, pm = h["value"], pv["value"]
+            badge = "added" if cm > pm else "trimmed" if cm < pm else None
+        rows.append(_row(h, badge, pv["value"] if pv else None))
+    # Exited: held last period, gone this period -> synthetic zero-value rows.
+    if prior:
+        for k, h in prior_h.items():
+            if k not in cur:
+                rows.append(_row({**h, "value": 0, "shares": 0}, "exited", h["value"]))
+    unmapped = [r for r in rows if r["unmapped"]]
+    base.update({
+        "period": period, "prior_period": prior, "rows": rows, "count": len(rows),
+        "has_deltas": prior is not None, "book_value": book,
+        "long_value": sum(h["value"] for h in cur.values() if h["put_call"] == "long"),
+        "put_notional": sum(h["value"] for h in cur.values() if h["put_call"] == "put"),
+        "call_notional": sum(h["value"] for h in cur.values() if h["put_call"] == "call"),
+        "unmapped_count": len(unmapped),
+        "unmapped_value": sum(r["value"] for r in unmapped)})
+    return base
+
+
+def q_tracked_books(con, anchor=None):
+    """SM-P1 front-page strip: per tracked filer, the latest reported period + book
+    value + top-3 long weights + days until the next 13F filing window."""
+    anchor = anchor or dt.date.today().isoformat()
+    out = []
+    for cik, name in _tracked_filers():
+        periods = _filer_periods(con, cik)
+        if not periods:
+            out.append({"cik": cik, "name": name, "period": None, "book_value": 0,
+                        "top3": [], "days_to_filing": None})
+            continue
+        cur = _scaled_holdings(con, cik, periods[0], _filer_unit_scale(con, cik, periods))
+        book = sum(h["value"] for h in cur.values()) or 0
+        longs = sorted((h for h in cur.values() if h["put_call"] == "long"),
+                       key=lambda h: -(h["value"] or 0))
+        top3 = [{"ticker": h["ticker"] or ("cusip:" + h["cusip"]),
+                 "pct": round(100.0 * (h["value"] or 0) / book, 1) if book else None}
+                for h in longs[:3]]
+        out.append({"cik": cik, "name": name, "period": periods[0], "book_value": book,
+                    "top3": top3, "days_to_filing": _days_to_next_13f(periods[0], anchor)})
+    return {"as_of": _as_of(), "filers": out}
+
+
 # ---------------------------------------------------------------- CLI
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-R1 L1 query layer")

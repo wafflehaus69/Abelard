@@ -174,6 +174,37 @@ def test_flows_view_and_csv():
     os.unlink(path)
 
 
+def test_portfolios_view_and_front_strip():
+    path = _fixture_db()                    # provides registry persons (front page needs them)
+    conw = dbmod.connect(path)
+    HI = ("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip, "
+          "ticker, issuer, put_call, value, shares, ingested_at_unix) "
+          "VALUES('1536411',?,?,?,?,?,?,?,?,?,0)")
+    conw.execute(HI, ("c1", "2026-03-31", "2026-03-31", "CU_A", "AAA", "Aco", "long", 1500, 150))
+    conw.execute(HI, ("c1", "2026-03-31", "2026-03-31", "CU_F", None, "Unk", "long", 250, 25))
+    conw.commit()
+    conw.close()
+    con = q.connect_ro(path)
+    h = dash.view_portfolios(con, dash._params({"filer": ["1536411"]}))
+    assert h.startswith("<!doctype html>") and "Reported portfolio" in h, "title"
+    assert "Reported book only" in h and "45 days stale" in h, "caveats block"
+    assert "reported book" in h and "put-notional" in h, "direction-netted header"
+    assert "unmapped" in h and "% book" in h, "unmapped row + pct column"
+    assert "sort=value" in h, "sortable headers"
+    assert "/portfolios.csv" in h and "per page:" in h, "csv + pager"
+    # front-page tracked-books strip links into /portfolios
+    hf = dash.view_front(con, dash._params({}))
+    assert "Tracked books" in hf and "/portfolios?filer=" in hf, "front strip"
+    data = dash._build_portfolio_csv(con, dash._params({"filer": ["1536411"]}), full=True)
+    assert data.startswith("cusip,ticker,issuer,instrument,value,shares,pct_of_book,badge"), data[:60]
+    # param sanitizing
+    assert dash._params({"filer": ["00015 36411"]})["filer"] == "0001536411"  # digits only
+    assert dash._params({"period": ["2026-03-31"]})["period"] == "2026-03-31"
+    assert dash._params({"period": ["garbage"]})["period"] == ""            # bad -> empty
+    con.close()
+    os.unlink(path)
+
+
 def test_sort_helpers_and_param_sanitizing():
     rows = [{"x": 3}, {"x": 1}, {"x": None}, {"x": 2}]
     assert [r["x"] for r in dash._sorted(rows, "x", "asc")] == [1, 2, 3, None], "None last"

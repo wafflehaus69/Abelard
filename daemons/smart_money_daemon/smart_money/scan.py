@@ -286,6 +286,28 @@ def leg_enrich(con, contact):
                     counts["price_ok"], counts["price_fail"]), counts["price_ok"]), counts
 
 
+def leg_13f_holdings(con, contact, quarters=8):
+    """SM-P1: durable per-holding 13F ingest into thirteenf_holdings, so the reported
+    portfolios view auto-refreshes when new 13Fs land (Leg C only refreshes the JSON
+    thirteenf_baseline used for diffing, NOT this table). Idempotent via
+    thirteenf_filings_seen — steady-state nightly is no new filings = ~no work; only a
+    fresh quarterly filing does EDGAR + OpenFIGI work. Ingest-only, NO events."""
+    from . import thirteenf_ingest
+    report = {"filers": {}}
+    for cik10 in thirteenf_ingest.CONFIRMED:
+        try:
+            thirteenf_ingest.ingest_filer(con, cik10, contact, quarters, report)
+        except Exception as exc:  # noqa: BLE001 - per filer, fail into source status
+            report["filers"][cik10] = {"error": str(exc)[:120]}
+    vals = [f for f in report["filers"].values() if isinstance(f, dict)]
+    new = sum(f.get("new", 0) for f in vals)
+    rows = sum(f.get("holding_rows", 0) for f in vals)
+    errs = [c for c, f in report["filers"].items() if f.get("error")]
+    status = "DEGRADED" if errs and not rows else "OK"
+    return _src("13f_holdings", status, "filers={} new_filings={} rows={} errors={}".format(
+        len(report["filers"]), new, rows, len(errs)), rows), report
+
+
 def run_scan(con, contact, raw_dir, skip_universal=False):
     scan_start = int(time.time())
     scan_id = "scan_{}".format(scan_start)
@@ -304,11 +326,13 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
     if skip_universal:
         src_u, cnt_u = _src("edgar_form4_universal", "SKIPPED", "disabled"), {}
         src_e, cnt_e = _src("enrich_scoped", "SKIPPED", "disabled"), {}
+        src_h = _src("13f_holdings", "SKIPPED", "disabled")
     else:
         src_u, cnt_u = leg_universal_ingest(con, contact)
         src_e, cnt_e = leg_enrich(con, contact)  # bounded scoped bands+prices
+        src_h, _ = leg_13f_holdings(con, contact)  # SM-P1 durable 13F holdings ingest
 
-    sources = src_a + src_b + src_c + [src_u, src_e]
+    sources = src_a + src_b + src_c + [src_u, src_e, src_h]
     all_events = ev_a + ev_b + ev_c
 
     # Event-level dedup across scans by event_id (scan_events ledger). A Form 4

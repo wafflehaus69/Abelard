@@ -27,8 +27,9 @@ from urllib.parse import parse_qs, urlparse
 from . import db as dbmod
 from . import queries as q
 
-NAV = [("/", "Front"), ("/trades", "Trades"), ("/flows", "Net flows"),
-       ("/clusters", "Clusters"), ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
+NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/trades", "Trades"),
+       ("/flows", "Net flows"), ("/clusters", "Clusters"),
+       ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
 # Theme palettes. Default is light; dark applies automatically when the viewer's
 # system prefers dark, and can be forced either way via ?theme=dark|light (which
@@ -69,6 +70,12 @@ _CSS = (
     ".smid{background:var(--th-bg)}"
     ".prov-book{background:var(--prov-book)} .prov-watch{background:var(--prov-watch)}"
     ".prov-trump{background:var(--prov-trump)} .prov-thiel{background:var(--prov-thiel)}"
+    ".qoq-new{background:var(--prov-book)} .qoq-added{background:var(--prov-watch)}"
+    ".qoq-trimmed{background:var(--hot-bg);color:var(--hot-fg)}"
+    ".qoq-exited{background:var(--th-bg);color:var(--muted)}"
+    ".strip{display:flex;flex-wrap:wrap;gap:.5rem;margin:.5rem 0}"
+    ".book{border:1px solid var(--border);border-radius:5px;padding:.4rem .6rem;font-size:12px;min-width:150px}"
+    ".book b{font-size:13px}"
     ".reported{color:var(--reported);font-weight:bold}"
     ".pos{color:var(--pos)} .neg{color:var(--neg)}"
     ".expand a{margin-right:8px} .expand{margin:.3rem 0;font-size:12px}"
@@ -118,6 +125,8 @@ def _qs(params, **override):
     base["dir"] = params.get("dir") if params.get("sort") and params.get("dir") == "asc" else None
     base["ssort"] = params.get("ssort") or None
     base["sdir"] = params.get("sdir") if params.get("ssort") and params.get("sdir") == "asc" else None
+    base["filer"] = params.get("filer") or None
+    base["period"] = params.get("period") or None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
     if not keep:
@@ -222,6 +231,11 @@ def _money(v):
     return "{}${:.0f}".format(sign, a)
 
 
+def _money0(v):
+    """Plain unsigned dollars with thousands separators; '-' for None."""
+    return "-" if v is None else "${:,.0f}".format(v)
+
+
 def _flow_cell(metric, v):
     """A net-flow table cell: 0 is neutral; positive (net bought) tints green,
     negative (net sold) red. Dollars are compacted; shares/insiders are counts."""
@@ -258,6 +272,11 @@ def _params(qsd):
     def _dir(v):
         v = (v or "").lower().strip()
         return v if v in ("asc", "desc") else "desc"
+
+    filer = "".join(ch for ch in (one("filer") or "") if ch.isdigit())
+    per = (one("period") or "").strip()
+    period = per if (len(per) == 10 and per[4] == "-" and per[7] == "-"
+                     and per.replace("-", "").isdigit()) else ""
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
@@ -272,6 +291,7 @@ def _params(qsd):
          "metric": metric if metric in ("value", "shares") else "value",
          "sort": _sortkey(one("sort")), "dir": _dir(one("dir")),
          "ssort": _sortkey(one("ssort")), "sdir": _dir(one("sdir")),
+         "filer": filer, "period": period,
          "smid": one("smid") == "1",
          "capit": one("capit") == "1"}
     return p
@@ -284,15 +304,41 @@ def _int(v, d):
         return d
 
 
+def _tracked_books_strip(books):
+    cards = []
+    for b in books["filers"]:
+        if not b["period"]:
+            cards.append("<div class='book'><b>{}</b><br><span class='muted'>no "
+                         "filings</span></div>".format(html.escape(b["name"] or "?")))
+            continue
+        top = ", ".join("{} {}%".format(
+            html.escape(t["ticker"]), "?" if t["pct"] is None else t["pct"])
+            for t in b["top3"]) or "-"
+        d2f = b["days_to_filing"]
+        d2f_txt = ("filing window passed" if d2f is not None and d2f < 0 else
+                   "{}d to next filing".format(d2f) if d2f is not None else "-")
+        cards.append(
+            "<div class='book'><a href='/portfolios?filer={cik}'><b>{name}</b></a><br>"
+            "<span class='muted'>{per} &middot; {book}</span><br>top3 {top}<br>"
+            "<span class='muted'>{d2f}</span></div>".format(
+                cik=q.cik_int(b["cik"]), name=html.escape(b["name"] or "?"),
+                per=html.escape(b["period"]), book=_money0(b["book_value"]),
+                top=top, d2f=d2f_txt))
+    return ("<h2>Tracked books (reported 13F) &middot; "
+            "<a href='/portfolios'>open</a></h2><div class='strip'>{}</div>".format(
+                "".join(cards)))
+
+
 def view_front(con, p):
     sent = q.q_sentinel_log(con, window=p["window"] * 2, anchor=p["anchor"])
     conv = q.q_principal_convergence(con)
     press = q.q_ownership_pressure(con, "all", p["window"], p["anchor"])
     ev = q.q_positioning_events(since=q._win(p["anchor"], p["window"]), overlay_only=True)
     body = [
-        "<p class='muted'>as-of {}. Front page = sentinels, principal convergence, "
-        "ownership pressure, overlay-flagged events. Clusters are context.</p>".format(
-            html.escape(press["as_of"])),
+        "<p class='muted'>as-of {}. Front page = tracked books, sentinels, principal "
+        "convergence, ownership pressure, overlay-flagged events. Clusters are "
+        "context.</p>".format(html.escape(press["as_of"])),
+        _tracked_books_strip(q.q_tracked_books(con, anchor=p["anchor"])),
         "<h2>Sentinel activity ({} events)</h2>".format(sent["count"]),
         _table(["event_date", "src", "seed", "ticker", "action"], sent["rows"][:15]),
         "<h2>Principal convergence — {} same-side, {} QoQ disagreements</h2>".format(
@@ -681,6 +727,109 @@ def view_flows(con, p):
     return _page("Smart Money — net flows", "".join(body), p)
 
 
+_PORT_CAVEAT = (
+    "<p class='muted'><b>Reported book only</b> — long US-listed 13F positions; no "
+    "shorts, cash, or private holdings. Marks are quarter-end and up to 45 days stale. "
+    "Unmapped CUSIPs are kept and counted, never dropped; their % of book is shown. "
+    "Single-filing filers get no QoQ deltas. put-heavy is option notional, never a "
+    "short position.</p>")
+
+
+def _portfolio_filter_form(params, res):
+    def sel(name, cur, opts):
+        o = "".join("<option value='{}'{}>{}</option>".format(
+            html.escape(str(v)), " selected" if str(v) == str(cur) else "",
+            html.escape(str(lbl))) for v, lbl in opts)
+        return "{} <select name='{}'>{}</select>".format(name, name, o)
+    filers = [(str(q.cik_int(c)), n) for c, n in res.get("filers", [])]
+    cur_filer = str(q.cik_int(res["filer_cik"])) if res.get("filer_cik") else ""
+    periods = [(pp, pp) for pp in res.get("periods", [])]
+    return (
+        "<form method='get'>filer {filer} period {period} "
+        "<input type='hidden' name='per_page' value='{pp}'>"
+        "<input type='hidden' name='page' value='1'>"
+        "<input type='hidden' name='theme' value='{t}'>"
+        "<button>view</button></form>"
+        "<div class='muted'><a href='/portfolios{clr}'>reset</a> "
+        "&middot; defaults to the first filer, latest period</div>"
+    ).format(filer=sel("filer", cur_filer, filers),
+             period=(sel("period", res.get("period") or "", periods)
+                     if periods else "<i>none</i>"),
+             pp=params["per_page"], t=html.escape(params.get("theme") or ""),
+             clr=("?theme=" + params["theme"]) if params.get("theme") else "")
+
+
+def view_portfolios(con, p):
+    res = q.q_portfolio(con, filer_cik=p["filer"] or None, period=p["period"] or None)
+    active = p["sort"] or "value"                 # default: largest position first
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("ticker", "ticker"), ("issuer", "issuer"), ("instrument", "instr"),
+            ("value", "value"), ("shares", "shares"), ("pct_of_book", "% book"),
+            ("badge", "QoQ")]
+    header = _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])
+    trs = ["<table>" + header]
+    for r in page_rows:
+        tk = (html.escape(r["ticker"]) if r["ticker"] else
+              "<span class='muted'>unmapped {}</span>".format(html.escape(r["cusip"])))
+        badge = ("" if not r["badge"] else
+                 "<span class='badge qoq-{b}'>{b}</span>".format(b=r["badge"]))
+        pct = "-" if r["pct_of_book"] is None else "{:.2f}%".format(r["pct_of_book"])
+        trs.append(
+            "<tr><td>{tk}</td><td>{iss}</td><td>{ins}</td><td>{val}</td><td>{sh}</td>"
+            "<td>{pct}</td><td>{b}</td></tr>".format(
+                tk=tk, iss=html.escape(str(r["issuer"] or "-")),
+                ins=html.escape(r["instrument"]), val=_money0(r["value"]),
+                sh=_fmt(r["shares"]), pct=pct, b=badge))
+    trs.append("</table>")
+    if not page_rows:
+        trs.append("<p class='muted'>No holdings for this filer/period.</p>")
+    if not res.get("periods"):
+        head = ("<p class='muted'><b>{}</b> — no reported holdings in "
+                "thirteenf_holdings.</p>".format(html.escape(res.get("filer_name") or "?")))
+    else:
+        dn = "" if res["has_deltas"] else " &middot; <b>single filing</b> — no QoQ deltas"
+        head = (
+            "<p class='muted'><b>{name}</b> &middot; period <b>{per}</b>{prior} "
+            "&middot; reported book <b>{book}</b>{dn}</p>"
+            "<p class='muted'>direction-netted: long <b>{lng}</b> &middot; put-notional "
+            "<b>{put}</b> &middot; call-notional <b>{call}</b> &middot; {unm} unmapped "
+            "CUSIP(s) = {unmv}. Click a column header to sort.</p>".format(
+                name=html.escape(res["filer_name"] or "?"),
+                per=html.escape(res["period"]),
+                prior=(" (QoQ vs " + html.escape(res["prior_period"]) + ")"
+                       if res["prior_period"] else ""),
+                book=_money0(res["book_value"]), dn=dn,
+                lng=_money0(res["long_value"]), put=_money0(res["put_notional"]),
+                call=_money0(res["call_notional"]), unm=res["unmapped_count"],
+                unmv=_money0(res["unmapped_value"])))
+    body = [head, _PORT_CAVEAT, _portfolio_filter_form(p, res),
+            _pager(p, meta, "/portfolios.csv"), "".join(trs),
+            _pager(p, meta, "/portfolios.csv")]
+    return _page("Reported portfolio", "".join(body), p)
+
+
+_PORT_CSV_COLS = ["cusip", "ticker", "issuer", "instrument", "value", "shares",
+                  "pct_of_book", "badge", "prior_value"]
+
+
+def _build_portfolio_csv(con, p, full):
+    """CSV of the reported-portfolio holdings — current page or whole set — same
+    filer/period/sort as the on-screen view."""
+    import csv
+    import io
+    res = q.q_portfolio(con, filer_cik=p["filer"] or None, period=p["period"] or None)
+    rows = _sorted(res["rows"], p["sort"] or "value", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_PORT_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 _CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
              "reported_date", "lag_days", "shares", "value", "plan_10b5_1",
              "entry_close", "latest_close", "pct_since_trade", "smid_band",
@@ -783,9 +932,9 @@ def _build_flows_csv(con, p, full):
     return buf.getvalue()
 
 
-ROUTES = {"/": view_front, "/trades": view_trades, "/flows": view_flows,
-          "/clusters": view_clusters, "/sentinels": view_sentinels,
-          "/ticker": view_ticker}
+ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/trades": view_trades,
+          "/flows": view_flows, "/clusters": view_clusters,
+          "/sentinels": view_sentinels, "/ticker": view_ticker}
 
 
 # ---------------------------------------------------------------- server
@@ -820,6 +969,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._clusters_csv(con, p, parse_qs(u.query))
             if u.path == "/flows.csv":
                 return self._flows_csv(con, p, parse_qs(u.query))
+            if u.path == "/portfolios.csv":
+                return self._portfolios_csv(con, p, parse_qs(u.query))
             view = ROUTES.get(u.path)
             if not view:
                 return self._send(404, _page("Not found", "<p>No such view.</p>", p))
@@ -865,6 +1016,16 @@ class Handler(BaseHTTPRequestHandler):
         data = _build_flows_csv(con, p, full)
         fname = "net_flows_{}_{}_{}.csv".format(
             p["metric"], p["scope"], "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _portfolios_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_portfolio_csv(con, p, full)
+        fname = "portfolio_{}_{}_{}.csv".format(
+            p["filer"] or "default", p["period"] or "latest",
+            "all" if full else "page{}".format(p["page"]))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})
