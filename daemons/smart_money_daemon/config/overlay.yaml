@@ -29,6 +29,24 @@ watchlist:
   - CTRA
   - GFS
 
+# Network issuer sets (SM-A1) — companies in a principal's orbit. Drive the
+# /trades scope and the per-row provenance badge. Split by network so "why am I
+# seeing this" is answerable on screen.
+trump_network:
+  - DJT
+  - PEW
+  - PSQH
+  - CLBR
+
+thiel_network:
+  - GUTS
+  - ABCL
+  - OSCR
+  - CMMB
+  - BKSY
+  - ADGI
+  - PLTR
+
 # Cluster-flag thresholds (SM-4 STEP 3). Defaults 3 distinct persons / 30 days.
 cluster:
   min_persons: 3

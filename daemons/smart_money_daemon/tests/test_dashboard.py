@@ -72,7 +72,8 @@ def test_trades_view_and_expand_params():
     assert "per page:" in h and "page 1 of" in h, "pager present"
     assert "/trades.csv" in h and "whole dataset CSV" in h, "csv export links present"
     assert "scope:" in h and "overlay" in h, "scope toggle present"
-    assert "clear filters" in h and "/trades'" in h.replace('"', "'"), "clear-filters reset"
+    assert "clear filters" in h and "/trades?side=all&plan=all&scope=all" in h, \
+        "clear-filters must reset every filter and overlay"
     # pagination + filter param sanitizing
     assert dash._params({"per_page": ["250"]})["per_page"] == 250
     assert dash._params({"per_page": ["999"]})["per_page"] == 100   # bad -> default 100
@@ -94,6 +95,7 @@ def test_trades_csv_export():
     p = dash._params({"side": ["buy"], "scope": ["all"]})
     data = dash._build_trades_csv(con, p, full=False)
     assert data.startswith("person,ticker,side,trade_date"), data[:60]
+    assert data.splitlines()[0].endswith(",provenance"), "provenance is the last CSV column"
     lines = data.strip().splitlines()
     assert len(lines) >= 2, "header plus at least one row"
     assert "ZZZ" in data, "the fixture buy is in the CSV"

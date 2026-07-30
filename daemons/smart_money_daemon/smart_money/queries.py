@@ -179,21 +179,11 @@ def _disp_ticker(tk):
 
 
 def _scoped_tickers():
-    """The watchlist scope for the trades feed: overlay conviction+watchlist plus
-    the SM-A1 trump_network discovered issuers. Read-only (yaml + a state-home
-    JSON). registry manager_13f entries are funds, not Form 4 issuers, so they do
-    not contribute issuer tickers here."""
+    """The watchlist scope for the trades feed: every ticker in any overlay set
+    (conviction book + watchlist + trump_network + thiel_network), from the
+    Mando-owned overlay.yaml. Read-only."""
     from .overlay import load_overlay
-    ov = load_overlay()
-    tks = {t.upper() for t in (ov.conviction | ov.watchlist)}
-    tnp = dbmod.find_artifact("trump_network_issuers.json", "scans")
-    if tnp and os.path.exists(tnp):
-        try:
-            tks |= {(t or "").upper()
-                    for t in json.loads(open(tnp).read()).get("tickers", [])}
-        except (OSError, ValueError):
-            pass
-    return {t for t in tks if t and t not in _NONTICKER}
+    return {t for t in load_overlay().scoped() if t and t not in _NONTICKER}
 
 
 # ---------------------------------------------------------------- q_insider_trades
@@ -204,16 +194,19 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
     open-market transactions with per-trade enrichment: the Trade Date (with a
     red Reported-Date fallback when a trade date is absent), the entry close on
     the trade date vs the latest close (+ % return), the 10b5-1 plan flag, and the
-    SMID band. Ranked newest-first; PAGINATED — only the requested page's rows are
-    price-enriched (or every row when full=True, for a whole-dataset CSV export).
-    side: buy | sell | all. plan: all | discretionary | planned. scope: 'scoped'
-    (overlay + trump_network issuers, the default) or 'all' (the full corpus)."""
+    SMID band, and the provenance tag (book | watch | trump | thiel) saying why
+    the issuer is in scope. Ranked newest-first; PAGINATED — only the requested
+    page's rows are price-enriched (or every row when full=True, for a whole-dataset
+    CSV export). side: buy | sell | all. plan: all | discretionary | planned.
+    scope: 'scoped' (every overlay set, the default) or 'all' (the full corpus)."""
     anchor = anchor or dt.date.today().isoformat()
     start = _win(anchor, window)
     codes = {"buy": ("P",), "sell": ("S",)}.get(side, ("P", "S"))
     rows = _fetch_f4(con, codes, start, anchor, plan=plan)
+    from .overlay import load_overlay
+    ov = load_overlay()  # scope filter + per-row provenance from one load
     if scope != "all":
-        scoped = _scoped_tickers()
+        scoped = {t for t in ov.scoped() if t and t not in _NONTICKER}
         rows = [r for r in rows if (r["ticker"] or "").upper() in scoped]
     tks = sorted({(r["ticker"] or "").upper() for r in rows if r["ticker"]})
     bands = {}
@@ -262,6 +255,7 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
             "entry_close": entry, "latest_close": latest,
             "pct_since_trade": round(pct, 4) if pct is not None else None,
             "smid_band": bands.get(tk),
+            "provenance": ov.provenance(tk),      # book | watch | trump | thiel | None
         })
     return {"as_of": _as_of(), "side": side, "window_days": window, "anchor": anchor,
             "plan": plan, "smid_only": smid_only, "scope": scope,
@@ -483,7 +477,7 @@ def _load_registry():
 def q_sentinel_log(con, window=180, anchor=None, entries=None):
     """SM-R1: activity by every registry seed person/entity, newest first. Shape-A
     (congress person_id) -> congress_trades; Shape-B (SEC entity cik) ->
-    thirteenf_holdings (manager_13f) or form4_transactions (trump_network). All
+    thirteenf_holdings (manager_13f) or form4_transactions (trump/thiel_network). All
     CIK joins CAST both sides to INTEGER (registry is zero-padded, holdings/form4
     are not). A Shape-A person_id orphaned by a person-merge FAILS LOUD."""
     anchor = anchor or dt.date.today().isoformat()
@@ -519,7 +513,7 @@ def q_sentinel_log(con, window=180, anchor=None, entries=None):
                 rows.append({"seed": name, "role": role, "src": "13f",
                              "event_date": filed, "period": per, "ticker": tk,
                              "action": pc, "value": val, "shares": sh})
-        else:  # trump_network -> form4
+        else:  # trump_network / thiel_network -> form4
             for txd, filed, tk, code, val, plan, r_role in con.execute(
                 "SELECT tx_date, filed_date, ticker, code, value, plan_flag, role "
                 "FROM form4_transactions WHERE "

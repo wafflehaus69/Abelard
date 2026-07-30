@@ -625,12 +625,18 @@ def _write_registry(active, validation, by_name, anchor, path):
             "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
             "status": "active", "role": "manager_13f", "type": "manager_13f",
             "scores": None, "as_of": anchor})
-    # trump_network ownership persons (SM-A1 Phase 1, ratified). EDGAR CIK
-    # identity; not scored (ownership surface, not a picking-skill claim).
+    # Network ownership persons (SM-A1 Phase 1, ratified). EDGAR CIK identity;
+    # not scored (ownership surface, not a picking-skill claim). Split by network
+    # so the registry role matches the /trades provenance badge.
     for m in TRUMP_NETWORK_SEEDS:
         entries.append({
             "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
             "status": "active", "role": "trump_network", "type": "trump_network",
+            "scores": None, "as_of": anchor})
+    for m in THIEL_NETWORK_SEEDS:
+        entries.append({
+            "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
+            "status": "active", "role": "thiel_network", "type": "thiel_network",
             "scores": None, "as_of": anchor})
     with open(path, "w") as f:
         json.dump({"as_of": anchor, "entries": entries}, f, indent=2)
@@ -648,6 +654,8 @@ MANAGER_13F_SEEDS = [
 TRUMP_NETWORK_SEEDS = [
     {"name": "TRUMP DONALD J", "cik": "0000947033"},
     {"name": "Trump Donald J. JR", "cik": "0002016181"},
+]
+THIEL_NETWORK_SEEDS = [
     {"name": "THIEL PETER", "cik": "0001211060"},
 ]
 

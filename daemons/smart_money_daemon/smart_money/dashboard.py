@@ -36,10 +36,12 @@ NAV = [("/", "Front"), ("/trades", "Trades"), ("/clusters", "Clusters"),
 # JS — fits the stdlib, no-build ethos.
 _LIGHT = ("--bg:#ffffff;--fg:#1a1a1a;--border:#cccccc;--th-bg:#eeeeff;"
           "--muted:#666666;--hot-bg:#fdecea;--hot-fg:#1a1a1a;--link:#0a58ca;"
-          "--pos:#1a8a3a;--neg:#c0392b;--reported:#c0392b")
+          "--pos:#1a8a3a;--neg:#c0392b;--reported:#c0392b;"
+          "--prov-book:#dcefdc;--prov-watch:#dce8fb;--prov-trump:#fbe4d6;--prov-thiel:#ecdcfb")
 _DARK = ("--bg:#0f1216;--fg:#d7dce3;--border:#2b313b;--th-bg:#1a2130;"
          "--muted:#8b93a1;--hot-bg:#3a2323;--hot-fg:#f3d9d6;--link:#6ea8fe;"
-         "--pos:#4ade80;--neg:#ff6b6b;--reported:#ff6b6b")
+         "--pos:#4ade80;--neg:#ff6b6b;--reported:#ff6b6b;"
+         "--prov-book:#1c3324;--prov-watch:#1b2a44;--prov-trump:#3a2a1c;--prov-thiel:#2c1f3d")
 _CSS = (
     ":root{" + _LIGHT + "}"
     "@media(prefers-color-scheme:dark){:root:not([data-theme]){" + _DARK + "}}"
@@ -62,6 +64,8 @@ _CSS = (
     "margin-left:3px;border:1px solid var(--border)}"
     ".plan{background:var(--hot-bg);color:var(--hot-fg)}"
     ".smid{background:var(--th-bg)}"
+    ".prov-book{background:var(--prov-book)} .prov-watch{background:var(--prov-watch)}"
+    ".prov-trump{background:var(--prov-trump)} .prov-thiel{background:var(--prov-thiel)}"
     ".reported{color:var(--reported);font-weight:bold}"
     ".pos{color:var(--pos)} .neg{color:var(--neg)}"
     ".expand a{margin-right:8px} .expand{margin:.3rem 0;font-size:12px}"
@@ -283,14 +287,16 @@ def _trade_filter_form(params):
         "<input type='hidden' name='scope' value='{sc}'>"
         "<button>apply</button></form>"
         "<div class='muted'><a href='/trades{clr}'>clear filters</a> "
-        "&middot; back to defaults (buy, all plans, scoped, 90d, 100/page)</div>"
+        "&middot; clears every filter and overlay (all sides, all plans, all "
+        "issuers, 90d, 100/page)</div>"
     ).format(side=sel("side", params["side"], ("buy", "sell", "all")),
              plan=sel("plan", params["plan"], ("all", "discretionary", "planned")),
              smid=" checked" if params["smid"] else "",
              w=params["window"], pp=params["per_page"],
              a=html.escape(params["anchor"]), t=html.escape(params.get("theme") or ""),
              sc=html.escape(params["scope"]),
-             clr=("?theme=" + params["theme"]) if params.get("theme") else "")
+             clr="?side=all&plan=all&scope=all" + (
+                 "&theme=" + params["theme"] if params.get("theme") else ""))
 
 
 def view_trades(con, p):
@@ -299,10 +305,11 @@ def view_trades(con, p):
                              per_page=p["per_page"], page=p["page"], scope=p["scope"])
     if p["scope"] == "all":
         scope_line = ('scope: <b>all issuers</b> &middot; <a href="{}">overlay + '
-                      'trump_network only</a>'.format(_qs(p, scope="scoped")))
+                      'network issuers only</a>'.format(_qs(p, scope="scoped")))
     else:
-        scope_line = ('scope: <b>overlay + trump_network issuers</b> &middot; '
-                      '<a href="{}">show all issuers</a>'.format(_qs(p, scope="all")))
+        scope_line = ('scope: <b>overlay + network issuers</b> (book, watch, '
+                      'trump, thiel) &middot; <a href="{}">show all '
+                      'issuers</a>'.format(_qs(p, scope="all")))
     body = ["<p class='muted'>Amendment-deduped Form 4 open-market trades, newest "
             "first. Trade Date is the transaction date; a red Reported Date means "
             "the trade date was unavailable and the filing date is shown instead. "
@@ -316,6 +323,8 @@ def view_trades(con, p):
                     html.escape(str(t["trade_date"] or "-")))
                  if t["date_is_reported"] else html.escape(str(t["trade_date"] or "-")))
         badges = ""
+        if t.get("provenance"):
+            badges += '<span class="badge prov-{p}">{p}</span>'.format(p=t["provenance"])
         if t["plan_10b5_1"]:
             badges += '<span class="badge plan">10b5-1</span>'
         if t["smid_band"] in ("micro", "small", "mid"):
@@ -346,7 +355,8 @@ def view_trades(con, p):
 
 _CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
              "reported_date", "lag_days", "shares", "value", "plan_10b5_1",
-             "entry_close", "latest_close", "pct_since_trade", "smid_band"]
+             "entry_close", "latest_close", "pct_since_trade", "smid_band",
+             "provenance"]
 
 
 def _build_trades_csv(con, p, full):

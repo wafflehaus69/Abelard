@@ -302,8 +302,8 @@
       "cik": "0001211060",
       "chamber": null,
       "status": "active",
-      "role": "trump_network",
-      "type": "trump_network",
+      "role": "thiel_network",
+      "type": "thiel_network",
       "scores": null,
       "as_of": "2026-07-22"
     }

@@ -129,6 +129,7 @@ def test_insider_trades_dedup_dates_plan_smid_price():
     assert t["entry_close"] == 10.0 and t["latest_close"] == 12.0, t
     assert abs(t["pct_since_trade"] - 0.2) < 1e-9, t        # +20%
     assert t["smid_band"] == "small" and t["plan_10b5_1"] is False, t
+    assert t["provenance"] is None, "ZZZ is in no overlay set -> no provenance tag"
     planned = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30",
                                  plan="planned", scope="all")
     assert len(planned["rows"]) == 1 and planned["rows"][0]["plan_10b5_1"] is True, planned
@@ -142,6 +143,29 @@ def test_insider_trades_dedup_dates_plan_smid_price():
     scoped = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
                                 plan="all", scope="scoped")
     assert len(scoped["rows"]) == 0, "ZZZ is out of the watchlist scope"
+    os.unlink(path)
+
+
+def test_insider_trades_provenance_and_scope():
+    # DJT is in trump_network, PLTR in thiel_network, ZZZ in no overlay set. The
+    # provenance tag and the scoped filter both come from overlay.yaml.
+    path = _fresh_db([
+        _row("D1", "10", "P", 5, "2026-06-01", "2026-06-02", ticker="DJT", issuer_cik="1"),
+        _row("T1", "20", "P", 5, "2026-06-01", "2026-06-02", ticker="PLTR", issuer_cik="2"),
+        _row("Z1", "30", "P", 5, "2026-06-01", "2026-06-02", ticker="ZZZ", issuer_cik="3"),
+    ])
+    con = q.connect_ro(path)
+    prov = {r["ticker"]: r["provenance"]
+            for r in q.q_insider_trades(con, side="buy", window=120,
+                                        anchor="2026-06-30", scope="all")["rows"]}
+    assert prov.get("DJT") == "trump", prov
+    assert prov.get("PLTR") == "thiel", prov
+    assert prov.get("ZZZ") is None, prov
+    # scoped view keeps the network tickers, drops the unscoped one.
+    scoped = {r["ticker"] for r in q.q_insider_trades(
+        con, side="buy", window=120, anchor="2026-06-30", scope="scoped")["rows"]}
+    assert "DJT" in scoped and "PLTR" in scoped and "ZZZ" not in scoped, scoped
+    con.close()
     os.unlink(path)
 
 
