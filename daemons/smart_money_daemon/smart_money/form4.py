@@ -199,19 +199,37 @@ def _f(x):
 # fixing it here is the real solution (the query guard only masked net-$).
 # Mechanism 4 (ADS) is NOT caught here — per-share price is plausible — and is a
 # documented residual pending an ADS-ratio or market-cap cross-check.
-PRICE_SANITY_MAX = 1_000_000.0   # > BRK.A (~$600k); no real US equity/ADS trades above
+PRICE_SANITY_MAX = 10_000.0      # no US equity trades above ~$10k/share except BRK.A
 VALUE_SANITY_MAX = 1e11          # $100B; no single insider open-market txn nears it
 CLOSE_RATIO_MAX = 10.0           # flag if per-share price is >10x off the EOD close
+# BRK.A (~$600k/share) is the sole genuine >$10k US equity, so its rows bypass the
+# per-share ceiling via this allowlist (normalized so BRK.A / BRK-A / BRKA match).
+# No other US equity trades above ~$10k/share; the highest in the corpus is NVR
+# (~$8k). The $10k line catches the total-proceeds-in-price-field second class
+# (AREB, SBLK, NMM ...) that a $1M ceiling let through.
+_HIGH_PRICE_TICKERS = {"BRKA"}
 
 
-def value_sanity_flag(shares, price, value, value_denominated=False, close=None):
+def _norm_ticker(t):
+    return re.sub(r"[^A-Z0-9]", "", (t or "").upper())
+
+
+def high_price_exempt(ticker):
+    """True for the rare genuine >$10k/share equities (BRK.A) that must bypass the
+    per-share price ceiling. Keyed off a normalized ticker, not free text."""
+    return _norm_ticker(ticker) in _HIGH_PRICE_TICKERS
+
+
+def value_sanity_flag(shares, price, value, value_denominated=False, close=None,
+                      high_price_ok=False):
     """Reason string if the derived dollar `value` is untrustworthy, else None.
     Pure function, no I/O. `close` is the EOD close for the tx date when known;
     the close cross-check catches sub-ceiling corruption (e.g. a dropped decimal
-    on a cheap stock) and is skipped when no close is available."""
+    on a cheap stock) and is skipped when no close is available. `high_price_ok`
+    exempts the row from the per-share ceiling (BRK.A only, set by the caller)."""
     if value_denominated:
         return "value_denominated"
-    if price is not None and abs(price) > PRICE_SANITY_MAX:
+    if not high_price_ok and price is not None and abs(price) > PRICE_SANITY_MAX:
         return "price_over_max"
     if value is not None and abs(value) > VALUE_SANITY_MAX:
         return "value_over_max"
@@ -260,7 +278,8 @@ def persist_transactions(con, accession, parsed, ticker, filed_date,
         # the reason) while keeping raw shares/price. The close cross-check is
         # looked up lazily only when the cheap checks pass, so the hot universal
         # ingest path pays one indexed prices lookup per otherwise-clean priced row.
-        flag = value_sanity_flag(shares, price, value, t.get("value_denominated", False))
+        flag = value_sanity_flag(shares, price, value, t.get("value_denominated", False),
+                                 high_price_ok=high_price_exempt(ticker))
         if flag is None and price and price > 0:
             close = eod_close(con, ticker, t.get("date"))
             if close and not (close / CLOSE_RATIO_MAX <= price <= close * CLOSE_RATIO_MAX):

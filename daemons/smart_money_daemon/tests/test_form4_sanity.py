@@ -75,17 +75,18 @@ TOTAL_IN_PRICE = """
     </sharesOwnedFollowingTransaction></postTransactionAmounts>
   </nonDerivativeTransaction>"""
 
-# --- sub-ceiling per-share price but astronomical value (MYNZ mechanism):
-#     price 402000 < $1M ceiling, but value 643850*402000 = 2.6e11 > $100B
+# --- sub-ceiling per-share price but astronomical value: the last-resort
+#     magnitude guard. price 2500 < $10k ceiling, but 60M shares * 2500 = 1.5e11
+#     > $100B, so the value cap fires (shares- or value-field corruption).
 VALUE_OVER = """
   <nonDerivativeTransaction>
    <securityTitle><value>Common Stock</value></securityTitle>
    <transactionCoding><transactionCode>P</transactionCode></transactionCoding>
-   <transactionShares><value>643850</value></transactionShares>
-   <transactionPricePerShare><value>402000</value></transactionPricePerShare>
+   <transactionShares><value>60000000</value></transactionShares>
+   <transactionPricePerShare><value>2500</value></transactionPricePerShare>
    <transactionDate><value>2026-10-17</value></transactionDate>
    <transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode>
-   <postTransactionAmounts><sharesOwnedFollowingTransaction><value>643850</value>
+   <postTransactionAmounts><sharesOwnedFollowingTransaction><value>60000000</value>
     </sharesOwnedFollowingTransaction></postTransactionAmounts>
   </nonDerivativeTransaction>"""
 
@@ -98,10 +99,14 @@ def test_value_sanity_flag_pure_cases():
         == "value_denominated"
     # per-share price over the ceiling
     assert value_sanity_flag(15000, PRICE_SANITY_MAX + 1, 1.0) == "price_over_max"
-    # BRK.A-scale price is NOT flagged by the ceiling
-    assert value_sanity_flag(10, 600000.0, 6_000_000.0) is None
+    # AREB-class total-in-price ($50k/share on a ~$1 stock) is now caught
+    assert value_sanity_flag(1316, 49999.99, 65_824_086.0) == "price_over_max"
+    # BRK.A-scale price ($600k) is flagged for a normal ticker ...
+    assert value_sanity_flag(10, 600000.0, 6_000_000.0) == "price_over_max"
+    # ... but exempted when the caller marks it high-price-ok (BRK.A)
+    assert value_sanity_flag(10, 600000.0, 6_000_000.0, high_price_ok=True) is None
     # sub-ceiling price but value over the cap
-    assert value_sanity_flag(643850, 402000.0, VALUE_SANITY_MAX + 1) == "value_over_max"
+    assert value_sanity_flag(60000000, 2500.0, VALUE_SANITY_MAX + 1) == "value_over_max"
     # close cross-check: price 100x off the EOD close
     assert value_sanity_flag(1000, 5025.0, 5_025_000.0, close=50.25) == "price_vs_close"
     # close cross-check within band -> trusted
@@ -117,10 +122,10 @@ def test_parse_captures_value_denominated_and_title():
     assert q["txns"][0]["value_denominated"] is False
 
 
-def _persist(xml):
+def _persist(xml, ticker="ACME"):
     path = _fresh()
     con = dbmod.connect(path)
-    persist_transactions(con, "0001-26-000001", parse_ownership(xml), "ACME",
+    persist_transactions(con, "0001-26-000001", parse_ownership(xml), ticker,
                          "2026-07-10")
     con.commit()
     row = con.execute(
@@ -128,6 +133,33 @@ def _persist(xml):
         "WHERE tx_index=0").fetchone()
     con.close(); os.remove(path)
     return row  # (shares, price, value, value_flag)
+
+
+# Common Stock sold at $600k/share — implausible for any US equity except BRK.A.
+HIGH_PRICE = """
+  <nonDerivativeTransaction>
+   <securityTitle><value>Common Stock</value></securityTitle>
+   <transactionCoding><transactionCode>S</transactionCode></transactionCoding>
+   <transactionShares><value>10</value></transactionShares>
+   <transactionPricePerShare><value>600000</value></transactionPricePerShare>
+   <transactionDate><value>2026-06-10</value></transactionDate>
+   <transactionAcquiredDisposedCode><value>D</value></transactionAcquiredDisposedCode>
+   <postTransactionAmounts><sharesOwnedFollowingTransaction><value>100</value>
+    </sharesOwnedFollowingTransaction></postTransactionAmounts>
+  </nonDerivativeTransaction>"""
+
+
+def test_persist_high_price_flagged_for_normal_ticker():
+    shares, price, value, flag = _persist(_doc(HIGH_PRICE), ticker="ACME")
+    assert flag == "price_over_max" and value is None
+
+
+def test_persist_brk_a_bypasses_price_ceiling():
+    # BRK.A genuinely trades ~$600k; the ticker allowlist exempts it (BRK.A / BRK-A
+    # / BRKA all normalize to the same key).
+    for tk in ("BRK.A", "BRK-A", "BRKA"):
+        shares, price, value, flag = _persist(_doc(HIGH_PRICE), ticker=tk)
+        assert flag is None and value == 6_000_000.0, (tk, flag, value)
 
 
 def test_persist_clean_row_keeps_value():
@@ -152,7 +184,7 @@ def test_persist_total_in_price_flagged():
 def test_persist_value_over_cap_flagged():
     shares, price, value, flag = _persist(_doc(VALUE_OVER))
     assert flag == "value_over_max"
-    assert value is None and shares == 643850.0
+    assert value is None and shares == 60000000.0
 
 
 def test_persist_close_crosscheck_flags_dropped_decimal():
