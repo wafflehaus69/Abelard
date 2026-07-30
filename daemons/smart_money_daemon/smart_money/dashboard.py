@@ -27,8 +27,8 @@ from urllib.parse import parse_qs, urlparse
 from . import db as dbmod
 from . import queries as q
 
-NAV = [("/", "Front"), ("/trades", "Trades"), ("/clusters", "Clusters"),
-       ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
+NAV = [("/", "Front"), ("/trades", "Trades"), ("/flows", "Net flows"),
+       ("/clusters", "Clusters"), ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
 # Theme palettes. Default is light; dark applies automatically when the viewer's
 # system prefers dark, and can be forced either way via ?theme=dark|light (which
@@ -105,6 +105,7 @@ def _qs(params, **override):
     # src/spage carry only when non-default, so Trades/other URLs stay clean but
     # the Clusters sell-table page survives paging the buy table (and vice versa).
     base["src"] = params.get("src") if params.get("src") not in (None, "", "all") else None
+    base["metric"] = params.get("metric") if params.get("metric") not in (None, "", "persons") else None
     base["spage"] = params.get("spage") if params.get("spage", 1) not in (None, 1) else None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
@@ -148,6 +149,30 @@ def _fmt(v):
     return str(v)
 
 
+def _money(v):
+    """Signed compact dollars: +$1.2M, -$340.0K, +$820."""
+    a, sign = abs(v), ("-" if v < 0 else "+")
+    for div, suf in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if a >= div:
+            return "{}${:.1f}{}".format(sign, a / div, suf)
+    return "{}${:.0f}".format(sign, a)
+
+
+def _flow_cell(metric, v):
+    """A net-flow table cell: 0 is neutral; positive (net bought) tints green,
+    negative (net sold) red. Dollars are compacted; shares/insiders are counts."""
+    if not v:
+        return "0"
+    cls = "pos" if v > 0 else "neg"
+    if metric == "value":
+        txt = _money(v)
+    elif metric == "shares":
+        txt = "{:+,.0f}".format(v)
+    else:
+        txt = "{:+d}".format(int(v))
+    return '<span class="{}">{}</span>'.format(cls, txt)
+
+
 # ---------------------------------------------------------------- views
 def _params(qsd):
     def one(k, default=None):
@@ -160,6 +185,7 @@ def _params(qsd):
     plan = (one("plan") or "").lower()
     scope = (one("scope") or "").lower()
     src = (one("src") or "").lower()
+    metric = (one("metric") or "").lower()
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
@@ -171,6 +197,7 @@ def _params(qsd):
          "plan": plan if plan in ("all", "discretionary", "planned") else "all",
          "scope": scope if scope in ("all", "scoped") else "scoped",
          "src": src if src in ("congress", "13f", "form4") else "all",
+         "metric": metric if metric in ("value", "shares", "persons") else "persons",
          "smid": one("smid") == "1",
          "capit": one("capit") == "1"}
     return p
@@ -475,6 +502,81 @@ def view_trades(con, p):
                  "".join(body), p)
 
 
+_METRIC_LABEL = {"value": "net $", "shares": "net shares", "persons": "net insiders"}
+_FLOW_COLS = [("30", "30d"), ("90", "90d"), ("180", "180d"), ("365", "365d"),
+              ("all", "all-time")]
+
+
+def _flow_filter_form(params):
+    def sel(name, cur, opts):
+        o = "".join("<option value='{}'{}>{}</option>".format(
+            v, " selected" if v == cur else "", lbl) for v, lbl in opts)
+        return "{} <select name='{}'>{}</select>".format(name, name, o)
+    return (
+        "<form method='get'>{metric} "
+        "<input type='hidden' name='anchor' value='{a}'>"
+        "<input type='hidden' name='per_page' value='{pp}'>"
+        "<input type='hidden' name='page' value='1'>"
+        "<input type='hidden' name='scope' value='{sc}'>"
+        "<input type='hidden' name='theme' value='{t}'>"
+        "<button>apply</button></form>"
+        "<div class='muted'><a href='/flows{clr}'>clear filters</a> "
+        "&middot; resets metric, scope, and paging to defaults</div>"
+    ).format(metric=sel("metric", params["metric"],
+                        [("persons", "net insiders"), ("value", "net $"),
+                         ("shares", "net shares")]),
+             a=html.escape(params["anchor"]), pp=params["per_page"],
+             sc=html.escape(params["scope"]), t=html.escape(params.get("theme") or ""),
+             clr=("?theme=" + params["theme"]) if params.get("theme") else "")
+
+
+def view_flows(con, p):
+    res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"], metric=p["metric"])
+    page_rows, meta = _page_slice(res["rows"], p["per_page"], p["page"])
+    m = res["metric"]
+    if p["scope"] == "all":
+        scope_line = ('scope: <b>all scraped securities</b> &middot; <a href="{}">'
+                      'overlay only</a>'.format(_qs(p, scope="scoped")))
+    else:
+        scope_line = ('scope: <b>overlay securities only</b> &middot; <a href="{}">'
+                      'all scraped</a>'.format(_qs(p, scope="all")))
+    head = "".join("<th>{}</th>".format(lbl) for _, lbl in _FLOW_COLS)
+    trs = ["<table><tr><th>ticker</th>{}</tr>".format(head)]
+    for r in page_rows:
+        cells = "".join("<td>{}</td>".format(_flow_cell(m, r["{}_{}".format(m, key)]))
+                        for key, _ in _FLOW_COLS)
+        trs.append("<tr><td>{}</td>{}</tr>".format(html.escape(r["ticker"]), cells))
+    trs.append("</table>")
+    if not page_rows:
+        trs.append("<p class='muted'>No scraped securities match this scope.</p>")
+    excl = res.get("rows_excluded") or 0
+    guard = ""
+    if m in ("value", "shares") and excl:
+        guard = (" {} trade(s) with corrupt Form 4 price/value/share data were "
+                 "dropped from net $ and net shares; net insiders is "
+                 "unaffected.".format(excl))
+    caveat = ("" if m == "persons" else
+              " <b>Caveat:</b> Form 4 dollar/share figures carry upstream parse "
+              "corruption on a handful of filings and can be inflated even after this "
+              "guard — treat magnitudes as indicative. <b>net insiders</b> (the "
+              "default) is the corruption-proof view.")
+    body = [
+        "<p class='muted'>Net insider Form 4 flow per scraped security — buys "
+        "(code P) minus sells (code S) over nested lookbacks, anchored at {}. "
+        "Showing <b>{}</b>; green = net bought, red = net sold. Sorted by all-time "
+        "{}, most net-bought first.{}{}</p>".format(
+            html.escape(res["anchor"]), _METRIC_LABEL[m], _METRIC_LABEL[m],
+            guard, caveat),
+        "<p class='muted'>{}</p>".format(scope_line),
+        _flow_filter_form(p),
+        _pager(p, meta, "/flows.csv"),
+        "".join(trs),
+        _pager(p, meta, "/flows.csv"),
+    ]
+    return _page("Smart Money — net flows ({})".format(_METRIC_LABEL[m]),
+                 "".join(body), p)
+
+
 _CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
              "reported_date", "lag_days", "shares", "value", "plan_10b5_1",
              "entry_close", "latest_close", "pct_since_trade", "smid_band",
@@ -551,8 +653,25 @@ def _build_clusters_csv(con, p, full, which):
     return buf.getvalue()
 
 
-ROUTES = {"/": view_front, "/trades": view_trades, "/clusters": view_clusters,
-          "/sentinels": view_sentinels, "/ticker": view_ticker}
+def _build_flows_csv(con, p, full):
+    """CSV of the net-flow board — current page or whole set — for the selected
+    metric, same scope/anchor as the view. Columns are the five nested lookbacks."""
+    import csv
+    import io
+    res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"], metric=p["metric"])
+    rows = res["rows"] if full else _page_slice(res["rows"], p["per_page"], p["page"])[0]
+    m = res["metric"]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["ticker", "net_30d", "net_90d", "net_180d", "net_365d", "net_all"])
+    for r in rows:
+        w.writerow([r["ticker"]] + [r["{}_{}".format(m, key)] for key, _ in _FLOW_COLS])
+    return buf.getvalue()
+
+
+ROUTES = {"/": view_front, "/trades": view_trades, "/flows": view_flows,
+          "/clusters": view_clusters, "/sentinels": view_sentinels,
+          "/ticker": view_ticker}
 
 
 # ---------------------------------------------------------------- server
@@ -585,6 +704,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._sentinels_csv(con, p, parse_qs(u.query))
             if u.path == "/clusters.csv":
                 return self._clusters_csv(con, p, parse_qs(u.query))
+            if u.path == "/flows.csv":
+                return self._flows_csv(con, p, parse_qs(u.query))
             view = ROUTES.get(u.path)
             if not view:
                 return self._send(404, _page("Not found", "<p>No such view.</p>", p))
@@ -621,6 +742,15 @@ class Handler(BaseHTTPRequestHandler):
         pg = p["spage"] if which == "sell" else p["page"]
         fname = "clusters_{}_{}.csv".format(
             which, "all" if full else "page{}".format(pg))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _flows_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_flows_csv(con, p, full)
+        fname = "net_flows_{}_{}_{}.csv".format(
+            p["metric"], p["scope"], "all" if full else "page{}".format(p["page"]))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})

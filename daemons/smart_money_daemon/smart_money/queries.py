@@ -48,7 +48,7 @@ SELL_ELEVATED_RATIO = 3.0
 
 # The form4 columns the flow queries pull, in order.
 _F4_COLS = ("accession", "reporting_cik", "reporting_person", "issuer_cik",
-            "ticker", "tx_date", "code", "plan_flag", "shares", "value",
+            "ticker", "tx_date", "code", "plan_flag", "shares", "value", "price",
             "filed_date", "ingest_regime")
 
 
@@ -122,7 +122,7 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
     flow/cluster/sell aggregates), 'planned' (plan_flag=1, 10b5-1), or 'all'."""
     ph = ",".join("?" for _ in codes)
     q = ("SELECT accession, reporting_cik, reporting_person, issuer_cik, ticker, "
-         "tx_date, code, plan_flag, shares, value, filed_date, ingest_regime "
+         "tx_date, code, plan_flag, shares, value, price, filed_date, ingest_regime "
          "FROM form4_transactions WHERE code IN ({}) "
          "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=? "
          "AND substr(tx_date,1,10)<=?".format(ph))
@@ -262,6 +262,86 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
             "plan": plan, "smid_only": smid_only, "scope": scope,
             "per_page": per_page, "page": page, "pages": pages,
             "returned": len(out), "total_matching": total, "rows": out}
+
+
+# ---------------------------------------------------------------- q_net_flows
+_FLOW_WINDOWS = (("30", 30), ("90", 90), ("180", 180), ("365", 365), ("all", None))
+# Data-quality guard for the MAGNITUDE metrics. value = shares*price by construction,
+# so a corrupt Form 4 row shows up as an implausible per-share price (no US equity but
+# BRK.A ~$600k trades above ~$1M/share), an astronomical dollar value, or an impossible
+# share count. Any of those condemns BOTH the dollars and the shares for that row, which
+# are dropped together; the insider-count (persons) metric is identity-based and stays
+# incorruptible. A handful of rows in the corpus, but astronomically large.
+_PRICE_SANITY_MAX = 1_000_000.0
+_VALUE_SANITY_MAX = 1e11
+_SHARES_SANITY_MAX = 1e10
+
+
+def q_net_flows(con, anchor=None, scope="all", metric="persons"):
+    """SM-R1 net buy/sell board. For every SCRAPED security (any ticker carrying an
+    open-market Form 4 P/S row), the net insider flow over nested lookbacks — 30 /
+    90 / 180 / 365 days and all-time — as three metrics:
+      value   net dollars  = sum(buy value)  - sum(sell value)   (value NULL -> 0)
+      shares  net shares   = sum(buy shares) - sum(sell shares)
+      persons net insiders = distinct buyers - distinct sellers
+    Buys are code P, sells code S; both planned and discretionary are counted (a
+    complete net-bought/sold accounting). Amendment-deduped. scope 'all' (every
+    scraped ticker, the default) or 'scoped' (overlay sets only). Rows are sorted by
+    the all-time value of the requested `metric`, most net-bought first. Non-security
+    placeholders (NONE / N/A / empty) are excluded — securities only."""
+    anchor = anchor or dt.date.today().isoformat()
+    a = dt.date.fromisoformat(anchor)
+    cutoffs = [(lbl, (a - dt.timedelta(days=d)).isoformat() if d else None)
+               for lbl, d in _FLOW_WINDOWS]
+    rows = _fetch_f4(con, ("P", "S"), "0001-01-01", anchor, plan="all")
+    scoped = _scoped_tickers() if scope != "all" else None
+    agg = defaultdict(lambda: {lbl: {"val": 0.0, "sh": 0, "buyers": set(),
+                                     "sellers": set()} for lbl, _ in _FLOW_WINDOWS})
+    rows_excluded = 0
+    for r in rows:
+        tk = _disp_ticker(r["ticker"])
+        if tk == "-":
+            continue
+        if scoped is not None and tk not in scoped:
+            continue
+        who = r["reporting_cik"] or r["reporting_person"]
+        val, sh = (r["value"] or 0.0), (r["shares"] or 0)
+        price = r["price"]
+        # A row is magnitude-trustworthy only when its per-share price, dollar value,
+        # and share count are all sane. If not, drop BOTH its dollars and its shares
+        # (value = shares*price, so one bad field poisons the other) — persons still
+        # counts, since the insider's identity is not corrupt.
+        row_ok = ((price is None or abs(price) <= _PRICE_SANITY_MAX)
+                  and abs(val) <= _VALUE_SANITY_MAX
+                  and abs(sh) <= _SHARES_SANITY_MAX)
+        if (val or sh) and not row_ok:
+            rows_excluded += 1
+            val, sh = 0.0, 0
+        sign = 1 if r["code"] == "P" else -1
+        d = r["tx_date"]
+        for lbl, cut in cutoffs:
+            if cut is None or d >= cut:
+                b = agg[tk][lbl]
+                b["val"] += sign * val
+                b["sh"] += sign * sh
+                (b["buyers"] if sign > 0 else b["sellers"]).add(who)
+    out = []
+    for tk, bl in agg.items():
+        row = {"ticker": tk}
+        for lbl, _ in _FLOW_WINDOWS:
+            b = bl[lbl]
+            row["value_" + lbl] = round(b["val"], 2)
+            row["shares_" + lbl] = b["sh"]
+            row["persons_" + lbl] = len(b["buyers"]) - len(b["sellers"])
+        out.append(row)
+    keyf = {"value": "value_all", "shares": "shares_all",
+            "persons": "persons_all"}.get(metric, "persons_all")
+    out.sort(key=lambda r: r[keyf], reverse=True)
+    return {"as_of": _as_of(), "anchor": anchor, "scope": scope,
+            "metric": metric if metric in ("value", "shares", "persons") else "persons",
+            "windows": [lbl for lbl, _ in _FLOW_WINDOWS],
+            "rows_excluded": rows_excluded,
+            "count": len(out), "rows": out}
 
 
 # ---------------------------------------------------------------- q_ownership_pressure

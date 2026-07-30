@@ -147,6 +147,30 @@ def test_sentinels_view_pagination_and_csv():
     os.unlink(path)
 
 
+def test_flows_view_and_csv():
+    path = _fixture_db()
+    con = q.connect_ro(path)
+    h = dash.view_flows(con, dash._params({}))
+    assert h.startswith("<!doctype html>"), "flows page"
+    assert "per page:" in h and "page 1 of" in h, "pager on flows"
+    assert "/flows.csv" in h and "whole dataset CSV" in h, "flows csv links"
+    assert "net $" in h and "net insiders" in h, "metric toggle present"
+    assert "all scraped" in h and "clear filters" in h, "scope toggle + clear present"
+    assert ">30d<" in h and ">365d<" in h and ">all-time<" in h, "timeframe columns"
+    # the fixture's ZZZ buy is a scraped security -> shows under all-scope
+    hall = dash.view_flows(con, dash._params({"scope": ["all"]}))
+    assert "ZZZ" in hall, "scraped ticker appears under all-scope"
+    # metric sanitizing + CSV header/content
+    assert dash._params({"metric": ["shares"]})["metric"] == "shares"
+    assert dash._params({"metric": ["value"]})["metric"] == "value"
+    assert dash._params({"metric": ["hack"]})["metric"] == "persons"    # bad -> default
+    data = dash._build_flows_csv(con, dash._params({"scope": ["all"]}), full=True)
+    assert data.startswith("ticker,net_30d,net_90d,net_180d,net_365d,net_all"), data[:60]
+    assert "ZZZ" in data, "full export includes the scraped ticker"
+    con.close()
+    os.unlink(path)
+
+
 def test_nav_links_reset_paging_cursor():
     # A page/spage cursor must NOT bleed across views via the top nav — switching
     # views should open on page 1, not land deep in an unrelated table. (The theme

@@ -199,6 +199,75 @@ def test_insider_trades_pagination_and_full():
     os.unlink(path)
 
 
+def test_net_flows_nested_windows_and_metrics():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    FI = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
+          "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, "
+          "price, value, ownership_after, tx_date, filed_date, role, ingest_regime) "
+          "VALUES(?,0,?,?,'Co',?,?,?,0,?,?,?,NULL,?,?,NULL,'watchlist')")
+
+    def ins(acc, cik, code, sh, val, tk, tx):
+        con.execute(FI, (acc, "P" + cik, cik, cik, tk, code, sh,
+                         (val / sh if sh else 0.0), val, tx, tx))
+    ins("a1", "111", "P", 100, 1000, "AAA", "2026-06-20")   # 10d before anchor: buy
+    ins("a2", "222", "S", 40, 400, "AAA", "2026-06-25")     # 5d: sell, other person
+    ins("a3", "333", "P", 50, 500, "AAA", "2026-01-15")     # ~166d: buy -> 180/365/all
+    ins("a4", "444", "P", 10, 100, "AAA", "2024-06-30")     # ~730d: buy -> all-time only
+    ins("b1", "555", "P", 5, 50, "BBB", "2026-06-20")       # small, tests sort order
+    ins("z1", "666", "P", 1, 10, "NONE", "2026-06-20")      # non-security -> excluded
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    res = q.q_net_flows(con, anchor="2026-06-30", scope="all", metric="value")
+    rows = {r["ticker"]: r for r in res["rows"]}
+    assert "NONE" not in rows and "-" not in rows, "non-securities excluded"
+    a = rows["AAA"]
+    assert a["value_30"] == 600 and a["value_90"] == 600, a               # 1000 - 400
+    assert a["value_180"] == 1100 and a["value_365"] == 1100, a           # + Jan buy
+    assert a["value_all"] == 1200, a                                       # + 2yr-old buy
+    assert a["shares_30"] == 60 and a["shares_180"] == 110 and a["shares_all"] == 120, a
+    assert a["persons_30"] == 0, a          # one buyer, one seller -> net 0
+    assert a["persons_180"] == 1 and a["persons_all"] == 2, a
+    assert res["rows"][0]["ticker"] == "AAA", "sorted by all-time net value desc"
+    sh = q.q_net_flows(con, anchor="2026-06-30", metric="shares")
+    assert sh["metric"] == "shares", "metric echoed"
+    sc = q.q_net_flows(con, anchor="2026-06-30", scope="scoped")
+    assert all(r["ticker"] not in ("AAA", "BBB") for r in sc["rows"]), "overlay scope drops them"
+    con.close()
+    os.unlink(path)
+
+
+def test_net_flows_price_sanity_guard():
+    # A corrupt Form 4 row (per-share price in the millions -> value = shares*price is
+    # garbage) is dropped from BOTH net $ and net shares; only net insiders keeps it,
+    # since the filer's identity is not corrupt.
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    FI = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
+          "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, "
+          "price, value, ownership_after, tx_date, filed_date, role, ingest_regime) "
+          "VALUES(?,0,?,?,'Co',?,?,?,0,?,?,?,NULL,?,?,NULL,'watchlist')")
+
+    def ins(acc, cik, code, sh, price, val, tk, tx):
+        con.execute(FI, (acc, "P" + cik, cik, cik, tk, code, sh, price, val, tx, tx))
+    ins("c1", "111", "P", 100, 10.0, 1000, "CCC", "2026-06-20")          # clean
+    ins("c2", "222", "P", 40000000, 40000000.0, 1.6e15, "CCC", "2026-06-21")  # corrupt price
+    # corrupt shares with a plausible price -> value backstop AND share cap catch it
+    ins("c3", "333", "P", 20000000000, 8.0, 1.6e11, "CCC", "2026-06-22")
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    res = q.q_net_flows(con, anchor="2026-06-30", scope="all", metric="value")
+    assert res["rows_excluded"] == 2, res["rows_excluded"]
+    r = {x["ticker"]: x for x in res["rows"]}["CCC"]
+    assert r["value_all"] == 1000, r["value_all"]            # both corrupt $ dropped
+    assert r["shares_all"] == 100, r["shares_all"]           # corrupt shares dropped too
+    assert r["persons_all"] == 3, r["persons_all"]           # all three buyers counted
+    con.close()
+    os.unlink(path)
+
+
 def test_cik_int_mixed_padding_join_guard():
     # The silent zero-row-join class: registry stores zero-padded, holdings/form4
     # store zero-stripped. cik_int must collapse them so a join never misses.
