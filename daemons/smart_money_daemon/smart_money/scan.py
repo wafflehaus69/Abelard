@@ -223,12 +223,12 @@ def leg_universal_ingest(con, contact):
 
 
 def leg_enrich(con, contact):
-    """SM-O1/SM-R1 nightly enrichment leg. For the scoped ticker set (overlay +
-    trump_network issuers), compute market_cap SMID bands and refresh the EOD price
-    series so the trades feed's SMID badge and entry/latest-close columns are
-    covered — the bounded fix for both coverage caveats. ~60 tickers, ingest-only,
-    NO events. Prices use the crumb-free v8 chart endpoint; bands use SEC
-    companyconcept. First run fetches full series; later runs are span-cached."""
+    """SM-O1/SM-R1 nightly enrichment leg. Refreshes the EOD price series for every
+    ticker traded (P/S) in the last 90 days (~1k names, so the actively-traded corpus
+    stays current), and computes market_cap SMID bands for the narrower scoped set
+    (overlay + network issuers + >=2-buyer 90d names). Ingest-only, NO events. Prices
+    use the crumb-free v8 chart endpoint; bands use SEC companyconcept. First run
+    fetches full series; later runs are span-cached (each night = one delta call each)."""
     from . import queries as qmod, marketcap, prices
     _NON = {"NONE", "N/A", "N.A.", "NA", ""}
     tickers = set(qmod._scoped_tickers())
@@ -245,8 +245,23 @@ def leg_enrich(con, contact):
         if t and t not in _NON:
             tickers.add(t)
     tickers = sorted(tickers)
-    counts = {"tickers": len(tickers), "bands": 0, "price_ok": 0, "price_fail": 0}
-    if not tickers:
+    # Every ticker traded (P/S) in the last 90 days gets its LATEST close refreshed
+    # nightly (~1k names, bounded cost), so the actively-traded slice of the backfilled
+    # corpus stays current instead of going stale (Mando ruling 2026-07-30: 90d window).
+    # Bands stay on the narrow set only — EDGAR companyconcept is costly and
+    # shares-outstanding is stable, so widening bands too would add a heavy sweep for
+    # no signal. Dormant names keep their backfilled close (re-run price_backfill to top up).
+    price_tickers = set(tickers)
+    for (tk,) in con.execute(
+        "SELECT DISTINCT UPPER(ticker) FROM form4_transactions WHERE code IN ('P','S') "
+        "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=?", (start90,)):
+        t = (tk or "").upper().strip()
+        if t and t not in _NON and "/" not in t and " " not in t:  # invalid Yahoo symbols
+            price_tickers.add(t)
+    price_tickers = sorted(price_tickers)
+    counts = {"tickers": len(tickers), "price_tickers": len(price_tickers),
+              "bands": 0, "price_ok": 0, "price_fail": 0}
+    if not price_tickers:
         return _src("enrich_scoped", "OK", "no tickers", 0), counts
     try:
         # Compute only MISSING bands (shares outstanding is stable) so later
@@ -259,16 +274,16 @@ def leg_enrich(con, contact):
         return _src("enrich_scoped", "DEGRADED", "marketcap " + str(exc)[:100]), counts
     end = dt.date.today().isoformat()
     start = (dt.date.today() - dt.timedelta(days=400)).isoformat()
-    for tk in tickers:
+    for tk in price_tickers:
         try:
             prices.eod(con, tk, start, end)
             counts["price_ok"] += 1
         except Exception:  # noqa: BLE001 - count, never guess
             counts["price_fail"] += 1
     return _src("enrich_scoped", "OK",
-                "tickers={} bands={} price_ok={} price_fail={}".format(
-                    counts["tickers"], counts["bands"], counts["price_ok"],
-                    counts["price_fail"]), counts["price_ok"]), counts
+                "tickers={} price_tickers={} bands={} price_ok={} price_fail={}".format(
+                    counts["tickers"], counts["price_tickers"], counts["bands"],
+                    counts["price_ok"], counts["price_fail"]), counts["price_ok"]), counts
 
 
 def run_scan(con, contact, raw_dir, skip_universal=False):
