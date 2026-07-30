@@ -52,6 +52,9 @@ _CSS = (
     "a{color:var(--link)}"
     "h1{font-size:1.3rem}h2{font-size:1.05rem;margin-top:1.4rem}"
     "table{border-collapse:collapse;width:100%;margin:.4rem 0}"
+    "table.wide{width:auto;min-width:100%}"
+    "table.wide td,table.wide th{white-space:nowrap}"
+    "th a{color:inherit;text-decoration:none} th a:hover{text-decoration:underline}"
     "td,th{border:1px solid var(--border);padding:3px 7px;text-align:left;font-size:13px}"
     "th{background:var(--th-bg)}"
     "nav{margin-bottom:1rem}.print{float:right}"
@@ -105,8 +108,14 @@ def _qs(params, **override):
     # src/spage carry only when non-default, so Trades/other URLs stay clean but
     # the Clusters sell-table page survives paging the buy table (and vice versa).
     base["src"] = params.get("src") if params.get("src") not in (None, "", "all") else None
-    base["metric"] = params.get("metric") if params.get("metric") not in (None, "", "persons") else None
+    base["metric"] = params.get("metric") if params.get("metric") not in (None, "", "value") else None
     base["spage"] = params.get("spage") if params.get("spage", 1) not in (None, 1) else None
+    # Sort state: the column carries when set; direction only when non-default (asc),
+    # since desc is the default. ssort/sdir are the second-table sort on Clusters.
+    base["sort"] = params.get("sort") or None
+    base["dir"] = params.get("dir") if params.get("sort") and params.get("dir") == "asc" else None
+    base["ssort"] = params.get("ssort") or None
+    base["sdir"] = params.get("sdir") if params.get("ssort") and params.get("sdir") == "asc" else None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
     if not keep:
@@ -133,6 +142,59 @@ def _table(cols, rows, hot=None):
         cells = "".join("<td>{}</td>".format(html.escape(_fmt(r.get(c))))
                         for c in cols)
         out.append("<tr{}>{}</tr>".format(cls, cells))
+    out.append("</table>")
+    if not rows:
+        out.append("<p class='muted'>Nothing to report this window.</p>")
+    return "".join(out)
+
+
+def _sorted(rows, key, direction):
+    """Sort row-dicts by `key`, missing values (None/"") always last regardless of
+    direction. Empty key -> rows unchanged (caller applies its own default order)."""
+    if not key or not rows:
+        return rows
+    present = [r for r in rows if r.get(key) is not None and r.get(key) != ""]
+    missing = [r for r in rows if r.get(key) is None or r.get(key) == ""]
+    present.sort(key=lambda r: r.get(key), reverse=(direction != "asc"))
+    return present + missing
+
+
+def _sort_headers(params, cols, qs_fn, active, direction,
+                  sort_param="sort", dir_param="dir", page_reset=("page",)):
+    """A <tr> of clickable column headers. cols is [(key, label)]; a None key is a
+    plain (non-sortable) header. Clicking a column sorts it descending; clicking the
+    already-active column flips direction. `active`/`direction` are the EFFECTIVE sort
+    (including a view's default) so the active column shows its arrow. Each link resets
+    the page cursor(s) in `page_reset`."""
+    resets = {k: 1 for k in page_reset}
+    ths = []
+    for key, label in cols:
+        if not key:
+            ths.append("<th>{}</th>".format(html.escape(label)))
+            continue
+        if key == active:
+            newdir = "asc" if direction == "desc" else "desc"
+            arrow = " &#9660;" if direction == "desc" else " &#9650;"
+        else:
+            newdir, arrow = "desc", ""
+        href = qs_fn(**{sort_param: key, dir_param: newdir, **resets})
+        ths.append('<th><a href="{}">{}{}</a></th>'.format(
+            href, html.escape(label), arrow))
+    return "<tr>{}</tr>".format("".join(ths))
+
+
+def _sortable_table(params, cols, rows, qs_fn, active, direction, hot=None,
+                    sort_param="sort", dir_param="dir", page_reset=("page",)):
+    """A table whose headers are click-to-sort links (cols = [(key, label)]; a None
+    key is a plain header). Cells render row[key] via _fmt. `hot` tints a row."""
+    header = _sort_headers(params, cols, qs_fn, active, direction,
+                           sort_param, dir_param, page_reset)
+    out = ["<table>" + header]
+    for r in rows:
+        c = ' class="hot"' if hot and hot(r) else ""
+        cells = "".join("<td>{}</td>".format(html.escape(_fmt(r.get(k))))
+                        for k, _ in cols)
+        out.append("<tr{}>{}</tr>".format(c, cells))
     out.append("</table>")
     if not rows:
         out.append("<p class='muted'>Nothing to report this window.</p>")
@@ -186,6 +248,14 @@ def _params(qsd):
     scope = (one("scope") or "").lower()
     src = (one("src") or "").lower()
     metric = (one("metric") or "").lower()
+
+    def _sortkey(v):   # column keys are [a-z0-9_]; anything else -> no sort
+        v = (v or "").lower().strip()
+        return v if v and all(c.isalnum() or c == "_" for c in v) else ""
+
+    def _dir(v):
+        v = (v or "").lower().strip()
+        return v if v in ("asc", "desc") else "desc"
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
@@ -197,7 +267,9 @@ def _params(qsd):
          "plan": plan if plan in ("all", "discretionary", "planned") else "all",
          "scope": scope if scope in ("all", "scoped") else "scoped",
          "src": src if src in ("congress", "13f", "form4") else "all",
-         "metric": metric if metric in ("value", "shares", "persons") else "persons",
+         "metric": metric if metric in ("value", "shares") else "value",
+         "sort": _sortkey(one("sort")), "dir": _dir(one("dir")),
+         "ssort": _sortkey(one("ssort")), "sdir": _dir(one("sdir")),
          "smid": one("smid") == "1",
          "capit": one("capit") == "1"}
     return p
@@ -288,14 +360,23 @@ def _cluster_data(con, p):
 
 def view_clusters(con, p):
     cc, buy, sd, sell = _cluster_data(con, p)
+    buy_active = p["sort"] or "n_buyers"          # buy table sorts on sort/dir
+    sell_active = p["ssort"] or "rate_ratio"      # sell table sorts on ssort/sdir
+    buy = _sorted(buy, buy_active, p["dir"])
+    sell = _sorted(sell, sell_active, p["sdir"])
     buy_rows, buy_meta = _page_slice(buy, p["per_page"], p["page"])
     buy_meta["csv_extra"] = {"which": "buy"}
     sell_rows, sell_meta = _page_slice(sell, p["per_page"], p["spage"])
     sell_meta["csv_extra"] = {"which": "sell"}
+    qs_fn = lambda **kw: _qs(p, **kw)
+    buy_cols = [(c, c) for c in ("ticker", "n_buyers", "n_buys", "span_days",
+                                 "calendar_months", "capitulation")]
+    sell_cols = [(c, c) for c in ("ticker", "rate_ratio", "distinct_sellers_window",
+                                  "distinct_sellers_12mo", "window_sell_value", "elevated")]
     body = [
         "<p class='muted'>CONTEXT, never alerts. Buy clusters with the capitulation "
-        "timeline; sell feed ranked by rate ratio (elevated tint at {}).</p>".format(
-            sd["elevated_ratio"]),
+        "timeline; sell feed ranked by rate ratio (elevated tint at {}). Click any "
+        "column header to sort that table.</p>".format(sd["elevated_ratio"]),
         _cluster_filter_form(p),
         "<div class='expand'>{}</div>".format(
             _per_page_selector(p, ("page", "spage"))),
@@ -303,15 +384,16 @@ def view_clusters(con, p):
             p["floor"], ", capitulation only" if p["capit"] else "", buy_meta["total"]),
         "<div class='expand'>{}</div>".format(
             _page_nav(p, buy_meta, "/clusters.csv", "page")),
-        _table(["ticker", "n_buyers", "n_buys", "span_days", "calendar_months", "capitulation"],
-               buy_rows, hot=lambda r: r.get("capitulation")),
+        _sortable_table(p, buy_cols, buy_rows, qs_fn, buy_active, p["dir"],
+                        hot=lambda r: r.get("capitulation"),
+                        sort_param="sort", dir_param="dir", page_reset=("page",)),
         "<h2>Sell context feed (ranked by rate ratio, {} matching)</h2>".format(
             sell_meta["total"]),
         "<div class='expand'>{}</div>".format(
             _page_nav(p, sell_meta, "/clusters.csv", "spage")),
-        _table(["ticker", "rate_ratio", "distinct_sellers_window", "distinct_sellers_12mo",
-                "window_sell_value", "elevated"],
-               sell_rows, hot=lambda r: r.get("elevated")),
+        _sortable_table(p, sell_cols, sell_rows, qs_fn, sell_active, p["sdir"],
+                        hot=lambda r: r.get("elevated"),
+                        sort_param="ssort", dir_param="sdir", page_reset=("spage",)),
     ]
     return _page("Smart Money — cluster context", "".join(body), p)
 
@@ -327,14 +409,18 @@ def _sentinel_data(con, p):
 
 def view_sentinels(con, p):
     sent, rows = _sentinel_data(con, p)
+    active = p["sort"] or "event_date"            # default: newest event first
+    rows = _sorted(rows, active, p["dir"])
     page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
-    body = ["<p class='muted'>Registry as-of {}. {} events{}, newest first.</p>".format(
-        html.escape(str(sent["registry_as_of"])), meta["total"],
-        "" if p["src"] == "all" else " in source " + html.escape(p["src"])),
+    cols = [(c, c) for c in ("event_date", "src", "seed", "role", "ticker",
+                             "action", "value")]
+    body = ["<p class='muted'>Registry as-of {}. {} events{}. Click a column header "
+            "to sort.</p>".format(
+                html.escape(str(sent["registry_as_of"])), meta["total"],
+                "" if p["src"] == "all" else " in source " + html.escape(p["src"])),
         _sentinel_filter_form(p),
         _pager(p, meta, "/sentinels.csv"),
-        _table(["event_date", "src", "seed", "role", "ticker", "action", "value"],
-               page_rows),
+        _sortable_table(p, cols, page_rows, lambda **kw: _qs(p, **kw), active, p["dir"]),
         _pager(p, meta, "/sentinels.csv")]
     return _page("Smart Money — sentinel log", "".join(body), p)
 
@@ -449,9 +535,11 @@ def _trade_filter_form(params):
 
 
 def view_trades(con, p):
+    active = p["sort"] or "trade_date"            # default: newest trade first
     res = q.q_insider_trades(con, side=p["side"], window=p["window"],
                              anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
-                             per_page=p["per_page"], page=p["page"], scope=p["scope"])
+                             per_page=p["per_page"], page=p["page"], scope=p["scope"],
+                             sort=p["sort"], direction=p["dir"])
     if p["scope"] == "all":
         scope_line = ('scope: <b>all issuers</b> &middot; <a href="{}">overlay + '
                       'network issuers only</a>'.format(_qs(p, scope="scoped")))
@@ -459,14 +547,20 @@ def view_trades(con, p):
         scope_line = ('scope: <b>overlay + network issuers</b> (book, watch, '
                       'trump, thiel) &middot; <a href="{}">show all '
                       'issuers</a>'.format(_qs(p, scope="all")))
-    body = ["<p class='muted'>Amendment-deduped Form 4 open-market trades, newest "
-            "first. Trade Date is the transaction date; a red Reported Date means "
-            "the trade date was unavailable and the filing date is shown instead. "
-            "% since = entry close on the trade date vs latest close.</p>",
+    # entry / latest / % since are enriched only for the current page, so they are not
+    # server-sortable (None key -> plain header); the raw columns are click-to-sort.
+    tcols = [("person", "person"), ("ticker", "ticker"), ("side", "side"),
+             ("trade_date", "trade date"), ("reported_date", "reported"),
+             ("value", "value"), (None, "entry"), (None, "latest"), (None, "% since")]
+    header = _sort_headers(p, tcols, lambda **kw: _qs(p, **kw), active, p["dir"])
+    body = ["<p class='muted'>Amendment-deduped Form 4 open-market trades. Trade Date "
+            "is the transaction date; a red Reported Date means the trade date was "
+            "unavailable and the filing date is shown instead. % since = entry close "
+            "on the trade date vs latest close. Click a column header to sort (entry / "
+            "latest / % since sort the current page only).</p>",
             "<p class='muted'>{}</p>".format(scope_line),
             _trade_filter_form(p), _pager(p, res),
-            "<table><tr><th>person</th><th>ticker</th><th>side</th><th>trade date</th>"
-            "<th>reported</th><th>value</th><th>entry</th><th>latest</th><th>% since</th></tr>"]
+            "<table>" + header]
     for t in res["rows"]:
         dcell = ('<span class="reported">{} (Reported)</span>'.format(
                     html.escape(str(t["trade_date"] or "-")))
@@ -502,9 +596,10 @@ def view_trades(con, p):
                  "".join(body), p)
 
 
-_METRIC_LABEL = {"value": "net $", "shares": "net shares", "persons": "net insiders"}
-_FLOW_COLS = [("30", "30d"), ("90", "90d"), ("180", "180d"), ("365", "365d"),
-              ("all", "all-time")]
+_FLOW_TF = [("7", "7d"), ("30", "30d"), ("90", "90d"), ("180", "180d"),
+            ("365", "365d"), ("all", "all-time")]
+_SEC_LABEL = {"value": "$", "shares": "sh"}
+_SEC_NAME = {"value": "net $", "shares": "net shares"}
 
 
 def _flow_filter_form(params):
@@ -513,7 +608,7 @@ def _flow_filter_form(params):
             v, " selected" if v == cur else "", lbl) for v, lbl in opts)
         return "{} <select name='{}'>{}</select>".format(name, name, o)
     return (
-        "<form method='get'>{metric} "
+        "<form method='get'>secondary column {metric} "
         "<input type='hidden' name='anchor' value='{a}'>"
         "<input type='hidden' name='per_page' value='{pp}'>"
         "<input type='hidden' name='page' value='1'>"
@@ -521,60 +616,61 @@ def _flow_filter_form(params):
         "<input type='hidden' name='theme' value='{t}'>"
         "<button>apply</button></form>"
         "<div class='muted'><a href='/flows{clr}'>clear filters</a> "
-        "&middot; resets metric, scope, and paging to defaults</div>"
+        "&middot; resets the secondary column, scope, sort, and paging to "
+        "defaults</div>"
     ).format(metric=sel("metric", params["metric"],
-                        [("persons", "net insiders"), ("value", "net $"),
-                         ("shares", "net shares")]),
+                        [("value", "$ value"), ("shares", "shares")]),
              a=html.escape(params["anchor"]), pp=params["per_page"],
              sc=html.escape(params["scope"]), t=html.escape(params.get("theme") or ""),
              clr=("?theme=" + params["theme"]) if params.get("theme") else "")
 
 
 def view_flows(con, p):
-    res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"], metric=p["metric"])
-    page_rows, meta = _page_slice(res["rows"], p["per_page"], p["page"])
-    m = res["metric"]
+    res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"])
+    sec = p["metric"]                    # value | shares -> column shown beside insiders
+    active = p["sort"] or "persons_all"  # default: all-time net insiders, most-bought first
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
     if p["scope"] == "all":
         scope_line = ('scope: <b>all scraped securities</b> &middot; <a href="{}">'
                       'overlay only</a>'.format(_qs(p, scope="scoped")))
     else:
         scope_line = ('scope: <b>overlay securities only</b> &middot; <a href="{}">'
                       'all scraped</a>'.format(_qs(p, scope="all")))
-    head = "".join("<th>{}</th>".format(lbl) for _, lbl in _FLOW_COLS)
-    trs = ["<table><tr><th>ticker</th>{}</tr>".format(head)]
+    cols = [("ticker", "ticker")]
+    for tf, lbl in _FLOW_TF:
+        cols.append(("persons_" + tf, lbl + " ins"))
+        cols.append((sec + "_" + tf, lbl + " " + _SEC_LABEL[sec]))
+    header = _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])
+    trs = ["<table class='wide'>" + header]
     for r in page_rows:
-        cells = "".join("<td>{}</td>".format(_flow_cell(m, r["{}_{}".format(m, key)]))
-                        for key, _ in _FLOW_COLS)
-        trs.append("<tr><td>{}</td>{}</tr>".format(html.escape(r["ticker"]), cells))
+        cells = ["<td>{}</td>".format(html.escape(r["ticker"]))]
+        for tf, _ in _FLOW_TF:
+            cells.append("<td>{}</td>".format(_flow_cell("persons", r["persons_" + tf])))
+            cells.append("<td>{}</td>".format(_flow_cell(sec, r[sec + "_" + tf])))
+        trs.append("<tr>{}</tr>".format("".join(cells)))
     trs.append("</table>")
     if not page_rows:
         trs.append("<p class='muted'>No scraped securities match this scope.</p>")
     excl = res.get("rows_excluded") or 0
-    guard = ""
-    if m in ("value", "shares") and excl:
-        guard = (" {} trade(s) with corrupt Form 4 price/value/share data were "
-                 "dropped from net $ and net shares; net insiders is "
-                 "unaffected.".format(excl))
-    caveat = ("" if m == "persons" else
-              " <b>Caveat:</b> Form 4 dollar/share figures carry upstream parse "
-              "corruption on a handful of filings and can be inflated even after this "
-              "guard — treat magnitudes as indicative. <b>net insiders</b> (the "
-              "default) is the corruption-proof view.")
+    guard = ("" if not excl else
+             " {} trade(s) with corrupt Form 4 price/value/share data were dropped "
+             "from net $ and net shares; insider counts are unaffected.".format(excl))
     body = [
         "<p class='muted'>Net insider Form 4 flow per scraped security — buys "
-        "(code P) minus sells (code S) over nested lookbacks, anchored at {}. "
-        "Showing <b>{}</b>; green = net bought, red = net sold. Sorted by all-time "
-        "{}, most net-bought first.{}{}</p>".format(
-            html.escape(res["anchor"]), _METRIC_LABEL[m], _METRIC_LABEL[m],
-            guard, caveat),
+        "(code P) minus sells (code S) over nested lookbacks, anchored at {}. Each "
+        "timeframe shows net <b>insiders</b> (distinct buyers minus sellers) and net "
+        "<b>{}</b> side by side; green = net bought, red = net sold. Click any column "
+        "header to sort. <b>Caveat:</b> $/share magnitudes carry upstream Form 4 "
+        "corruption and are indicative; the insider counts are corruption-proof.{}"
+        "</p>".format(html.escape(res["anchor"]), _SEC_NAME[sec], guard),
         "<p class='muted'>{}</p>".format(scope_line),
         _flow_filter_form(p),
         _pager(p, meta, "/flows.csv"),
-        "".join(trs),
+        "<div style='overflow-x:auto'>" + "".join(trs) + "</div>",
         _pager(p, meta, "/flows.csv"),
     ]
-    return _page("Smart Money — net flows ({})".format(_METRIC_LABEL[m]),
-                 "".join(body), p)
+    return _page("Smart Money — net flows", "".join(body), p)
 
 
 _CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
@@ -591,7 +687,7 @@ def _build_trades_csv(con, p, full):
     res = q.q_insider_trades(con, side=p["side"], window=p["window"],
                              anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
                              scope=p["scope"], per_page=p["per_page"], page=p["page"],
-                             full=full)
+                             full=full, sort=p["sort"], direction=p["dir"])
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=_CSV_COLS, extrasaction="ignore")
     w.writeheader()
@@ -654,18 +750,25 @@ def _build_clusters_csv(con, p, full, which):
 
 
 def _build_flows_csv(con, p, full):
-    """CSV of the net-flow board — current page or whole set — for the selected
-    metric, same scope/anchor as the view. Columns are the five nested lookbacks."""
+    """CSV of the net-flow board — current page or whole set — all three metrics
+    (insiders, $, shares) for every timeframe, in the same sort order as the view."""
     import csv
     import io
-    res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"], metric=p["metric"])
-    rows = res["rows"] if full else _page_slice(res["rows"], p["per_page"], p["page"])[0]
-    m = res["metric"]
+    res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"])
+    rows = _sorted(res["rows"], p["sort"] or "persons_all", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    hdr = ["ticker"]
+    for tf, _ in _FLOW_TF:
+        hdr += ["ins_" + tf, "val_" + tf, "sh_" + tf]
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["ticker", "net_30d", "net_90d", "net_180d", "net_365d", "net_all"])
+    w.writerow(hdr)
     for r in rows:
-        w.writerow([r["ticker"]] + [r["{}_{}".format(m, key)] for key, _ in _FLOW_COLS])
+        line = [r["ticker"]]
+        for tf, _ in _FLOW_TF:
+            line += [r["persons_" + tf], r["value_" + tf], r["shares_" + tf]]
+        w.writerow(line)
     return buf.getvalue()
 
 

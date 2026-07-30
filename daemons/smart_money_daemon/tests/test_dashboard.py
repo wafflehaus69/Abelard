@@ -154,21 +154,40 @@ def test_flows_view_and_csv():
     assert h.startswith("<!doctype html>"), "flows page"
     assert "per page:" in h and "page 1 of" in h, "pager on flows"
     assert "/flows.csv" in h and "whole dataset CSV" in h, "flows csv links"
-    assert "net $" in h and "net insiders" in h, "metric toggle present"
+    assert "insiders" in h and "net $" in h, "insiders + $ described"
     assert "all scraped" in h and "clear filters" in h, "scope toggle + clear present"
-    assert ">30d<" in h and ">365d<" in h and ">all-time<" in h, "timeframe columns"
+    # 7d column added; insiders + secondary ($) shown paired per timeframe
+    assert "7d ins" in h and "all-time ins" in h and "7d $" in h and "365d $" in h, h[:900]
+    # headers are click-to-sort; the default active column carries a sort link
+    assert "sort=persons_all" in h, "sortable headers with default sort"
     # the fixture's ZZZ buy is a scraped security -> shows under all-scope
     hall = dash.view_flows(con, dash._params({"scope": ["all"]}))
     assert "ZZZ" in hall, "scraped ticker appears under all-scope"
-    # metric sanitizing + CSV header/content
+    # secondary-column sanitizing (metric is now value|shares, default value)
     assert dash._params({"metric": ["shares"]})["metric"] == "shares"
-    assert dash._params({"metric": ["value"]})["metric"] == "value"
-    assert dash._params({"metric": ["hack"]})["metric"] == "persons"    # bad -> default
+    assert dash._params({"metric": ["hack"]})["metric"] == "value"      # bad -> default
+    # CSV carries all three metrics per timeframe including the new 7d
     data = dash._build_flows_csv(con, dash._params({"scope": ["all"]}), full=True)
-    assert data.startswith("ticker,net_30d,net_90d,net_180d,net_365d,net_all"), data[:60]
+    assert data.startswith("ticker,ins_7,val_7,sh_7,ins_30"), data[:60]
     assert "ZZZ" in data, "full export includes the scraped ticker"
     con.close()
     os.unlink(path)
+
+
+def test_sort_helpers_and_param_sanitizing():
+    rows = [{"x": 3}, {"x": 1}, {"x": None}, {"x": 2}]
+    assert [r["x"] for r in dash._sorted(rows, "x", "asc")] == [1, 2, 3, None], "None last"
+    assert [r["x"] for r in dash._sorted(rows, "x", "desc")] == [3, 2, 1, None], "None still last"
+    p = dash._params({})
+    qs = lambda **kw: dash._qs(p, **kw)
+    hh = dash._sort_headers(p, [("x", "X"), (None, "Y")], qs, "x", "desc")
+    assert "sort=x" in hh and "&#9660;" in hh, "active desc column links + arrow"
+    assert "<th>Y</th>" in hh, "None-key column is a plain header"
+    assert dash._params({"sort": ["value_30"]})["sort"] == "value_30"
+    assert dash._params({"sort": ["a; DROP"]})["sort"] == ""           # sanitized to empty
+    assert dash._params({"dir": ["asc"]})["dir"] == "asc"
+    assert dash._params({"dir": ["x"]})["dir"] == "desc"
+    assert dash._params({"ssort": ["rate_ratio"], "sdir": ["asc"]})["sdir"] == "asc"
 
 
 def test_nav_links_reset_paging_cursor():

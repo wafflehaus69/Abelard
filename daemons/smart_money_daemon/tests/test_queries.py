@@ -199,6 +199,32 @@ def test_insider_trades_pagination_and_full():
     os.unlink(path)
 
 
+def test_insider_trades_sort_by_column():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    FI = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
+          "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, price, "
+          "value, ownership_after, tx_date, filed_date, role, ingest_regime) "
+          "VALUES(?,0,?,?,'Co','9','ZZZ','P',0,?,1.0,?,NULL,?,?,NULL,'watchlist')")
+    for acc, cik, val, tx in [("s1", "p1", 100, "2026-06-10"),
+                              ("s2", "p2", 900, "2026-06-11"),
+                              ("s3", "p3", 400, "2026-06-12")]:
+        con.execute(FI, (acc, cik, cik, val, val, tx, tx))
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    kw = dict(side="buy", window=120, anchor="2026-06-30", scope="all")
+    desc = q.q_insider_trades(con, sort="value", direction="desc", **kw)
+    assert [r["value"] for r in desc["rows"]] == [900, 400, 100], desc["rows"]
+    asc = q.q_insider_trades(con, sort="value", direction="asc", **kw)
+    assert [r["value"] for r in asc["rows"]] == [100, 400, 900]
+    # an unknown sort key falls back to the default (newest trade first)
+    dflt = q.q_insider_trades(con, sort="bogus", **kw)
+    assert [r["trade_date"] for r in dflt["rows"]] == ["2026-06-12", "2026-06-11", "2026-06-10"]
+    con.close()
+    os.unlink(path)
+
+
 def test_net_flows_nested_windows_and_metrics():
     path = tempfile.mktemp(suffix=".db")
     con = dbmod.connect(path)
@@ -219,7 +245,7 @@ def test_net_flows_nested_windows_and_metrics():
     con.commit()
     con.close()
     con = q.connect_ro(path)
-    res = q.q_net_flows(con, anchor="2026-06-30", scope="all", metric="value")
+    res = q.q_net_flows(con, anchor="2026-06-30", scope="all")
     rows = {r["ticker"]: r for r in res["rows"]}
     assert "NONE" not in rows and "-" not in rows, "non-securities excluded"
     a = rows["AAA"]
@@ -229,9 +255,9 @@ def test_net_flows_nested_windows_and_metrics():
     assert a["shares_30"] == 60 and a["shares_180"] == 110 and a["shares_all"] == 120, a
     assert a["persons_30"] == 0, a          # one buyer, one seller -> net 0
     assert a["persons_180"] == 1 and a["persons_all"] == 2, a
-    assert res["rows"][0]["ticker"] == "AAA", "sorted by all-time net value desc"
-    sh = q.q_net_flows(con, anchor="2026-06-30", metric="shares")
-    assert sh["metric"] == "shares", "metric echoed"
+    # 7-day window: only the 2026-06-25 sell falls inside (buy is 10 days out)
+    assert a["value_7"] == -400 and a["shares_7"] == -40 and a["persons_7"] == -1, a
+    assert res["rows"][0]["ticker"] == "AAA", "default sort by all-time net insiders desc"
     sc = q.q_net_flows(con, anchor="2026-06-30", scope="scoped")
     assert all(r["ticker"] not in ("AAA", "BBB") for r in sc["rows"]), "overlay scope drops them"
     con.close()
@@ -258,7 +284,7 @@ def test_net_flows_price_sanity_guard():
     con.commit()
     con.close()
     con = q.connect_ro(path)
-    res = q.q_net_flows(con, anchor="2026-06-30", scope="all", metric="value")
+    res = q.q_net_flows(con, anchor="2026-06-30", scope="all")
     assert res["rows_excluded"] == 2, res["rows_excluded"]
     r = {x["ticker"]: x for x in res["rows"]}["CCC"]
     assert r["value_all"] == 1000, r["value_all"]            # both corrupt $ dropped

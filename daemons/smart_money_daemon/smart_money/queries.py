@@ -187,9 +187,15 @@ def _scoped_tickers():
 
 
 # ---------------------------------------------------------------- q_insider_trades
+_TRADE_SORT_FIELDS = {"person": "reporting_person", "ticker": "ticker",
+                      "side": "code", "trade_date": "tx_date",
+                      "reported_date": "filed_date", "value": "value",
+                      "shares": "shares"}
+
+
 def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
                      smid_only=False, per_page=100, page=1, full=False,
-                     scope="scoped"):
+                     scope="scoped", sort=None, direction="desc"):
     """SM-R1 insider-trades feed. A flat, amendment-deduped list of Form 4
     open-market transactions with per-trade enrichment: the Trade Date (with a
     red Reported-Date fallback when a trade date is absent), the entry close on
@@ -219,7 +225,14 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
     if smid_only:
         rows = [r for r in rows
                 if bands.get((r["ticker"] or "").upper()) in ("micro", "small", "mid")]
-    rows.sort(key=lambda r: (r["tx_date"], r["filed_date"]), reverse=True)
+    sf = _TRADE_SORT_FIELDS.get(sort)
+    if sf:                                         # sort by a raw column, None last
+        present = [r for r in rows if r.get(sf) is not None and r.get(sf) != ""]
+        missing = [r for r in rows if r.get(sf) is None or r.get(sf) == ""]
+        present.sort(key=lambda r: r[sf], reverse=(direction != "asc"))
+        rows = present + missing
+    else:                                          # default: newest trade first
+        rows.sort(key=lambda r: (r["tx_date"], r["filed_date"]), reverse=True)
     total = len(rows)
     per_page = max(1, per_page)
     pages = max(1, (total + per_page - 1) // per_page)
@@ -260,12 +273,14 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
         })
     return {"as_of": _as_of(), "side": side, "window_days": window, "anchor": anchor,
             "plan": plan, "smid_only": smid_only, "scope": scope,
+            "sort": sort if sf else None, "direction": direction,
             "per_page": per_page, "page": page, "pages": pages,
             "returned": len(out), "total_matching": total, "rows": out}
 
 
 # ---------------------------------------------------------------- q_net_flows
-_FLOW_WINDOWS = (("30", 30), ("90", 90), ("180", 180), ("365", 365), ("all", None))
+_FLOW_WINDOWS = (("7", 7), ("30", 30), ("90", 90), ("180", 180), ("365", 365),
+                 ("all", None))
 # Data-quality guard for the MAGNITUDE metrics. value = shares*price by construction,
 # so a corrupt Form 4 row shows up as an implausible per-share price (no US equity but
 # BRK.A ~$600k trades above ~$1M/share), an astronomical dollar value, or an impossible
@@ -277,9 +292,9 @@ _VALUE_SANITY_MAX = 1e11
 _SHARES_SANITY_MAX = 1e10
 
 
-def q_net_flows(con, anchor=None, scope="all", metric="persons"):
+def q_net_flows(con, anchor=None, scope="all"):
     """SM-R1 net buy/sell board. For every SCRAPED security (any ticker carrying an
-    open-market Form 4 P/S row), the net insider flow over nested lookbacks — 30 /
+    open-market Form 4 P/S row), the net insider flow over nested lookbacks — 7 / 30 /
     90 / 180 / 365 days and all-time — as three metrics:
       value   net dollars  = sum(buy value)  - sum(sell value)   (value NULL -> 0)
       shares  net shares   = sum(buy shares) - sum(sell shares)
@@ -334,11 +349,8 @@ def q_net_flows(con, anchor=None, scope="all", metric="persons"):
             row["shares_" + lbl] = b["sh"]
             row["persons_" + lbl] = len(b["buyers"]) - len(b["sellers"])
         out.append(row)
-    keyf = {"value": "value_all", "shares": "shares_all",
-            "persons": "persons_all"}.get(metric, "persons_all")
-    out.sort(key=lambda r: r[keyf], reverse=True)
+    out.sort(key=lambda r: r["persons_all"], reverse=True)  # stable default; view re-sorts
     return {"as_of": _as_of(), "anchor": anchor, "scope": scope,
-            "metric": metric if metric in ("value", "shares", "persons") else "persons",
             "windows": [lbl for lbl, _ in _FLOW_WINDOWS],
             "rows_excluded": rows_excluded,
             "count": len(out), "rows": out}
