@@ -1,0 +1,90 @@
+"""price_backfill orchestration tests. prices.eod is swapped for a recorder so no
+network is touched; only the target selection + run accounting are exercised."""
+import datetime as dt
+import os
+import tempfile
+
+from smart_money import db as dbmod
+from smart_money import prices
+from smart_money import price_backfill as pb
+
+_FI = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
+       "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, price, "
+       "value, ownership_after, tx_date, filed_date, role, ingest_regime) "
+       "VALUES(?,0,'P','1','Co','9',?,?,0,1,1.0,1,NULL,?,?,NULL,'watchlist')")
+
+
+def _db(rows):
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    for acc, tk, code, tx in rows:
+        con.execute(_FI, (acc, tk, code, tx, tx))
+    con.commit()
+    return path, con
+
+
+def test_targets_selects_ps_earliest_excludes_nonticker_and_since():
+    path, con = _db([
+        ("a", "AAA", "P", "2026-06-01"),
+        ("b", "AAA", "S", "2026-05-01"),   # earlier sell -> AAA earliest = 2026-05-01
+        ("c", "BBB", "P", "2026-04-01"),
+        ("d", "NONE", "P", "2026-03-01"),  # non-security excluded
+        ("e", "CCC", "M", "2026-02-01"),   # not P/S excluded
+    ])
+    assert dict(pb.targets(con)) == {"AAA": "2026-05-01", "BBB": "2026-04-01"}
+    # since filters the ROWS first, so AAA's earliest becomes its post-cutoff min
+    assert dict(pb.targets(con, since="2026-05-15")) == {"AAA": "2026-06-01"}
+    con.close()
+    os.unlink(path)
+
+
+def test_only_missing_skips_already_priced():
+    path, con = _db([("a", "AAA", "P", "2026-06-01"), ("b", "BBB", "P", "2026-05-01")])
+    con.execute("INSERT INTO prices VALUES('AAA','2026-06-01',10,10,'eod',0,0,'y')")
+    con.commit()
+    t = dict(pb.targets(con, only_missing=True))
+    assert "AAA" not in t and "BBB" in t, t
+    con.close()
+    os.unlink(path)
+
+
+def test_run_counts_ok_fail_and_respects_limit():
+    path, con = _db([("a", "AAA", "P", "2026-06-01"), ("b", "BBB", "P", "2026-05-01"),
+                     ("c", "FAILT", "P", "2026-04-01")])
+    calls = []
+    orig = prices.eod
+
+    def fake_eod(c, tk, start, end):
+        calls.append((tk, start, end))
+        if tk == "FAILT":
+            raise prices.PriceDegraded("boom")
+        return []
+    prices.eod = fake_eod
+    try:
+        res = pb.run(con, out=open(os.devnull, "w"))
+        assert res == {"total": 3, "ok": 2, "fail": 1}, res
+        # earliest-date order -> FAILT(2026-04-01) first; start is the earliest date
+        assert calls[0][0] == "FAILT" and calls[0][1] == "2026-04-01", calls[0]
+        assert calls[-1][2] == dt.date.today().isoformat(), "end is today"
+        calls.clear()
+        res2 = pb.run(con, limit=1, out=open(os.devnull, "w"))
+        assert res2["total"] == 1 and len(calls) == 1, (res2, calls)
+    finally:
+        prices.eod = orig
+    con.close()
+    os.unlink(path)
+
+
+def test_floor_days_bounds_the_start():
+    path, con = _db([("a", "AAA", "P", "2020-01-01")])   # very old trade
+    captured = []
+    orig = prices.eod
+    prices.eod = lambda c, tk, s, e: captured.append((tk, s, e)) or []
+    try:
+        pb.run(con, floor_days=30, out=open(os.devnull, "w"))
+    finally:
+        prices.eod = orig
+    floor = (dt.date.today() - dt.timedelta(days=30)).isoformat()
+    assert captured[0][1] == floor, "start floored to N days ago, not the 2020 trade"
+    con.close()
+    os.unlink(path)
