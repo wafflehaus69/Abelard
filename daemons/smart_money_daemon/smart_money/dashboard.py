@@ -75,8 +75,12 @@ _CSS = (
 # ---------------------------------------------------------------- html helpers
 def _page(title, body, params):
     qs = _qs(params)
+    # Cross-view nav must NOT carry a page cursor: page/spage are per-view and a
+    # stale value would drop you deep into an unrelated table. Reset them so every
+    # view opens on page 1 (per_page, the display-size preference, still carries).
+    nav_qs = _qs(params, page=None, spage=None)
     nav = " &middot; ".join(
-        '<a href="{}{}">{}</a>'.format(href, qs, html.escape(label))
+        '<a href="{}{}">{}</a>'.format(href, nav_qs, html.escape(label))
         for href, label in NAV)
     printbtn = '<a class="print" href="/brief.pdf{}">Print brief (PDF)</a>'.format(qs)
     dark = params.get("theme") == "dark"
@@ -97,6 +101,11 @@ def _qs(params, **override):
                                        "theme", "per_page", "page", "side", "plan",
                                        "scope")}
     base["smid"] = "1" if params.get("smid") else None
+    base["capit"] = "1" if params.get("capit") else None
+    # src/spage carry only when non-default, so Trades/other URLs stay clean but
+    # the Clusters sell-table page survives paging the buy table (and vice versa).
+    base["src"] = params.get("src") if params.get("src") not in (None, "", "all") else None
+    base["spage"] = params.get("spage") if params.get("spage", 1) not in (None, 1) else None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
     if not keep:
@@ -146,19 +155,24 @@ def _params(qsd):
     theme = (one("theme") or "").lower().strip()
     pp = one("per_page")
     pg = one("page")
+    sp = one("spage")
     side = (one("side") or "").lower()
     plan = (one("plan") or "").lower()
     scope = (one("scope") or "").lower()
+    src = (one("src") or "").lower()
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
          "theme": theme if theme in ("dark", "light") else "",
          "per_page": int(pp) if pp in ("25", "50", "100", "250", "500") else 100,
          "page": int(pg) if (pg or "").isdigit() and int(pg) >= 1 else 1,
+         "spage": int(sp) if (sp or "").isdigit() and int(sp) >= 1 else 1,
          "side": side if side in ("buy", "sell", "all") else "buy",
          "plan": plan if plan in ("all", "discretionary", "planned") else "all",
          "scope": scope if scope in ("all", "scoped") else "scoped",
-         "smid": one("smid") == "1"}
+         "src": src if src in ("congress", "13f", "form4") else "all",
+         "smid": one("smid") == "1",
+         "capit": one("capit") == "1"}
     return p
 
 
@@ -192,31 +206,109 @@ def view_front(con, p):
     return _page("Smart Money — front page", "".join(body), p)
 
 
-def view_clusters(con, p):
+def _sentinel_filter_form(params):
+    opts = ("all", "congress", "13f", "form4")
+    o = "".join("<option value='{}'{}>{}</option>".format(
+        v, " selected" if v == params["src"] else "", v) for v in opts)
+    return (
+        "<form method='get'>source <select name='src'>{o}</select> "
+        "<input type='hidden' name='window' value='{w}'>"
+        "<input type='hidden' name='anchor' value='{a}'>"
+        "<input type='hidden' name='per_page' value='{pp}'>"
+        "<input type='hidden' name='page' value='1'>"
+        "<input type='hidden' name='theme' value='{t}'>"
+        "<button>apply</button></form>"
+        "<div class='muted'><a href='/sentinels{clr}'>clear filters</a> "
+        "&middot; resets source, window, and paging to defaults</div>"
+    ).format(o=o, w=params["window"], a=html.escape(params["anchor"]),
+             pp=params["per_page"], t=html.escape(params.get("theme") or ""),
+             clr=("?theme=" + params["theme"]) if params.get("theme") else "")
+
+
+def _cluster_filter_form(params):
+    return (
+        "<form method='get'>"
+        "<label><input type='checkbox' name='capit' value='1'{c}> "
+        "capitulation only</label> "
+        "<input type='hidden' name='window' value='{w}'>"
+        "<input type='hidden' name='anchor' value='{a}'>"
+        "<input type='hidden' name='floor' value='{f}'>"
+        "<input type='hidden' name='per_page' value='{pp}'>"
+        "<input type='hidden' name='page' value='1'>"
+        "<input type='hidden' name='spage' value='1'>"
+        "<input type='hidden' name='theme' value='{t}'>"
+        "<button>apply</button></form>"
+        "<div class='muted'><a href='/clusters{clr}'>clear filters</a> "
+        "&middot; resets floor, capitulation, window, and paging to defaults</div>"
+    ).format(c=" checked" if params["capit"] else "", w=params["window"],
+             a=html.escape(params["anchor"]), f=params["floor"],
+             pp=params["per_page"], t=html.escape(params.get("theme") or ""),
+             clr=("?theme=" + params["theme"]) if params.get("theme") else "")
+
+
+def _cluster_data(con, p):
+    """The two cluster feeds AND their post-filter row lists, from one place so the
+    on-screen tables and the CSV export never drift. Buy clusters honor the
+    capitulation-only toggle; the sell feed keeps its >=3-seller baseline gate."""
     cc = q.q_cluster_context(con, window=p["window"] * 2, floor=p["floor"], anchor=p["anchor"])
+    buy = cc["rows"]
+    if p["capit"]:
+        buy = [r for r in buy if r.get("capitulation")]
     sd = q.q_sell_anomaly(con, window=p["window"], anchor=p["anchor"])
+    sell = [r for r in sd["rows"] if r["distinct_sellers_12mo"] >= 3]
+    return cc, buy, sd, sell
+
+
+def view_clusters(con, p):
+    cc, buy, sd, sell = _cluster_data(con, p)
+    buy_rows, buy_meta = _page_slice(buy, p["per_page"], p["page"])
+    buy_meta["csv_extra"] = {"which": "buy"}
+    sell_rows, sell_meta = _page_slice(sell, p["per_page"], p["spage"])
+    sell_meta["csv_extra"] = {"which": "sell"}
     body = [
         "<p class='muted'>CONTEXT, never alerts. Buy clusters with the capitulation "
         "timeline; sell feed ranked by rate ratio (elevated tint at {}).</p>".format(
             sd["elevated_ratio"]),
-        "<h2>Buy clusters (floor {}, {} found)</h2>".format(p["floor"], cc["count"]),
+        _cluster_filter_form(p),
+        "<div class='expand'>{}</div>".format(
+            _per_page_selector(p, ("page", "spage"))),
+        "<h2>Buy clusters (floor {}{}, {} matching)</h2>".format(
+            p["floor"], ", capitulation only" if p["capit"] else "", buy_meta["total"]),
+        "<div class='expand'>{}</div>".format(
+            _page_nav(p, buy_meta, "/clusters.csv", "page")),
         _table(["ticker", "n_buyers", "n_buys", "span_days", "calendar_months", "capitulation"],
-               cc["rows"][:25], hot=lambda r: r.get("capitulation")),
-        "<h2>Sell context feed (ranked by rate ratio)</h2>",
+               buy_rows, hot=lambda r: r.get("capitulation")),
+        "<h2>Sell context feed (ranked by rate ratio, {} matching)</h2>".format(
+            sell_meta["total"]),
+        "<div class='expand'>{}</div>".format(
+            _page_nav(p, sell_meta, "/clusters.csv", "spage")),
         _table(["ticker", "rate_ratio", "distinct_sellers_window", "distinct_sellers_12mo",
                 "window_sell_value", "elevated"],
-               [r for r in sd["rows"] if r["distinct_sellers_12mo"] >= 3][:25],
-               hot=lambda r: r.get("elevated")),
+               sell_rows, hot=lambda r: r.get("elevated")),
     ]
     return _page("Smart Money — cluster context", "".join(body), p)
 
 
-def view_sentinels(con, p):
+def _sentinel_data(con, p):
+    """Sentinel log plus its source-filtered rows — shared by the view and CSV."""
     sent = q.q_sentinel_log(con, window=p["window"] * 4, anchor=p["anchor"])
-    body = ["<p class='muted'>Registry as-of {}. {} events, newest first.</p>".format(
-        html.escape(str(sent["registry_as_of"])), sent["count"]),
+    rows = sent["rows"]
+    if p["src"] != "all":
+        rows = [r for r in rows if r.get("src") == p["src"]]
+    return sent, rows
+
+
+def view_sentinels(con, p):
+    sent, rows = _sentinel_data(con, p)
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    body = ["<p class='muted'>Registry as-of {}. {} events{}, newest first.</p>".format(
+        html.escape(str(sent["registry_as_of"])), meta["total"],
+        "" if p["src"] == "all" else " in source " + html.escape(p["src"])),
+        _sentinel_filter_form(p),
+        _pager(p, meta, "/sentinels.csv"),
         _table(["event_date", "src", "seed", "role", "ticker", "action", "value"],
-               sent["rows"][:100])]
+               page_rows),
+        _pager(p, meta, "/sentinels.csv")]
     return _page("Smart Money — sentinel log", "".join(body), p)
 
 
@@ -249,26 +341,56 @@ def view_ticker(con, p):
     return _page("Smart Money — {}".format(sym), "".join(body), p)
 
 
-def _pager(params, res):
-    pp, pg, pages, total = (res["per_page"], res["page"], res["pages"],
-                            res["total_matching"])
+def _page_slice(rows, per_page, page):
+    """Slice a full row list to one page. Returns (page_rows, meta) where meta has
+    per_page / page (clamped into range) / pages / total. View-level pagination —
+    the cluster and sentinel queries return the whole list cheaply (no per-row
+    price enrichment, unlike trades which paginates inside the query)."""
+    total = len(rows)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(max(1, page), pages)
+    off = (page - 1) * per_page
+    return rows[off:off + per_page], {"per_page": per_page, "page": page,
+                                      "pages": pages, "total": total}
+
+
+def _per_page_selector(params, reset_keys=("page",)):
+    """The 25/50/100/250/500 row-count selector. reset_keys lets a size change
+    reset every page cursor on the view (Clusters has two independent tables)."""
+    pp = params["per_page"]
+    resets = {k: 1 for k in reset_keys}
     sizes = []
     for n in (25, 50, 100, 250, 500):
         sizes.append("<b>{}</b>".format(n) if n == pp
-                     else '<a href="{}">{}</a>'.format(_qs(params, per_page=n, page=1), n))
+                     else '<a href="{}">{}</a>'.format(_qs(params, per_page=n, **resets), n))
+    return "per page: " + " ".join(sizes)
+
+
+def _page_nav(params, meta, csv_base, page_key="page"):
+    """prev / page X of Y / next plus this-page and whole-dataset CSV links for one
+    table. page_key names this table's cursor so several tables can share a page."""
+    pg, pages, total = meta["page"], meta["pages"], meta["total"]
     nav = []
     if pg > 1:
-        nav.append('<a href="{}">&laquo; prev</a>'.format(_qs(params, page=pg - 1)))
+        nav.append('<a href="{}">&laquo; prev</a>'.format(_qs(params, **{page_key: pg - 1})))
     nav.append("page {} of {}".format(pg, pages))
     if pg < pages:
-        nav.append('<a href="{}">next &raquo;</a>'.format(_qs(params, page=pg + 1)))
-    csv_page = '<a href="/trades.csv{}">this page CSV</a>'.format(_qs(params))
-    csv_all = '<a href="/trades.csv{}">whole dataset CSV</a>'.format(
-        _qs(params, full="1"))
-    return ("<div class='expand'>per page: {sizes} &nbsp;&middot;&nbsp; {nav} "
-            "&nbsp;&middot;&nbsp; {total} total &nbsp;&middot;&nbsp; export: {cp} "
-            "| {ca}</div>".format(sizes=" ".join(sizes), nav=" ".join(nav),
-                                  total=total, cp=csv_page, ca=csv_all))
+        nav.append('<a href="{}">next &raquo;</a>'.format(_qs(params, **{page_key: pg + 1})))
+    extra = dict(meta.get("csv_extra") or {})
+    csv_page = '<a href="{}{}">this page CSV</a>'.format(csv_base, _qs(params, **extra))
+    csv_all = '<a href="{}{}">whole dataset CSV</a>'.format(
+        csv_base, _qs(params, full="1", **extra))
+    return ("{nav} &nbsp;&middot;&nbsp; {total} total &nbsp;&middot;&nbsp; export: "
+            "{cp} | {ca}".format(nav=" ".join(nav), total=total, cp=csv_page, ca=csv_all))
+
+
+def _pager(params, meta, csv_base="/trades.csv", page_key="page"):
+    """Combined selector + nav for a single-table view (Trades, Sentinels)."""
+    if "total" not in meta:                       # trades query uses total_matching
+        meta = dict(meta, total=meta["total_matching"])
+    return "<div class='expand'>{} &nbsp;&middot;&nbsp; {}</div>".format(
+        _per_page_selector(params, (page_key,)),
+        _page_nav(params, meta, csv_base, page_key))
 
 
 def _trade_filter_form(params):
@@ -376,6 +498,59 @@ def _build_trades_csv(con, p, full):
     return buf.getvalue()
 
 
+_SENTINEL_CSV_COLS = ["event_date", "src", "seed", "role", "ticker", "action",
+                      "value", "tx_date", "period", "amt_low", "amt_high",
+                      "lag_days", "owner"]
+
+
+def _build_sentinels_csv(con, p, full):
+    """CSV of the sentinel log — current page or whole dataset — same source filter
+    and window as the on-screen view."""
+    import csv
+    import io
+    _, rows = _sentinel_data(con, p)
+    if not full:
+        rows, _ = _page_slice(rows, p["per_page"], p["page"])
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_SENTINEL_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for row in rows:
+        w.writerow(row)
+    return buf.getvalue()
+
+
+_CLUSTER_BUY_COLS = ["ticker", "issuer_cik", "n_buyers", "n_buys", "window_start",
+                     "event_filed", "span_days", "calendar_months", "capitulation",
+                     "total_value"]
+_CLUSTER_SELL_COLS = ["ticker", "issuer_cik", "distinct_sellers_window",
+                      "distinct_sellers_12mo", "window_sell_value",
+                      "expected_window_rate", "rate_ratio", "baseline_sufficient",
+                      "elevated"]
+
+
+def _build_clusters_csv(con, p, full, which):
+    """CSV of one cluster table (which = buy | sell), current page or whole set.
+    Same filters/gates as the on-screen view; each table pages independently."""
+    import csv
+    import io
+    _, buy, _, sell = _cluster_data(con, p)
+    if which == "sell":
+        rows, cols, pg = sell, _CLUSTER_SELL_COLS, p["spage"]
+    else:
+        rows, cols, pg = buy, _CLUSTER_BUY_COLS, p["page"]
+    if not full:
+        rows, _ = _page_slice(rows, p["per_page"], pg)
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for row in rows:
+        r = dict(row)
+        if isinstance(r.get("calendar_months"), list):
+            r["calendar_months"] = " ".join(r["calendar_months"])
+        w.writerow(r)
+    return buf.getvalue()
+
+
 ROUTES = {"/": view_front, "/trades": view_trades, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
 
@@ -406,6 +581,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._brief(con, p)
             if u.path == "/trades.csv":
                 return self._trades_csv(con, p, parse_qs(u.query))
+            if u.path == "/sentinels.csv":
+                return self._sentinels_csv(con, p, parse_qs(u.query))
+            if u.path == "/clusters.csv":
+                return self._clusters_csv(con, p, parse_qs(u.query))
             view = ROUTES.get(u.path)
             if not view:
                 return self._send(404, _page("Not found", "<p>No such view.</p>", p))
@@ -421,6 +600,27 @@ class Handler(BaseHTTPRequestHandler):
         data = _build_trades_csv(con, p, full)
         fname = "insider_trades_{}_{}_{}.csv".format(
             p["side"], p["scope"], "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _sentinels_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_sentinels_csv(con, p, full)
+        fname = "sentinel_log_{}_{}.csv".format(
+            p["src"], "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _clusters_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        which = qsd.get("which", ["buy"])[0]
+        which = which if which in ("buy", "sell") else "buy"
+        data = _build_clusters_csv(con, p, full, which)
+        pg = p["spage"] if which == "sell" else p["page"]
+        fname = "clusters_{}_{}.csv".format(
+            which, "all" if full else "page{}".format(pg))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})

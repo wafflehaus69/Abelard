@@ -106,6 +106,74 @@ def test_trades_csv_export():
     os.unlink(path)
 
 
+def test_clusters_view_pagination_and_csv():
+    path = _fixture_db()
+    con = q.connect_ro(path)
+    h = dash.view_clusters(con, dash._params({}))
+    assert h.startswith("<!doctype html>"), "clusters page"
+    assert "per page:" in h and "page 1 of" in h, "pager present on clusters"
+    assert "/clusters.csv" in h and "whole dataset CSV" in h, "clusters csv links"
+    assert "which=buy" in h and "which=sell" in h, "both cluster tables export"
+    assert "capitulation only" in h, "cluster filter present"
+    assert "clear filters" in h and "/clusters'" in h.replace('"', "'"), \
+        "clusters clear-filters reset"
+    p = dash._params({})
+    assert dash._build_clusters_csv(con, p, full=False, which="buy").startswith(
+        "ticker,issuer_cik,n_buyers"), "buy CSV header"
+    assert dash._build_clusters_csv(con, p, full=True, which="sell").startswith(
+        "ticker,issuer_cik,distinct_sellers_window"), "sell CSV header"
+    assert dash._params({"spage": ["4"]})["spage"] == 4
+    assert dash._params({"spage": ["0"]})["spage"] == 1          # <1 -> 1
+    assert dash._params({"capit": ["1"]})["capit"] is True
+    con.close()
+    os.unlink(path)
+
+
+def test_sentinels_view_pagination_and_csv():
+    path = _fixture_db()
+    con = q.connect_ro(path)
+    h = dash.view_sentinels(con, dash._params({}))
+    assert h.startswith("<!doctype html>"), "sentinels page"
+    assert "per page:" in h and "page 1 of" in h, "pager present on sentinels"
+    assert "/sentinels.csv" in h and "whole dataset CSV" in h, "sentinels csv links"
+    assert "source" in h and "clear filters" in h, "sentinel source filter + clear"
+    assert "/sentinels'" in h.replace('"', "'"), "sentinels clear-filters reset"
+    data = dash._build_sentinels_csv(con, dash._params({}), full=True)
+    assert data.startswith("event_date,src,seed,role,ticker,action,value"), data[:40]
+    assert dash._params({"src": ["congress"]})["src"] == "congress"
+    assert dash._params({"src": ["13f"]})["src"] == "13f"
+    assert dash._params({"src": ["hack"]})["src"] == "all"       # bad -> default
+    con.close()
+    os.unlink(path)
+
+
+def test_nav_links_reset_paging_cursor():
+    # A page/spage cursor must NOT bleed across views via the top nav — switching
+    # views should open on page 1, not land deep in an unrelated table. (The theme
+    # toggle and print links legitimately keep the cursor; only cross-view nav resets.)
+    p = dash._params({"page": ["3"], "spage": ["2"], "per_page": ["250"]})
+    navqs = dash._qs(p, page=None, spage=None)
+    fullqs = dash._qs(p)                           # this one carries page=3 & spage=2
+    assert "page=3" not in navqs and "spage" not in navqs, navqs
+    assert "page=3" in fullqs and "per_page=250" in navqs, "size carries, cursor does not"
+    page = dash._page("t", "body", p)
+    for href in ("/trades", "/clusters", "/sentinels", "/ticker"):
+        assert 'href="{}{}"'.format(href, navqs) in page, "reset qs for " + href
+        assert 'href="{}{}"'.format(href, fullqs) not in page, "no cursor bleed for " + href
+
+
+def test_page_slice_math():
+    rows = list(range(250))
+    page1, m1 = dash._page_slice(rows, 100, 1)
+    assert len(page1) == 100 and m1["pages"] == 3 and m1["total"] == 250
+    page3, m3 = dash._page_slice(rows, 100, 3)
+    assert page3 == list(range(200, 250)) and m3["page"] == 3
+    _, m9 = dash._page_slice(rows, 100, 9)          # out of range -> last page
+    assert m9["page"] == 3
+    _, m0 = dash._page_slice([], 100, 1)            # empty still reports one page
+    assert m0["pages"] == 1 and m0["total"] == 0
+
+
 def test_dark_mode_theme():
     # theme is sanitized to dark|light only.
     assert dash._params({"theme": ["dark"]})["theme"] == "dark"

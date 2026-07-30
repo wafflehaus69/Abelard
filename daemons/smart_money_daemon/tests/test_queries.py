@@ -191,6 +191,11 @@ def test_insider_trades_pagination_and_full():
     full = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
                               plan="all", scope="all", per_page=2, full=True)
     assert len(full["rows"]) == 5, "full returns every row regardless of per_page"
+    # An over-range page clamps to the last page (matches dashboard _page_slice) —
+    # never an empty "page 999 of 3" table.
+    over = q.q_insider_trades(con, side="buy", window=120, anchor="2026-06-30",
+                              plan="all", scope="all", per_page=2, page=999)
+    assert over["page"] == over["pages"] == 3 and len(over["rows"]) == 1, over
     os.unlink(path)
 
 

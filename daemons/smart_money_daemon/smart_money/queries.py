@@ -222,7 +222,8 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
     rows.sort(key=lambda r: (r["tx_date"], r["filed_date"]), reverse=True)
     total = len(rows)
     per_page = max(1, per_page)
-    page = max(1, page)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(max(1, page), pages)               # clamp to range, matching _page_slice
     if full:
         page_rows = rows                          # every row (whole-dataset export)
     else:
@@ -259,8 +260,7 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
         })
     return {"as_of": _as_of(), "side": side, "window_days": window, "anchor": anchor,
             "plan": plan, "smid_only": smid_only, "scope": scope,
-            "per_page": per_page, "page": page,
-            "pages": max(1, (total + per_page - 1) // per_page),
+            "per_page": per_page, "page": page, "pages": pages,
             "returned": len(out), "total_matching": total, "rows": out}
 
 
