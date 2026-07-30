@@ -72,6 +72,7 @@ def test_trades_view_and_expand_params():
     assert "per page:" in h and "page 1 of" in h, "pager present"
     assert "/trades.csv" in h and "whole dataset CSV" in h, "csv export links present"
     assert "scope:" in h and "overlay" in h, "scope toggle present"
+    assert "clear filters" in h and "/trades'" in h.replace('"', "'"), "clear-filters reset"
     # pagination + filter param sanitizing
     assert dash._params({"per_page": ["250"]})["per_page"] == 250
     assert dash._params({"per_page": ["999"]})["per_page"] == 100   # bad -> default 100

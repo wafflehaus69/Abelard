@@ -282,12 +282,15 @@ def _trade_filter_form(params):
         "<input type='hidden' name='theme' value='{t}'>"
         "<input type='hidden' name='scope' value='{sc}'>"
         "<button>apply</button></form>"
+        "<div class='muted'><a href='/trades{clr}'>clear filters</a> "
+        "&middot; back to defaults (buy, all plans, scoped, 90d, 100/page)</div>"
     ).format(side=sel("side", params["side"], ("buy", "sell", "all")),
              plan=sel("plan", params["plan"], ("all", "discretionary", "planned")),
              smid=" checked" if params["smid"] else "",
              w=params["window"], pp=params["per_page"],
              a=html.escape(params["anchor"]), t=html.escape(params.get("theme") or ""),
-             sc=html.escape(params["scope"]))
+             sc=html.escape(params["scope"]),
+             clr=("?theme=" + params["theme"]) if params.get("theme") else "")
 
 
 def view_trades(con, p):
