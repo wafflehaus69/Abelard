@@ -95,6 +95,9 @@ def main(argv=None):
     ap.add_argument("--limit", type=int, help="cap ticker count (for chunked runs)")
     args = ap.parse_args(argv)
     con = dbmod.connect(args.db)
+    # The nightly scan is the other writer; WAL allows concurrent reads but only one
+    # writer, so wait out a lock collision (per-ticker commit) rather than erroring.
+    con.execute("PRAGMA busy_timeout=30000")
     try:
         res = run(con, since=args.since, floor_days=args.floor_days,
                   only_missing=args.only_missing, limit=args.limit)
