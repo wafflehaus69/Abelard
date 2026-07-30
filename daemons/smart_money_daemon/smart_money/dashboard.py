@@ -78,10 +78,12 @@ _CSS = (
 # ---------------------------------------------------------------- html helpers
 def _page(title, body, params):
     qs = _qs(params)
-    # Cross-view nav must NOT carry a page cursor: page/spage are per-view and a
-    # stale value would drop you deep into an unrelated table. Reset them so every
-    # view opens on page 1 (per_page, the display-size preference, still carries).
-    nav_qs = _qs(params, page=None, spage=None)
+    # Cross-view nav must NOT carry per-view cursor/sort state: page/spage are per-view
+    # and sort keys are view-specific (a flows column key means nothing to trades and
+    # would suppress the destination's default-sort arrow). Reset them so every view
+    # opens on page 1 in its own default sort (per_page, a display preference, carries).
+    nav_qs = _qs(params, page=None, spage=None, sort=None, dir=None,
+                 ssort=None, sdir=None)
     nav = " &middot; ".join(
         '<a href="{}{}">{}</a>'.format(href, nav_qs, html.escape(label))
         for href, label in NAV)
@@ -707,6 +709,7 @@ def _build_sentinels_csv(con, p, full):
     import csv
     import io
     _, rows = _sentinel_data(con, p)
+    rows = _sorted(rows, p["sort"] or "event_date", p["dir"])   # match the view's sort
     if not full:
         rows, _ = _page_slice(rows, p["per_page"], p["page"])
     buf = io.StringIO()
@@ -732,10 +735,12 @@ def _build_clusters_csv(con, p, full, which):
     import csv
     import io
     _, buy, _, sell = _cluster_data(con, p)
-    if which == "sell":
-        rows, cols, pg = sell, _CLUSTER_SELL_COLS, p["spage"]
+    if which == "sell":                            # match view_clusters' per-table sort
+        rows = _sorted(sell, p["ssort"] or "rate_ratio", p["sdir"])
+        cols, pg = _CLUSTER_SELL_COLS, p["spage"]
     else:
-        rows, cols, pg = buy, _CLUSTER_BUY_COLS, p["page"]
+        rows = _sorted(buy, p["sort"] or "n_buyers", p["dir"])
+        cols, pg = _CLUSTER_BUY_COLS, p["page"]
     if not full:
         rows, _ = _page_slice(rows, p["per_page"], pg)
     buf = io.StringIO()

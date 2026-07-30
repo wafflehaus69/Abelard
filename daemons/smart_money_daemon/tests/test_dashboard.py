@@ -194,15 +194,17 @@ def test_nav_links_reset_paging_cursor():
     # A page/spage cursor must NOT bleed across views via the top nav — switching
     # views should open on page 1, not land deep in an unrelated table. (The theme
     # toggle and print links legitimately keep the cursor; only cross-view nav resets.)
-    p = dash._params({"page": ["3"], "spage": ["2"], "per_page": ["250"]})
-    navqs = dash._qs(p, page=None, spage=None)
-    fullqs = dash._qs(p)                           # this one carries page=3 & spage=2
+    p = dash._params({"page": ["3"], "spage": ["2"], "per_page": ["250"],
+                      "sort": ["value_180"], "dir": ["asc"]})
+    navqs = dash._qs(p, page=None, spage=None, sort=None, dir=None, ssort=None, sdir=None)
+    fullqs = dash._qs(p)                           # carries page=3, spage=2, sort=value_180
     assert "page=3" not in navqs and "spage" not in navqs, navqs
+    assert "sort=" not in navqs and "dir=" not in navqs, "cross-view nav drops sort state"
     assert "page=3" in fullqs and "per_page=250" in navqs, "size carries, cursor does not"
     page = dash._page("t", "body", p)
     for href in ("/trades", "/clusters", "/sentinels", "/ticker"):
         assert 'href="{}{}"'.format(href, navqs) in page, "reset qs for " + href
-        assert 'href="{}{}"'.format(href, fullqs) not in page, "no cursor bleed for " + href
+        assert 'href="{}{}"'.format(href, fullqs) not in page, "no cursor/sort bleed for " + href
 
 
 def test_page_slice_math():
