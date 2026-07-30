@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS form4_transactions(
   filed_date TEXT,
   role TEXT,
   ingest_regime TEXT NOT NULL DEFAULT 'watchlist',
+  value_flag TEXT,
   PRIMARY KEY(accession, tx_index)
 );
 CREATE INDEX IF NOT EXISTS idx_f4_ticker ON form4_transactions(ticker);
@@ -330,4 +331,10 @@ def _migrate(con):
         # discovery rows tag 'universal'. One corpus, distinguishable by tag.
         con.execute("ALTER TABLE form4_transactions ADD COLUMN ingest_regime TEXT "
                     "NOT NULL DEFAULT 'watchlist'")
+        con.commit()
+    if f4cols and "value_flag" not in f4cols:
+        # Reason a row's derived dollar value was quarantined by the parse-time
+        # sanity guard (form4.value_sanity_flag); NULL means the value is trusted.
+        # Existing rows stay NULL until re-parsed (scripts/reparse_corrupt_form4).
+        con.execute("ALTER TABLE form4_transactions ADD COLUMN value_flag TEXT")
         con.commit()

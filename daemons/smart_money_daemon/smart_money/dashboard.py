@@ -630,7 +630,12 @@ def _flow_filter_form(params):
 def view_flows(con, p):
     res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"])
     sec = p["metric"]                    # value | shares -> column shown beside insiders
-    active = p["sort"] or "persons_all"  # default: all-time net insiders, most-bought first
+    # Default sort follows the displayed secondary metric (net $ by default, since
+    # p["metric"] defaults to value) so the board opens on all-time net dollars,
+    # most net-bought first. The parse-time sanity guard quarantines corrupt Form 4
+    # dollar values, so net $ is now trustworthy enough to lead; net insiders stays
+    # one click away. Keying off the displayed metric keeps the sort column visible.
+    active = p["sort"] or (sec + "_all")
     rows = _sorted(res["rows"], active, p["dir"])
     page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
     if p["scope"] == "all":
@@ -663,8 +668,9 @@ def view_flows(con, p):
         "(code P) minus sells (code S) over nested lookbacks, anchored at {}. Each "
         "timeframe shows net <b>insiders</b> (distinct buyers minus sellers) and net "
         "<b>{}</b> side by side; green = net bought, red = net sold. Click any column "
-        "header to sort. <b>Caveat:</b> $/share magnitudes carry upstream Form 4 "
-        "corruption and are indicative; the insider counts are corruption-proof.{}"
+        "header to sort. <b>Note:</b> net $/shares exclude rows with corrupt Form 4 "
+        "price or value data quarantined at ingest; a rare unit-mismatch residual may "
+        "remain, so treat extreme outliers with care.{}"
         "</p>".format(html.escape(res["anchor"]), _SEC_NAME[sec], guard),
         "<p class='muted'>{}</p>".format(scope_line),
         _flow_filter_form(p),
@@ -760,7 +766,7 @@ def _build_flows_csv(con, p, full):
     import csv
     import io
     res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"])
-    rows = _sorted(res["rows"], p["sort"] or "persons_all", p["dir"])
+    rows = _sorted(res["rows"], p["sort"] or (p["metric"] + "_all"), p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
     hdr = ["ticker"]
