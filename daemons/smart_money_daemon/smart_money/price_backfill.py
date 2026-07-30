@@ -40,7 +40,7 @@ def targets(con, since=None, only_missing=False):
             "WHERE code IN ('P','S') AND ticker IS NOT NULL "
             "AND substr(tx_date,1,10)>=? GROUP BY UPPER(ticker) ORDER BY 2", (since,)):
         t = (t or "").strip()
-        if not t or t in _NON or not e:
+        if not t or t in _NON or not e or "/" in t or " " in t:  # invalid Yahoo symbols
             continue
         if only_missing and t in priced:
             continue
@@ -51,8 +51,9 @@ def targets(con, since=None, only_missing=False):
 def run(con, since=None, floor_days=None, only_missing=False, limit=None,
         progress_every=25, out=sys.stdout):
     """Fetch each target's EOD series from its earliest trade (or the floor) to today.
-    Per-ticker PriceError is counted and skipped, never fatal — delisted / renamed
-    tickers are expected. Returns {total, ok, fail}."""
+    A per-ticker failure of ANY kind is counted and skipped, never fatal — delisted /
+    renamed / invalid-symbol tickers are expected across a multi-thousand-ticker run.
+    Returns {total, ok, fail}."""
     end = dt.date.today().isoformat()
     floor = ((dt.date.today() - dt.timedelta(days=floor_days)).isoformat()
              if floor_days else None)
@@ -68,10 +69,10 @@ def run(con, since=None, floor_days=None, only_missing=False, limit=None,
         try:
             prices.eod(con, tk, start, end)
             ok += 1
-        except prices.PriceError as exc:
-            fail += 1
+        except Exception as exc:   # noqa: BLE001 - one weird ticker must not kill a
+            fail += 1              # multi-thousand-ticker bulk run; count and move on
             if len(fails) < 50:
-                fails.append("{} {}".format(tk, str(exc)[:100]))
+                fails.append("{} {}: {}".format(tk, type(exc).__name__, str(exc)[:100]))
         if i % progress_every == 0 or i == total:
             out.write("[price_backfill] {}/{} ok={} fail={} elapsed={}s\n".format(
                 i, total, ok, fail, int(time.time() - t0)))

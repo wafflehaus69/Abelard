@@ -49,7 +49,10 @@ def _pace():
 
 def _dump(ticker: str, body: str) -> pathlib.Path:
     ERR_DIR.mkdir(parents=True, exist_ok=True)
-    path = ERR_DIR / "{}_{}.txt".format(ticker, int(time.time() * 1000))
+    # A ticker can contain path-hostile chars (e.g. the share-class form 'UONE/UONEK'),
+    # which would make the dump path point at a non-existent subdir and raise OSError.
+    safe = "".join(c if (c.isalnum() or c in ".-") else "_" for c in (ticker or "_"))
+    path = ERR_DIR / "{}_{}.txt".format(safe, int(time.time() * 1000))
     path.write_text(body[:500000], errors="replace")
     return path
 

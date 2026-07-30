@@ -38,6 +38,35 @@ def test_targets_selects_ps_earliest_excludes_nonticker_and_since():
     os.unlink(path)
 
 
+def test_targets_skip_invalid_symbols():
+    # slashes / spaces are not valid Yahoo symbols and would crash the fetch/dump path
+    path, con = _db([("a", "AAA", "P", "2026-06-01"),
+                     ("b", "UONE/UONEK", "P", "2026-05-01"),
+                     ("c", "BAD SYM", "P", "2026-04-01")])
+    t = dict(pb.targets(con))
+    assert "AAA" in t and "UONE/UONEK" not in t and "BAD SYM" not in t, t
+    con.close()
+    os.unlink(path)
+
+
+def test_run_survives_non_price_exception():
+    path, con = _db([("a", "AAA", "P", "2026-06-01"), ("b", "BBB", "P", "2026-05-01")])
+    orig = prices.eod
+
+    def boom(c, tk, s, e):
+        if tk == "BBB":
+            raise OSError("disk gremlin")     # NOT a PriceError
+        return []
+    prices.eod = boom
+    try:
+        res = pb.run(con, out=open(os.devnull, "w"))
+        assert res == {"total": 2, "ok": 1, "fail": 1}, res   # OSError counted, not raised
+    finally:
+        prices.eod = orig
+    con.close()
+    os.unlink(path)
+
+
 def test_only_missing_skips_already_priced():
     path, con = _db([("a", "AAA", "P", "2026-06-01"), ("b", "BBB", "P", "2026-05-01")])
     con.execute("INSERT INTO prices VALUES('AAA','2026-06-01',10,10,'eod',0,0,'y')")
