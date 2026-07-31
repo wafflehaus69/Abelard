@@ -214,6 +214,12 @@ def test_congress_view_and_csv():
           "VALUES(?,'house',2026,'2026-05-15',?,?,?,NULL,?,?,?,?,?,?,?,NULL,0)")
     con.execute(CH, ("d1", "Aaa", "A", "A1", 0, "Apple", "AAPL", "ST", "Self", 15001, 50000))
     con.execute(CH, ("d2", "Bbb", "B", "B1", 0, "Apple", "AAPL", "ST", "SP", 50001, 100000))
+    # a SENATE holder (state NULL) so the chamber split renders on the board + drill-down
+    CH_SEN = ("INSERT INTO congress_holdings(doc_id, chamber, filing_year, period, "
+              "member_last, member_first, state_dist, person_id, row_idx, asset_name, "
+              "ticker, asset_type, owner, value_lo, value_hi, income_type, ingested_at_unix) "
+              "VALUES(?,'senate',2026,'2026-05-15',?,?,NULL,NULL,?,?,?,?,?,?,?,NULL,0)")
+    con.execute(CH_SEN, ("d3", "Ccc", "C", 0, "Apple", "AAPL", "ST", "JT", 15001, 50000))
     con.commit()
     con.close()
     con = q.connect_ro(path)
@@ -221,11 +227,13 @@ def test_congress_view_and_csv():
     assert h.startswith("<!doctype html>") and "Congress breadth" in h, "breadth page"
     assert "Distribution-first" in h and "Annual snapshot" in h, "distribution note + caveat"
     assert "sort=holder_count" in h, "sortable"
+    assert ">House<" in h and ">Senate<" in h, "chamber-split columns on the board"
     assert "cticker=AAPL" in h, "ticker drill-down link"
     hd = dash.view_congress(con, dash._params({"cticker": ["AAPL"], "cinstr": ["SH"]}))
     assert "Congress holders" in hd and "breadth board" in hd, "drill-down"
+    assert ">chamber<" in hd and "senate" in hd, "chamber column in drill-down"
     data = dash._build_congress_csv(con, dash._params({}), full=True)
-    assert data.startswith("ticker,instrument,holder_count"), data[:40]
+    assert data.startswith("ticker,instrument,holder_count,house,senate"), data[:60]
     assert dash._params({"cowner": ["spouse"]})["cowner"] == "spouse"
     assert dash._params({"cowner": ["x"]})["cowner"] == "all"      # bad -> default
     assert dash._params({"cinstr": ["OP"]})["cinstr"] == "OP"

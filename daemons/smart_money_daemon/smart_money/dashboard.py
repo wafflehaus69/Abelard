@@ -870,14 +870,16 @@ def view_congress(con, p):
         active = p["sort"] or "value_lo"
         rows = _sorted(res["rows"], active, p["dir"])
         page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
-        cols = [("member", "member"), ("state", "state"), ("owner", "owner"),
-                ("value_lo", "band lo"), ("value_hi", "band hi")]
+        cols = [("member", "member"), ("chamber", "chamber"), ("state", "state"),
+                ("owner", "owner"), ("value_lo", "band lo"), ("value_hi", "band hi")]
         trs = ["<table>" + _sort_headers(p, cols, qs_fn, active, p["dir"])]
         for r in page_rows:
-            trs.append("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
-                html.escape(r["member"]), html.escape(str(r["state"] or "-")),
-                html.escape(r["owner"]), _money0(r["value_lo"]),
-                _money0(r["value_hi"]) if r["value_hi"] else "open"))
+            trs.append(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                    html.escape(r["member"]), html.escape(r["chamber"]),
+                    html.escape(str(r["state"] or "-")), html.escape(r["owner"]),
+                    _money0(r["value_lo"]),
+                    _money0(r["value_hi"]) if r["value_hi"] else "open"))
         trs.append("</table>")
         body = ["<p class='muted'><a href='/congress'>&laquo; breadth board</a> &middot; "
                 "<b>{} {}</b> — {} positions across members (latest filing each). Click a "
@@ -895,6 +897,7 @@ def view_congress(con, p):
              else "5-9" if r["holder_count"] >= 5 else "2-4")
         dist[b] = dist.get(b, 0) + 1
     cols = [("ticker", "ticker"), ("instrument", "instr"), ("holder_count", "holders"),
+            ("house", "House"), ("senate", "Senate"),
             ("self", "self"), ("spouse", "spouse"), ("joint", "joint"),
             ("dependent", "dep"), ("midpoint_exposure", "~exposure"),
             ("yoy_change", "YoY"), ("first_year", "first")]
@@ -905,11 +908,12 @@ def view_congress(con, p):
             html.escape(r["ticker"]))
         yoy = "-" if r["yoy_change"] is None else "{:+d}".format(r["yoy_change"])
         trs.append(
-            "<tr><td>{tk}</td><td>{ins}</td><td>{hc}</td><td>{s}</td><td>{sp}</td><td>{jt}"
-            "</td><td>{dp}</td><td>{ex}</td><td>{yy}</td><td>{fy}</td></tr>".format(
-                tk=tlink, ins=r["instrument"], hc=r["holder_count"], s=r["self"],
-                sp=r["spouse"], jt=r["joint"], dp=r["dependent"],
-                ex=_money0(r["midpoint_exposure"]), yy=yoy, fy=r["first_year"] or "-"))
+            "<tr><td>{tk}</td><td>{ins}</td><td>{hc}</td><td>{ho}</td><td>{se}</td><td>{s}</td>"
+            "<td>{sp}</td><td>{jt}</td><td>{dp}</td><td>{ex}</td><td>{yy}</td><td>{fy}</td></tr>"
+            .format(tk=tlink, ins=r["instrument"], hc=r["holder_count"], ho=r["house"],
+                    se=r["senate"], s=r["self"], sp=r["spouse"], jt=r["joint"],
+                    dp=r["dependent"], ex=_money0(r["midpoint_exposure"]), yy=yoy,
+                    fy=r["first_year"] or "-"))
     trs.append("</table>")
     diststr = " &middot; ".join("{}: {}".format(k, dist[k])
                                 for k in ("20+", "10-19", "5-9", "2-4") if k in dist)
@@ -932,12 +936,12 @@ def _build_congress_csv(con, p, full):
     if p["cticker"]:
         res = q.q_congress_holders(con, p["cticker"], p["cinstr"])
         rows = _sorted(res["rows"], p["sort"] or "value_lo", p["dir"])
-        cols = ["member", "state", "owner", "value_lo", "value_hi"]
+        cols = ["member", "chamber", "state", "owner", "value_lo", "value_hi"]
     else:
         res = q.q_congress_breadth(con, min_holders=2, owner_filter=p["cowner"])
         rows = _sorted(res["rows"], p["sort"] or "holder_count", p["dir"])
-        cols = ["ticker", "instrument", "holder_count", "self", "spouse", "joint",
-                "dependent", "midpoint_exposure", "yoy_change", "first_year"]
+        cols = ["ticker", "instrument", "holder_count", "house", "senate", "self", "spouse",
+                "joint", "dependent", "midpoint_exposure", "yoy_change", "first_year"]
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
     buf = io.StringIO()

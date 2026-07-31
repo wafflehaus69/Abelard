@@ -958,17 +958,20 @@ _OWNER_LABEL = {"SP": "spouse", "DC": "dependent", "JT": "joint", "Self": "self"
 
 
 def _member_latest_years(con):
-    """{(last, first, state_dist): newest_filing_year} — each member's most recent
-    annual FD, so breadth counts one snapshot per member."""
-    return {(l, f, s): y for l, f, s, y in con.execute(
-        "SELECT member_last, member_first, state_dist, MAX(filing_year) "
-        "FROM congress_holdings GROUP BY member_last, member_first, state_dist")}
+    """{(chamber, last, first, state_dist): newest_filing_year} — each member's most recent
+    annual FD, so breadth counts one snapshot per member. Chamber is part of the key so a
+    House and a Senate member who share a name never collapse into one (Senate state_dist
+    is NULL, so it cannot disambiguate across chambers on its own)."""
+    return {(c, l, f, s): y for c, l, f, s, y in con.execute(
+        "SELECT chamber, member_last, member_first, state_dist, MAX(filing_year) "
+        "FROM congress_holdings GROUP BY chamber, member_last, member_first, state_dist")}
 
 
 def q_congress_breadth(con, min_holders=1, owner_filter="all"):
-    """SM-C1 flagship: one row per (ticker, instrument) — how many DISTINCT members hold
-    it in their LATEST annual FD, with the owner split (self/spouse/dependent/joint), a
-    ROUGH summed band-midpoint exposure, YoY holder-count change, and first-seen year.
+    """SM-C1/C2 flagship: one row per (ticker, instrument) — how many DISTINCT members hold
+    it in their LATEST annual FD, with the chamber split (house/senate), the owner split
+    (self/spouse/dependent/joint), a ROUGH summed band-midpoint exposure, YoY holder-count
+    change, and first-seen year.
     Option rows are kept DISTINCT from stock rows for the same ticker (a member's GOOGL
     stock and GOOGL option are different positions). DISTRIBUTION-FIRST: mega-caps top
     raw breadth mechanically, so the surface reports the holder-count distribution and
@@ -977,23 +980,24 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all"):
     are not part of ticker breadth."""
     latest = _member_latest_years(con)
     agg = defaultdict(lambda: {"members": set(), "owners": defaultdict(int),
-                               "mid": 0.0, "first_year": None,
-                               "by_year": defaultdict(set)})
-    for l, f, s, yr, ticker, atype, owner, vlo, vhi in con.execute(
-            "SELECT member_last, member_first, state_dist, filing_year, ticker, "
+                               "chambers": defaultdict(set), "mid": 0.0,
+                               "first_year": None, "by_year": defaultdict(set)})
+    for c, l, f, s, yr, ticker, atype, owner, vlo, vhi in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, filing_year, ticker, "
             "asset_type, owner, value_lo, value_hi FROM congress_holdings "
             "WHERE ticker IS NOT NULL AND ticker!=''"):
         olabel = _OWNER_LABEL.get(owner, "self")
         if owner_filter != "all" and olabel != owner_filter:   # owner is a first-class filter
             continue
         key = (ticker.upper(), "OP" if atype == "OP" else "SH")
-        mkey = (l, f, s)
+        mkey = (c, l, f, s)
         a = agg[key]
         a["by_year"][yr].add(mkey)
         a["first_year"] = yr if a["first_year"] is None else min(a["first_year"], yr)
         if latest.get(mkey) == yr:          # count breadth from each member's latest filing only
             a["members"].add(mkey)
             a["owners"][olabel] += 1
+            a["chambers"][c].add(mkey)
             a["mid"] += ((vlo + vhi) / 2 if (vlo is not None and vhi is not None)
                          else (vlo or 0))
     out = []
@@ -1005,6 +1009,8 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all"):
         cur = len(a["by_year"][yrs[-1]]) if yrs else 0
         prev = len(a["by_year"][yrs[-2]]) if len(yrs) >= 2 else None
         out.append({"ticker": ticker, "instrument": instrument, "holder_count": hc,
+                    "house": len(a["chambers"]["house"]),
+                    "senate": len(a["chambers"]["senate"]),
                     "self": a["owners"]["self"], "spouse": a["owners"]["spouse"],
                     "dependent": a["owners"]["dependent"], "joint": a["owners"]["joint"],
                     "midpoint_exposure": round(a["mid"]), "first_year": a["first_year"],
@@ -1021,13 +1027,13 @@ def q_congress_holders(con, ticker, instrument="SH"):
     want = "OP" if str(instrument).upper() == "OP" else "SH"
     latest = _member_latest_years(con)
     rows = []
-    for l, f, s, yr, atype, owner, vlo, vhi in con.execute(
-            "SELECT member_last, member_first, state_dist, filing_year, asset_type, "
+    for c, l, f, s, yr, atype, owner, vlo, vhi in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, filing_year, asset_type, "
             "owner, value_lo, value_hi FROM congress_holdings WHERE UPPER(ticker)=?",
             (ticker.upper(),)):
-        if ("OP" if atype == "OP" else "SH") != want or latest.get((l, f, s)) != yr:
+        if ("OP" if atype == "OP" else "SH") != want or latest.get((c, l, f, s)) != yr:
             continue
-        rows.append({"member": "{}, {}".format(l or "?", f or ""), "state": s,
+        rows.append({"member": "{}, {}".format(l or "?", f or ""), "chamber": c, "state": s,
                      "owner": _OWNER_LABEL.get(owner, "self"),
                      "value_lo": vlo, "value_hi": vhi})
     rows.sort(key=lambda r: -(r["value_lo"] or 0))
