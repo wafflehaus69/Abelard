@@ -244,6 +244,15 @@ CREATE TABLE IF NOT EXISTS congress_holdings(
   doc_id TEXT NOT NULL,
   chamber TEXT NOT NULL,
   filing_year INTEGER,
+  -- SM-C3 Phase H. `filing_year` meant DIFFERENT things per chamber: the House FD
+  -- cycle/zip year (coverage = year-1) but the Senate eFD title year (already the
+  -- coverage year, "Annual Report for CY 2025" filed 2026). Fusion against PTR flows
+  -- depends on knowing WHICH YEAR A POSITION DESCRIBES, so both are now explicit:
+  --   coverage_year = the calendar year the disclosure COVERS
+  --   filing_date   = ISO date the report was filed (annuals run up to ~18mo stale)
+  -- `filing_year` and `period` are retained unchanged so nothing downstream breaks.
+  coverage_year INTEGER,
+  filing_date TEXT,
   period TEXT,
   member_last TEXT,
   member_first TEXT,
@@ -388,6 +397,48 @@ def _migrate_form4(con):
         con.commit()
 
 
+
+def _migrate_coverage(con):
+    """SM-C3 Phase H: add coverage_year / filing_date and backfill each chamber by
+    its OWN existing convention. Idempotent — a no-op once the columns exist."""
+    chcols = {r[1] for r in con.execute("PRAGMA table_info(congress_holdings)")}
+    if not chcols:
+        return
+    if "coverage_year" not in chcols:
+        con.execute("ALTER TABLE congress_holdings ADD COLUMN coverage_year INTEGER")
+        con.execute("ALTER TABLE congress_holdings ADD COLUMN filing_date TEXT")
+        con.commit()
+    # The ALTER is one-shot, but the BACKFILL must run for ANY row still missing the
+    # derived values — otherwise rows written before the columns existed never heal.
+    # Guarded by a cheap existence probe so the normal case is a single indexed lookup.
+    todo = con.execute("SELECT 1 FROM congress_holdings WHERE coverage_year IS NULL "
+                       "OR filing_date IS NULL LIMIT 1").fetchone()
+    if todo:
+        # Backfill the two chambers by their DIFFERENT existing conventions, verified
+        # against the corpus: the Senate eFD title year is already the coverage year
+        # ("Annual Report for CY 2025", filed 2026), while the House filing_year is the
+        # FD cycle/zip year so its coverage is year-1. Getting this backwards mis-ages
+        # every House anchor by a year.
+        con.execute("UPDATE congress_holdings SET coverage_year=filing_year "
+                    "WHERE coverage_year IS NULL AND chamber='senate' "
+                    "AND filing_year IS NOT NULL")
+        con.execute("UPDATE congress_holdings SET coverage_year=filing_year-1 "
+                    "WHERE coverage_year IS NULL AND chamber='house' "
+                    "AND filing_year IS NOT NULL")
+        # `period` holds the raw filed date as the source wrote it (M/D/YYYY or
+        # MM/DD/YYYY). Normalise to ISO; anything unparseable stays NULL, never guessed.
+        con.execute(
+            "UPDATE congress_holdings SET filing_date = "
+            "substr(period, -4) || '-' || "
+            "substr('0' || substr(period, 1, instr(period,'/')-1), -2) || '-' || "
+            "substr('0' || substr(substr(period, instr(period,'/')+1), 1, "
+            "  instr(substr(period, instr(period,'/')+1), '/')-1), -2) "
+            "WHERE filing_date IS NULL AND period LIKE '%/%/%'")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_ch_cov ON "
+                    "congress_holdings(coverage_year)")
+        con.commit()
+
+
 def _migrate(con):
     """Idempotent column adds for DBs created before a schema bump. CREATE TABLE
     IF NOT EXISTS never alters an existing table, so new columns land here."""
@@ -397,6 +448,7 @@ def _migrate(con):
             "ALTER TABLE congress_trades ADD COLUMN superseded INTEGER NOT NULL DEFAULT 0"
         )
         con.commit()
+    _migrate_coverage(con)
     f4cols = {r[1] for r in con.execute("PRAGMA table_info(form4_transactions)")}
     if f4cols and "issuer_cik" not in f4cols:
         con.execute("ALTER TABLE form4_transactions ADD COLUMN issuer_cik TEXT")

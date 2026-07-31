@@ -150,6 +150,14 @@ def _num(s):
     return int(s.replace(",", ""))
 
 
+def _iso_mdy(s):
+    """'1/14/2026' -> '2026-01-14'. Unparseable stays None, never guessed."""
+    m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", s or "")
+    if not m:
+        return None
+    return "{}-{:02d}-{:02d}".format(m.group(3), int(m.group(1)), int(m.group(2)))
+
+
 def _parse_band(text):
     m = _BAND_RE.search(text)
     if m:
@@ -275,10 +283,16 @@ def ingest_filing(con, year, filing, raw_dir, ua, unparsed_dir):
     for i, r in enumerate(rows):
         con.execute(
             "INSERT OR REPLACE INTO congress_holdings(doc_id, chamber, filing_year, "
-            "period, member_last, member_first, state_dist, person_id, row_idx, "
-            "asset_name, ticker, asset_type, owner, value_lo, value_hi, income_type, "
-            "ingested_at_unix) VALUES(?,'house',?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)",
-            (doc, year, filing.get("FilingDate"), filing.get("Last"), filing.get("First"),
+            "coverage_year, filing_date, period, member_last, member_first, state_dist, "
+            "person_id, row_idx, asset_name, ticker, asset_type, owner, value_lo, "
+            "value_hi, income_type, ingested_at_unix) "
+            "VALUES(?,'house',?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)",
+            # `year` is the House FD CYCLE year (the zip), so an annual filed in that
+            # cycle covers the PRIOR calendar year — unlike the Senate, where the title
+            # year is already the coverage year.
+            (doc, year, (year - 1) if year else None,
+             _iso_mdy(filing.get("FilingDate")), filing.get("FilingDate"),
+             filing.get("Last"), filing.get("First"),
              filing.get("StateDst"), i, r["asset_name"], r["ticker"], r["asset_type"],
              r["owner"], r["value_lo"], r["value_hi"], r["income_type"], int(time.time())))
     _mark(con, doc, "house", status)

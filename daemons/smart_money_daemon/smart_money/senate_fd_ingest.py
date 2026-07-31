@@ -210,6 +210,15 @@ def _mark(con, uuid, status):
                 (uuid, "senate", status, int(time.time())))
 
 
+def _iso_mdy(s):
+    """'05/15/2024' or '5/15/2024' -> '2024-05-15'. Unparseable stays None, never
+    guessed — filing_date feeds the fusion anchor and a wrong date mis-ages a book."""
+    m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", s or "")
+    if not m:
+        return None
+    return "{}-{:02d}-{:02d}".format(m.group(3), int(m.group(1)), int(m.group(2)))
+
+
 def _year_of(html, filed):
     """eFD's authoritative 'Annual Report for YYYY' label, else the filed-date year."""
     ty = _TITLE_YEAR.search(html or "")
@@ -257,12 +266,15 @@ def ingest_report(con, sess, row):
     for i, r in enumerate(rows):
         con.execute(
             "INSERT OR REPLACE INTO congress_holdings(doc_id, chamber, filing_year, "
-            "period, member_last, member_first, state_dist, person_id, row_idx, "
-            "asset_name, ticker, asset_type, owner, value_lo, value_hi, income_type, "
-            "ingested_at_unix) VALUES(?,'senate',?,?,?,?,NULL,NULL,?,?,?,?,?,?,?,?,?)",
-            (uuid, year, row[4], row[1], row[0], i, r["asset_name"], r["ticker"],
-             r["asset_type"], r["owner"], r["value_lo"], r["value_hi"],
-             r["income_type"], int(time.time())))
+            "coverage_year, filing_date, period, member_last, member_first, state_dist, "
+            "person_id, row_idx, asset_name, ticker, asset_type, owner, value_lo, "
+            "value_hi, income_type, ingested_at_unix) "
+            "VALUES(?,'senate',?,?,?,?,?,?,NULL,NULL,?,?,?,?,?,?,?,?,?)",
+            # eFD's title year IS the coverage year ("Annual Report for CY 2025" filed
+            # 2026), so coverage_year == year here; filing_date is when it was filed.
+            (uuid, year, year, _iso_mdy(row[4]), row[4], row[1], row[0], i,
+             r["asset_name"], r["ticker"], r["asset_type"], r["owner"],
+             r["value_lo"], r["value_hi"], r["income_type"], int(time.time())))
     _mark(con, uuid, cls)          # ok or no_grid — terminal
     con.commit()
     return {"status": cls, "rows": len(rows), "name": row[1]}
