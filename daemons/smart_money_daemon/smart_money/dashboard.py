@@ -903,6 +903,7 @@ def view_congress(con, p):
         dist[b] = dist.get(b, 0) + 1
     cols = [("ticker", "ticker"), ("instrument", "instr"), ("holder_count", "holders"),
             ("house", "House"), ("senate", "Senate"),
+            ("dem", "D"), ("rep", "R"), ("ind", "I"), ("party_unknown", "party?"),
             ("self", "self"), ("spouse", "spouse"), ("joint", "joint"),
             ("dependent", "dep"), ("midpoint_exposure", "~exposure"),
             ("yoy_change", "YoY"), ("first_year", "first")]
@@ -913,10 +914,13 @@ def view_congress(con, p):
             html.escape(r["ticker"]))
         yoy = "-" if r["yoy_change"] is None else "{:+d}".format(r["yoy_change"])
         trs.append(
-            "<tr><td>{tk}</td><td>{ins}</td><td>{hc}</td><td>{ho}</td><td>{se}</td><td>{s}</td>"
+            "<tr><td>{tk}</td><td>{ins}</td><td>{hc}</td><td>{ho}</td><td>{se}</td>"
+            "<td>{d}</td><td>{rp}</td><td>{iv}</td><td>{pu}</td><td>{s}</td>"
             "<td>{sp}</td><td>{jt}</td><td>{dp}</td><td>{ex}</td><td>{yy}</td><td>{fy}</td></tr>"
             .format(tk=tlink, ins=r["instrument"], hc=r["holder_count"], ho=r["house"],
-                    se=r["senate"], s=r["self"], sp=r["spouse"], jt=r["joint"],
+                    se=r["senate"], d=r["dem"], rp=r["rep"], iv=r["ind"],
+                    pu=r["party_unknown"],
+                    s=r["self"], sp=r["spouse"], jt=r["joint"],
                     dp=r["dependent"], ex=_money0(r["midpoint_exposure"]), yy=yoy,
                     fy=r["first_year"] or "-"))
     trs.append("</table>")
@@ -926,11 +930,69 @@ def view_congress(con, p):
             "holder_count = distinct members in their latest annual FD. <b>Distribution-first</b>: "
             "mega-caps and index funds top raw breadth mechanically, so read the distribution, "
             "not the raw top — the signal is SMID names with outsized breadth and YoY change. "
-            "Holder-count distribution ({} tickers held by ≥2): {}. Click a ticker for the "
-            "holder list; click a column to sort.</p>".format(res["count"], diststr),
+            "Holder-count distribution ({} tickers held by ≥2): {}. D/R/I = party of the "
+            "holding members (<b>party?</b> = not resolvable to a sitting member, mostly "
+            "candidates who filed but never served — never guessed). Click a ticker for "
+            "the holder list; click a column to sort. "
+            "<a href='/congress_gaps'>Coverage roll &raquo;</a> — who is behind these "
+            "counts, and why they are floors.</p>".format(res["count"], diststr),
             _CONGRESS_CAVEAT, _congress_owner_form(p), _pager(p, meta, "/congress.csv"),
             "".join(trs), _pager(p, meta, "/congress.csv")]
     return _page("Congress breadth — who holds what", "".join(body), p)
+
+
+def view_congress_gaps(con, p):
+    """SM-C2 P3: the coverage roll — who is behind the breadth counts, and who isn't."""
+    res = q.q_congress_gaps(con)
+    active = p["sort"] or "rows"
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("member", "member"), ("chamber", "chamber"), ("party", "party"),
+            ("state", "state"), ("match_kind", "resolved"), ("years", "FD years"),
+            ("year_count", "#yrs"), ("rows", "rows")]
+    trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])]
+    for r in page_rows:
+        trs.append(
+            "<tr><td>{m}</td><td>{c}</td><td>{p}</td><td>{s}</td><td>{k}</td><td>{y}</td>"
+            "<td>{n}</td><td>{rw}</td></tr>".format(
+                m=html.escape(r["member"]), c=html.escape(r["chamber"]),
+                p=html.escape(r["party"] or "-"), s=html.escape(str(r["state"] or "-")),
+                k=html.escape(r["match_kind"]), y=html.escape(r["years"] or "-"),
+                n=r["year_count"], rw=_fmt(r["rows"])))
+    trs.append("</table>")
+    body = ["<p class='muted'><a href='/congress'>&laquo; breadth board</a> &middot; "
+            "<b>Coverage roll</b> — every filer identity in the holdings corpus. "
+            "<b>Breadth counts are FLOORS</b>: a member absent here (paper-only filing, "
+            "blocked fetch, unparsed layout) depresses every ticker they hold. "
+            "{res} of {tot} identities resolved to a party from the public roster; the "
+            "{unres} <b>unmatched</b> are dominated by CANDIDATES who filed a disclosure "
+            "but never served — not a parse gap. Party is assigned only on a deterministic "
+            "key (House surname+state, Senate surname against recent senators) and is "
+            "left blank otherwise, never guessed.</p>".format(
+                res=res["resolved"], tot=res["count"], unres=res["unresolved"]),
+            _pager(p, meta, "/congress_gaps.csv"), "".join(trs),
+            _pager(p, meta, "/congress_gaps.csv")]
+    return _page("Congress coverage roll", "".join(body), p)
+
+
+_GAP_CSV_COLS = ["member", "chamber", "party", "state", "match_kind", "years",
+                 "year_count", "rows"]
+
+
+def _build_congress_gaps_csv(con, p, full):
+    """CSV of the coverage roll, honoring the active sort."""
+    import csv
+    import io
+    res = q.q_congress_gaps(con)
+    rows = _sorted(res["rows"], p["sort"] or "rows", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_GAP_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
 
 
 def _build_congress_csv(con, p, full):
@@ -945,8 +1007,9 @@ def _build_congress_csv(con, p, full):
     else:
         res = q.q_congress_breadth(con, min_holders=2, owner_filter=p["cowner"])
         rows = _sorted(res["rows"], p["sort"] or "holder_count", p["dir"])
-        cols = ["ticker", "instrument", "holder_count", "house", "senate", "self", "spouse",
-                "joint", "dependent", "midpoint_exposure", "yoy_change", "first_year"]
+        cols = ["ticker", "instrument", "holder_count", "house", "senate", "dem", "rep",
+                "ind", "party_unknown", "self", "spouse", "joint", "dependent",
+                "midpoint_exposure", "yoy_change", "first_year"]
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
     buf = io.StringIO()
@@ -1060,6 +1123,7 @@ def _build_flows_csv(con, p, full):
 
 
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
+          "/congress_gaps": view_congress_gaps,
           "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
 
@@ -1098,6 +1162,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._flows_csv(con, p, parse_qs(u.query))
             if u.path == "/portfolios.csv":
                 return self._portfolios_csv(con, p, parse_qs(u.query))
+            if u.path == "/congress_gaps.csv":
+                return self._congress_gaps_csv(con, p, parse_qs(u.query))
             if u.path == "/congress.csv":
                 return self._congress_csv(con, p, parse_qs(u.query))
             view = ROUTES.get(u.path)
@@ -1164,6 +1230,15 @@ class Handler(BaseHTTPRequestHandler):
         data = _build_congress_csv(con, p, full)
         what = "holders_{}".format(p["cticker"]) if p["cticker"] else "breadth_{}".format(p["cowner"])
         fname = "congress_{}_{}.csv".format(what, "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _congress_gaps_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_congress_gaps_csv(con, p, full)
+        fname = "congress_coverage_{}.csv".format(
+            "all" if full else "page{}".format(p["page"]))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})

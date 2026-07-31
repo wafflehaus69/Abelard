@@ -270,6 +270,21 @@ CREATE TABLE IF NOT EXISTS congress_fd_seen(
   status TEXT NOT NULL,
   seen_at_unix INTEGER NOT NULL
 );
+-- SM-C2 P3: party/state for each distinct FD filer identity, resolved from the keyless
+-- congress-legislators roster by smart_money/roster.py. party is NULL when the filer did
+-- not resolve DETERMINISTICALLY (match_kind 'unmatched') -- never guessed. That bucket is
+-- dominated by candidates who filed an FD but never served.
+CREATE TABLE IF NOT EXISTS congress_member_roster(
+  chamber TEXT NOT NULL,
+  member_last TEXT,
+  member_first TEXT,
+  state_dist TEXT,
+  party TEXT,
+  state TEXT,
+  match_kind TEXT NOT NULL,
+  synced_at_unix INTEGER NOT NULL,
+  PRIMARY KEY(chamber, member_last, member_first, state_dist)
+);
 -- Market-cap + SMID band cache (SM-A1-fix SMID scan). shares from SEC
 -- companyconcept (dei then us-gaap fallback), cap = shares x price. Both as-of
 -- dates recorded; a stale cap on a volatile small cap is a labeled error source.

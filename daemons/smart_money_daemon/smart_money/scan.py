@@ -118,6 +118,17 @@ def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
     # Watermark advances ONLY on ok-with-items, to newest ingested disclosure.
     if rows and newest_disc:
         watermarks.advance(con, "house_clerk", newest_disc)
+
+    # SM-C2 P3: refresh party/state for FD filer identities. Keyless public roster,
+    # idempotent, resolves DETERMINISTICALLY only — a failure here must never take the
+    # congress leg down, it just leaves party as it was (or unknown).
+    try:
+        from . import roster
+        rt = roster.sync(con)
+        counts["roster_resolved"] = rt["unique"] + rt["byname"]
+        counts["roster_unmatched"] = rt["unmatched"]
+    except Exception as exc:  # noqa: BLE001 - degraded, surfaced in counts
+        counts["roster_error"] = str(exc)[:80]
     return events, sources, counts
 
 

@@ -90,3 +90,38 @@ def test_classify_body_soft_block_vs_empty():
     # a WAF / interstitial / rate-limit body carries neither -> retriable soft_block
     assert sfd._classify_body("<title>Access Denied</title>") == "soft_block"
     assert sfd._classify_body("") == "soft_block"
+    # eFD bounced us back to the search form -> distinct, not a generic soft block
+    assert sfd._classify_body("<title>eFD: Find Reports</title>") == "not_served"
+
+
+def test_candidate_bounce_is_retired_but_senator_bounce_is_retriable(monkeypatch):
+    """A search-form bounce is TERMINAL only when the index row shows a candidate filing;
+    the same bounce for a sitting senator must stay retriable (that would be a real block)."""
+    import sqlite3
+    from smart_money import db as dbmod
+    con = dbmod.connect(":memory:")
+
+    class _Resp:
+        status_code = 200
+        text = "<title>eFD: Find Reports</title>"
+
+    class _Sess:
+        def get(self, *a, **k):
+            return _Resp()
+
+    link = '<a href="/search/view/annual/aaaaaaaa-1111-2222-3333-444444444444/">{}</a>'
+    cand = ["Steve", "Garvey", "Candidate (Candidate)",
+            link.format("Candidate Report (Amendment 1)"), "10/06/2024"]
+    res = sfd.ingest_report(con, _Sess(), cand)
+    assert res["status"] == "candidate_not_served", res
+    seen = con.execute("SELECT status FROM congress_fd_seen").fetchone()
+    assert seen and seen[0] == "candidate_not_served", "candidate bounce is retired"
+
+    link2 = '<a href="/search/view/annual/bbbbbbbb-1111-2222-3333-444444444444/">{}</a>'
+    sen = ["Cindy", "Hyde-Smith", "Hyde-Smith, Cindy (Senator)",
+           link2.format("Annual Report for CY 2025"), "07/30/2026"]
+    res2 = sfd.ingest_report(con, _Sess(), sen)
+    assert res2["status"] == "not_served", res2
+    n = con.execute("SELECT count(*) FROM congress_fd_seen").fetchone()[0]
+    assert n == 1, "a senator bounce must NOT be written to the resume ledger"
+    con.close()

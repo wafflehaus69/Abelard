@@ -48,7 +48,13 @@ _TITLE_YEAR = re.compile(r"Annual Report for (\d{4})", re.I)
 # no assets), absent on a WAF / rate-limit / interstitial body. Used to tell a genuinely
 # empty report (terminal no_grid) apart from a soft-block that must be retried.
 _CHROME = ("Part 3", "Part 4")
-_TERMINAL = frozenset(("ok", "no_grid", "paper"))
+# eFD bounces some report ids back to the search form instead of serving a detail page.
+# Observed consistently (across sessions and hours) for CANDIDATE filings — people who
+# filed a disclosure but never served; eFD indexes them under the /annual/ path yet will
+# not serve them there. That is terminal, not transient: retrying never recovers them.
+_SEARCH_PAGE = "eFD: Find Reports"
+_CANDIDATE = re.compile(r"candidate", re.I)
+_TERMINAL = frozenset(("ok", "no_grid", "paper", "candidate_not_served"))
 _YH_TICK = re.compile(r"finance\.yahoo\.com/q\?s=([A-Za-z0-9.\-]{1,10})")
 # "MFC-Manulife..." / "MUB - iShares..." — bare-symbol prefix, no yahoo link. The tail
 # is any letter (company names may start lowercase, e.g. "iShares"); the leading all-caps
@@ -160,14 +166,18 @@ def parse_annual_assets(html):
 
 def _classify_body(html):
     """ok = assets grid present; no_grid = a real eFD report page (Part 3/Part 4 skeleton)
-    with no assets grid, i.e. genuinely empty (TERMINAL); soft_block = not an eFD report
-    page at all (WAF / interstitial / rate-limit body) and therefore RETRIABLE, never
-    retired. This is the guard that stops a rate-limited fetch being logged as a healthy
-    empty filing and lost forever."""
+    with no assets grid, i.e. genuinely empty (TERMINAL); not_served = eFD bounced us to
+    the search form rather than serving this report; soft_block = not an eFD page we
+    recognise at all (WAF / interstitial / rate-limit body). The last two are RETRIABLE by
+    default — the guard that stops a rate-limited fetch being logged as a healthy empty
+    filing and lost forever. `not_served` is only retired when the caller can also see the
+    filing is a candidate report (see ingest_report)."""
     if _TABLE.search(html):
         return "ok"
     if all(c in html for c in _CHROME):
         return "no_grid"
+    if _SEARCH_PAGE in html:
+        return "not_served"
     return "soft_block"
 
 
@@ -229,6 +239,17 @@ def ingest_report(con, sess, row):
         return {"status": "http_{}".format(resp.status_code), "rows": 0}   # transient
     html = resp.text
     cls = _classify_body(html)
+    if cls == "not_served":
+        # eFD bounced to the search form. If the index row itself says this is a candidate
+        # filing (office 'Candidate (Candidate)' / link text 'Candidate Report'), the
+        # report is not obtainable at this path and never will be -> retire it with a
+        # status that says exactly that, so the retriable count keeps meaning "member data
+        # we still owe". For a non-candidate, stay retriable: that would be a real block.
+        if _CANDIDATE.search(row[2] or "") or _CANDIDATE.search(row[3] or ""):
+            _mark(con, uuid, "candidate_not_served")
+            con.commit()
+            return {"status": "candidate_not_served", "rows": 0}
+        return {"status": "not_served", "rows": 0}
     if cls == "soft_block":
         return {"status": "soft_block", "rows": 0}     # WAF/interstitial, retried (not marked)
     year = _year_of(html, row[4])
@@ -258,7 +279,7 @@ def main(argv=None):
     con.execute("PRAGMA busy_timeout=30000")
     sess = bootstrap("AbelardSmartMoney/0.1 (+{})".format(contact), probe=False)
     tally = {"filings": 0, "ok": 0, "rows": 0, "no_grid": 0, "paper": 0,
-             "seen": 0, "retriable": 0}
+             "seen": 0, "candidate_not_served": 0, "retriable": 0}
     try:
         for i, row in enumerate(search_annual(sess, args.since), 1):
             if args.limit and tally["filings"] >= args.limit:
@@ -267,12 +288,17 @@ def main(argv=None):
             st = res["status"]
             tally["filings"] += 1
             tally["rows"] += res["rows"]
-            tally[st if st in ("ok", "no_grid", "paper", "seen") else "retriable"] += 1
+            tally[st if st in ("ok", "no_grid", "paper", "seen",
+                               "candidate_not_served") else "retriable"] += 1
             if i % 25 == 0:
                 print("[senate_fd] {} {}".format(i, tally), flush=True)
     finally:
         con.close()
     print("[senate_fd] DONE {}".format(tally))
+    if tally["candidate_not_served"]:
+        print("[senate_fd] NOTE {} candidate reports are indexed but not served by eFD at "
+              "the annual path (filers who never served) - retired, not retriable".format(
+                  tally["candidate_not_served"]))
     if tally["retriable"]:
         print("[senate_fd] WARNING {} filings hit transient errors (http/fetch/soft_block) "
               "and were left UNMARKED for retry on the next run".format(tally["retriable"]))

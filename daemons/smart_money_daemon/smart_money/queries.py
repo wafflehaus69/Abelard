@@ -976,6 +976,56 @@ def _member_latest_years(con):
         "FROM congress_holdings GROUP BY chamber, member_last, member_first, state_dist")}
 
 
+_PARTY_BUCKET = {"Democrat": "dem", "Republican": "rep", "Independent": "ind"}
+
+
+def _member_parties(con):
+    """{(chamber, last, first, state_dist): 'dem'|'rep'|'ind'} for identities the roster
+    resolved DETERMINISTICALLY. Absent = party unknown (never guessed) — the caller counts
+    those as 'unknown' so the split always reconciles to the holder count."""
+    try:
+        rows = con.execute("SELECT chamber, member_last, member_first, state_dist, party "
+                           "FROM congress_member_roster WHERE party IS NOT NULL")
+    except Exception:                     # roster not synced yet — degrade to all-unknown
+        return {}
+    return {(c, l, f, s): _PARTY_BUCKET.get(p, "ind") for c, l, f, s, p in rows}
+
+
+def q_congress_gaps(con):
+    """SM-C2 P3: who is BEHIND the breadth counts. Per filer identity: chamber, party,
+    how it resolved, filing years present, and holdings rows. The point is that breadth
+    counts are FLOORS — a member missing from the corpus (paper-only filing, WAF-blocked
+    fetch, unparsed layout) depresses every ticker they hold, and an 'unmatched' identity
+    is usually a CANDIDATE who filed but never served, not a data error."""
+    parties = {}
+    kinds = {}
+    try:
+        for c, l, f, s, p, k in con.execute(
+                "SELECT chamber, member_last, member_first, state_dist, party, match_kind "
+                "FROM congress_member_roster"):
+            parties[(c, l, f, s)] = p
+            kinds[(c, l, f, s)] = k
+    except Exception:
+        pass
+    rows = []
+    for c, l, f, s, n, yrs in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, count(*), "
+            "group_concat(DISTINCT filing_year) FROM congress_holdings "
+            "GROUP BY chamber, member_last, member_first, state_dist"):
+        k = (c, l, f, s)
+        years = sorted(y for y in (yrs or "").split(",") if y)
+        rows.append({"member": "{}, {}".format(l or "?", f or ""), "chamber": c,
+                     "state": s or None, "party": parties.get(k),
+                     "match_kind": kinds.get(k, "unsynced"), "years": ",".join(years),
+                     "year_count": len(years), "rows": n})
+    rows.sort(key=lambda r: -r["rows"])
+    resolved = sum(1 for r in rows if r["party"])
+    return {"as_of": _as_of(), "count": len(rows), "rows": rows,
+            "resolved": resolved, "unresolved": len(rows) - resolved,
+            "note": "breadth counts are FLOORS; unmatched identities are dominated by "
+                    "candidates who filed an FD but never served"}
+
+
 def q_congress_breadth(con, min_holders=1, owner_filter="all"):
     """SM-C1/C2 flagship: one row per (ticker, instrument) — how many DISTINCT members hold
     it in their LATEST annual FD, with the chamber split (house/senate), the owner split
@@ -988,9 +1038,11 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all"):
     change. Band-valued -> exposure is a coarse proxy. Non-security assets (ticker NULL)
     are not part of ticker breadth."""
     latest = _member_latest_years(con)
+    parties = _member_parties(con)
     agg = defaultdict(lambda: {"members": set(), "owners": defaultdict(int),
-                               "chambers": defaultdict(set), "mid": 0.0,
-                               "first_year": None, "by_year": defaultdict(set)})
+                               "chambers": defaultdict(set), "parties": defaultdict(set),
+                               "mid": 0.0, "first_year": None,
+                               "by_year": defaultdict(set)})
     for c, l, f, s, yr, ticker, atype, owner, vlo, vhi in con.execute(
             "SELECT chamber, member_last, member_first, state_dist, filing_year, ticker, "
             "asset_type, owner, value_lo, value_hi FROM congress_holdings "
@@ -1007,6 +1059,7 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all"):
             a["members"].add(mkey)
             a["owners"][olabel] += 1
             a["chambers"][c].add(mkey)
+            a["parties"][parties.get(mkey, "unknown")].add(mkey)
             a["mid"] += ((vlo + vhi) / 2 if (vlo is not None and vhi is not None)
                          else (vlo or 0))
     out = []
@@ -1020,6 +1073,9 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all"):
         out.append({"ticker": ticker, "instrument": instrument, "holder_count": hc,
                     "house": len(a["chambers"]["house"]),
                     "senate": len(a["chambers"]["senate"]),
+                    "dem": len(a["parties"]["dem"]), "rep": len(a["parties"]["rep"]),
+                    "ind": len(a["parties"]["ind"]),
+                    "party_unknown": len(a["parties"]["unknown"]),
                     "self": a["owners"]["self"], "spouse": a["owners"]["spouse"],
                     "dependent": a["owners"]["dependent"], "joint": a["owners"]["joint"],
                     "midpoint_exposure": round(a["mid"]), "first_year": a["first_year"],
