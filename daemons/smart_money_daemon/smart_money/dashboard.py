@@ -775,7 +775,7 @@ def view_portfolios(con, p):
     page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
     cols = [("ticker", "ticker"), ("issuer", "issuer"), ("instrument", "instr"),
             ("value", "value"), ("shares", "shares"), ("pct_of_book", "% book"),
-            ("badge", "QoQ")]
+            ("badge", "QoQ"), ("reported_period", "as of"), ("filed_date", "filed")]
     header = _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])
     trs = ["<table>" + header]
     for r in page_rows:
@@ -786,10 +786,12 @@ def view_portfolios(con, p):
         pct = "-" if r["pct_of_book"] is None else "{:.2f}%".format(r["pct_of_book"])
         trs.append(
             "<tr><td>{tk}</td><td>{iss}</td><td>{ins}</td><td>{val}</td><td>{sh}</td>"
-            "<td>{pct}</td><td>{b}</td></tr>".format(
+            "<td>{pct}</td><td>{b}</td><td>{per}</td><td>{fil}</td></tr>".format(
                 tk=tk, iss=html.escape(str(r["issuer"] or "-")),
                 ins=html.escape(r["instrument"]), val=_money0(r["value"]),
-                sh=_fmt(r["shares"]), pct=pct, b=badge))
+                sh=_fmt(r["shares"]), pct=pct, b=badge,
+                per=html.escape(str(r["reported_period"] or "-")),
+                fil=html.escape(str(r["filed_date"] or "-"))))
     trs.append("</table>")
     if not page_rows:
         trs.append("<p class='muted'>No holdings for this filer/period.</p>")
@@ -803,7 +805,10 @@ def view_portfolios(con, p):
             "&middot; reported book <b>{book}</b>{dn}</p>"
             "<p class='muted'>direction-netted: long <b>{lng}</b> &middot; put-notional "
             "<b>{put}</b> &middot; call-notional <b>{call}</b> &middot; {unm} unmapped "
-            "CUSIP(s) = {unmv}. Click a column header to sort.</p>".format(
+            "CUSIP(s) = {unmv}. Per position, <b>as of</b> = the quarter-end the holding "
+            "is reported for and <b>filed</b> = when that filing reached EDGAR; the gap "
+            "between them is the disclosure lag, and an exited row carries the dates of "
+            "the last filing it appeared in. Click a column header to sort.</p>".format(
                 name=html.escape(res["filer_name"] or "?"),
                 per=html.escape(res["period"]),
                 prior=(" (QoQ vs " + html.escape(res["prior_period"]) + ")"
@@ -819,7 +824,7 @@ def view_portfolios(con, p):
 
 
 _PORT_CSV_COLS = ["cusip", "ticker", "issuer", "instrument", "value", "shares",
-                  "pct_of_book", "badge", "prior_value"]
+                  "pct_of_book", "badge", "prior_value", "reported_period", "filed_date"]
 
 
 def _build_portfolio_csv(con, p, full):

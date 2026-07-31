@@ -302,8 +302,12 @@ def test_portfolio_holdings_and_qoq_deltas():
           "ticker, issuer, put_call, value, shares, ingested_at_unix) "
           "VALUES('1536411',?,?,?,?,?,?,?,?,?,0)")
 
+    # filed_date is deliberately LATER than period (the real 45-day disclosure lag)
+    FILED = {"2025-12-31": "2026-02-17", "2026-03-31": "2026-05-15"}
+
     def ins(acc, period, cusip, ticker, pc, val, sh):
-        con.execute(HI, (acc, period, period, cusip, ticker, ticker or "Iss", pc, val, sh))
+        con.execute(HI, (acc, period, FILED[period], cusip, ticker, ticker or "Iss",
+                         pc, val, sh))
     ins("p1", "2025-12-31", "CU_A", "AAA", "long", 1000, 100)
     ins("p1", "2025-12-31", "CU_B", "BBB", "long", 500, 50)
     ins("p1", "2025-12-31", "CU_D", "DDD", "long", 100, 10)     # will exit
@@ -329,6 +333,13 @@ def test_portfolio_holdings_and_qoq_deltas():
     assert byk[("CU_D", "SH")]["badge"] == "exited" and byk[("CU_D", "SH")]["value"] == 0
     assert byk[("CU_F", "SH")]["unmapped"] is True and byk[("CU_F", "SH")]["ticker"] is None
     assert abs(byk[("CU_A", "SH")]["pct_of_book"] - round(100 * 1500 / 2650, 2)) < 0.01
+    # per-position reporting dates: held rows carry the CURRENT period + its filed date
+    assert byk[("CU_A", "SH")]["reported_period"] == "2026-03-31"
+    assert byk[("CU_A", "SH")]["filed_date"] == "2026-05-15"
+    # an EXITED row carries the PRIOR filing's dates — the evidence it actually came from
+    assert byk[("CU_D", "SH")]["reported_period"] == "2025-12-31"
+    assert byk[("CU_D", "SH")]["filed_date"] == "2026-02-17"
+    assert all(r["filed_date"] for r in res["rows"]), "every position carries a filed date"
     # single filing (prior=None) -> no deltas
     solo = q.q_portfolio(con, filer_cik="0001536411", period="2025-12-31")
     assert solo["prior_period"] is None and solo["has_deltas"] is False

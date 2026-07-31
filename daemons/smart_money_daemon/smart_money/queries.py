@@ -780,13 +780,18 @@ def _filer_periods(con, cik):
 
 
 def _period_holdings(con, cik, period):
-    """{(cusip, put_call): holding-dict} for one filer/period."""
+    """{(cusip, put_call): holding-dict} for one filer/period. Carries the position's own
+    reporting dates: `period` = the quarter-end the position is reported AS OF, and
+    `filed_date` = when that filing reached EDGAR (they differ by up to 45 days, and an
+    amendment can file a later date against the same period)."""
     out = {}
-    for cusip, ticker, issuer, pc, val, sh in con.execute(
-        "SELECT cusip, ticker, issuer, put_call, value, shares FROM thirteenf_holdings "
+    for cusip, ticker, issuer, pc, val, sh, per, filed in con.execute(
+        "SELECT cusip, ticker, issuer, put_call, value, shares, period, filed_date "
+        "FROM thirteenf_holdings "
         "WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) AND period=?", (cik, period)):
         out[(cusip, pc)] = {"cusip": cusip, "ticker": ticker, "issuer": issuer,
-                            "put_call": pc, "value": val or 0, "shares": sh or 0}
+                            "put_call": pc, "value": val or 0, "shares": sh or 0,
+                            "period": per, "filed_date": filed}
     return out
 
 
@@ -893,11 +898,15 @@ def q_portfolio(con, filer_cik=None, period=None):
     book = sum(h["value"] for h in cur.values()) or 0
 
     def _row(h, badge, prior_val):
+        # reported_period / filed_date are the position's OWN reporting dates. For an
+        # "exited" row these are the PRIOR period's — that row's evidence is the last
+        # filing the position appeared in, so its dates are the honest provenance.
         return {"cusip": h["cusip"], "ticker": h["ticker"],
                 "unmapped": h["ticker"] is None, "issuer": h["issuer"],
                 "instrument": _INSTRUMENT.get(h["put_call"], h["put_call"]),
                 "value": h["value"], "shares": h["shares"],
                 "pct_of_book": round(100.0 * h["value"] / book, 2) if book else None,
+                "reported_period": h.get("period"), "filed_date": h.get("filed_date"),
                 "badge": badge, "prior_value": prior_val}
     rows = []
     for k, h in cur.items():
