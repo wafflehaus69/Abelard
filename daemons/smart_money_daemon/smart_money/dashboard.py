@@ -27,7 +27,8 @@ from urllib.parse import parse_qs, urlparse
 from . import db as dbmod
 from . import queries as q
 
-NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/congress", "Congress"),
+NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/insiders", "Insider books"),
+       ("/congress", "Congress"),
        ("/trades", "Trades"), ("/flows", "Net flows"), ("/clusters", "Clusters"),
        ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
@@ -90,7 +91,8 @@ def _page(title, body, params):
     # would suppress the destination's default-sort arrow). Reset them so every view
     # opens on page 1 in its own default sort (per_page, a display preference, carries).
     nav_qs = _qs(params, page=None, spage=None, sort=None, dir=None,
-                 ssort=None, sdir=None, cticker=None, cinstr=None, cowner=None)
+                 ssort=None, sdir=None, cticker=None, cinstr=None, cowner=None,
+                 member=None, myear=None)
     nav = " &middot; ".join(
         '<a href="{}{}">{}</a>'.format(href, nav_qs, html.escape(label))
         for href, label in NAV)
@@ -130,6 +132,8 @@ def _qs(params, **override):
     base["cticker"] = params.get("cticker") or None
     base["cinstr"] = params.get("cinstr") if params.get("cinstr") not in (None, "", "SH") else None
     base["cowner"] = params.get("cowner") if params.get("cowner") not in (None, "", "all") else None
+    base["member"] = params.get("member") or None
+    base["myear"] = params.get("myear") or None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
     if not keep:
@@ -301,6 +305,8 @@ def _params(qsd):
          "filer": filer, "period": period,
          "cticker": cticker, "cinstr": cinstr if cinstr in ("SH", "OP") else "SH",
          "cowner": cowner if cowner in ("self", "spouse", "dependent", "joint") else "all",
+         "member": (one("member") or "")[:120],
+         "myear": _int(one("myear"), None),
          "smid": one("smid") == "1",
          "capit": one("capit") == "1"}
     return p
@@ -941,6 +947,105 @@ def view_congress(con, p):
     return _page("Congress breadth — who holds what", "".join(body), p)
 
 
+_INSIDER_CAVEAT = (
+    "<p class='muted'><b>Annual snapshot, band-valued</b> — one FD per member per year "
+    "(filed ~May), so it lags live trading; every figure is a COARSE band midpoint, never "
+    "a mark. <b>Owner is the point, not a footnote</b>: several members do little trading "
+    "in their own name and the positions sit with a spouse, so a book that is mostly "
+    "spouse-owned is the same disclosure surface — read the owner split in the header. "
+    "Only roster-CONFIRMED members appear here; candidates who filed a disclosure but "
+    "never served are excluded.</p>")
+
+
+def _insider_filter_form(p, res):
+    ms = "".join("<option value='{}'{}>{}</option>".format(
+        html.escape(m["key"]), " selected" if m["key"] == res.get("member_key") else "",
+        html.escape(m["label"])) for m in res.get("members") or [])
+    ys = "".join("<option value='{}'{}>{}</option>".format(
+        y, " selected" if y == res.get("year") else "", y)
+        for y in res.get("years") or [])
+    return ("<form method='get'>member <select name='member'>{ms}</select> "
+            "year <select name='myear'>{ys}</select> "
+            "<input type='hidden' name='per_page' value='{pp}'>"
+            "<input type='hidden' name='page' value='1'>"
+            "<input type='hidden' name='theme' value='{t}'>"
+            "<button>apply</button></form>").format(
+                ms=ms, ys=ys, pp=p["per_page"],
+                t=html.escape(p.get("theme") or ""))
+
+
+def view_insiders(con, p):
+    """Political-insider reported book — the /portfolios layout, for a member of Congress."""
+    res = q.q_member_book(con, member_key=p["member"] or None, year=p["myear"])
+    active = p["sort"] or "midpoint"
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("ticker", "ticker"), ("asset_name", "asset"), ("instrument", "instr"),
+            ("owner", "owner"), ("midpoint", "~value"), ("value_lo", "band lo"),
+            ("value_hi", "band hi"), ("pct_of_book", "% book")]
+    trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])]
+    for r in page_rows:
+        tk = (html.escape(r["ticker"]) if r["ticker"] else "<span class='muted'>-</span>")
+        own = ("<b>{}</b>".format(html.escape(r["owner"])) if r["owner"] != "self"
+               else html.escape(r["owner"]))
+        pct = "-" if r["pct_of_book"] is None else "{:.2f}%".format(r["pct_of_book"])
+        trs.append(
+            "<tr><td>{tk}</td><td>{an}</td><td>{ins}</td><td>{ow}</td><td>{mid}</td>"
+            "<td>{lo}</td><td>{hi}</td><td>{pct}</td></tr>".format(
+                tk=tk, an=html.escape(str(r["asset_name"] or "-"))[:70],
+                ins=html.escape(r["instrument"]), ow=own, mid=_money0(r["midpoint"]),
+                lo=_money0(r["value_lo"]),
+                hi=_money0(r["value_hi"]) if r["value_hi"] else "open", pct=pct))
+    trs.append("</table>")
+    if not res.get("member"):
+        head = ("<p class='muted'>No roster-confirmed members with holdings yet — sync the "
+                "roster (python -m smart_money.roster) after ingesting FD holdings.</p>")
+    else:
+        split = res["owner_split"]
+        sp = res.get("spouse_share")
+        proxy = res.get("proxy_share")
+        flag = ""
+        if sp is not None and sp >= 50:
+            flag = (" &middot; <b>{}% of this book is SPOUSE-owned</b> — the disclosure "
+                    "surface here is largely not the member's own name".format(sp))
+        head = (
+            "<p class='muted'><b>{m}</b> &middot; {ch}{pt}{st} &middot; FD year <b>{yr}</b> "
+            "&middot; {n} positions &middot; reported book <b>{bk}</b> (band midpoints)</p>"
+            "<p class='muted'>owner split: {osp}{flag}. Click a column header to sort.</p>"
+        ).format(m=html.escape(res["member"]), ch=html.escape(res["chamber"] or "?"),
+                 pt=(" &middot; " + html.escape(res["party"])) if res.get("party") else "",
+                 st=(" &middot; " + html.escape(res["state"])) if res.get("state") else "",
+                 yr=res["year"], n=res["count"], bk=_money0(res["book_value"]),
+                 osp=" &middot; ".join(
+                     "{} {}".format(k, _money0(v))
+                     for k, v in sorted(split.items(), key=lambda x: -x[1])) or "-",
+                 flag=flag)
+    body = [head, _INSIDER_CAVEAT, _insider_filter_form(p, res),
+            _pager(p, meta, "/insiders.csv"), "".join(trs),
+            _pager(p, meta, "/insiders.csv")]
+    return _page("Political insider book", "".join(body), p)
+
+
+_INSIDER_CSV_COLS = ["ticker", "asset_name", "instrument", "owner", "midpoint",
+                     "value_lo", "value_hi", "pct_of_book", "income_type"]
+
+
+def _build_insiders_csv(con, p, full):
+    """CSV of the political-insider book, same member/year/sort as the screen."""
+    import csv
+    import io
+    res = q.q_member_book(con, member_key=p["member"] or None, year=p["myear"])
+    rows = _sorted(res["rows"], p["sort"] or "midpoint", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_INSIDER_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 def view_congress_gaps(con, p):
     """SM-C2 P3: the coverage roll — who is behind the breadth counts, and who isn't."""
     res = q.q_congress_gaps(con)
@@ -1123,6 +1228,7 @@ def _build_flows_csv(con, p, full):
 
 
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
+          "/insiders": view_insiders,
           "/congress_gaps": view_congress_gaps,
           "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
@@ -1162,6 +1268,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._flows_csv(con, p, parse_qs(u.query))
             if u.path == "/portfolios.csv":
                 return self._portfolios_csv(con, p, parse_qs(u.query))
+            if u.path == "/insiders.csv":
+                return self._insiders_csv(con, p, parse_qs(u.query))
             if u.path == "/congress_gaps.csv":
                 return self._congress_gaps_csv(con, p, parse_qs(u.query))
             if u.path == "/congress.csv":
@@ -1230,6 +1338,16 @@ class Handler(BaseHTTPRequestHandler):
         data = _build_congress_csv(con, p, full)
         what = "holders_{}".format(p["cticker"]) if p["cticker"] else "breadth_{}".format(p["cowner"])
         fname = "congress_{}_{}.csv".format(what, "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _insiders_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_insiders_csv(con, p, full)
+        fname = "insider_book_{}_{}.csv".format(
+            (p["member"] or "default").replace("|", "_"),
+            "all" if full else "page{}".format(p["page"]))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})

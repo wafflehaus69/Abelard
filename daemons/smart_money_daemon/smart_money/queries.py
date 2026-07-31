@@ -991,6 +991,99 @@ def _member_parties(con):
     return {(c, l, f, s): _PARTY_BUCKET.get(p, "ind") for c, l, f, s, p in rows}
 
 
+def _confirmed_members(con):
+    """{(chamber,last,first,state_dist)} that the roster confirmed as an ACTUAL member.
+    Candidates who filed a disclosure but never served resolve to nothing, so this set is
+    how they are excluded — a candidate is not an insider. Empty (=> no filtering) when
+    the roster has never been synced, so the surface never silently empties."""
+    try:
+        return {(c, l, f, s) for c, l, f, s in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist "
+            "FROM congress_member_roster WHERE party IS NOT NULL")}
+    except Exception:
+        return set()
+
+
+def q_member_book(con, member_key=None, year=None):
+    """The REPORTED BOOK of one political insider — same shape as the 13F portfolio view,
+    for a member of Congress. Per-holding rows for the chosen member/filing year, with the
+    band midpoint as a coarse value and each position's OWNER.
+
+    OWNER IS FIRST-CLASS, NOT A FOOTNOTE. Several members do little or no trading in their
+    own name — the positions sit with a spouse (the Pelosi pattern: the trades were her
+    husband's). A book that is mostly spouse-owned is the same disclosure surface, so the
+    header reports the owner split and the spouse share outright rather than burying it.
+
+    Band-valued: every figure is a COARSE band midpoint, never a mark. Members are the
+    roster-CONFIRMED ones only, so candidates who filed but never served are excluded."""
+    confirmed = _confirmed_members(con)
+    roster = {}
+    try:
+        for c, l, f, s, p, st in con.execute(
+                "SELECT chamber, member_last, member_first, state_dist, party, state "
+                "FROM congress_member_roster WHERE party IS NOT NULL"):
+            roster[(c, l, f, s)] = {"party": p, "state": st}
+    except Exception:
+        pass
+    # candidate member list = confirmed identities that actually have holdings
+    members = []
+    for c, l, f, s, n in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, count(*) "
+            "FROM congress_holdings GROUP BY chamber, member_last, member_first, state_dist"):
+        k = (c, l, f, s)
+        if confirmed and k not in confirmed:
+            continue
+        members.append({"key": "{}|{}|{}|{}".format(c, l or "", f or "", s or ""),
+                        "label": "{}, {} ({})".format(l or "?", f or "", c[:3].upper()),
+                        "rows": n})
+    members.sort(key=lambda m: m["label"])
+    base = {"as_of": _as_of(), "members": members}
+    if not members:
+        base.update({"member": None, "rows": [], "count": 0, "years": [], "year": None,
+                     "book_value": 0, "owner_split": {}, "spouse_share": None,
+                     "party": None, "state": None, "chamber": None})
+        return base
+    key = member_key if any(m["key"] == member_key for m in members) else members[0]["key"]
+    cham, last, first, sd = (key.split("|") + ["", "", ""])[:4]
+    last, first, sd = last or None, first or None, (sd or None)
+    years = [y for (y,) in con.execute(
+        "SELECT DISTINCT filing_year FROM congress_holdings WHERE chamber=? AND "
+        "member_last IS ? AND member_first IS ? AND state_dist IS ? "
+        "ORDER BY filing_year DESC", (cham, last, first, sd)) if y is not None]
+    year = year if year in years else (years[0] if years else None)
+    rows = []
+    for name, ticker, atype, owner, lo, hi, inc in con.execute(
+            "SELECT asset_name, ticker, asset_type, owner, value_lo, value_hi, income_type "
+            "FROM congress_holdings WHERE chamber=? AND member_last IS ? AND "
+            "member_first IS ? AND state_dist IS ? AND filing_year IS ?",
+            (cham, last, first, sd, year)):
+        mid = ((lo + hi) / 2 if (lo is not None and hi is not None) else (lo or 0))
+        rows.append({"asset_name": name, "ticker": ticker,
+                     "instrument": "OP" if atype == "OP" else "SH",
+                     "asset_type": atype, "owner": _OWNER_LABEL.get(owner, "self"),
+                     "value_lo": lo, "value_hi": hi, "midpoint": round(mid),
+                     "income_type": inc})
+    book = sum(r["midpoint"] for r in rows) or 0
+    for r in rows:
+        r["pct_of_book"] = round(100.0 * r["midpoint"] / book, 2) if book else None
+    rows.sort(key=lambda r: -r["midpoint"])
+    split = defaultdict(float)
+    for r in rows:
+        split[r["owner"]] += r["midpoint"]
+    not_self = sum(v for k, v in split.items() if k != "self")
+    meta = roster.get((cham, last, first, sd)) or {}
+    base.update({
+        "member": "{}, {}".format(last or "?", first or ""), "member_key": key,
+        "chamber": cham, "party": meta.get("party"), "state": meta.get("state") or sd,
+        "years": years, "year": year, "rows": rows, "count": len(rows),
+        "book_value": round(book),
+        "owner_split": {k: round(v) for k, v in split.items()},
+        "proxy_share": round(100.0 * not_self / book, 1) if book else None,
+        "spouse_share": round(100.0 * split.get("spouse", 0) / book, 1) if book else None,
+        "note": "band-midpoint proxy, never a mark; owner shows whose position it is"})
+    return base
+
+
 def q_congress_gaps(con):
     """SM-C2 P3: who is BEHIND the breadth counts. Per filer identity: chamber, party,
     how it resolved, filing years present, and holdings rows. The point is that breadth
@@ -1026,7 +1119,7 @@ def q_congress_gaps(con):
                     "candidates who filed an FD but never served"}
 
 
-def q_congress_breadth(con, min_holders=1, owner_filter="all"):
+def q_congress_breadth(con, min_holders=1, owner_filter="all", members_only=True):
     """SM-C1/C2 flagship: one row per (ticker, instrument) — how many DISTINCT members hold
     it in their LATEST annual FD, with the chamber split (house/senate), the owner split
     (self/spouse/dependent/joint), a ROUGH summed band-midpoint exposure, YoY holder-count
@@ -1039,6 +1132,9 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all"):
     are not part of ticker breadth."""
     latest = _member_latest_years(con)
     parties = _member_parties(con)
+    # A candidate who filed a disclosure but never served is not an insider — excluded by
+    # default. Falls back to no filtering when the roster has never been synced.
+    confirmed = _confirmed_members(con) if members_only else set()
     agg = defaultdict(lambda: {"members": set(), "owners": defaultdict(int),
                                "chambers": defaultdict(set), "parties": defaultdict(set),
                                "mid": 0.0, "first_year": None,
@@ -1052,6 +1148,8 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all"):
             continue
         key = (ticker.upper(), "OP" if atype == "OP" else "SH")
         mkey = (c, l, f, s)
+        if confirmed and mkey not in confirmed:                # candidates are not insiders
+            continue
         a = agg[key]
         a["by_year"][yr].add(mkey)
         a["first_year"] = yr if a["first_year"] is None else min(a["first_year"], yr)

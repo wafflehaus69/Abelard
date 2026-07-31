@@ -75,7 +75,9 @@ def test_breadth_party_split_reconciles(tmp_path):
     con.commit()
     con.close()
     ro = q.connect_ro(path)
-    row = [r for r in q.q_congress_breadth(ro, 1)["rows"] if r["ticker"] == "AAPL"][0]
+    # members_only=False keeps the candidate, so the unknown bucket is exercised
+    row = [r for r in q.q_congress_breadth(ro, 1, members_only=False)["rows"]
+           if r["ticker"] == "AAPL"][0]
     assert row["holder_count"] == 5 and row["house"] == 2 and row["senate"] == 3
     assert row["dem"] == 2 and row["rep"] == 2 and row["party_unknown"] == 1
     # the party split must always account for every holder
@@ -108,6 +110,70 @@ def test_breadth_degrades_when_roster_never_synced(tmp_path):
     row = [r for r in q.q_congress_breadth(ro, 1)["rows"] if r["ticker"] == "AAPL"][0]
     assert row["party_unknown"] == row["holder_count"] == 5
     assert row["dem"] == 0 and row["rep"] == 0
+    ro.close()
+
+
+def test_breadth_excludes_candidates_by_default(tmp_path):
+    """A candidate who filed but never served is not an insider -> out of the breadth
+    counts unless explicitly asked for."""
+    path = str(tmp_path / "c.db")
+    con = _seeded(path)
+    roster.sync(con, entries=ENTRIES)
+    con.commit()
+    con.close()
+    ro = q.connect_ro(path)
+    only = [r for r in q.q_congress_breadth(ro, 1)["rows"] if r["ticker"] == "AAPL"][0]
+    assert only["holder_count"] == 4 and only["party_unknown"] == 0, only
+    allf = [r for r in q.q_congress_breadth(ro, 1, members_only=False)["rows"]
+            if r["ticker"] == "AAPL"][0]
+    assert allf["holder_count"] == 5 and allf["party_unknown"] == 1, allf
+    ro.close()
+
+
+def test_member_book_surfaces_spouse_proxy(tmp_path):
+    """Owner is first-class: a book held mostly by a spouse must report that share, since
+    for some members the positions are not in their own name at all."""
+    path = str(tmp_path / "m.db")
+    con = dbmod.connect(path)
+
+    def hold(ridx, ticker, owner, lo, hi):
+        con.execute(
+            "INSERT OR REPLACE INTO congress_holdings(doc_id, chamber, filing_year, period, "
+            "member_last, member_first, state_dist, person_id, row_idx, asset_name, ticker, "
+            "asset_type, owner, value_lo, value_hi, income_type, ingested_at_unix) "
+            "VALUES('d1','house',2025,'2025','Pelosi','Nancy','CA11',NULL,?,?,?,'ST',?,?,?,"
+            "NULL,0)", (ridx, ticker + " Inc", ticker, owner, lo, hi))
+    hold(0, "GOOGL", "SP", 5000001, 25000000)     # spouse
+    hold(1, "AAPL", "SP", 5000001, 25000000)      # spouse
+    hold(2, "MSFT", "Self", 1001, 15000)          # tiny self position
+    con.commit()
+    roster.sync(con, entries=ENTRIES)
+    con.commit()
+    con.close()
+    ro = q.connect_ro(path)
+    b = q.q_member_book(ro)
+    assert b["member"].startswith("Pelosi") and b["party"] == "Democrat"
+    assert b["count"] == 3 and b["year"] == 2025
+    assert b["owner_split"]["spouse"] > b["owner_split"]["self"]
+    assert b["spouse_share"] > 99, b            # overwhelmingly not in her own name
+    assert b["proxy_share"] > 99, b
+    # rows carry owner + a band-midpoint value and sort biggest-first
+    assert b["rows"][0]["owner"] == "spouse" and b["rows"][0]["midpoint"] == 15000000
+    assert abs(sum(r["pct_of_book"] for r in b["rows"]) - 100) < 0.1
+    ro.close()
+
+
+def test_member_book_lists_only_confirmed_members(tmp_path):
+    """The member picker must not offer candidates."""
+    path = str(tmp_path / "p.db")
+    con = _seeded(path)
+    roster.sync(con, entries=ENTRIES)
+    con.commit()
+    con.close()
+    ro = q.connect_ro(path)
+    labels = [m["label"] for m in q.q_member_book(ro)["members"]]
+    assert any(l.startswith("Pelosi") for l in labels)
+    assert not any(l.startswith("Shulli") for l in labels), labels
     ro.close()
 
 
