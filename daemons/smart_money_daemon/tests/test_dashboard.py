@@ -205,6 +205,34 @@ def test_portfolios_view_and_front_strip():
     os.unlink(path)
 
 
+def test_congress_view_and_csv():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    CH = ("INSERT INTO congress_holdings(doc_id, chamber, filing_year, period, "
+          "member_last, member_first, state_dist, person_id, row_idx, asset_name, "
+          "ticker, asset_type, owner, value_lo, value_hi, income_type, ingested_at_unix) "
+          "VALUES(?,'house',2026,'2026-05-15',?,?,?,NULL,?,?,?,?,?,?,?,NULL,0)")
+    con.execute(CH, ("d1", "Aaa", "A", "A1", 0, "Apple", "AAPL", "ST", "Self", 15001, 50000))
+    con.execute(CH, ("d2", "Bbb", "B", "B1", 0, "Apple", "AAPL", "ST", "SP", 50001, 100000))
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    h = dash.view_congress(con, dash._params({}))
+    assert h.startswith("<!doctype html>") and "Congress breadth" in h, "breadth page"
+    assert "Distribution-first" in h and "Annual snapshot" in h, "distribution note + caveat"
+    assert "sort=holder_count" in h, "sortable"
+    assert "cticker=AAPL" in h, "ticker drill-down link"
+    hd = dash.view_congress(con, dash._params({"cticker": ["AAPL"], "cinstr": ["SH"]}))
+    assert "Congress holders" in hd and "breadth board" in hd, "drill-down"
+    data = dash._build_congress_csv(con, dash._params({}), full=True)
+    assert data.startswith("ticker,instrument,holder_count"), data[:40]
+    assert dash._params({"cowner": ["spouse"]})["cowner"] == "spouse"
+    assert dash._params({"cowner": ["x"]})["cowner"] == "all"      # bad -> default
+    assert dash._params({"cinstr": ["OP"]})["cinstr"] == "OP"
+    con.close()
+    os.unlink(path)
+
+
 def test_sort_helpers_and_param_sanitizing():
     rows = [{"x": 3}, {"x": 1}, {"x": None}, {"x": 2}]
     assert [r["x"] for r in dash._sorted(rows, "x", "asc")] == [1, 2, 3, None], "None last"

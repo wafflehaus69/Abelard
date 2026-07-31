@@ -953,6 +953,88 @@ def q_tracked_books(con, anchor=None):
     return {"as_of": _as_of(), "filers": out}
 
 
+# ---------------------------------------------------------------- q_congress_breadth (SM-C1)
+_OWNER_LABEL = {"SP": "spouse", "DC": "dependent", "JT": "joint", "Self": "self"}
+
+
+def _member_latest_years(con):
+    """{(last, first, state_dist): newest_filing_year} — each member's most recent
+    annual FD, so breadth counts one snapshot per member."""
+    return {(l, f, s): y for l, f, s, y in con.execute(
+        "SELECT member_last, member_first, state_dist, MAX(filing_year) "
+        "FROM congress_holdings GROUP BY member_last, member_first, state_dist")}
+
+
+def q_congress_breadth(con, min_holders=1, owner_filter="all"):
+    """SM-C1 flagship: one row per (ticker, instrument) — how many DISTINCT members hold
+    it in their LATEST annual FD, with the owner split (self/spouse/dependent/joint), a
+    ROUGH summed band-midpoint exposure, YoY holder-count change, and first-seen year.
+    Option rows are kept DISTINCT from stock rows for the same ticker (a member's GOOGL
+    stock and GOOGL option are different positions). DISTRIBUTION-FIRST: mega-caps top
+    raw breadth mechanically, so the surface reports the holder-count distribution and
+    never labels 'notable'; the signal is SMID names with outsized breadth and YoY
+    change. Band-valued -> exposure is a coarse proxy. Non-security assets (ticker NULL)
+    are not part of ticker breadth."""
+    latest = _member_latest_years(con)
+    agg = defaultdict(lambda: {"members": set(), "owners": defaultdict(int),
+                               "mid": 0.0, "first_year": None,
+                               "by_year": defaultdict(set)})
+    for l, f, s, yr, ticker, atype, owner, vlo, vhi in con.execute(
+            "SELECT member_last, member_first, state_dist, filing_year, ticker, "
+            "asset_type, owner, value_lo, value_hi FROM congress_holdings "
+            "WHERE ticker IS NOT NULL AND ticker!=''"):
+        olabel = _OWNER_LABEL.get(owner, "self")
+        if owner_filter != "all" and olabel != owner_filter:   # owner is a first-class filter
+            continue
+        key = (ticker.upper(), "OP" if atype == "OP" else "SH")
+        mkey = (l, f, s)
+        a = agg[key]
+        a["by_year"][yr].add(mkey)
+        a["first_year"] = yr if a["first_year"] is None else min(a["first_year"], yr)
+        if latest.get(mkey) == yr:          # count breadth from each member's latest filing only
+            a["members"].add(mkey)
+            a["owners"][olabel] += 1
+            a["mid"] += ((vlo + vhi) / 2 if (vlo is not None and vhi is not None)
+                         else (vlo or 0))
+    out = []
+    for (ticker, instrument), a in agg.items():
+        hc = len(a["members"])
+        if hc < min_holders:
+            continue
+        yrs = sorted(a["by_year"])
+        cur = len(a["by_year"][yrs[-1]]) if yrs else 0
+        prev = len(a["by_year"][yrs[-2]]) if len(yrs) >= 2 else None
+        out.append({"ticker": ticker, "instrument": instrument, "holder_count": hc,
+                    "self": a["owners"]["self"], "spouse": a["owners"]["spouse"],
+                    "dependent": a["owners"]["dependent"], "joint": a["owners"]["joint"],
+                    "midpoint_exposure": round(a["mid"]), "first_year": a["first_year"],
+                    "yoy_change": (cur - prev) if prev is not None else None})
+    out.sort(key=lambda r: (-r["holder_count"], -r["midpoint_exposure"]))
+    return {"as_of": _as_of(), "count": len(out), "rows": out,
+            "note": "band-midpoint exposure is a COARSE proxy; distribution-first "
+                    "(mega-caps top raw breadth mechanically)"}
+
+
+def q_congress_holders(con, ticker, instrument="SH"):
+    """Drill-down: the members holding one (ticker, instrument) in their latest FD, with
+    owner and value band. This expandable holder list IS the who-holds-what matrix."""
+    want = "OP" if str(instrument).upper() == "OP" else "SH"
+    latest = _member_latest_years(con)
+    rows = []
+    for l, f, s, yr, atype, owner, vlo, vhi in con.execute(
+            "SELECT member_last, member_first, state_dist, filing_year, asset_type, "
+            "owner, value_lo, value_hi FROM congress_holdings WHERE UPPER(ticker)=?",
+            (ticker.upper(),)):
+        if ("OP" if atype == "OP" else "SH") != want or latest.get((l, f, s)) != yr:
+            continue
+        rows.append({"member": "{}, {}".format(l or "?", f or ""), "state": s,
+                     "owner": _OWNER_LABEL.get(owner, "self"),
+                     "value_lo": vlo, "value_hi": vhi})
+    rows.sort(key=lambda r: -(r["value_lo"] or 0))
+    return {"as_of": _as_of(), "ticker": ticker.upper(), "instrument": want,
+            "count": len(rows), "rows": rows}
+
+
 # ---------------------------------------------------------------- CLI
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-R1 L1 query layer")

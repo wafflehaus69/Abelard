@@ -27,8 +27,8 @@ from urllib.parse import parse_qs, urlparse
 from . import db as dbmod
 from . import queries as q
 
-NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/trades", "Trades"),
-       ("/flows", "Net flows"), ("/clusters", "Clusters"),
+NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/congress", "Congress"),
+       ("/trades", "Trades"), ("/flows", "Net flows"), ("/clusters", "Clusters"),
        ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
 # Theme palettes. Default is light; dark applies automatically when the viewer's
@@ -90,7 +90,7 @@ def _page(title, body, params):
     # would suppress the destination's default-sort arrow). Reset them so every view
     # opens on page 1 in its own default sort (per_page, a display preference, carries).
     nav_qs = _qs(params, page=None, spage=None, sort=None, dir=None,
-                 ssort=None, sdir=None)
+                 ssort=None, sdir=None, cticker=None, cinstr=None, cowner=None)
     nav = " &middot; ".join(
         '<a href="{}{}">{}</a>'.format(href, nav_qs, html.escape(label))
         for href, label in NAV)
@@ -127,6 +127,9 @@ def _qs(params, **override):
     base["sdir"] = params.get("sdir") if params.get("ssort") and params.get("sdir") == "asc" else None
     base["filer"] = params.get("filer") or None
     base["period"] = params.get("period") or None
+    base["cticker"] = params.get("cticker") or None
+    base["cinstr"] = params.get("cinstr") if params.get("cinstr") not in (None, "", "SH") else None
+    base["cowner"] = params.get("cowner") if params.get("cowner") not in (None, "", "all") else None
     base.update(override)
     keep = {k: v for k, v in base.items() if v}
     if not keep:
@@ -277,6 +280,10 @@ def _params(qsd):
     per = (one("period") or "").strip()
     period = per if (len(per) == 10 and per[4] == "-" and per[7] == "-"
                      and per.replace("-", "").isdigit()) else ""
+    cticker = "".join(c for c in (one("cticker") or "").upper()
+                      if c.isalnum() or c in ".-")[:10]
+    cinstr = (one("cinstr") or "").upper()
+    cowner = (one("cowner") or "").lower()
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
@@ -292,6 +299,8 @@ def _params(qsd):
          "sort": _sortkey(one("sort")), "dir": _dir(one("dir")),
          "ssort": _sortkey(one("ssort")), "sdir": _dir(one("sdir")),
          "filer": filer, "period": period,
+         "cticker": cticker, "cinstr": cinstr if cinstr in ("SH", "OP") else "SH",
+         "cowner": cowner if cowner in ("self", "spouse", "dependent", "joint") else "all",
          "smid": one("smid") == "1",
          "capit": one("capit") == "1"}
     return p
@@ -830,6 +839,115 @@ def _build_portfolio_csv(con, p, full):
     return buf.getvalue()
 
 
+_CONGRESS_CAVEAT = (
+    "<p class='muted'><b>Annual snapshot, not continuous</b> — one FD report per member "
+    "per year (filed ~May), so it lags live trading; PTRs are the flow between snapshots. "
+    "<b>Band-valued</b>: exposure is a coarse band-midpoint proxy, not a mark. Non-security "
+    "assets (funds without a ticker, real property) are excluded from ticker breadth; parse "
+    "gaps are shown per row. Options count as distinct positions from the same-ticker stock. "
+    "Owner = whose position it is (self / spouse / dependent / joint).</p>")
+
+
+def _congress_owner_form(params):
+    o = "".join("<option value='{}'{}>{}</option>".format(
+        v, " selected" if v == params["cowner"] else "", v)
+        for v in ("all", "self", "spouse", "joint", "dependent"))
+    return (
+        "<form method='get'>owner <select name='cowner'>{o}</select> "
+        "<input type='hidden' name='per_page' value='{pp}'>"
+        "<input type='hidden' name='page' value='1'>"
+        "<input type='hidden' name='theme' value='{t}'>"
+        "<button>apply</button></form>"
+        "<div class='muted'><a href='/congress{clr}'>clear</a></div>"
+    ).format(o=o, pp=params["per_page"], t=html.escape(params.get("theme") or ""),
+             clr=("?theme=" + params["theme"]) if params.get("theme") else "")
+
+
+def view_congress(con, p):
+    qs_fn = lambda **kw: _qs(p, **kw)
+    if p["cticker"]:                                  # holder drill-down = the matrix, made human
+        res = q.q_congress_holders(con, p["cticker"], p["cinstr"])
+        active = p["sort"] or "value_lo"
+        rows = _sorted(res["rows"], active, p["dir"])
+        page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+        cols = [("member", "member"), ("state", "state"), ("owner", "owner"),
+                ("value_lo", "band lo"), ("value_hi", "band hi")]
+        trs = ["<table>" + _sort_headers(p, cols, qs_fn, active, p["dir"])]
+        for r in page_rows:
+            trs.append("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
+                html.escape(r["member"]), html.escape(str(r["state"] or "-")),
+                html.escape(r["owner"]), _money0(r["value_lo"]),
+                _money0(r["value_hi"]) if r["value_hi"] else "open"))
+        trs.append("</table>")
+        body = ["<p class='muted'><a href='/congress'>&laquo; breadth board</a> &middot; "
+                "<b>{} {}</b> — {} positions across members (latest filing each). Click a "
+                "column to sort.</p>".format(html.escape(res["ticker"]), res["instrument"],
+                                             res["count"]),
+                _CONGRESS_CAVEAT, _pager(p, meta, "/congress.csv"), "".join(trs)]
+        return _page("Congress holders — {}".format(res["ticker"]), "".join(body), p)
+    res = q.q_congress_breadth(con, min_holders=2, owner_filter=p["cowner"])
+    active = p["sort"] or "holder_count"
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    dist = {}
+    for r in res["rows"]:
+        b = ("20+" if r["holder_count"] >= 20 else "10-19" if r["holder_count"] >= 10
+             else "5-9" if r["holder_count"] >= 5 else "2-4")
+        dist[b] = dist.get(b, 0) + 1
+    cols = [("ticker", "ticker"), ("instrument", "instr"), ("holder_count", "holders"),
+            ("self", "self"), ("spouse", "spouse"), ("joint", "joint"),
+            ("dependent", "dep"), ("midpoint_exposure", "~exposure"),
+            ("yoy_change", "YoY"), ("first_year", "first")]
+    trs = ["<table>" + _sort_headers(p, cols, qs_fn, active, p["dir"])]
+    for r in page_rows:
+        tlink = "<a href=\"{}\">{}</a>".format(
+            _qs(p, cticker=r["ticker"], cinstr=r["instrument"], sort=None, dir=None, page=1),
+            html.escape(r["ticker"]))
+        yoy = "-" if r["yoy_change"] is None else "{:+d}".format(r["yoy_change"])
+        trs.append(
+            "<tr><td>{tk}</td><td>{ins}</td><td>{hc}</td><td>{s}</td><td>{sp}</td><td>{jt}"
+            "</td><td>{dp}</td><td>{ex}</td><td>{yy}</td><td>{fy}</td></tr>".format(
+                tk=tlink, ins=r["instrument"], hc=r["holder_count"], s=r["self"],
+                sp=r["spouse"], jt=r["joint"], dp=r["dependent"],
+                ex=_money0(r["midpoint_exposure"]), yy=yoy, fy=r["first_year"] or "-"))
+    trs.append("</table>")
+    diststr = " &middot; ".join("{}: {}".format(k, dist[k])
+                                for k in ("20+", "10-19", "5-9", "2-4") if k in dist)
+    body = ["<p class='muted'>Who holds what across Congress — one row per ticker+instrument; "
+            "holder_count = distinct members in their latest annual FD. <b>Distribution-first</b>: "
+            "mega-caps and index funds top raw breadth mechanically, so read the distribution, "
+            "not the raw top — the signal is SMID names with outsized breadth and YoY change. "
+            "Holder-count distribution ({} tickers held by ≥2): {}. Click a ticker for the "
+            "holder list; click a column to sort.</p>".format(res["count"], diststr),
+            _CONGRESS_CAVEAT, _congress_owner_form(p), _pager(p, meta, "/congress.csv"),
+            "".join(trs), _pager(p, meta, "/congress.csv")]
+    return _page("Congress breadth — who holds what", "".join(body), p)
+
+
+def _build_congress_csv(con, p, full):
+    """CSV of the congress surface — the breadth board or (with cticker) the holder list,
+    honoring the active sort and owner filter, matching the on-screen page."""
+    import csv
+    import io
+    if p["cticker"]:
+        res = q.q_congress_holders(con, p["cticker"], p["cinstr"])
+        rows = _sorted(res["rows"], p["sort"] or "value_lo", p["dir"])
+        cols = ["member", "state", "owner", "value_lo", "value_hi"]
+    else:
+        res = q.q_congress_breadth(con, min_holders=2, owner_filter=p["cowner"])
+        rows = _sorted(res["rows"], p["sort"] or "holder_count", p["dir"])
+        cols = ["ticker", "instrument", "holder_count", "self", "spouse", "joint",
+                "dependent", "midpoint_exposure", "yoy_change", "first_year"]
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 _CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
              "reported_date", "lag_days", "shares", "value", "plan_10b5_1",
              "entry_close", "latest_close", "pct_since_trade", "smid_band",
@@ -932,8 +1050,8 @@ def _build_flows_csv(con, p, full):
     return buf.getvalue()
 
 
-ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/trades": view_trades,
-          "/flows": view_flows, "/clusters": view_clusters,
+ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
+          "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
 
 
@@ -971,6 +1089,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._flows_csv(con, p, parse_qs(u.query))
             if u.path == "/portfolios.csv":
                 return self._portfolios_csv(con, p, parse_qs(u.query))
+            if u.path == "/congress.csv":
+                return self._congress_csv(con, p, parse_qs(u.query))
             view = ROUTES.get(u.path)
             if not view:
                 return self._send(404, _page("Not found", "<p>No such view.</p>", p))
@@ -1026,6 +1146,15 @@ class Handler(BaseHTTPRequestHandler):
         fname = "portfolio_{}_{}_{}.csv".format(
             p["filer"] or "default", p["period"] or "latest",
             "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _congress_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_congress_csv(con, p, full)
+        what = "holders_{}".format(p["cticker"]) if p["cticker"] else "breadth_{}".format(p["cowner"])
+        fname = "congress_{}_{}.csv".format(what, "all" if full else "page{}".format(p["page"]))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})

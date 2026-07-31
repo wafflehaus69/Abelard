@@ -367,6 +367,45 @@ def test_portfolio_value_unit_normalization():
     os.unlink(path)
 
 
+_CH_INSERT = (
+    "INSERT INTO congress_holdings(doc_id, chamber, filing_year, period, member_last, "
+    "member_first, state_dist, person_id, row_idx, asset_name, ticker, asset_type, "
+    "owner, value_lo, value_hi, income_type, ingested_at_unix) "
+    "VALUES(?,'house',?,'2026-05-15',?,?,?,NULL,?,?,?,?,?,?,?,NULL,0)")
+
+
+def _ch(con, doc, yr, last, ridx, ticker, atype, owner, lo, hi):
+    con.execute(_CH_INSERT, (doc, yr, last, last[0], last[:2], ridx, ticker + " Inc",
+                             ticker, atype, owner, lo, hi))
+
+
+def test_congress_breadth_and_holders():
+    path = tempfile.mktemp(suffix=".db")
+    con = dbmod.connect(path)
+    # member Aaa latest 2026: AAPL (self) + GOOGL option (spouse); older 2025 AAPL for YoY
+    _ch(con, "dA26", 2026, "Aaa", 0, "AAPL", "ST", "Self", 15001, 50000)
+    _ch(con, "dA26", 2026, "Aaa", 1, "GOOGL", "OP", "SP", 1001, 15000)
+    _ch(con, "dA25", 2025, "Aaa", 0, "AAPL", "ST", "Self", 15001, 50000)
+    # member Bbb latest 2026: AAPL (joint)
+    _ch(con, "dB26", 2026, "Bbb", 0, "AAPL", "ST", "JT", 50001, 100000)
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    byk = {(r["ticker"], r["instrument"]): r for r in q.q_congress_breadth(con, 1)["rows"]}
+    assert byk[("AAPL", "SH")]["holder_count"] == 2, byk           # A + B, latest filings
+    assert byk[("AAPL", "SH")]["self"] == 1 and byk[("AAPL", "SH")]["joint"] == 1
+    assert byk[("AAPL", "SH")]["yoy_change"] == 1                   # 2 in 2026 vs 1 in 2025
+    assert byk[("GOOGL", "OP")]["holder_count"] == 1               # option kept distinct
+    assert ("GOOGL", "SH") not in byk
+    spk = {(r["ticker"], r["instrument"])
+           for r in q.q_congress_breadth(con, 1, owner_filter="spouse")["rows"]}
+    assert ("GOOGL", "OP") in spk and ("AAPL", "SH") not in spk    # owner filter
+    hd = q.q_congress_holders(con, "AAPL", "SH")
+    assert hd["count"] == 2 and {r["owner"] for r in hd["rows"]} == {"self", "joint"}
+    con.close()
+    os.unlink(path)
+
+
 def test_cik_int_mixed_padding_join_guard():
     # The silent zero-row-join class: registry stores zero-padded, holdings/form4
     # store zero-stripped. cik_int must collapse them so a join never misses.
