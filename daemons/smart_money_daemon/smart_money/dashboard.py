@@ -28,7 +28,7 @@ from . import db as dbmod
 from . import queries as q
 
 NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/insiders", "Insider books"),
-       ("/congress", "Congress"),
+       ("/congress", "Congress"), ("/oge", "OGE 278e"),
        ("/trades", "Trades"), ("/flows", "Net flows"), ("/clusters", "Clusters"),
        ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
@@ -45,6 +45,13 @@ _DARK = ("--bg:#0f1216;--fg:#d7dce3;--border:#2b313b;--th-bg:#1a2130;"
          "--pos:#4ade80;--neg:#ff6b6b;--reported:#ff6b6b;"
          "--prov-book:#1c3324;--prov-watch:#1b2a44;--prov-trump:#3a2a1c;--prov-thiel:#2c1f3d")
 _CSS = (
+    # Restricted-source styling. The per-row tag is small but always visible, and the
+    # page banner is unmissable — this source carries a statutory use restriction.
+    ".restrict{font-size:10px;letter-spacing:.02em;color:var(--reported);"
+    "white-space:nowrap}"
+    ".restrict-banner{border:2px solid var(--reported);border-left-width:6px;"
+    "padding:.7rem .9rem;margin:.6rem 0;background:var(--hot-bg);color:var(--hot-fg);"
+    "line-height:1.45}"
     ":root{" + _LIGHT + "}"
     "@media(prefers-color-scheme:dark){:root:not([data-theme]){" + _DARK + "}}"
     ":root[data-theme='dark']{" + _DARK + "}"
@@ -1046,6 +1053,89 @@ def _build_insiders_csv(con, p, full):
     return buf.getvalue()
 
 
+def view_oge(con, p):
+    """OGE 278e executive-branch disclosure. RESTRICTED SOURCE — the use restriction is
+    rendered on EVERY row, not just as a page banner, and travels into the CSV."""
+    res = q.q_oge_holdings(con, filer=p["member"] or None)
+    active = p["sort"] or "midpoint"
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("line_no", "line"), ("description", "asset"), ("ticker", "ticker"),
+            ("owner", "owner"), ("eif", "EIF"), ("midpoint", "~value"),
+            ("value_lo", "band lo"), ("value_hi", "band hi"),
+            ("use_restriction", "use restriction")]
+    trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])]
+    for r in page_rows:
+        own = ("<b>{}</b>".format(html.escape(r["owner"])) if r["owner"] == "spouse"
+               else html.escape(r["owner"]))
+        trs.append(
+            "<tr><td>{ln}</td><td>{d}</td><td>{tk}</td><td>{ow}</td><td>{eif}</td>"
+            "<td>{mid}</td><td>{lo}</td><td>{hi}</td>"
+            "<td><b class='restrict'>{res}</b></td></tr>".format(
+                ln=html.escape(r["line_no"]),
+                d=html.escape(str(r["description"] or "-"))[:80],
+                tk=html.escape(r["ticker"] or "-"), ow=own,
+                eif=html.escape(str(r["eif"] or "-")),
+                mid=_money0(r["midpoint"]) if r["midpoint"] is not None else "-",
+                lo=_money0(r["value_lo"]) if r["value_lo"] is not None else "-",
+                hi=(_money0(r["value_hi"]) if r["value_hi"] is not None
+                    else ("open" if r["value_lo"] is not None else "-")),
+                res=html.escape(r["use_restriction"] or "")))
+    trs.append("</table>")
+    if not res["filers"]:
+        body = ["<p class='muted'>No OGE 278e reports ingested. "
+                "<code>python -m smart_money.oge_ingest --filer 'Warsh, Kevin'</code></p>"]
+        return _page("OGE 278e disclosure", "".join(body), p)
+    sel = "".join("<option value='{}'{}>{}</option>".format(
+        html.escape(f), " selected" if f == res["filer"] else "", html.escape(f))
+        for f in res["filers"])
+    banner = (
+        "<p class='restrict-banner'><b>{r}</b><br>"
+        "Source: OGE Form 278e. Unlike every other source in this dashboard "
+        "(SEC Form 4/13F, STOCK Act congressional filings — all unrestricted), these "
+        "reports are restricted by the Ethics in Government Act, 5 U.S.C. app. "
+        "&sect;&nbsp;105(c): unlawful to obtain or use for any commercial purpose (other "
+        "than by news media for public dissemination), to set a credit rating, or to "
+        "solicit money. Civil penalty up to $11,000. The tag on each row is provenance, "
+        "not a permission — what keeps this lawful is the use staying non-commercial. "
+        "This source is deliberately excluded from the scan, alert and enqueue path.</p>"
+    ).format(r=html.escape(res["restriction"] or "RESTRICTED"))
+    head = ("<p class='muted'><b>{f}</b> &middot; {n} disclosure lines &middot; {b} with a "
+            "value band &middot; band midpoints are COARSE, never a mark. "
+            "<b>FILER vs SPOUSE</b> is the report's own marking — a spouse-held book is "
+            "the same disclosure surface.</p>".format(
+                f=html.escape(res["filer"]), n=res["count"], b=res["banded"]))
+    form = ("<form method='get'>filer <select name='member'>{s}</select> "
+            "<input type='hidden' name='per_page' value='{pp}'>"
+            "<input type='hidden' name='page' value='1'>"
+            "<input type='hidden' name='theme' value='{t}'>"
+            "<button>apply</button></form>").format(
+                s=sel, pp=p["per_page"], t=html.escape(p.get("theme") or ""))
+    body = [banner, head, form, _pager(p, meta, "/oge.csv"), "".join(trs),
+            _pager(p, meta, "/oge.csv")]
+    return _page("OGE 278e disclosure", "".join(body), p)
+
+
+_OGE_CSV_COLS = ["line_no", "description", "ticker", "owner", "eif", "midpoint",
+                 "value_lo", "value_hi", "income_type", "use_restriction"]
+
+
+def _build_oge_csv(con, p, full):
+    """CSV export. use_restriction is a REQUIRED column — the tag leaves with the data."""
+    import csv
+    import io
+    res = q.q_oge_holdings(con, filer=p["member"] or None)
+    rows = _sorted(res["rows"], p["sort"] or "midpoint", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_OGE_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 def view_congress_gaps(con, p):
     """SM-C2 P3: the coverage roll — who is behind the breadth counts, and who isn't."""
     res = q.q_congress_gaps(con)
@@ -1228,7 +1318,7 @@ def _build_flows_csv(con, p, full):
 
 
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
-          "/insiders": view_insiders,
+          "/insiders": view_insiders, "/oge": view_oge,
           "/congress_gaps": view_congress_gaps,
           "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
@@ -1268,6 +1358,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._flows_csv(con, p, parse_qs(u.query))
             if u.path == "/portfolios.csv":
                 return self._portfolios_csv(con, p, parse_qs(u.query))
+            if u.path == "/oge.csv":
+                return self._oge_csv(con, p, parse_qs(u.query))
             if u.path == "/insiders.csv":
                 return self._insiders_csv(con, p, parse_qs(u.query))
             if u.path == "/congress_gaps.csv":
@@ -1341,6 +1433,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})
+
+    def _oge_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_oge_csv(con, p, full)
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="oge_278e_RESTRICTED.csv"'})
 
     def _insiders_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"

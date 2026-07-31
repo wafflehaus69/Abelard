@@ -1084,6 +1084,47 @@ def q_member_book(con, member_key=None, year=None):
     return base
 
 
+def q_oge_holdings(con, filer=None):
+    """OGE Form 278e disclosure rows for an executive-branch filer.
+
+    RESTRICTED SOURCE. Every row carries its own `use_restriction` straight out of the DB
+    (the column is NOT NULL), so the restriction travels with each row into every view and
+    export rather than living only in a page banner. See
+    recon/OGE_278E_SOURCE_VERDICT.md — Ethics in Government Act 5 U.S.C. app. Sec 105(c)
+    forbids commercial use. This table is intentionally NOT read by the scan/alert path."""
+    try:
+        filers = [r[0] for r in con.execute(
+            "SELECT DISTINCT filer FROM oge_holdings ORDER BY filer")]
+    except Exception:
+        return {"as_of": _as_of(), "filers": [], "filer": None, "rows": [], "count": 0,
+                "restriction": None, "banded": 0}
+    if not filers:
+        return {"as_of": _as_of(), "filers": [], "filer": None, "rows": [], "count": 0,
+                "restriction": None, "banded": 0}
+    who = filer if filer in filers else filers[0]
+    rows = []
+    for ln, desc, tk, eif, lo, hi, itype, restriction, rtype, fdate in con.execute(
+            "SELECT line_no, description, ticker, eif, value_lo, value_hi, income_type, "
+            "use_restriction, report_type, filed_date FROM oge_holdings WHERE filer=?",
+            (who,)):
+        mid = ((lo + hi) / 2 if (lo is not None and hi is not None) else lo)
+        # "FILER - x" / "SPOUSE - x" is the report's own owner marking; surface it as
+        # owner the way congressional FD owner codes are surfaced.
+        owner = ("spouse" if desc.upper().startswith("SPOUSE")
+                 else "filer" if desc.upper().startswith("FILER") else "-")
+        rows.append({"line_no": ln, "description": desc, "ticker": tk, "eif": eif,
+                     "owner": owner, "value_lo": lo, "value_hi": hi,
+                     "midpoint": round(mid) if mid is not None else None,
+                     "income_type": itype, "use_restriction": restriction,
+                     "report_type": rtype, "filed_date": fdate})
+    rows.sort(key=lambda r: (-(r["midpoint"] or 0), r["line_no"]))
+    banded = [r for r in rows if r["value_lo"] is not None]
+    return {"as_of": _as_of(), "filers": filers, "filer": who, "rows": rows,
+            "count": len(rows), "banded": len(banded),
+            "restriction": rows[0]["use_restriction"] if rows else None,
+            "note": "band-valued, coarse; restricted source, non-commercial use only"}
+
+
 def q_congress_gaps(con):
     """SM-C2 P3: who is BEHIND the breadth counts. Per filer identity: chamber, party,
     how it resolved, filing years present, and holdings rows. The point is that breadth

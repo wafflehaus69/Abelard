@@ -270,6 +270,33 @@ CREATE TABLE IF NOT EXISTS congress_fd_seen(
   status TEXT NOT NULL,
   seen_at_unix INTEGER NOT NULL
 );
+-- OGE Form 278e executive-branch disclosure holdings. UNLIKE every other source here,
+-- this one carries a STATUTORY use restriction (Ethics in Government Act, 5 U.S.C. app.
+-- Sec 105(c) — no commercial use, $11k civil penalty). `use_restriction` is NOT NULL so a
+-- row cannot physically exist without its restriction tag attached, and the tag travels
+-- into every view and export. Deliberately its OWN table that the scan/alert/enqueue path
+-- does not read, so restricted data cannot leak into a signal product.
+CREATE TABLE IF NOT EXISTS oge_holdings(
+  doc_id TEXT NOT NULL,
+  filer TEXT NOT NULL,
+  report_type TEXT,
+  filed_date TEXT,
+  line_no TEXT NOT NULL,
+  description TEXT,
+  ticker TEXT,
+  eif TEXT,
+  value_lo INTEGER,
+  value_hi INTEGER,
+  income_type TEXT,
+  income_lo INTEGER,
+  income_hi INTEGER,
+  use_restriction TEXT NOT NULL,
+  source_url TEXT,
+  ingested_at_unix INTEGER NOT NULL,
+  PRIMARY KEY(doc_id, line_no)
+);
+CREATE INDEX IF NOT EXISTS idx_oge_filer ON oge_holdings(filer);
+CREATE INDEX IF NOT EXISTS idx_oge_ticker ON oge_holdings(ticker);
 -- SM-C2 P3: party/state for each distinct FD filer identity, resolved from the keyless
 -- congress-legislators roster by smart_money/roster.py. party is NULL when the filer did
 -- not resolve DETERMINISTICALLY (match_kind 'unmatched') -- never guessed. That bucket is
