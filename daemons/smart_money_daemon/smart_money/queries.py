@@ -803,8 +803,14 @@ def _filer_unit_scale(con, cik, periods):
     to ALL the filer's periods — so an older period without a pre-period price row is
     never silently misread as dollars, and every period (incl. the QoQ prior) compares
     in one unit. Anchors implied price (value/shares) to the EOD close: dollars -> ~1,
-    thousands -> ~0.001. Returns the multiplier to dollars (1 or 1000); defaults to 1
-    (dollars, the majority) only when NO period has price coverage to anchor on."""
+    thousands -> ~0.001.
+
+    SM-P2 G1 GATE — UNIT SCALE OR FAIL LOUD. Returns (scale, basis) where basis is
+    "price_anchored" when a real price anchor decided it, or "undetermined" when NO period
+    had price coverage to anchor on. The old behaviour silently returned 1 (dollars) in the
+    undetermined case, which reads a thousands-filer 1000x TOO SMALL with no signal to the
+    reader. The scale is still 1 so arithmetic proceeds, but callers MUST surface
+    "undetermined" rather than present the numbers as trustworthy."""
     for period in periods:                          # newest first
         ratios = []
         for ticker, val, sh in con.execute(
@@ -817,8 +823,32 @@ def _filer_unit_scale(con, cik, periods):
                 ratios.append((val / sh) / close)
         if ratios:
             ratios.sort()
-            return 1000 if ratios[len(ratios) // 2] < 0.01 else 1
-    return 1
+            return (1000 if ratios[len(ratios) // 2] < 0.01 else 1), "price_anchored"
+    return 1, "undetermined"
+
+
+# A 13F filer manages at least $100M by law (17 CFR 240.13f-1), so a reported book far
+# under that is evidence the unit scale is wrong (classic 1000x miss), not a small fund.
+# Upper bound catches the opposite error. Both are REPORTED, never silently corrected.
+_BOOK_FLOOR = 50_000_000
+_BOOK_CEIL = 10_000_000_000_000
+
+
+def _magnitude_warning(book_value, basis):
+    """A human-readable warning when a filer's book is implausible for a 13F filer, or
+    when the unit scale could not be anchored. None when the book looks sane."""
+    if basis == "undetermined":
+        return ("unit scale UNDETERMINED - no period had price coverage to anchor "
+                "dollars-vs-thousands, so these values may be 1000x off")
+    if book_value and book_value < _BOOK_FLOOR:
+        return ("reported book {:,} is under the {:,} sanity floor for a 13F filer (the "
+                "filing threshold is $100M) - either the unit scale is wrong or this "
+                "filer's holdings are only partly ingested".format(
+                    int(book_value), _BOOK_FLOOR))
+    if book_value and book_value > _BOOK_CEIL:
+        return "reported book {} is implausibly large - check the unit scale".format(
+            book_value)
+    return None
 
 
 def _scaled_holdings(con, cik, period, scale):
@@ -892,7 +922,7 @@ def q_portfolio(con, filer_cik=None, period=None):
     period = period if period in periods else periods[0]
     idx = periods.index(period)
     prior = periods[idx + 1] if idx + 1 < len(periods) else None
-    scale = _filer_unit_scale(con, cik, periods)  # one unit for the whole filer
+    scale, unit_basis = _filer_unit_scale(con, cik, periods)  # one unit for the filer
     cur = _scaled_holdings(con, cik, period, scale)
     prior_h = q_portfolio_deltas(con, cik, prior, scale)
     book = sum(h["value"] for h in cur.values()) or 0
@@ -935,7 +965,11 @@ def q_portfolio(con, filer_cik=None, period=None):
         "put_notional": sum(h["value"] for h in cur.values() if h["put_call"] == "put"),
         "call_notional": sum(h["value"] for h in cur.values() if h["put_call"] == "call"),
         "unmapped_count": len(unmapped),
-        "unmapped_value": sum(r["value"] for r in unmapped)})
+        "unmapped_value": sum(r["value"] for r in unmapped),
+        # SM-P2 G1: the unit basis and any magnitude implausibility travel with the
+        # result so the view can refuse to present suspect numbers as trustworthy.
+        "unit_scale": scale, "unit_basis": unit_basis,
+        "magnitude_warning": _magnitude_warning(book, unit_basis)})
     return base
 
 
@@ -950,7 +984,8 @@ def q_tracked_books(con, anchor=None):
             out.append({"cik": cik, "name": name, "period": None, "book_value": 0,
                         "top3": [], "days_to_filing": None})
             continue
-        cur = _scaled_holdings(con, cik, periods[0], _filer_unit_scale(con, cik, periods))
+        cur = _scaled_holdings(con, cik, periods[0],
+                               _filer_unit_scale(con, cik, periods)[0])
         book = sum(h["value"] for h in cur.values()) or 0
         longs = sorted((h for h in cur.values() if h["put_call"] == "long"),
                        key=lambda h: -(h["value"] or 0))

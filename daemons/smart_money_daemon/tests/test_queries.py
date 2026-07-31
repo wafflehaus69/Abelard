@@ -369,8 +369,10 @@ def test_portfolio_value_unit_normalization():
     con.close()
     con = q.connect_ro(path)
     # scale detected from the newest covered period, applied filer-wide
-    assert q._filer_unit_scale(con, "111", ["2026-03-31", "2024-09-30"]) == 1000, "thousands"
-    assert q._filer_unit_scale(con, "222", ["2026-03-31"]) == 1, "dollars"
+    assert q._filer_unit_scale(con, "111", ["2026-03-31", "2024-09-30"]) == (1000, "price_anchored")
+    assert q._filer_unit_scale(con, "222", ["2026-03-31"]) == (1, "price_anchored")
+    # SM-P2 G1: no price coverage -> UNDETERMINED, never a silent dollars assumption
+    assert q._filer_unit_scale(con, "999", ["2026-03-31"]) == (1, "undetermined")
     # the OLD uncovered period is still scaled x1000 (filer-level scale, not per-period)
     assert q._scaled_holdings(con, "111", "2024-09-30", 1000)[("CU_A", "long")]["value"] == 120000
     assert q._scaled_holdings(con, "111", "2026-03-31", 1000)[("CU_A", "long")]["value"] == 150000

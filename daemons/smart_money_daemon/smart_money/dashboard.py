@@ -830,7 +830,12 @@ def view_portfolios(con, p):
                 lng=_money0(res["long_value"]), put=_money0(res["put_notional"]),
                 call=_money0(res["call_notional"]), unm=res["unmapped_count"],
                 unmv=_money0(res["unmapped_value"])))
-    body = [head, _PORT_CAVEAT, _portfolio_filter_form(p, res),
+    # SM-P2 G1 gate: an unanchored unit scale or an implausible book means these figures
+    # may be 1000x wrong. Say so loudly rather than letting them read as trustworthy.
+    warn = res.get("magnitude_warning")
+    banner = ("<p class='restrict-banner'><b>UNIT SCALE NOT VERIFIED</b><br>{}</p>".format(
+        html.escape(warn)) if warn else "")
+    body = [banner, head, _PORT_CAVEAT, _portfolio_filter_form(p, res),
             _pager(p, meta, "/portfolios.csv"), "".join(trs),
             _pager(p, meta, "/portfolios.csv")]
     return _page("Reported portfolio", "".join(body), p)
