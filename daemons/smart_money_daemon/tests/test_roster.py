@@ -177,6 +177,75 @@ def test_member_book_lists_only_confirmed_members(tmp_path):
     ro.close()
 
 
+_REAL = [
+    # Jim Jordan: the seat has many historical OH "Jordan" rows of differing parties, so
+    # a surname+STATE key is ambiguous and the filer's legal "James D" never matches the
+    # roster's common "Jim". Only the DISTRICT key resolves him.
+    {"first": "Jim", "last": "Jordan", "nick": None, "official": "Jim Jordan",
+     "type": "rep", "state": "OH", "district": 4, "party": "Republican",
+     "end": "2027-01-03"},
+    {"first": "Edward", "last": "Jordan", "nick": None, "official": "Edward Jordan",
+     "type": "rep", "state": "OH", "district": 9, "party": "Democrat",
+     "end": "1885-03-03"},
+    # accented surname — the filing writes it unaccented
+    {"first": "Nanette", "last": "Barragán", "nick": None,
+     "official": "Nanette Barragán", "type": "rep", "state": "CA", "district": 44,
+     "party": "Democrat", "end": "2027-01-03"},
+    # compound surname the roster files under one part
+    {"first": "Anna Paulina", "last": "Luna", "nick": None,
+     "official": "Anna Paulina Luna", "type": "rep", "state": "FL", "district": 13,
+     "party": "Republican", "end": "2027-01-03"},
+]
+
+
+def test_district_key_resolves_where_state_key_is_ambiguous():
+    idx = roster.build_index(_REAL)
+    r = roster.resolve(idx, "house", "Jordan", "James D", "OH04")
+    assert r["party"] == "Republican" and r["match_kind"] == "unique", r
+    # the same surname in a DIFFERENT district must not borrow that answer
+    r2 = roster.resolve(idx, "house", "Jordan", "James D", "OH09")
+    assert r2["party"] == "Democrat", r2
+
+
+def test_accented_surname_folds_not_strips():
+    """Stripping non-ASCII turned 'Barragan'+acute into 'barragn' and lost a sitting
+    member; it must FOLD to 'barragan'."""
+    assert roster.norm("Barragán") == "barragan"
+    idx = roster.build_index(_REAL)
+    r = roster.resolve(idx, "house", "Barragan", "Nanette", "CA44")
+    assert r["party"] == "Democrat", r
+
+
+def test_compound_surname_falls_back_to_trailing_token():
+    assert roster.surname_keys("Paulina Luna") == ["paulina luna", "luna"]
+    idx = roster.build_index(_REAL)
+    r = roster.resolve(idx, "house", "Paulina Luna", "Anna", "FL13")
+    assert r["party"] == "Republican", r
+    # the LEADING token must never be a key, or 'Van Duyne' would match every 'Van'
+    assert "van" not in roster.surname_keys("Van Duyne")
+
+
+def test_candidate_for_a_seat_still_does_not_resolve():
+    """A candidate files listing the district they are RUNNING for. Nobody by that
+    surname ever held it, so they must stay unmatched."""
+    idx = roster.build_index(_REAL)
+    r = roster.resolve(idx, "house", "Finnie", "Shaun", "OH04")
+    assert r["party"] is None and r["match_kind"] == "unmatched", r
+
+
+def test_sync_is_a_full_rebuild_not_an_append(tmp_path):
+    """state_dist is NULL for Senate identities and SQLite treats NULL != NULL in a
+    PRIMARY KEY, so INSERT OR REPLACE alone duplicated every Senate row per sync."""
+    con = _seeded(str(tmp_path / "dup.db"))
+    roster.sync(con, entries=ENTRIES)
+    n1 = con.execute("SELECT count(*) FROM congress_member_roster").fetchone()[0]
+    roster.sync(con, entries=ENTRIES)
+    roster.sync(con, entries=ENTRIES)
+    n3 = con.execute("SELECT count(*) FROM congress_member_roster").fetchone()[0]
+    assert n1 == n3, "roster table grew across syncs"
+    con.close()
+
+
 def test_norm_strips_suffixes():
     assert roster.norm("Fleming, Jr") == "fleming"
     assert roster.norm("McConnell, Jr.") == "mcconnell"

@@ -24,6 +24,7 @@ import collections
 import json
 import re
 import sys
+import unicodedata
 import time
 import urllib.request
 
@@ -38,10 +39,28 @@ _SUFFIX = re.compile(r"[\s,]+\b(jr|sr|ii|iii|iv|v)\b\.?\s*$", re.I)
 
 
 def norm(s):
-    """Comparison key: lowercase, drop punctuation and a trailing name suffix
-    ('Fleming, Jr' -> 'fleming', 'McConnell, Jr.' -> 'mcconnell')."""
-    s = _SUFFIX.sub("", (s or "").lower().strip())
+    """Comparison key: fold accents, lowercase, drop punctuation and a trailing name
+    suffix ('Fleming, Jr' -> 'fleming', 'McConnell, Jr.' -> 'mcconnell').
+
+    ACCENT FOLDING IS LOAD-BEARING: stripping non-ASCII instead of folding it turns
+    'Barragan' with its acute accent into 'barragn', which matches nothing — that
+    silently dropped a sitting House member from the roster join."""
+    s = unicodedata.normalize("NFKD", (s or "")).encode("ascii", "ignore").decode()
+    s = _SUFFIX.sub("", s.lower().strip())
     return re.sub(r"\s+", " ", re.sub(r"[^a-z\s\-]", "", s)).strip()
+
+
+def surname_keys(last):
+    """Candidate surname keys, most specific first. Filers sometimes write a compound
+    surname the roster records under one part ('Paulina Luna' vs roster 'Luna'), so the
+    trailing token is tried as a fallback — never the leading one, which would make
+    'Van Duyne' match every 'Van'."""
+    n = norm(last)
+    keys = [n]
+    toks = n.split()
+    if len(toks) > 1 and len(toks[-1]) > 2:
+        keys.append(toks[-1])
+    return keys
 
 
 def _given(s):
@@ -79,39 +98,86 @@ def fetch_roster(timeout=60):
     return out
 
 
+def _dist(d):
+    """District as a zero-padded 2-char string, matching House state_dist ('OH04')."""
+    try:
+        return "{:02d}".format(int(d))
+    except (TypeError, ValueError):
+        return None
+
+
 def build_index(entries):
-    """(house_by_last_state, senate_recent_by_last) — the two deterministic key spaces."""
-    house = collections.defaultdict(list)
+    """(house_by_last_state_district, house_by_last_state, senate_recent_by_last).
+
+    The DISTRICT-qualified key is the precise one: House filings carry 'OH04', and a
+    surname+state key alone collides with every historical namesake from that state
+    (there are 11 roster rows for (jordan, OH), spanning parties, which is what made
+    Jim Jordan unresolvable). State-only remains as a fallback for at-large/odd districts.
+    """
+    house_d = collections.defaultdict(list)
+    house_s = collections.defaultdict(list)
     senate = collections.defaultdict(list)
     for e in entries:
         if e["state"]:
-            house[(norm(e["last"]), e["state"].upper())].append(e)
+            st = e["state"].upper()
+            house_s[(norm(e["last"]), st)].append(e)
+            d = _dist(e.get("district"))
+            if d:
+                house_d[(norm(e["last"]), st, d)].append(e)
         if e["type"] == "sen" and (e["end"] or "") >= SENATE_RECENT_FLOOR:
             senate[norm(e["last"])].append(e)
-    return house, senate
+    return house_d, house_s, senate
 
 
-def resolve(index, chamber, last, first, state_dist):
-    """{party, state, match_kind} for one filer identity. match_kind is 'unique' (the key
-    resolved to one party outright), 'byname' (same key, tie broken by given name), or
-    'unmatched' (party None — no key hit, or a tie the given name could not break)."""
-    house_idx, senate_idx = index
-    if chamber == "senate":
-        cands = senate_idx.get(norm(last), [])
-    else:
-        st = (state_dist or "")[:2].upper()
-        cands = house_idx.get((norm(last), st), []) if st else []
-    if not cands:
-        return {"party": None, "state": None, "match_kind": "unmatched"}
+def _verdict(cands, kind):
     parties = {c["party"] for c in cands}
     states = {c["state"] for c in cands}
     if len(parties) == 1 and len(states) == 1:
-        return {"party": parties.pop(), "state": states.pop(), "match_kind": "unique"}
-    narrowed = [c for c in cands if first_agrees(first, c)]
-    np_ = {c["party"] for c in narrowed}
-    ns = {c["state"] for c in narrowed}
-    if len(np_) == 1 and len(ns) == 1:
-        return {"party": np_.pop(), "state": ns.pop(), "match_kind": "byname"}
+        return {"party": parties.pop(), "state": states.pop(), "match_kind": kind}
+    return None
+
+
+def resolve(index, chamber, last, first, state_dist):
+    """{party, state, match_kind} for one filer identity. match_kind:
+      'unique'   — the key resolved to a single party outright
+      'byname'   — same key, tie broken by the given name
+      'incumbent'— same key, tie broken by taking the SEAT'S most recent holder
+      'unmatched'— party None, never guessed
+    """
+    house_d, house_s, senate_idx = index
+    st = (state_dist or "")[:2].upper()
+    keys = []
+    for sn in surname_keys(last):
+        if chamber == "senate":
+            keys.append(senate_idx.get(sn, []))
+        else:
+            d = (state_dist or "")[2:].strip() or None
+            if st and d:
+                keys.append(house_d.get((sn, st, d.zfill(2)), []))
+            if st:
+                keys.append(house_s.get((sn, st), []))
+    for cands in keys:
+        if not cands:
+            continue
+        v = _verdict(cands, "unique")
+        if v:
+            return v
+        narrowed = [c for c in cands if first_agrees(first, c)]
+        if narrowed:
+            v = _verdict(narrowed, "byname")
+            if v:
+                return v
+        # Same seat, several holders across history with differing parties (11 rows for
+        # (jordan, OH) alone). Our corpus is 2024+ filings, so the filer is the seat's
+        # CURRENT holder — take the most recent term. Only applied to a keyed hit, and
+        # only when that newest term is itself recent, so this can never reach back and
+        # label a filer with some 19th-century namesake's party.
+        newest = max(cands, key=lambda c: c["end"] or "")
+        if (newest["end"] or "") >= SENATE_RECENT_FLOOR:
+            top = [c for c in cands if c["end"] == newest["end"]]
+            v = _verdict(top, "incumbent")
+            if v:
+                return v
     return {"party": None, "state": None, "match_kind": "unmatched"}
 
 
@@ -121,6 +187,11 @@ def sync(con, entries=None):
     index = build_index(entries if entries is not None else fetch_roster())
     tally = collections.Counter()
     now = int(time.time())
+    # Full rebuild of derived data. REQUIRED, not tidiness: state_dist is NULL for every
+    # Senate identity and SQLite treats NULL != NULL in a PRIMARY KEY, so INSERT OR
+    # REPLACE never collides on those rows and each sync would append a fresh duplicate
+    # set (484 identities had grown to 698 rows).
+    con.execute("DELETE FROM congress_member_roster")
     for chamber, last, first, sd in con.execute(
             "SELECT DISTINCT chamber, member_last, member_first, state_dist "
             "FROM congress_holdings"):
