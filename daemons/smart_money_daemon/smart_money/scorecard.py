@@ -24,6 +24,7 @@ import bisect
 import datetime as dt
 import json
 import math
+import os
 import sys
 
 import pandas as pd
@@ -583,6 +584,31 @@ def _reg_scores(r):
     return out
 
 
+def sync_manager_registry(path=None, anchor=None):
+    """Rewrite ONLY the manager_13f leg of the registry from MANAGER_13F_SEEDS, leaving
+    every other role untouched.
+
+    The full scorecard run regenerates the whole registry, but expanding the tracked 13F
+    shelf (ORDER SM-P2) must not require re-running congressional scoring — and must not
+    silently drop the other legs. Idempotent: run it twice, same file."""
+    path = path or dbmod.artifact_path("registry.json", "analysis")
+    anchor = anchor or dt.date.today().isoformat()
+    data = {"as_of": anchor, "entries": []}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    kept = [e for e in data.get("entries", []) if e.get("role") != "manager_13f"]
+    for m in MANAGER_13F_SEEDS:
+        kept.append({
+            "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
+            "status": "active", "role": "manager_13f", "type": "manager_13f",
+            "thesis": m.get("thesis"), "scores": None, "as_of": anchor})
+    data["entries"] = kept
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    return path, sum(1 for e in kept if e.get("role") == "manager_13f")
+
+
 def _write_registry(active, validation, by_name, anchor, path):
     entries = []
     placed = set()
@@ -624,7 +650,7 @@ def _write_registry(active, validation, by_name, anchor, path):
         entries.append({
             "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
             "status": "active", "role": "manager_13f", "type": "manager_13f",
-            "scores": None, "as_of": anchor})
+            "thesis": m.get("thesis"), "scores": None, "as_of": anchor})
     # Network ownership persons (SM-A1 Phase 1, ratified). EDGAR CIK identity;
     # not scored (ownership surface, not a picking-skill claim). Split by network
     # so the registry role matches the /trades provenance badge.
@@ -643,13 +669,27 @@ def _write_registry(active, validation, by_name, anchor, path):
 
 
 # SM-A1 Phase 2 ratified 13F filer set + Phase 1 ratified trump_network persons.
+# `thesis` groups the shelf on /portfolios (ORDER SM-P2). Vocabulary is fixed:
+# {ai_tmt, biotech, macro, activist, value, contrarian}. It is a GROUPING LABEL for
+# legibility, not a performance claim.
 MANAGER_13F_SEEDS = [
-    {"name": "Duquesne Family Office LLC", "cik": "0001536411"},
-    {"name": "Thiel Macro LLC", "cik": "0001562087"},
-    {"name": "Founders Fund VII Management, LLC", "cik": "0001846021"},
-    {"name": "Founders Fund Growth II Management, LP", "cik": "0002106825"},
-    {"name": "Affinity Partners GP LP", "cik": "0002059583"},
-    {"name": "Situational Awareness LP (Aschenbrenner)", "cik": "0002045724"},
+    {"name": "Duquesne Family Office LLC", "cik": "0001536411", "thesis": "macro"},
+    {"name": "Thiel Macro LLC", "cik": "0001562087", "thesis": "macro"},
+    {"name": "Founders Fund VII Management, LLC", "cik": "0001846021", "thesis": "ai_tmt"},
+    {"name": "Founders Fund Growth II Management, LP", "cik": "0002106825", "thesis": "ai_tmt"},
+    {"name": "Affinity Partners GP LP", "cik": "0002059583", "thesis": "macro"},
+    {"name": "Situational Awareness LP (Aschenbrenner)", "cik": "0002045724", "thesis": "ai_tmt"},
+    # --- ORDER SM-P2 expansion (see scans/SM_P2_FILER_RESOLUTION.md) ---
+    {"name": "Coatue Management", "cik": "0001135730", "thesis": "ai_tmt"},
+    {"name": "Whale Rock Capital Management", "cik": "0001387322", "thesis": "ai_tmt"},
+    {"name": "Light Street Capital Management", "cik": "0001569049", "thesis": "ai_tmt"},
+    {"name": "Lone Pine Capital", "cik": "0001061165", "thesis": "ai_tmt"},
+    {"name": "Appaloosa LP", "cik": "0001656456", "thesis": "value"},
+    {"name": "Baker Bros Advisors", "cik": "0001263508", "thesis": "biotech"},
+    {"name": "Pershing Square Capital Management", "cik": "0001336528", "thesis": "activist"},
+    {"name": "Soros Fund Management", "cik": "0001029160", "thesis": "macro"},
+    {"name": "Third Point LLC", "cik": "0001040273", "thesis": "activist"},
+    {"name": "Scion Asset Management", "cik": "0001649339", "thesis": "contrarian"},
 ]
 TRUMP_NETWORK_SEEDS = [
     {"name": "TRUMP DONALD J", "cik": "0000947033"},

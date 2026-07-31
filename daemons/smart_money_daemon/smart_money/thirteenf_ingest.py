@@ -17,7 +17,14 @@ from . import db as dbmod
 from . import thirteenf
 from .efd_ingest import load_env
 
-# Mando-confirmed set (SM-A1 Phase 2). No substitutions, no additions.
+# Mando-confirmed set. No substitutions, no additions without an order.
+# SM-A1 Phase 2 seeded the first six; ORDER SM-P2 added ten more after the CIK
+# resolution report (scans/SM_P2_FILER_RESOLUTION.md) and Mando's rulings:
+#   * Appaloosa -> 0001656456, the LIVE entity (0001006438 stops filing in 2016).
+#   * Greenlight Capital DROPPED — its only CIK stopped filing 2024-02-14, so an
+#     8-quarter window would be near-empty. Dropped on ruling, not an oversight.
+#   * Scion kept at 0001649339 despite its newest filing being ~2 quarters behind
+#     the rest (0001182422 is the dead 2005-2009 Scion Capital era).
 CONFIRMED = {
     "0001536411": "Duquesne Family Office",
     "0001562087": "Thiel Macro",
@@ -25,6 +32,17 @@ CONFIRMED = {
     "0002106825": "Founders Fund Growth II",
     "0002059583": "Affinity Partners (Kushner)",
     "0002045724": "Situational Awareness LP",
+    # --- ORDER SM-P2 expansion ---
+    "0001135730": "Coatue Management",
+    "0001387322": "Whale Rock Capital Management",
+    "0001569049": "Light Street Capital Management",
+    "0001061165": "Lone Pine Capital",
+    "0001656456": "Appaloosa LP",
+    "0001263508": "Baker Bros Advisors",
+    "0001336528": "Pershing Square Capital Management",
+    "0001029160": "Soros Fund Management",
+    "0001040273": "Third Point LLC",
+    "0001649339": "Scion Asset Management",
 }
 OPENFIGI = "https://api.openfigi.com/v3/mapping"
 FIGI_BATCH = 10       # jobs per request (keyless limit)
@@ -146,9 +164,14 @@ def main(argv=None):
         try:
             ingest_filer(con, cik10, contact, args.quarters, report)
         except Exception as exc:  # noqa: BLE001 - fail loud, per filer
-            report["filers"][cik10] = {"name": CONFIRMED[cik10], "error": str(exc)[:150]}
-        print("[13f] {} {}".format(
-            cik10, report["filers"].get(str(int(cik10)))), flush=True)
+            # Key on the SAME form the success path uses, else the lookup below misses
+            # and a real failure prints as a bare "None" — a silent failure, which is
+            # exactly what the fail-loud doctrine forbids.
+            report["filers"][str(int(cik10))] = {
+                "name": CONFIRMED[cik10], "error": str(exc)[:150]}
+        stat = report["filers"].get(str(int(cik10)))
+        print("[13f] {} {}".format(cik10, stat if stat is not None else
+                                   "NO REPORT ENTRY - investigate"), flush=True)
     # unmapped CUSIP report
     unmapped = con.execute(
         "SELECT cusip, name FROM cusip_ticker WHERE ticker IS NULL").fetchall()

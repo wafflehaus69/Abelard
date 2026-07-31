@@ -771,6 +771,14 @@ def _tracked_filers():
             if e.get("role") == "manager_13f" and e.get("cik")]
 
 
+def _filer_thesis():
+    """{cik: thesis} for tracked 13F filers. A GROUPING LABEL for the shelf
+    ({ai_tmt, biotech, macro, activist, value, contrarian}), never a performance claim."""
+    entries, _ = _load_registry()
+    return {e.get("cik"): e.get("thesis") for e in entries
+            if e.get("role") == "manager_13f" and e.get("cik")}
+
+
 def _filer_periods(con, cik):
     """Distinct reported periods for a filer, newest first."""
     return [r[0] for r in con.execute(
@@ -971,6 +979,101 @@ def q_portfolio(con, filer_cik=None, period=None):
         "unit_scale": scale, "unit_basis": unit_basis,
         "magnitude_warning": _magnitude_warning(book, unit_basis)})
     return base
+
+
+_DIR_ACC = "accumulating"
+_DIR_DIS = "distributing"
+
+
+def _manager_flow(con, cik, thesis, name):
+    """{(ticker, instrument): direction} for one filer's NEWEST period vs its prior.
+    Direction is QoQ FLOW, not position sign: new/added -> accumulating, trimmed/exited
+    -> distributing. Longs are judged on SHARES (price-independent); options on notional
+    value. Returns (period, flows) or (None, {}) when the filer has under two periods —
+    a single-filing filer cannot express a direction and is never guessed at."""
+    periods = _filer_periods(con, cik)
+    if len(periods) < 2:
+        return None, {}
+    scale, _basis = _filer_unit_scale(con, cik, periods)
+    cur = _scaled_holdings(con, cik, periods[0], scale)
+    prior = _scaled_holdings(con, cik, periods[1], scale)
+    flows = {}
+    for k, h in cur.items():
+        pv = prior.get(k)
+        inst = "OP" if h["put_call"] != "long" else "SH"
+        key = ((h["ticker"] or "").upper(), inst)
+        if not key[0]:
+            continue
+        if pv is None:
+            flows[key] = (_DIR_ACC, h["value"], "new")
+        else:
+            if h["put_call"] == "long":
+                cm, pm = h["shares"], pv["shares"]
+            else:
+                cm, pm = h["value"], pv["value"]
+            if cm > pm:
+                flows[key] = (_DIR_ACC, h["value"], "added")
+            elif cm < pm:
+                flows[key] = (_DIR_DIS, h["value"], "trimmed")
+    for k, h in prior.items():                      # exited entirely
+        inst = "OP" if h["put_call"] != "long" else "SH"
+        key = ((h["ticker"] or "").upper(), inst)
+        if key[0] and key not in cur and key not in flows:
+            flows[key] = (_DIR_DIS, h["value"], "exited")
+    return periods[0], flows
+
+
+def q_opposed_pairs(con, min_side=1):
+    """ORDER SM-P2 FLAGSHIP — cross-manager DISAGREEMENTS. Same ticker, same instrument,
+    opposite QoQ direction, in each manager's newest reported period: one tracked filer
+    accumulating while another distributes.
+
+    This is the point of expanding the shelf — with 6 filers a prior pass found 16
+    convergences and ZERO disagreements, because disagreement needs combinatorial breadth.
+
+    HONEST LIMITS, stated not buried: (1) periods are aligned by each filer's OWN newest
+    filing, so a filer one quarter behind is compared slightly off-phase — the period is
+    reported per side so that is visible; (2) 13F is long-only US-listed and 45 days
+    stale, so an "exit" may be a sale that already reversed; (3) direction is QoQ flow,
+    not conviction — trimming a large position is still holding it. No verdict is
+    attached: this ranks BY DISAGREEMENT BREADTH, never by who is judged right."""
+    thesis = _filer_thesis()
+    flows = {}
+    for cik, name in _tracked_filers():
+        per, fl = _manager_flow(con, cik, thesis.get(cik), name)
+        if fl:
+            flows[(cik, name, per)] = fl
+    agg = defaultdict(lambda: {"acc": [], "dis": []})
+    for (cik, name, per), fl in flows.items():
+        for key, (direction, value, kind) in fl.items():
+            side = "acc" if direction == _DIR_ACC else "dis"
+            agg[key][side].append({"filer": name, "cik": cik, "period": per,
+                                   "thesis": thesis.get(cik), "value": value,
+                                   "action": kind})
+    rows = []
+    for (ticker, instrument), a in agg.items():
+        if len(a["acc"]) < min_side or len(a["dis"]) < min_side:
+            continue                                 # not a disagreement
+        for side in ("acc", "dis"):
+            a[side].sort(key=lambda x: -(x["value"] or 0))
+        rows.append({
+            "ticker": ticker, "instrument": instrument,
+            "n_accumulating": len(a["acc"]), "n_distributing": len(a["dis"]),
+            "n_managers": len(a["acc"]) + len(a["dis"]),
+            "accumulating": a["acc"], "distributing": a["dis"],
+            "acc_value": sum(x["value"] or 0 for x in a["acc"]),
+            "dis_value": sum(x["value"] or 0 for x in a["dis"]),
+            "acc_names": ", ".join(x["filer"] for x in a["acc"]),
+            "dis_names": ", ".join(x["filer"] for x in a["dis"]),
+            # a disagreement ACROSS thesis groups is more interesting than one within
+            "cross_thesis": len({x["thesis"] for x in a["acc"]}
+                                & {x["thesis"] for x in a["dis"]}) == 0})
+    rows.sort(key=lambda r: (-min(r["n_accumulating"], r["n_distributing"]),
+                             -r["n_managers"], -(r["acc_value"] + r["dis_value"])))
+    return {"as_of": _as_of(), "count": len(rows), "rows": rows,
+            "filers_compared": len(flows),
+            "note": "QoQ flow direction per filer's newest period; 13F is long-only US "
+                    "listed and 45d stale; ranked by disagreement breadth, no verdict"}
 
 
 def q_tracked_books(con, anchor=None):

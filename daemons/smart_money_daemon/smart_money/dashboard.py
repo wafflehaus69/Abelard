@@ -28,7 +28,7 @@ from . import db as dbmod
 from . import queries as q
 
 NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/insiders", "Insider books"),
-       ("/congress", "Congress"), ("/oge", "OGE 278e"),
+       ("/disagreements", "Disagreements"), ("/congress", "Congress"), ("/oge", "OGE 278e"),
        ("/trades", "Trades"), ("/flows", "Net flows"), ("/clusters", "Clusters"),
        ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
@@ -328,7 +328,8 @@ def _int(v, d):
 
 def _tracked_books_strip(books):
     cards = []
-    for b in books["filers"]:
+    ordered = sorted(books["filers"], key=lambda b: -(b.get("book_value") or 0))
+    for b in ordered:
         if not b["period"]:
             cards.append("<div class='book'><b>{}</b><br><span class='muted'>no "
                          "filings</span></div>".format(html.escape(b["name"] or "?")))
@@ -346,9 +347,94 @@ def _tracked_books_strip(books):
                 cik=q.cik_int(b["cik"]), name=html.escape(b["name"] or "?"),
                 per=html.escape(b["period"]), book=_money0(b["book_value"]),
                 top=top, d2f=d2f_txt))
+    # SM-P2: at 16 filers the strip swamps the front page. Show the biggest books,
+    # collapse the rest behind a native <details> (no JS).
+    TOP_N = 6
+    head, rest = cards[:TOP_N], cards[TOP_N:]
+    more = ("<details><summary>{} more tracked book(s)</summary>"
+            "<div class='strip'>{}</div></details>".format(len(rest), "".join(rest))
+            if rest else "")
     return ("<h2>Tracked books (reported 13F) &middot; "
-            "<a href='/portfolios'>open</a></h2><div class='strip'>{}</div>".format(
-                "".join(cards)))
+            "<a href='/portfolios'>open</a></h2><div class='strip'>{}</div>{}".format(
+                "".join(head), more))
+
+
+def _disagreements_section(con, limit=8):
+    """ORDER SM-P2 flagship: same ticker, opposite QoQ direction, across tracked filers."""
+    res = q.q_opposed_pairs(con)
+    if not res["rows"]:
+        return ("<h2>Disagreements (cross-manager)</h2><p class='muted'>No opposed pairs "
+                "across {} tracked filers with two or more reported periods. A filer with "
+                "a single filing cannot express a direction and is excluded rather than "
+                "guessed at.</p>".format(res["filers_compared"]))
+    trs = ["<table><tr><th>ticker</th><th>instr</th><th>accumulating</th>"
+           "<th>distributing</th><th>split</th></tr>"]
+    for r in res["rows"][:limit]:
+        x = ("<span class='badge qoq-new'>cross-thesis</span>" if r["cross_thesis"] else "")
+        trs.append(
+            "<tr><td><a href='/ticker?symbol={t}'>{t}</a> {x}</td><td>{ins}</td>"
+            "<td>{acc}</td><td>{dis}</td><td>{na}v{nd}</td></tr>".format(
+                t=html.escape(r["ticker"]), x=x, ins=r["instrument"],
+                acc=html.escape(r["acc_names"])[:90],
+                dis=html.escape(r["dis_names"])[:90],
+                na=r["n_accumulating"], nd=r["n_distributing"]))
+    trs.append("</table>")
+    return ("<h2>Disagreements (cross-manager) &middot; "
+            "<a href='/disagreements'>all {n}</a></h2>"
+            "<p class='muted'>Same ticker, <b>opposite QoQ direction</b>, across the "
+            "tracked 13F shelf — one manager accumulating while another distributes. "
+            "Ranked by disagreement breadth, <b>no verdict on who is right</b>. 13F is "
+            "long-only US-listed and 45 days stale, and each side is that filer's own "
+            "newest period, so sides can be slightly off-phase.</p>{tbl}".format(
+                n=res["count"], tbl="".join(trs)))
+
+
+def view_disagreements(con, p):
+    """Full cross-manager disagreement board."""
+    res = q.q_opposed_pairs(con)
+    active = p["sort"] or "n_managers"
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("ticker", "ticker"), ("instrument", "instr"),
+            ("n_accumulating", "#acc"), ("n_distributing", "#dis"),
+            ("acc_names", "accumulating"), ("dis_names", "distributing"),
+            ("acc_value", "acc $"), ("dis_value", "dis $")]
+    trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])]
+    for r in page_rows:
+        trs.append(
+            "<tr><td><a href='/ticker?symbol={t}'>{t}</a></td><td>{ins}</td><td>{na}</td>"
+            "<td>{nd}</td><td>{acc}</td><td>{dis}</td><td>{av}</td><td>{dv}</td></tr>"
+            .format(t=html.escape(r["ticker"]), ins=r["instrument"],
+                    na=r["n_accumulating"], nd=r["n_distributing"],
+                    acc=html.escape(r["acc_names"]), dis=html.escape(r["dis_names"]),
+                    av=_money0(r["acc_value"]), dv=_money0(r["dis_value"])))
+    trs.append("</table>")
+    body = ["<p class='muted'>{n} tickers where tracked managers moved in OPPOSITE "
+            "directions in their newest reported period, across {f} filers with enough "
+            "history to express a direction. {note}. Click a column to sort.</p>".format(
+                n=res["count"], f=res["filers_compared"], note=html.escape(res["note"])),
+            _pager(p, meta, "/disagreements.csv"), "".join(trs),
+            _pager(p, meta, "/disagreements.csv")]
+    return _page("Cross-manager disagreements", "".join(body), p)
+
+
+_DIS_CSV_COLS = ["ticker", "instrument", "n_accumulating", "n_distributing",
+                 "acc_names", "dis_names", "acc_value", "dis_value", "cross_thesis"]
+
+
+def _build_disagreements_csv(con, p, full):
+    import csv
+    import io
+    res = q.q_opposed_pairs(con)
+    rows = _sorted(res["rows"], p["sort"] or "n_managers", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_DIS_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
 
 
 def view_front(con, p):
@@ -361,6 +447,7 @@ def view_front(con, p):
         "convergence, ownership pressure, overlay-flagged events. Clusters are "
         "context.</p>".format(html.escape(press["as_of"])),
         _tracked_books_strip(q.q_tracked_books(con, anchor=p["anchor"])),
+        _disagreements_section(con),
         "<h2>Sentinel activity ({} events)</h2>".format(sent["count"]),
         _table(["event_date", "src", "seed", "ticker", "action"], sent["rows"][:15]),
         "<h2>Principal convergence — {} same-side, {} QoQ disagreements</h2>".format(
@@ -581,6 +668,16 @@ def _trade_filter_form(params):
         o = "".join("<option value='{}'{}>{}</option>".format(
             v, " selected" if v == cur else "", v) for v in opts)
         return "{} <select name='{}'>{}</select>".format(name, name, o)
+
+    def grouped_filer_sel(cur):
+        parts = []
+        for tag in sorted(groups):
+            opts = "".join("<option value='{}'{}>{}</option>".format(
+                html.escape(v), " selected" if v == str(cur) else "", html.escape(lbl))
+                for v, lbl, _sz in sorted(groups[tag], key=lambda x: -x[2]))
+            parts.append("<optgroup label='{}'>{}</optgroup>".format(
+                html.escape(tag), opts))
+        return "filer <select name='filer'>{}</select>".format("".join(parts))
     return (
         "<form method='get'>{side} {plan} "
         "<label><input type='checkbox' name='smid' value='1'{smid}> SMID only</label> "
@@ -677,6 +774,16 @@ def _flow_filter_form(params):
         o = "".join("<option value='{}'{}>{}</option>".format(
             v, " selected" if v == cur else "", lbl) for v, lbl in opts)
         return "{} <select name='{}'>{}</select>".format(name, name, o)
+
+    def grouped_filer_sel(cur):
+        parts = []
+        for tag in sorted(groups):
+            opts = "".join("<option value='{}'{}>{}</option>".format(
+                html.escape(v), " selected" if v == str(cur) else "", html.escape(lbl))
+                for v, lbl, _sz in sorted(groups[tag], key=lambda x: -x[2]))
+            parts.append("<optgroup label='{}'>{}</optgroup>".format(
+                html.escape(tag), opts))
+        return "filer <select name='filer'>{}</select>".format("".join(parts))
     return (
         "<form method='get'>secondary column {metric} "
         "<input type='hidden' name='anchor' value='{a}'>"
@@ -763,18 +870,36 @@ def _portfolio_filter_form(params, res):
             html.escape(str(v)), " selected" if str(v) == str(cur) else "",
             html.escape(str(lbl))) for v, lbl in opts)
         return "{} <select name='{}'>{}</select>".format(name, name, o)
+
+    def grouped_filer_sel(cur):
+        parts = []
+        for tag in sorted(groups):
+            opts = "".join("<option value='{}'{}>{}</option>".format(
+                html.escape(v), " selected" if v == str(cur) else "", html.escape(lbl))
+                for v, lbl, _sz in sorted(groups[tag], key=lambda x: -x[2]))
+            parts.append("<optgroup label='{}'>{}</optgroup>".format(
+                html.escape(tag), opts))
+        return "filer <select name='filer'>{}</select>".format("".join(parts))
+    # SM-P2: at 16 filers a flat list is unreadable — group by thesis tag, and inside
+    # each group order by book size so the biggest books lead.
+    thesis = q._filer_thesis()
+    sizes = res.get("filer_book_sizes") or {}
+    groups = {}
+    for c, n in res.get("filers", []):
+        groups.setdefault(thesis.get(c) or "unclassified", []).append(
+            (str(q.cik_int(c)), n, sizes.get(str(q.cik_int(c))) or 0))
     filers = [(str(q.cik_int(c)), n) for c, n in res.get("filers", [])]
     cur_filer = str(q.cik_int(res["filer_cik"])) if res.get("filer_cik") else ""
     periods = [(pp, pp) for pp in res.get("periods", [])]
     return (
-        "<form method='get'>filer {filer} period {period} "
+        "<form method='get'>{filer} period {period} "
         "<input type='hidden' name='per_page' value='{pp}'>"
         "<input type='hidden' name='page' value='1'>"
         "<input type='hidden' name='theme' value='{t}'>"
         "<button>view</button></form>"
         "<div class='muted'><a href='/portfolios{clr}'>reset</a> "
         "&middot; defaults to the first filer, latest period</div>"
-    ).format(filer=sel("filer", cur_filer, filers),
+    ).format(filer=grouped_filer_sel(cur_filer),
              period=(sel("period", res.get("period") or "", periods)
                      if periods else "<i>none</i>"),
              pp=params["per_page"], t=html.escape(params.get("theme") or ""),
@@ -783,6 +908,13 @@ def _portfolio_filter_form(params, res):
 
 def view_portfolios(con, p):
     res = q.q_portfolio(con, filer_cik=p["filer"] or None, period=p["period"] or None)
+    # book sizes for the thesis-grouped selector (SM-P2: order each group by book size)
+    try:
+        res["filer_book_sizes"] = {
+            str(q.cik_int(b["cik"])): (b.get("book_value") or 0)
+            for b in q.q_tracked_books(con, anchor=p["anchor"])["filers"]}
+    except Exception:
+        res["filer_book_sizes"] = {}
     active = p["sort"] or "value"                 # default: largest position first
     rows = _sorted(res["rows"], active, p["dir"])
     page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
@@ -1324,6 +1456,7 @@ def _build_flows_csv(con, p, full):
 
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
           "/insiders": view_insiders, "/oge": view_oge,
+          "/disagreements": view_disagreements,
           "/congress_gaps": view_congress_gaps,
           "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
@@ -1363,6 +1496,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._flows_csv(con, p, parse_qs(u.query))
             if u.path == "/portfolios.csv":
                 return self._portfolios_csv(con, p, parse_qs(u.query))
+            if u.path == "/disagreements.csv":
+                return self._disagreements_csv(con, p, parse_qs(u.query))
             if u.path == "/oge.csv":
                 return self._oge_csv(con, p, parse_qs(u.query))
             if u.path == "/insiders.csv":
@@ -1438,6 +1573,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})
+
+    def _disagreements_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_disagreements_csv(con, p, full)
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="disagreements.csv"'})
 
     def _oge_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
