@@ -690,6 +690,12 @@ MANAGER_13F_SEEDS = [
     {"name": "Soros Fund Management", "cik": "0001029160", "thesis": "macro"},
     {"name": "Third Point LLC", "cik": "0001040273", "thesis": "activist"},
     {"name": "Scion Asset Management", "cik": "0001649339", "thesis": "contrarian"},
+    # Mag7 operating companies with real 13F books. `corporate_strategic` extends the
+    # SM-P2 vocabulary deliberately: these are balance-sheet stakes in adjacent
+    # industries, not a manager expressing a view, and must not be read as either.
+    {"name": "Alphabet Inc", "cik": "0001652044", "thesis": "corporate_strategic"},
+    {"name": "Amazon com Inc", "cik": "0001018724", "thesis": "corporate_strategic"},
+    {"name": "NVIDIA Corp", "cik": "0001045810", "thesis": "corporate_strategic"},
 ]
 TRUMP_NETWORK_SEEDS = [
     {"name": "TRUMP DONALD J", "cik": "0000947033"},

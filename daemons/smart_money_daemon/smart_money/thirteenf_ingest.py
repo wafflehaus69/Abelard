@@ -43,6 +43,13 @@ CONFIRMED = {
     "0001029160": "Soros Fund Management",
     "0001040273": "Third Point LLC",
     "0001649339": "Scion Asset Management",
+    # --- Mag7 operating companies that actually file 13F (verified: Apple, Microsoft,
+    # Meta and Tesla do NOT; their strategic stakes surface only via SC 13D/G). These
+    # are corporate strategic books, not funds — a different KIND of filer, tagged
+    # corporate_strategic so they never read as manager skill.
+    "0001652044": "Alphabet Inc",
+    "0001018724": "Amazon com Inc",
+    "0001045810": "NVIDIA Corp",
 }
 OPENFIGI = "https://api.openfigi.com/v3/mapping"
 FIGI_BATCH = 10       # jobs per request (keyless limit)
