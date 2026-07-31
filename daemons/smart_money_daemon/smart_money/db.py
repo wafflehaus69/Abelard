@@ -237,6 +237,39 @@ CREATE TABLE IF NOT EXISTS thirteenf_filings_seen(
   seen_at_unix INTEGER NOT NULL,
   PRIMARY KEY(cik, accession)
 );
+-- SM-P1b congressional ANNUAL FD holdings (Schedule A: Assets). Band-valued holdings
+-- snapshot (annual cadence), the level PTRs do not give. Unmapped assets kept with
+-- ticker NULL, never dropped. value_hi NULL = open top band. One row per asset line.
+CREATE TABLE IF NOT EXISTS congress_holdings(
+  doc_id TEXT NOT NULL,
+  chamber TEXT NOT NULL,
+  filing_year INTEGER,
+  period TEXT,
+  member_last TEXT,
+  member_first TEXT,
+  state_dist TEXT,
+  person_id INTEGER,
+  row_idx INTEGER NOT NULL,
+  asset_name TEXT,
+  ticker TEXT,
+  asset_type TEXT,
+  owner TEXT,
+  value_lo INTEGER,
+  value_hi INTEGER,
+  income_type TEXT,
+  ingested_at_unix INTEGER NOT NULL,
+  PRIMARY KEY(doc_id, row_idx)
+);
+CREATE INDEX IF NOT EXISTS idx_ch_ticker ON congress_holdings(ticker);
+CREATE INDEX IF NOT EXISTS idx_ch_year ON congress_holdings(filing_year);
+CREATE INDEX IF NOT EXISTS idx_ch_person ON congress_holdings(person_id);
+CREATE INDEX IF NOT EXISTS idx_ch_doc ON congress_holdings(doc_id);
+CREATE TABLE IF NOT EXISTS congress_fd_seen(
+  doc_id TEXT PRIMARY KEY,
+  chamber TEXT NOT NULL,
+  status TEXT NOT NULL,
+  seen_at_unix INTEGER NOT NULL
+);
 -- Market-cap + SMID band cache (SM-A1-fix SMID scan). shares from SEC
 -- companyconcept (dei then us-gaap fallback), cap = shares x price. Both as-of
 -- dates recorded; a stale cap on a volatile small cap is a labeled error source.
