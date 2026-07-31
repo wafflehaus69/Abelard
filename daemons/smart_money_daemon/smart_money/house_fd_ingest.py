@@ -46,6 +46,8 @@ _TICKER_RE = re.compile(r"\(([A-Za-z0-9.\-]{1,10})\)")
 _TYPE_RE = re.compile(r"\[([A-Za-z]{2,3})\]")
 _BAND_RE = re.compile(r"\$([\d,]+)\s*-\s*\$([\d,]+)")
 _OVER_RE = re.compile(r"[Oo]ver \$([\d,]+)")
+# Standard FD floor band, e.g. "None (or less than $1,001)" -> ($0, $1,001).
+_LESS_RE = re.compile(r"less than \$([\d,]+)", re.I)
 # Core Schedule A header anchors. "Tx." is OPTIONAL — one template family omits the
 # "Tx. > $1,000?" column entirely (header ends "... Income Type(s) Income"); requiring
 # it dropped ~19% of filings to unparsed_layout. When absent, Income is the last column.
@@ -155,6 +157,9 @@ def _parse_band(text):
     m = _OVER_RE.search(text)
     if m:
         return _num(m.group(1)), None
+    m = _LESS_RE.search(text)
+    if m:
+        return 0, _num(m.group(1))
     return None, None
 
 
