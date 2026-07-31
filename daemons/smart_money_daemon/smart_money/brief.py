@@ -222,6 +222,65 @@ def render_brief(con, out_path, *, window=90, anchor=None, since=None,
     return build_pdf(out_path, story, title=title)
 
 
+def _cell(v):
+    if v is None:
+        return "-"
+    if isinstance(v, bool):
+        return "yes" if v else "no"
+    if isinstance(v, float):
+        return "{:,.2f}".format(v).rstrip("0").rstrip(".")
+    if isinstance(v, int):
+        return "{:,}".format(v)
+    s = str(v)
+    return s if len(s) <= 44 else s[:41] + "..."
+
+
+def render_page_brief(out_path, *, title, subtitle, columns, rows, notes=(),
+                      max_rows=200):
+    """Render ANY dashboard page as a PDF: a titled table of that page's own rows.
+
+    The Print-brief button used to always emit the front-page brief regardless of what
+    the reader was looking at. This renders the CURRENT view instead, from the same query
+    the page used, so the PDF matches the screen (same filters, same sort, same order).
+    Wide pages are truncated to `max_rows` and SAY SO rather than silently cutting."""
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import Table, TableStyle
+
+    styles = default_styles()
+    story = [_p(title, styles["Title"]),
+             _p(subtitle, styles["Sub"])]
+    for n in notes:
+        story.append(_p(n, styles["Foot"]))
+    shown = rows[:max_rows]
+    if not shown:
+        story += section_box("Rows", _quiet(styles, "No rows on this view"), styles)
+        return build_pdf(out_path, story, title=title)
+    head = [c.replace("_", " ") for c in columns]
+    data = [head] + [[_cell(r.get(c)) for c in columns] for r in shown]
+    # column widths: split the usable width, giving text columns more room
+    usable = 7.2 * inch
+    w = max(0.5 * inch, usable / max(1, len(columns)))
+    tbl = Table(data, colWidths=[w] * len(columns), repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeff")),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cccccc")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+         [colors.white, colors.HexColor("#f7f7fa")]),
+    ]))
+    story.append(tbl)
+    if len(rows) > max_rows:
+        story.append(_p("Showing the first {:,} of {:,} rows on this view — truncated "
+                        "for print, not filtered.".format(max_rows, len(rows)),
+                        styles["Foot"]))
+    return build_pdf(out_path, story, title=title)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-R1 PDF brief")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)

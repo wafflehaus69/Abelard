@@ -103,7 +103,13 @@ def _page(title, body, params):
     nav = " &middot; ".join(
         '<a href="{}{}">{}</a>'.format(href, nav_qs, html.escape(label))
         for href, label in NAV)
-    printbtn = '<a class="print" href="/brief.pdf{}">Print brief (PDF)</a>'.format(qs)
+    # The print button renders THIS page, not always the front-page brief. `view` rides
+    # on the querystring so the handler knows which surface the reader is looking at.
+    _vpath = params.get("_path") or "/"
+    _sep = "&" if qs else "?"
+    printbtn = '<a class="print" href="/brief.pdf{}{}view={}">Print {} (PDF)</a>'.format(
+        qs, _sep, html.escape(_vpath.lstrip("/") or "front"),
+        "page" if _vpath not in ("/", "") else "brief")
     dark = params.get("theme") == "dark"
     toggle = '<a href="{}">{} mode</a>'.format(
         _qs(params, theme=("light" if dark else "dark")), "Light" if dark else "Dark")
@@ -1454,6 +1460,74 @@ def _build_flows_csv(con, p, full):
     return buf.getvalue()
 
 
+def _page_brief_spec(con, p, path):
+    """(title, subtitle, columns, rows, notes) for the CURRENTLY VIEWED page, or None to
+    fall back to the front-page brief. Uses the SAME query + sort the page used, and the
+    SAME column constants the CSV export uses, so the PDF, the screen and the CSV cannot
+    drift apart."""
+    def srt(rows, default):
+        return _sorted(rows, p["sort"] or default, p["dir"])
+
+    if path == "/portfolios":
+        res = q.q_portfolio(con, filer_cik=p["filer"] or None, period=p["period"] or None)
+        notes = ["Reported 13F book. Band-valued, 45 days stale, long US-listed only."]
+        if res.get("magnitude_warning"):
+            notes.insert(0, "UNIT SCALE NOT VERIFIED - " + res["magnitude_warning"])
+        return ("Reported portfolio - {}".format(res.get("filer_name") or "?"),
+                "period {} - {} positions - book {}".format(
+                    res.get("period") or "-", res.get("count") or 0,
+                    _money0(res.get("book_value"))),
+                _PORT_CSV_COLS, srt(res["rows"], "value"), notes)
+    if path == "/insiders":
+        res = q.q_member_book(con, member_key=p["member"] or None, year=p["myear"])
+        notes = ["Annual FD snapshot, band midpoints, never a mark."]
+        if res.get("spouse_share") is not None and res["spouse_share"] >= 50:
+            notes.insert(0, "{}% of this book is SPOUSE-owned - the disclosure surface "
+                            "is largely not the member's own name".format(
+                                res["spouse_share"]))
+        return ("Political insider book - {}".format(res.get("member") or "?"),
+                "{} - FD year {} - {} positions - book {}".format(
+                    res.get("chamber") or "-", res.get("year") or "-",
+                    res.get("count") or 0, _money0(res.get("book_value"))),
+                _INSIDER_CSV_COLS, srt(res["rows"], "midpoint"), notes)
+    if path == "/oge":
+        res = q.q_oge_holdings(con, filer=p["member"] or None)
+        return ("OGE 278e disclosure - {}".format(res.get("filer") or "?"),
+                "{} disclosure lines - {} with a value band".format(
+                    res.get("count") or 0, res.get("banded") or 0),
+                _OGE_CSV_COLS, srt(res["rows"], "midpoint"),
+                [res.get("restriction") or "RESTRICTED",
+                 "Ethics in Government Act 5 USC app. 105(c) - not for commercial use."])
+    if path == "/congress_gaps":
+        res = q.q_congress_gaps(con)
+        return ("Congress coverage roll",
+                "{} filer identities - {} resolved to a party - {} unmatched".format(
+                    res["count"], res["resolved"], res["unresolved"]),
+                _GAP_CSV_COLS, srt(res["rows"], "rows"),
+                ["Breadth counts are FLOORS. Unmatched identities are dominated by "
+                 "candidates who filed a disclosure but never served."])
+    if path == "/disagreements":
+        res = q.q_opposed_pairs(con)
+        return ("Cross-manager disagreements",
+                "{} tickers - {} filers with a determinable direction".format(
+                    res["count"], res["filers_compared"]),
+                _DIS_CSV_COLS, srt(res["rows"], "n_managers"), [res["note"]])
+    if path == "/congress":
+        if p["cticker"]:
+            res = q.q_congress_holders(con, p["cticker"], p["cinstr"])
+            return ("Congress holders - {} {}".format(res["ticker"], res["instrument"]),
+                    "{} positions across members, latest filing each".format(res["count"]),
+                    ["member", "chamber", "state", "owner", "value_lo", "value_hi"],
+                    srt(res["rows"], "value_lo"), [])
+        res = q.q_congress_breadth(con, min_holders=2, owner_filter=p["cowner"])
+        return ("Congress breadth - who holds what",
+                "{} tickers held by 2 or more members".format(res["count"]),
+                ["ticker", "instrument", "holder_count", "house", "senate", "dem", "rep",
+                 "ind", "party_unknown", "midpoint_exposure", "yoy_change", "first_year"],
+                srt(res["rows"], "holder_count"), [res["note"]])
+    return None
+
+
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
           "/insiders": view_insiders, "/oge": view_oge,
           "/disagreements": view_disagreements,
@@ -1482,10 +1556,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         p = _params(parse_qs(u.query))
+        p["_path"] = u.path          # so the Print button can target THIS page
         con = q.connect_ro(self.db_path)  # read-only, per request
         try:
             if u.path == "/brief.pdf":
-                return self._brief(con, p)
+                return self._brief(con, p, parse_qs(u.query))
             if u.path == "/trades.csv":
                 return self._trades_csv(con, p, parse_qs(u.query))
             if u.path == "/sentinels.csv":
@@ -1607,11 +1682,20 @@ class Handler(BaseHTTPRequestHandler):
                    headers={"Content-Disposition":
                             'attachment; filename="{}"'.format(fname)})
 
-    def _brief(self, con, p):
+    def _brief(self, con, p, qsd=None):
         from . import brief
         tmp = os.path.join(tempfile.mkdtemp(), "brief.pdf")
-        brief.render_brief(con, tmp, window=p["window"], anchor=p["anchor"],
-                           floor=p["floor"])
+        view = ((qsd or {}).get("view", [""])[0] or "").strip("/")
+        spec = _page_brief_spec(con, p, "/" + view) if view and view != "front" else None
+        if spec:
+            title, subtitle, cols, rows, notes = spec
+            brief.render_page_brief(
+                tmp, title=title,
+                subtitle="{}  -  generated {}".format(subtitle, q._as_of()),
+                columns=cols, rows=rows, notes=notes)
+        else:
+            brief.render_brief(con, tmp, window=p["window"], anchor=p["anchor"],
+                               floor=p["floor"])
         with open(tmp, "rb") as fh:
             data = fh.read()
         self._send(200, data, ctype="application/pdf")
