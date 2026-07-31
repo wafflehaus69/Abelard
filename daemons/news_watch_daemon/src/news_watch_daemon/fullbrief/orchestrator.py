@@ -578,6 +578,14 @@ def _extract_pass_e_step(
 # ---------------------------------------------------------------------------
 
 
+# Orphan attention crossings — a term that cleared the global attention floor
+# (COLD_START_WINDOW_MIN=15) but maps to NO Pass C event — must clear a HIGHER
+# mention bar before earning a "review first" slot: an unanchored term is
+# lower-confidence, so we demand more corroboration. Convergent crossings (tied
+# to a material event) are exempt and surface at the global floor. (Mando 2026-07-30)
+ORPHAN_MIN_MENTIONS = 20
+
+
 def _build_attention_synthesis_with_convergence(
     attention_briefs: list[AttentionBrief],
     brief_paths: list[Path],
@@ -614,6 +622,16 @@ def _build_attention_synthesis_with_convergence(
             converges_with=cr.converges_with,
             orphan_reason=cr.orphan_reason,
         )
+
+        # Orphan crossings need >= ORPHAN_MIN_MENTIONS window mentions; convergent
+        # crossings are kept regardless (already anchored to a Pass C event). This
+        # drops low-mention orphan noise from the "review first" section AND from
+        # executive_summary.orphan_crossings_count.
+        if (
+            convergence_info.status == "orphan"
+            and ab.term_frequency_window < ORPHAN_MIN_MENTIONS
+        ):
+            continue
 
         delta_ratio = ab.term_frequency_window / max(ab.term_frequency_prior, 1)
         # Full attention-brief narrative (was capped at 280 chars) — the orphan

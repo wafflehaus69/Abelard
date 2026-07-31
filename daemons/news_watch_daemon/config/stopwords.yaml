@@ -23,6 +23,12 @@
 # daemon init. No restart needed beyond the next attention run.
 
 english:
+  # "vs"/"versus" — matchup connector ("Spain vs France", "Nvidia vs AMD").
+  # Pure connector noise: crosses the attention floor with no editorial meaning,
+  # and (as a grammatical stopword) it also breaks adjacency so the two flanking
+  # sides never form a spurious skip-gram pair. Added 2026-07-30 (Mando).
+  - vs
+  - versus
   # Articles, common verbs, basic prepositions
   - a
   - an

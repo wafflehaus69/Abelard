@@ -159,14 +159,18 @@ def _make_attention_brief(
     *,
     brief_id: str = "nwd-attn-2026-05-29T14-31-21Z-abcd1234",
     triggering_term: str = "iran",
+    term_frequency_window: int = 22,
 ) -> AttentionBrief:
     return AttentionBrief(
         brief_id=brief_id,
         generated_at="2026-05-29T14:31:21Z",
         triggering_term=triggering_term,
-        term_frequency_window=12,
+        # Default 22 >= ORPHAN_MIN_MENTIONS (20) so a surfacing orphan clears the
+        # orphan floor; 12 was below even the global attention floor (15), i.e. an
+        # unrealistic value for a term that "crossed". Override to test the drop.
+        term_frequency_window=term_frequency_window,
         term_frequency_prior=2,
-        cluster_size=12,
+        cluster_size=22,
         narrative=f"Sample narrative about {triggering_term}." * 5,
         source_mix={"telegram:CIG_telegram": 8, "rss:bloomberg_politics": 4},
         entities_observed=["Iran", "Hormuz"],
@@ -423,6 +427,34 @@ def test_t2b_pass_c_sdk_error_raised_still_assembles(tmp_path):
     assert pass_c_failures[0].recovered is True
     # Attention still ran -> the brief (and its rendered PDF) still produced.
     assert len(envelope.attention_synthesis.crossings) == 1
+
+
+# ---------- Orphan crossing minimum-mentions floor (Mando 2026-07-30) ----------
+
+
+def test_orphan_crossing_below_min_mentions_is_dropped():
+    """An orphan crossing (no Pass C event contains the term) below
+    ORPHAN_MIN_MENTIONS is dropped from the section; at the floor it survives."""
+    from news_watch_daemon.fullbrief.orchestrator import (
+        ORPHAN_MIN_MENTIONS,
+        _build_attention_synthesis_with_convergence,
+    )
+    health = _StepHealth(status="ok")
+
+    # Below the floor + no Pass C events -> orphan -> dropped.
+    low = _make_attention_brief(term_frequency_window=ORPHAN_MIN_MENTIONS - 1)
+    _, crossings_low = _build_attention_synthesis_with_convergence(
+        [low], [Path("/fake/low.json")], health, [],
+    )
+    assert crossings_low == []
+
+    # At the floor -> the orphan survives.
+    ok = _make_attention_brief(term_frequency_window=ORPHAN_MIN_MENTIONS)
+    _, crossings_ok = _build_attention_synthesis_with_convergence(
+        [ok], [Path("/fake/ok.json")], health, [],
+    )
+    assert len(crossings_ok) == 1
+    assert crossings_ok[0].convergence.status == "orphan"
 
 
 # ---------- T3: Pass E attention_outcome status=error ----------

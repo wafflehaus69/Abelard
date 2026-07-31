@@ -236,3 +236,42 @@ def test_broad_bigram_survives_a_promoted_trigram():
     assert terms["data center moratorium"].kind == "trigram"   # narrow phrase
     assert terms["data center"].kind == "bigram"               # broad signal survives
     assert terms["data center"].window_count == 13             # full independent count kept
+
+
+# ---------- topic blocklist (dedicated-theme topics suppressed, 2026-07-30) ----------
+
+
+def test_topic_blocklist_suppresses_dedicated_theme_topics():
+    # Topics with their own theme-segment section must not resurface as attention
+    # terms in ANY form (unigram, plural, phrase). Flanks vary so the blocked
+    # token/phrase is the clean promoted term.
+    win = (
+        [f"{l} stablecoin {r}" for l, r in zip(
+            ("north", "south", "east", "west", "up", "down"),
+            ("alpha", "bravo", "charlie", "delta", "echo", "foxtrot"))]
+        + [f"{l} tokenized {r}" for l, r in zip(
+            ("left", "right", "high", "lower", "near", "far"),
+            ("aa", "bb", "cc", "dd", "ee", "ff"))]
+        + [f"prediction market {w}" for w in
+           ("gg", "hh", "ii", "jj", "kk", "ll")]
+    )
+    terms = _terms_by_text(build_attention_list(win, [], _SW))
+    assert not any("stablecoin" in t for t in terms), terms
+    assert not any("tokenized" in t for t in terms), terms
+    assert not any("prediction market" in t for t in terms), terms
+    # the phrase's generic constituent must NOT leak on its own
+    assert "market" not in terms
+    assert "prediction" not in terms
+
+
+def test_topic_blocklist_catches_plural_and_phrase_variants():
+    # "stablecoins" (plural) and "prediction markets" (plural phrase) are caught
+    # by the same substring entries — no separate list entry needed.
+    win = ([f"{l} stablecoins {r}" for l, r in zip(
+                ("a1", "b1", "c1", "d1", "e1", "f1"),
+                ("a2", "b2", "c2", "d2", "e2", "f2"))]
+           + [f"prediction markets {w}" for w in
+              ("m1", "m2", "m3", "m4", "m5", "m6")])
+    terms = _terms_by_text(build_attention_list(win, [], _SW))
+    assert not any("stablecoin" in t for t in terms), terms
+    assert not any("prediction market" in t for t in terms), terms

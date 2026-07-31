@@ -169,6 +169,22 @@ _SOFT_STOPWORDS = frozenset({
 _TIER_A = _TOKENIZER_FRAGMENTS | _SOURCE_NAME_TOKENS
 
 
+# Topics that already have a DEDICATED brief section (their own theme segment),
+# so they must NOT be rehashed as ATTENTION crossings / near-miss terms. Matched
+# as a lowercased SUBSTRING against the final term text — cleanly catches unigram,
+# plural, and phrase variants ("stablecoin" -> "stablecoins"; "prediction market"
+# -> "prediction markets") and drops the promoted term WHOLE (its constituents
+# were already collapsed into it, so nothing leaks). ATTENTION-only: theme tagging
+# in scrape/ is unaffected. Applied before synthesis, so a blocked topic never
+# costs a Pass E call. Editable inline like the token sets above. (Mando 2026-07-30)
+_TOPIC_BLOCKLIST = ("tokenized", "stablecoin", "prediction market")
+
+
+def _is_topic_blocklisted(text: str) -> bool:
+    low = text.lower()
+    return any(phrase in low for phrase in _TOPIC_BLOCKLIST)
+
+
 @dataclass(frozen=True)
 class AttentionTerm:
     """One entry in the collapsed attention list.
@@ -336,6 +352,8 @@ def build_attention_list(
             delta_ratio=_delta_ratio(n, prior_n),
         ))
 
+    # Drop topics with their own dedicated brief section (attention-only).
+    terms = [t for t in terms if not _is_topic_blocklisted(t.text)]
     terms.sort(key=lambda t: (-t.window_count, -t.delta_ratio, t.text))
     return terms
 
