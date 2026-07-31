@@ -50,20 +50,41 @@ def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
     except Exception as exc:  # noqa: BLE001 - fail-loud into source status
         sources.append(_src("house_clerk", "DEGRADED", str(exc)[:120]))
 
-    # Senate: attempt the certified search delta. WAF blocks the endpoint for
-    # scripts (recon/EFD_WAF_FINDING.md); on 503 report DEGRADED, never fake.
+    # Senate: search-driven PTR delta. UN-DEGRADED 2026-07-30 — the eFD data endpoint is
+    # reachable again via post_data + X-CSRFToken (recon/EFD_WAF_FINDING.md superseded), so
+    # this now ENUMERATES recent PTRs and ingests new uuids (resume-safe via
+    # ingested_filings), instead of just probing. A 503 / any failure reverts to DEGRADED,
+    # never fakes.
     try:
+        import pathlib as _pl
+        from . import efd_ingest
+        efd_raw = _pl.Path(efd_ingest.RAW_DIR_DEFAULT)
+        efd_raw.mkdir(parents=True, exist_ok=True)
         s = bootstrap(ua, probe=False)
-        post_data(s, {"draw": "1", "start": "0", "length": "1",
-                      "report_types": "[11]", "filer_types": "[]",
-                      "submitted_start_date": "", "submitted_end_date": "",
-                      "candidate_state": "", "senator_state": "", "office_id": "",
-                      "first_name": "", "last_name": ""})
-        sources.append(_src("senate_efd", "OK", "search reachable", 0))
+        since = (dt.date.today() - dt.timedelta(days=45)).strftime("%m/%d/%Y")
+        new_sen, start = 0, 0
+        while True:
+            body = post_data(s, {
+                "draw": "1", "start": str(start), "length": "100",
+                "report_types": "[11]", "filer_types": "[]", "first_name": "",
+                "last_name": "", "submitted_start_date": "{} 00:00:00".format(since),
+                "submitted_end_date": "", "candidate_state": "", "senator_state": "",
+                "office_id": "", "order[0][column]": "4", "order[0][dir]": "desc"})
+            data = body.get("data") or []
+            for row in data:
+                filing = efd_ingest.parse_search_row(row)
+                if efd_ingest.ingest_filing(con, s, filing, efd_raw) == "electronic":
+                    new_sen += 1
+            start += 100
+            if start >= body.get("recordsTotal", 0) or not data:
+                break
+        counts["senate_new_filings"] = new_sen
+        sources.append(_src("senate_efd", "OK", "search delta", new_sen))
     except EfdSessionError as exc:
         sources.append(_src("senate_efd", "DEGRADED",
-                            "search endpoint blocked ({}); browser index adapter "
-                            "is a deploy concern".format(str(exc)[:40])))
+                            "search endpoint {} - see EFD_WAF_FINDING".format(str(exc)[:50])))
+    except Exception as exc:  # noqa: BLE001 - any other failure -> DEGRADED, never fake
+        sources.append(_src("senate_efd", "DEGRADED", "senate delta {}".format(str(exc)[:60])))
 
     # F5 amendment supersede — active in the scan path, first live use.
     apply_supersedes(con)

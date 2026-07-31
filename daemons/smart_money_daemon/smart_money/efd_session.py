@@ -17,10 +17,12 @@ class EfdSessionError(RuntimeError):
 
 
 def bootstrap(user_agent: str, probe: bool = True) -> requests.Session:
-    """Agreement handshake. probe=True also exercises the DataTables data
-    endpoint (used by the search-enumeration path). With probe=False only the
-    agreement is established — enough for detail-page GETs, which are NOT behind
-    the WAF that now 503s the data endpoint (see recon/EFD_WAF_FINDING.md)."""
+    """Agreement handshake. probe=True also exercises the DataTables data endpoint
+    (the search-enumeration path). With probe=False only the agreement is established.
+    As of 2026-07-30 the data endpoint is REACHABLE via plain requests again — post_data
+    (agreement session + X-CSRFToken) returns 200 for report_type 11 (PTR) and 7 (annual);
+    the 2026-07-20 WAF block is no longer in effect (see recon/EFD_WAF_FINDING.md). Pace
+    requests to avoid rate-limiting."""
     s = requests.Session()
     s.headers["User-Agent"] = user_agent
     r = s.get(HOME, timeout=30)
