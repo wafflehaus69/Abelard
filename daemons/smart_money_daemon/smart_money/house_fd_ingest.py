@@ -43,7 +43,23 @@ PACE_SECONDS = 0.5
 ANNUAL_TYPES = ("O", "A")
 
 _TICKER_RE = re.compile(r"\(([A-Za-z0-9.\-]{1,10})\)")
-_TYPE_RE = re.compile(r"\[([A-Za-z]{2,3})\]")
+# House Schedule A asset-type codes, from the FD instruction booklet. This is a CLOSED
+# vocabulary and validating against it matters: `_TYPE_RE` used to accept ANY 2-3 letter
+# bracketed token, so ETF tickers written in brackets ("[QQQ]", "[GLD]", "[VOO]") were
+# stored as asset TYPES. That both invented 27 bogus type codes and pushed those rows out
+# of the ST/OP/EF denominator, so they vanished from capture measurement entirely.
+_FD_TYPES = frozenset((
+    "4K", "5C", "5F", "5P", "AB", "BA", "BO", "CO", "CS", "CT", "DB", "DC", "DO", "DON",
+    "DS", "EF", "EQ", "ET", "FA", "FN", "GS", "HE", "IH", "IP", "IS", "MA", "MF", "MO",
+    "OI", "OL", "OP", "OT", "PE", "PM", "PS", "RE", "RF", "RP", "RS", "SA", "ST", "TR",
+    "VA", "VI", "WU", "DES", "DFP"))
+# Alphanumeric because real codes include 4K/5C/5F/5P; safe to widen ONLY because
+# every match is now validated against _FD_TYPES below.
+_TYPE_RE = re.compile(r"\[([A-Za-z0-9]{2,3})\]")
+# Filers also write tickers in SQUARE brackets ("ARK INNOVATION [ARKK]"), which the
+# parens-only ticker rule missed. Anything bracketed that is not a known type code and not
+# a footnote number is treated as a symbol candidate.
+_BRACKET_TICKER_RE = re.compile(r"\[([A-Za-z]{1,5})\]")
 _BAND_RE = re.compile(r"\$([\d,]+)\s*-\s*\$([\d,]+)")
 _OVER_RE = re.compile(r"[Oo]ver \$([\d,]+)")
 # Standard FD floor band, e.g. "None (or less than $1,001)" -> ($0, $1,001).
@@ -177,7 +193,15 @@ def _finalize(rec):
     for cand in _TICKER_RE.findall(name):        # last symbol-shaped parens wins
         if re.fullmatch(r"[A-Za-z]{1,5}[A-Za-z.\-]{0,3}", cand):
             ticker = cand.upper()
-    tm = _TYPE_RE.search(name)
+    if not ticker:                               # "ARK INNOVATION [ARKK]"
+        for cand in _BRACKET_TICKER_RE.findall(name):
+            if cand.upper() not in _FD_TYPES:    # never mistake a type code for a symbol
+                ticker = cand.upper()
+    # Only a KNOWN code counts as the asset type; a bracketed ETF symbol is not a type.
+    tm = None
+    for m in _TYPE_RE.finditer(name):
+        if m.group(1).upper() in _FD_TYPES:
+            tm = m
     lo, hi = _parse_band(" ".join(rec["value"]))
     clean = _TYPE_RE.sub("", name).strip(" -")
     return {"asset_name": clean[:200] or name[:200], "ticker": ticker,

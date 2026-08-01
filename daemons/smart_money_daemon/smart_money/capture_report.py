@@ -135,25 +135,35 @@ def render(cells, anchor=None):
                  "COVERAGE FLOORS, not the gate. Historical years contain more filer-side "
                  "symbol omissions, which parsing cannot recover without guessing."
                  .format(tp, bp))
+    # The verdict is ALWAYS emitted, and always says which population it measured. An
+    # earlier cut put the GATE lines inside the anchor branch, so a corpus-only render
+    # produced a report with no conclusion in it — worse than a wrong number, because
+    # nothing looks missing.
+    lines.append("")
+    lines.append("=" * 78)
     if anchor is not None:
-        atp = _pct(anchor["tick_hit"], anchor["tick_den"])
-        abp = _pct(anchor["band_hit"], anchor["band_den"])
+        gtp = _pct(anchor["tick_hit"], anchor["tick_den"])
+        gbp = _pct(anchor["band_hit"], anchor["band_den"])
         yrs = sorted(anchor["years"])
-        lines.append("")
-        lines.append("=" * 78)
         lines.append("GATE POPULATION - ANCHOR ROWS ONLY (each member's LATEST coverage "
                      "year; {} members, years {}-{})".format(
                          anchor["members"], yrs[0] if yrs else "-", yrs[-1] if yrs else "-"))
         lines.append("  rows {}   ticker {}/{} = {}%   band {}/{} = {}%".format(
-            anchor["rows"], anchor["tick_hit"], anchor["tick_den"], atp,
-            anchor["band_hit"], anchor["band_den"], abp))
-        lines.append("GATE ticker >= {}%: {}".format(
-            TICKER_BAR, "PASS" if (atp or 0) >= TICKER_BAR else "FAIL"))
-        lines.append("GATE band   >= {}%: {}".format(
-            BAND_BAR, "PASS" if (abp or 0) >= BAND_BAR else "FAIL"))
-        lines.append("Anchor rows are what Phase F derives holding claims FROM, so this is "
-                     "the population the bar governs (Mando ruling, SM-C3 Phase H).")
-        lines.append("=" * 78)
+            anchor["rows"], anchor["tick_hit"], anchor["tick_den"], gtp,
+            anchor["band_hit"], anchor["band_den"], gbp))
+        tail = ("Anchor rows are what Phase F derives holding claims FROM, so this is the "
+                "population the bar governs (Mando ruling, SM-C3 Phase H).")
+    else:
+        gtp, gbp = tp, bp
+        lines.append("GATE POPULATION - WHOLE CORPUS (no anchor set supplied)")
+        tail = ("Measured over every coverage year, so historical filer-side symbol "
+                "omissions are included in this verdict.")
+    lines.append("GATE ticker >= {}%: {}".format(
+        TICKER_BAR, "PASS" if (gtp or 0) >= TICKER_BAR else "FAIL"))
+    lines.append("GATE band   >= {}%: {}".format(
+        BAND_BAR, "PASS" if (gbp or 0) >= BAND_BAR else "FAIL"))
+    lines.append(tail)
+    lines.append("=" * 78)
     lines.append("")
     lines.append("Corpus-wide band rate (ALL rows incl. non-equity): {}% - reported as a "
                  "FLOOR, NOT the gate. The raw value text is not retained, so from the DB "

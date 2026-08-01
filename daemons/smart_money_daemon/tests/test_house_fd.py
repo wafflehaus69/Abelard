@@ -43,3 +43,39 @@ def test_col_bounds_and_bucket():
     b = fd._bucket([(35, "Apple"), (262, "SP"), (305, "$5,000,001"), (405, "Dividends")], bounds)
     assert b["Asset"] == ["Apple"] and b["Owner"] == ["SP"]
     assert b["Value"] == ["$5,000,001"] and b["Income"] == ["Dividends"]
+
+
+def test_bracket_tickers_and_closed_type_vocabulary():
+    """Two faces of one bug found by the Phase H capture gate.
+
+    Filers write tickers in SQUARE brackets ("ARK INNOVATION [ARKK]"), which a
+    parens-only rule missed. And because _TYPE_RE accepted ANY short bracketed token,
+    ETF symbols like [QQQ]/[GLD]/[VOO] were stored as asset TYPES — inventing 27 bogus
+    codes and pushing those rows out of the ST/OP/EF capture denominator entirely.
+    """
+    def fin(name):
+        return fd._finalize({"asset": name.split(), "owner": "SP",
+                             "value": ["$1,001", "-", "$15,000"], "income": ["None"]})
+    r = fin("ARK INNOVATION [ARKK] [ST]")
+    assert r["ticker"] == "ARKK" and r["asset_type"] == "ST", r
+    # a bracketed ETF symbol with no type code is a TICKER, never a type
+    r = fin("INVESCO QQQ TRUST [QQQ]")
+    assert r["ticker"] == "QQQ" and r["asset_type"] is None, r
+    # parens still win when present
+    assert fin("Apple Inc. (AAPL) [ST]")["ticker"] == "AAPL"
+    # a real type code must never be mistaken for a symbol
+    r = fin("11 Zinfandel Lane [RP]")
+    assert r["ticker"] is None and r["asset_type"] == "RP", r
+    # digit-leading codes are real types too (4K/5C/5F/5P)
+    assert fin("Retirement Plan [5F]")["asset_type"] == "5F"
+    assert fin("Thrift [4K]")["asset_type"] == "4K"
+    assert fin("Retirement Plan [5F]")["ticker"] is None
+
+
+def test_every_known_type_code_resolves_as_a_type_not_a_ticker():
+    for code in sorted(fd._FD_TYPES):
+        r = fd._finalize({"asset": ["Asset", "[{}]".format(code)], "owner": "SP",
+                          "value": ["x"], "income": ["None"]})
+        if len(code) <= 3:
+            assert r["asset_type"] == code, (code, r)
+        assert r["ticker"] is None, "type code leaked into ticker: {}".format(code)
