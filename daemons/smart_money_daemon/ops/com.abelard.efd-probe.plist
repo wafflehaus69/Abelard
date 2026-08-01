@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SM-C3 Phase W: spread-sample eFD availability probe.
+     NOT LOADED. The two active smart_money jobs both fire in the 22:00-23:00 band, so
+     riding them samples one hour and cannot answer "is there a morning window". This
+     fires at six spread hours so the map has something to compare. One HTTP request per
+     firing, read-only, no ingest.
+     Enable with:
+       cp ops/com.abelard.efd-probe.plist ~/Library/LaunchAgents/
+       launchctl enable  gui/$(id -u)/com.abelard.efd-probe
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.abelard.efd-probe.plist
+-->
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.abelard.efd-probe</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon/.venv/bin/python</string>
+    <string>-m</string><string>smart_money.waf_probe</string>
+    <string>--rider</string><string>--max-jitter</string><string>900</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon</string>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>5</integer></dict>
+  </array>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>/Users/wafflehaus/.openclaw/smart_money/logs/efd-probe.out</string>
+  <key>StandardErrorPath</key><string>/Users/wafflehaus/.openclaw/smart_money/logs/efd-probe.err</string>
+</dict></plist>

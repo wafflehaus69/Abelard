@@ -310,6 +310,22 @@ CREATE INDEX IF NOT EXISTS idx_oge_ticker ON oge_holdings(ticker);
 -- congress-legislators roster by smart_money/roster.py. party is NULL when the filer did
 -- not resolve DETERMINISTICALLY (match_kind 'unmatched') -- never guessed. That bucket is
 -- dominated by candidates who filed an FD but never served.
+-- SM-C3 Phase W: eFD availability probe log. The Senate legs were degraded on the
+-- BELIEF that eFD blocks scripted access; this turns that belief into data. One row per
+-- probe, including failures (a failed probe is the datapoint). hour_local is stored at
+-- write time so the window map buckets by the operator's clock, not UTC.
+CREATE TABLE IF NOT EXISTS efd_probe_log(
+  probe_id INTEGER PRIMARY KEY,
+  probed_at_unix INTEGER NOT NULL,
+  probed_at_iso TEXT NOT NULL,
+  hour_local INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  ok INTEGER NOT NULL,
+  status TEXT,
+  latency_ms INTEGER,
+  detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_probe_time ON efd_probe_log(probed_at_unix);
 CREATE TABLE IF NOT EXISTS congress_member_roster(
   chamber TEXT NOT NULL,
   member_last TEXT,
