@@ -1263,6 +1263,61 @@ def q_oge_holdings(con, filer=None):
             "note": "band-valued, coarse; restricted source, non-commercial use only"}
 
 
+def q_coverage_matrix(con):
+    """SM-C3 Phase H: per-member, per-coverage-year parse state across the harvest.
+
+    This is the DATA_QUALITY deliverable and the thing that makes every downstream number
+    a FLOOR rather than a total. A member-year is one of:
+      parsed   — an annual was ingested and yielded rows
+      empty    — an annual was ingested and yielded NO rows (a real reported state)
+      missing  — no annual for that member-year in the corpus at all
+    'missing' is not necessarily a parse failure: the member may not have served that
+    year, or the filing may be paper/unparsed/never-fetched. The distinction is NOT
+    guessed here — congress_fd_seen carries the per-document status, so the failure modes
+    are reported separately rather than folded into one bucket."""
+    years = sorted({y for (y,) in con.execute(
+        "SELECT DISTINCT coverage_year FROM congress_holdings "
+        "WHERE coverage_year IS NOT NULL")})
+    rows_by = defaultdict(dict)
+    members = {}
+    for c, l, f, s, y, n in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, coverage_year, "
+            "count(*) FROM congress_holdings WHERE coverage_year IS NOT NULL "
+            "GROUP BY chamber, member_last, member_first, state_dist, coverage_year"):
+        k = (c, l, f, s)
+        members[k] = True
+        rows_by[k][y] = n
+    # document-level status tallies, so paper/unparsed are visible as themselves
+    status = defaultdict(int)
+    try:
+        for st, n in con.execute(
+                "SELECT status, count(*) FROM congress_fd_seen GROUP BY status"):
+            status[st] = n
+    except Exception:
+        pass
+    out = []
+    for k in sorted(members, key=lambda x: (x[0], x[1] or "", x[2] or "")):
+        c, l, f, s = k
+        per = rows_by[k]
+        cells = []
+        for y in years:
+            n = per.get(y)
+            cells.append({"year": y, "rows": n,
+                          "state": "parsed" if n else ("empty" if n == 0 else "missing")})
+        out.append({"member": "{}, {}".format(l or "?", f or ""), "chamber": c,
+                    "state_dist": s, "years_present": len(per),
+                    "cells": cells, "total_rows": sum(per.values())})
+    covered = sum(r["years_present"] for r in out)
+    possible = len(out) * len(years) if years else 0
+    return {"as_of": _as_of(), "years": years, "rows": out, "members": len(out),
+            "cells_covered": covered, "cells_possible": possible,
+            "coverage_pct": round(100.0 * covered / possible, 1) if possible else 0.0,
+            "doc_status": dict(status),
+            "note": "a missing member-year may mean the member did not serve that year, "
+                    "not that a filing was lost; document-level paper/unparsed counts are "
+                    "reported separately and never folded in"}
+
+
 def q_congress_gaps(con):
     """SM-C2 P3: who is BEHIND the breadth counts. Per filer identity: chamber, party,
     how it resolved, filing years present, and holdings rows. The point is that breadth

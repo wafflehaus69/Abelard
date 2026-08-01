@@ -181,18 +181,22 @@ def _classify_body(html):
     return "soft_block"
 
 
-def search_annual(sess, since_mdy, length=100):
-    """Enumerate annual (report_type 7) filings submitted on/after since_mdy (MM/DD/YYYY),
-    newest first. Yields index rows [first, last, office, link_html, filed]. Fails loud
-    (IngestError) on a malformed / WAF search response rather than silently yielding
-    nothing (mirrors efd_ingest.search_year)."""
+def search_annual(sess, since_mdy, length=100, until_mdy=None):
+    """Enumerate annual (report_type 7) filings submitted in [since_mdy, until_mdy]
+    (MM/DD/YYYY), newest first. Yields index rows [first, last, office, link_html, filed].
+    Fails loud (IngestError) on a malformed / WAF search response rather than silently
+    yielding nothing (mirrors efd_ingest.search_year).
+
+    until_mdy bounds a HISTORICAL harvest (SM-C3 Phase H) so pulling an older window does
+    not re-walk the whole index just to skip rows the resume ledger already has."""
     start = 0
     while True:
         _pace()
         body = post_data(sess, {
             "draw": "1", "start": str(start), "length": str(length),
             "report_types": "[7]", "filer_types": "[]", "first_name": "", "last_name": "",
-            "submitted_start_date": "{} 00:00:00".format(since_mdy), "submitted_end_date": "",
+            "submitted_start_date": "{} 00:00:00".format(since_mdy),
+            "submitted_end_date": ("{} 23:59:59".format(until_mdy) if until_mdy else ""),
             "candidate_state": "", "senator_state": "", "office_id": "",
             "order[0][column]": "4", "order[0][dir]": "desc"})
         data = body.get("data")
@@ -284,6 +288,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Senate annual FD holdings ingest (SM-C2 P1)")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
     ap.add_argument("--since", default="01/01/2024", help="MM/DD/YYYY submitted floor")
+    ap.add_argument("--until", default=None,
+                    help="MM/DD/YYYY submitted ceiling, for a bounded historical harvest")
     ap.add_argument("--limit", type=int, help="cap filings (sample run)")
     args = ap.parse_args(argv)
     contact = load_env().get("EDGAR_CONTACT") or "smartmoney@example.com"
@@ -293,7 +299,8 @@ def main(argv=None):
     tally = {"filings": 0, "ok": 0, "rows": 0, "no_grid": 0, "paper": 0,
              "seen": 0, "candidate_not_served": 0, "retriable": 0}
     try:
-        for i, row in enumerate(search_annual(sess, args.since), 1):
+        for i, row in enumerate(search_annual(sess, args.since,
+                                              until_mdy=args.until), 1):
             if args.limit and tally["filings"] >= args.limit:
                 break
             res = ingest_report(con, sess, row)
