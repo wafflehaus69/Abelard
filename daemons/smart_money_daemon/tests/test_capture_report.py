@@ -89,3 +89,43 @@ def test_per_year_cells_are_reported_before_the_verdict(tmp_path):
     assert "2022" in txt and "2024" in txt
     assert "Weakest cells" in txt and "house 2022 0.0%" in txt
     con.close()
+
+
+def test_anchor_gate_excludes_historical_years(tmp_path):
+    """Mando's Phase H ruling: the 95% bar governs ANCHOR rows (each member's latest
+    coverage year), because that is what Phase F derives holding claims from. A dirty
+    historical year must be reported as a coverage floor without dragging the gate."""
+    con = dbmod.connect(str(tmp_path / "anch.db"))
+    for _ in range(20):                       # latest year, clean
+        _row(con, cov=2025, atype="ST", ticker="AAPL")
+    for _ in range(20):                       # old year, filer omitted symbols
+        _row(con, cov=2021, atype="ST", ticker=None)
+    con.commit()
+    a = cr.measure_anchor(con)
+    assert a["members"] == 1 and sorted(a["years"]) == [2025]
+    assert cr._pct(a["tick_hit"], a["tick_den"]) == 100.0
+    cells = cr.measure(con)
+    corpus = cr._pct(sum(v["tick_hit"] for v in cells.values()),
+                     sum(v["tick_den"] for v in cells.values()))
+    assert corpus == 50.0, "corpus still reports the truth"
+    txt = cr.render(cells, a)
+    assert "GATE ticker >= 95.0%: PASS" in txt
+    assert "COVERAGE FLOORS" in txt, "historical years shown as floors, not hidden"
+    con.close()
+
+
+def test_anchor_uses_latest_year_per_member_not_a_global_cutoff(tmp_path):
+    """Members retire. A member whose latest annual is 2022 anchors on 2022 — a global
+    'year >= 2025' rule would silently drop them from the gate population entirely."""
+    con = dbmod.connect(str(tmp_path / "per.db"))
+    for _ in range(5):
+        _row(con, cov=2025, atype="ST", ticker="AAPL")
+    con.execute(
+        "INSERT INTO congress_holdings(doc_id, chamber, coverage_year, member_last, "
+        "row_idx, asset_name, ticker, asset_type, value_lo, value_hi, ingested_at_unix) "
+        "VALUES('r1','house',2022,'Retired',900,'A','MSFT','ST',1001,15000,0)")
+    con.commit()
+    a = cr.measure_anchor(con)
+    assert a["members"] == 2, "both members contribute an anchor"
+    assert sorted(a["years"]) == [2022, 2025], a["years"]
+    con.close()
