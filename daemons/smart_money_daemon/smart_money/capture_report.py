@@ -37,6 +37,27 @@ REPORTED_NOT_GATED = ("MF",)
 TICKER_BAR = 95.0
 BAND_BAR = 90.0
 
+# ORDER SM-C3 Phase H — STANDING RULING (Mando, 2026-07-31). The anchor gate measured
+# 94.4% and was ACCEPTED as a documented coverage floor, not waived. The reasoning is
+# permanent and travels with the report:
+#   * A missing ticker cannot produce a WRONG holdings claim. An asset with no symbol
+#     never joins a PTR flow, so it sits in the book as an anchored row and participates
+#     in nothing. The failure mode is UNDER-COVERAGE, not incorrectness.
+#   * The residue is irreducible by parsing: private companies with no ticker in
+#     existence (First Bank, Cantex Pharmaceuticals, John Neely Kennedy APLC) plus
+#     filer-side symbol omissions. Closing it would require guessing, which is banned.
+#   * REJECTED ON THE RECORD: narrowing the gate population to active filers (which
+#     measured 96.0% and would have passed). Rejected as gate-shopping — the population
+#     would have been changed after seeing which one passed.
+# Phase F DISPLAY REQUIREMENT arising from this ruling: a holding with no ticker is
+# UNFUSABLE and must be marked as such in the member view, so a reader can never mistake
+# "no flows matched" for "no flows occurred".
+RULING = (
+    "Phase H gate ACCEPTED at 94.4% as a documented COVERAGE FLOOR (Mando 2026-07-31). "
+    "A missing ticker yields an UNFUSABLE row, never a wrong claim; the residue is "
+    "private companies and filer omissions, unreachable without guessing. Narrowing to "
+    "active filers (96.0%) was REJECTED as gate-shopping.")
+
 
 def measure(con):
     """Per (chamber, coverage_year) capture stats plus corpus totals."""
@@ -163,6 +184,8 @@ def render(cells, anchor=None):
     lines.append("GATE band   >= {}%: {}".format(
         BAND_BAR, "PASS" if (gbp or 0) >= BAND_BAR else "FAIL"))
     lines.append(tail)
+    lines.append("-" * 78)
+    lines.append("STANDING RULING: " + RULING)
     lines.append("=" * 78)
     lines.append("")
     lines.append("Corpus-wide band rate (ALL rows incl. non-equity): {}% - reported as a "
