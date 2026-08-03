@@ -17,15 +17,15 @@ carried from the spec, enforced here:
 
 Read-only over the tape: this opens TapeStore for reads only and never writes.
 
-v1 scope (documented follow-ups, per the build plan §7):
-  - The F (freshness) fill-factor needs a LIVE wallet first-seen; m0f.enrich_wallet
-    sources it from the FROZEN L1 subgraph, so it is unusable for a live scan. The
-    free bar here scores on S/D/C only, and the funded->bet latency elevator is
-    the informed-timing signal. A live first-seen source (data-api /activity or
-    chain age) is the follow-up that re-activates F.
-  - Tier latching is computed in-memory per scan (no cross-scan persistence yet,
-    which would require a latch store; kept out to preserve read-only). The
-    dossier's latch therefore reflects this scan's high-water mark.
+Scope notes:
+  - Factor F (freshness) is RESTORED for the live scan (M10-D §3.1): the fill-factor
+    bar is still scored on S/D/C only — that is the v1.5 §4 enrichment gate — and only
+    the wallets past it get a live first-seen pull (consensus.firstseen), after which
+    the scorer re-runs with F active for them. A failed lookup declares F unavailable
+    for that wallet, never imputed.
+  - Tier latching is computed in-memory per scan; the DURABLE cross-scan high-water
+    mark lives in the Dossier Store's ``tier_peak`` column (M10-D §3.2), written when
+    ``store_path`` is set.
 """
 
 from __future__ import annotations
@@ -105,22 +105,52 @@ def _in_scope(market: dict[str, Any], m10: Any) -> bool:
     return tags not in set(m10.excluded_categories)
 
 
-def _latency_boost(wf: Any, m10: Any) -> float:
-    """Elevator (v1.5 §3): multiplicative lift, never suppression. None/error/slow
-    -> 1.0 (score intact). A CEX-funded fast bet is far less discriminating, so
-    its lift is discounted."""
+def _is_fast_funded(wf: Any, m10: Any) -> bool | None:
+    """v1.16 §1: the funded->bet latency as a REPORTED FLAG, not a multiplier.
+
+    True  = funded and bet inside ``latency_tight_minutes`` by a purpose-built
+            (dedicated) funder — the discriminating case.
+    False = measured, but not that shape (slow, or a CEX/infra/unclassified funder,
+            which v1.7 §1 says must never be treated as dedicated).
+    None  = NOT MEASURED (absent or errored lookup) — declared, never imputed to False,
+            because "no evidence of fast funding" and "we could not look" are different
+            facts and only one of them is informative.
+    """
     if wf is None or wf.error is not None or wf.latency_s is None:
-        return 1.0
+        return None
     if wf.latency_s > m10.latency_tight_minutes * 60:
-        return 1.0
-    boost = m10.latency_elevator_boost
-    # Full lift only for a purpose-built (dedicated) funder. A CEX hot wallet, a
-    # nonpersonal infra funder, or an unclassified/unknown one (classification
-    # failed) is far less discriminating and must never earn the full elevator
-    # (v1.7 §1: low-confidence -> never treated as dedicated; review 2026-07-20).
-    if wf.funder_kind != "dedicated":
-        boost = 1.0 + (boost - 1.0) * 0.5
-    return boost
+        return False
+    return wf.funder_kind == "dedicated"
+
+
+def collapse_actors(member_funding: dict[str, dict[str, Any] | None]) -> int | None:
+    """Funding-mesh collapse (v1.9 §0.3 / v1.15 §4.2 / v1.16 §2): how many ACTORS are
+    behind a set of co-trading wallets?
+
+    ``member_funding`` maps wallet -> its funding record (``funder``/``funder_kind``),
+    or None if that wallet was never enriched. Returns the post-collapse actor count,
+    or **None = UNRESOLVED** when any member's funding is unknown — because a partial
+    collapse could only ever UNDER-count actors, i.e. overstate coordination, which is
+    the one direction this invariant exists to prevent. Unresolved is never "20".
+
+    Collapse rule: wallets sharing a DEDICATED (purpose-built) funder are one actor. A
+    ``cex`` funder is a shared hot wallet used by thousands of unrelated people and must
+    NOT link anyone; ``nonpersonal`` (infra) likewise; ``unknown`` means the classifier
+    failed, and per v1.8 §4.3 a low-confidence verdict never hardens into a link. Every
+    wallet in those three cases counts as its own actor.
+    """
+    if not member_funding:
+        return None
+    dedicated_funders: set[str] = set()
+    standalone = 0
+    for _wallet, fund in member_funding.items():
+        if not fund or fund.get("error") or not fund.get("funder_kind"):
+            return None                      # incomplete -> UNRESOLVED (Rule 1)
+        if fund["funder_kind"] == "dedicated" and fund.get("funder"):
+            dedicated_funders.add(fund["funder"])
+        else:
+            standalone += 1                  # cex / nonpersonal / unknown: links no one
+    return len(dedicated_funders) + standalone
 
 
 def _gap_index(window_gaps: list[dict[str, Any]]) -> tuple[dict[str, list[str]], list[str]]:
@@ -143,9 +173,9 @@ def _dossier(c: Any, per_market_gaps: dict[str, list[str]], global_gaps: list[st
         "market": c.condition_id,
         "token_id": c.token_id,
         "tier": c.tier,
+        # Fill-factor composite ONLY — latency never moves it (v1.16 §1).
         "composite": round(c.composite, 4),
-        "composite_pre_elevator": round(c.notes.get("composite_pre_elevator", c.composite), 4),
-        "latency_boost": round(c.notes.get("latency_boost", 1.0), 3),
+        "fast_funded": c.notes.get("fast_funded"),      # True / False / None=not measured
         "factors": {k: round(v, 4) for k, v in (c.factors or {}).items()},
         "factors_active": list(c.factors_active or []),
         "net_stake_usdc": round(c.net_stake_usdc, 2),
@@ -170,9 +200,18 @@ def _dossier(c: Any, per_market_gaps: dict[str, list[str]], global_gaps: list[st
 
 def run_scan(
     dl: Any, loaded: Any, *, lookback_hours: int | None = None, max_wallets: int | None = None,
+    firstseen: Any = True, store_path: str | None = None, as_of_ts: int | None = None,
 ) -> dict[str, Any]:
     """One on-command M10 scan of the recent L2 window. Returns an
-    orchestrator-facing envelope (``result.dossiers`` is the human payload)."""
+    orchestrator-facing envelope (``result.dossiers`` is the human payload).
+
+    ``firstseen``: True (default) restores factor F on the gated set via the live
+    resolver (M10-D §3.1); a callable injects a resolver (tests); False disables it
+    (the pre-M10-D S/D/C-only behaviour).
+    ``store_path``: when set, every candidate above the capture floor is persisted to
+    the Dossier Store (M10-D §3.2). CAPTURE WIDE: persistence is deliberately wider
+    than the envelope's surfaced (tier != NONE) set — narrowing is a query/render
+    concern, never a capture one."""
     from .tape import TapeStore
 
     m10 = loaded.config.m10
@@ -187,15 +226,28 @@ def run_scan(
     try:
         newest = tape.newest_fill_ts()
         as_of = min(started, newest) if isinstance(newest, int) else started
-        hi = started + _SKEW_S
+        if as_of_ts is not None:
+            # Replay a HISTORICAL window (alert-rate calibration / backtest). Nothing
+            # after as_of is loaded, so the scan sees exactly what a scheduled run at
+            # that moment would have seen — no lookahead.
+            as_of = int(as_of_ts)
+        hi = (as_of if as_of_ts is not None else started) + _SKEW_S
         scan_lo = as_of - lookback * 3600
         # Load the WIDER of the scan window and the factor-S trailing baseline so
         # trailing volume is a true _TRAILING_DAYS window, not truncated to the
         # (often shorter) lookback — a short baseline inflates S and the composite
         # (review 2026-07-20). Candidate extraction stays gated to the scan window.
         load_lo = min(scan_lo, as_of - _TRAILING_DAYS * 86400)
-        tracked = {m["condition_id"] for m in tape.markets(active_only=False)
-                   if _in_scope(m, m10)}
+        in_scope = [m for m in tape.markets(active_only=False) if _in_scope(m, m10)]
+        tracked = {m["condition_id"] for m in in_scope}
+        # Market metadata for the dossier store (question/category/slug/resolution).
+        market_meta = {
+            m["condition_id"]: {
+                "question": m.get("question"), "category": m.get("tags"),
+                "slug": m.get("slug"), "resolution": m.get("resolution"),
+            }
+            for m in in_scope
+        }
         rows = tape.fills_in_window(lo_ts=load_lo, hi_ts=hi, condition_ids=tracked, parsed_only=True)
         window_gaps = tape.gaps_overlapping(lo_ts=scan_lo, hi_ts=hi, condition_ids=tracked)
     finally:
@@ -253,6 +305,61 @@ def run_scan(
         key=lambda c: c.composite, reverse=True,
     )[:max_w]
 
+    # --- M10-D §3.1: restore factor F (freshness) on the gated set --------------
+    # The bar above is scored WITHOUT F (S/D/C only), exactly as v1.5 §4 requires:
+    # enrichment is gated behind the fill-factor bar. Only those wallets get a live
+    # first-seen pull; the scorer then re-runs with F active for them. A failed
+    # lookup leaves that wallet's F unavailable (Rule 1) — never imputed.
+    firstseen_meta: dict[str, dict[str, Any]] = {}
+    if firstseen and to_enrich:
+        from .firstseen import resolve_first_seen
+
+        resolver = firstseen if callable(firstseen) else resolve_first_seen
+        wallet_info: dict[str, dict[str, Any]] = {}
+        for c in {c.wallet: c for c in to_enrich}.values():
+            try:
+                # before_ts lets the resolver MEASURE prior activity during the same
+                # walk, so the prior-fills freshness discount is driven by data rather
+                # than by a hardcoded 0 (which read as "brand new" and disabled it).
+                fsr = resolver(dl, c.wallet, before_ts=c.first_bet_ts)
+            except Exception as exc:  # noqa: BLE001 - declared, never imputed
+                errors.append(f"first-seen {c.wallet[:10]}..: {exc}")
+                firstseen_meta[c.wallet] = {"ts": None, "source": "unavailable"}
+                continue
+            firstseen_meta[c.wallet] = {"ts": fsr.ts, "source": fsr.source,
+                                        "min_age_days": fsr.min_age_days}
+            if fsr.available:
+                info: dict[str, Any] = {"first_seen_ts": fsr.ts}
+                if fsr.prior_fills is not None:
+                    info["prior_fills"] = fsr.prior_fills   # measured, not assumed
+                wallet_info[c.wallet] = info
+            elif fsr.min_age_days:
+                # CAPPED = the wallet's history exceeds the data-api reach, which is
+                # itself positive evidence that it is ESTABLISHED. Place F/T from that
+                # lower bound on age instead of omitting them: omitting makes m0f
+                # renormalise the geometric mean over S/D/C, which IMPUTES freshness
+                # (m0f forbids exactly this) and inflates the least-verifiable wallets
+                # to CRITICAL. True age >= min_age, and F falls with age, so scoring at
+                # min_age is a conservative upper bound on F, not an invention.
+                wallet_info[c.wallet] = {
+                    "first_seen_ts": int(c.first_bet_ts - fsr.min_age_days * 86400)}
+            else:
+                # Nothing known: declare it. m0f's data_incomplete guard then assigns
+                # INSUFFICIENT_DATA and bars a real tier (Rule 1) — never CRITICAL by
+                # imputation.
+                wallet_info[c.wallet] = {"error": f"first_seen unavailable ({fsr.source})"}
+        if wallet_info:
+            # Re-score once with F active for the gated wallets; others unchanged.
+            candidates = score_candidates_as_of(
+                as_of=as_of, fills=fills, crossing_usdc={}, wallet_info=wallet_info,
+                market_trailing_vol=trailing, cfg=scoring_cfg,
+            )
+            keys = {(c.wallet, c.condition_id, c.token_id) for c in to_enrich}
+            to_enrich = sorted(
+                (c for c in candidates if (c.wallet, c.condition_id, c.token_id) in keys),
+                key=lambda c: c.composite, reverse=True,
+            )
+
     funder_cache: dict[str, Any] = {}
     enriched = 0
     for c in to_enrich:
@@ -283,25 +390,158 @@ def run_scan(
         }
         if wf.error:
             errors.append(wf.error)
-        # Elevator: lift only; absent/errored/slow -> 1.0 (fill-factor score stands).
-        c.notes["composite_pre_elevator"] = c.composite
-        boost = _latency_boost(wf, m10)
-        c.composite *= boost
-        c.notes["latency_boost"] = boost
+        # v1.16 §1: latency is a REPORTED FACT, never a score multiplier. It is NOT
+        # multiplied into the composite and NEVER affects the tier. Multiplying it in
+        # (a) broke the [0,1] scale the tiers are defined on (composites reached 1.27,
+        # making every threshold in the 0.75-0.99 gap inert) and (b) turned the elevator
+        # into a gate — a wallet cleared CRITICAL on latency almost regardless of its
+        # fill factors. That inverts v1.5 §3 and is adversarially backwards: latency is
+        # the CHEAPEST factor to fake (fund early, wait), while the fill factors cost
+        # real capital. The human weighs the flag; the score does not move.
+        c.notes["fast_funded"] = _is_fast_funded(wf, m10)
+        c.notes["latency_s"] = None if wf is None else wf.latency_s
         enriched += 1
 
     # Cluster membership as evidence (never scores — cluster_boosts_score False).
     apply_cluster_amplifier(candidates, cfg=scoring_cfg, elevated_floor=bar)
+
+    # v1.16 §2: funding-mesh COLLAPSE. Uses the funder data the latency pull already
+    # fetched — no extra network. Only wallets past the enrichment gate have funding,
+    # so a cluster with any unenriched member resolves to None (UNRESOLVED), which is
+    # the declared outcome of keeping the enrichment cap (v1.16 owner ruling (a)).
+    # The actor count MUST be computed over exactly the roster that gets persisted.
+    # (Earlier this took the MIN across a wallet's clusters while persisting the UNION
+    # of their wallets — so a resolved sibling cluster's count could be stamped onto an
+    # unresolved 20-wallet roster, manufacturing a "20 -> 1 collapse" never computed.)
+    # One roster, one number: collapse over the union, and if any member of that union
+    # is unenriched the whole thing is UNRESOLVED.
+    members_by_cluster: dict[str, set[str]] = {}
+    for c in candidates:
+        for cid_ in (c.cluster_ids or []):
+            members_by_cluster.setdefault(cid_, set()).add(c.wallet)
+    funding_by_wallet = {c.wallet: c.notes.get("funding") for c in candidates}
+    for c in candidates:
+        if not c.cluster_ids:
+            c.notes["actor_count"] = None
+            continue
+        union = {c.wallet}
+        for cid_ in c.cluster_ids:
+            union |= members_by_cluster.get(cid_, set())
+        c.notes["cluster_roster"] = sorted(union)
+        c.notes["actor_count"] = collapse_actors(
+            {w: funding_by_wallet.get(w) for w in union})
     # Tiers on the (elevator-lifted) composite; cluster never elevates a tier.
     assign_tiers(candidates, m10.tier_thresholds, cluster_elevates=False)
-    # Latch high-water mark (in-memory; cross-scan persistence is a follow-up).
+    # Latch high-water mark (in-memory per scan; the Dossier Store latches ACROSS
+    # scans at the tier_peak column — that is where the durable high-water lives).
     latch = latch_tiers({}, candidates, as_of=as_of)
     for c in candidates:
         entry = latch.get((c.wallet, c.condition_id))
         if entry:
             c.notes["latch"] = entry
 
-    return _envelope(candidates, enriched)
+    envelope = _envelope(candidates, enriched)
+    if store_path:
+        try:
+            written = _persist(candidates, store_path, market_meta=market_meta,
+                               firstseen_meta=firstseen_meta, scan_ts=started, m10=m10,
+                               tape_path=str(loaded.tape_path))
+            envelope["result"]["stored"] = written
+        except Exception as exc:  # noqa: BLE001 - a store failure must not lose the scan
+            errors.append(f"dossier store write failed: {exc}")
+            envelope["status"] = "degraded"
+    return envelope
+
+
+def _persist(candidates: list[Any], store_path: str, *, market_meta: dict[str, Any],
+             firstseen_meta: dict[str, Any], scan_ts: int, m10: Any,
+             tape_path: str = "") -> dict[str, int]:
+    """Write the scan into the Dossier Store (M10-D §3.2). Capture floor is the
+    scan's own size floor — wide by design; the render/query layers narrow."""
+    from . import dossier_store as ds
+
+    con = ds.connect(store_path)
+    try:
+        # §4.2: recover the cluster ROSTER the scan computed. apply_cluster_amplifier
+        # tags each candidate with the cluster ids it belongs to; invert that to get
+        # co-members. Hardcoding [self] threw this away and made the cluster surface
+        # (and the cluster alert arm) structurally dead.
+        members: dict[str, set[str]] = {}
+        for c in candidates:
+            for cid_ in (c.cluster_ids or []):
+                members.setdefault(cid_, set()).add(c.wallet)
+        recs = []
+        for c in candidates:
+            if c.net_stake_usdc < float(m10.size_floor_usdc):
+                continue
+            meta = market_meta.get(c.condition_id, {})
+            fs = firstseen_meta.get(c.wallet, {})
+            fund = c.notes.get("funding") or {}
+            recs.append({
+                "wallet": c.wallet, "condition_id": c.condition_id, "token_id": c.token_id,
+                "side": "BUY",  # candidates are net-long footprints
+                "market_question": meta.get("question"), "market_category": meta.get("category"),
+                "event_slug": meta.get("slug"),
+                "first_seen_ts": fs.get("ts"),
+                "first_seen_source": fs.get("source") or ("not_gated" if not fs else None),
+                "detection_ts": c.first_bet_ts, "entry_vwap": c.vwap_entry,
+                # NOT a copy of entry_vwap: the market price at the detection instant is
+                # a different observation and this scan does not measure it. Declared
+                # unknown (Rule 1) rather than duplicated — the renderer presents the two
+                # as independent facts, so a silent copy would fabricate corroboration.
+                "price_at_detection": None,
+                # §4.4 — these are TWO DIFFERENT FACTS and must never be the same
+                # number. The scan aggregates fills with NO price filter (m0f filters
+                # on size/directionality only), so net_stake is the HEADLINE position
+                # over the scan window. The contested (0.10-0.90) slice is NOT measured
+                # here, so it is DECLARED UNKNOWN rather than imputed from the headline
+                # (Rule 1) — an earlier comment claimed an upstream gate that does not
+                # exist, which collapsed the carry-trade confound the product exists to
+                # keep visible.
+                "contested_notional": None,
+                "headline_notional": c.net_stake_usdc,
+                "f_factor": (c.factors or {}).get("F"), "s_factor": (c.factors or {}).get("S"),
+                "d_factor": (c.factors or {}).get("D"), "c_factor": (c.factors or {}).get("C"),
+                # v1.16 §1: latency is no longer a score factor at all. The column now
+                # carries the measured funded->bet seconds (a fact), NULL when the
+                # lookup failed or was never made — never a neutral stand-in.
+                "latency_factor": (c.notes.get("latency_s")
+                                   if fund and not fund.get("error") else None),
+                "composite": c.composite, "tier": c.tier,
+                "cluster_id": (sorted(c.cluster_ids)[0] if c.cluster_ids else None),
+                # Raw roster (§4.2 reports raw count AND post-collapse count). This is
+                # the SAME union the actor count was computed over — the two must
+                # describe one wallet set or the pair is a fabrication.
+                "cluster_wallets": c.notes.get("cluster_roster") or [c.wallet],
+                # Post-collapse ACTOR count from the funding-mesh collapse (v1.16 §2).
+                # None = UNRESOLVED (a cluster member was never enriched, so the mesh
+                # could not be computed) — never silently 1, and never the raw wallet
+                # count. A solo footprint with resolved funding is genuinely 1 actor.
+                "actor_count_post_collapse": (
+                    c.notes.get("actor_count")
+                    if c.cluster_ids
+                    else (1 if (fund and fund.get("funder_kind") and not fund.get("error"))
+                          else None)),
+                "cross_market_cluster": (sorted(c.cluster_ids) if c.cluster_ids else None),
+                "funding_summary": ({"funder": fund.get("funder"),
+                                     "latency_s": fund.get("latency_s"),
+                                     "error": fund.get("error")} if fund else None),
+                "cex_class": fund.get("funder_kind"),
+                # Confidence is not yet emitted per-classification; absent => the
+                # renderer's floor makes it 'unclassified' (§4.5 fail-safe).
+                "cex_confidence": None,
+                "provenance": {"scan_ts": scan_ts, "source": "m10_scan",
+                               "data_incomplete": bool(c.data_incomplete),
+                               # Rule 1: the raw records this row was derived from.
+                               "tape_path": tape_path,
+                               "condition_id": c.condition_id, "token_id": c.token_id,
+                               "wallet": c.wallet,
+                               "fill_window": [c.first_bet_ts, c.last_bet_ts],
+                               "first_seen_source": fs.get("source")},
+            })
+        return ds.write_scan(con, recs, scan_ts=scan_ts)
+    finally:
+        con.close()
 
 
 def render_dossier_human(summary: dict[str, Any]) -> str:
@@ -326,9 +566,11 @@ def render_dossier_human(summary: dict[str, Any]) -> str:
         lat = fund.get("latency_s")
         lat_txt = (f"{lat}s" if lat is not None
                    else ("enrich-error" if fund.get("enrichment_error") else "no-funding"))
+        ff = d.get("fast_funded")
+        ff_txt = " FAST-FUNDED" if ff else ("" if ff is False else " latency-unmeasured")
         lines.append(
-            f"  [{d['tier']}] {d['wallet'][:10]}.. mkt={d['market'][:12]}.. "
-            f"score={d['composite']} (pre-elev {d['composite_pre_elevator']}, x{d['latency_boost']}) "
+            f"  [{d['tier']}]{ff_txt} {d['wallet'][:10]}.. mkt={d['market'][:12]}.. "
+            f"score={d['composite']} "
             f"net=${d['net_stake_usdc']:.0f} funder={fund.get('funder_kind')} latency={lat_txt}"
             + (f" clusters={d['clusters']}" if d['clusters'] else "")
             + (f"  ⚠ {d['coverage_caveats']}" if d['coverage_caveats'] else "")

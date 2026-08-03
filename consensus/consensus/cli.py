@@ -190,6 +190,44 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Cap chain enrichment (v1.6 §3.3 gate); default from config.")
     p.add_argument("--replay", action="store_true",
                    help="Serve every chain fetch from the cache (offline; loud on miss).")
+    p.add_argument("--store", default=None,
+                   help="Persist the scan into the Dossier Store at this path (M10-D).")
+    p.add_argument("--no-firstseen", action="store_true",
+                   help="Disable the live first-seen pull (scores S/D/C only, no factor F).")
+
+    # -- M10-D dossier product: browse/render the accumulating store (read-only) ----
+    dossier = groups.add_parser(
+        "dossier",
+        help="M10-D dossier product: browse the intelligence store and render dossiers.",
+    )
+    dossier_cmds = dossier.add_subparsers(dest="command", required=True)
+    for name, helptext in (
+        ("list", "Filter/browse stored footprints (the situational-awareness view)."),
+        ("show", "Render one stored dossier (Markdown by default)."),
+        ("alerts", "Evaluate alert thresholds over the store; prints pointers to dossiers."),
+        ("backfill", "Stamp resolved outcomes onto stored dossiers (the §6 labeling job)."),
+    ):
+        d = dossier_cmds.add_parser(name, help=helptext)
+        d.add_argument("--db", default=None, help="Dossier store path (default from config).")
+        if name == "list":
+            d.add_argument("--category", default=None, help="Market category filter.")
+            d.add_argument("--min-tier", default=None,
+                           help="Minimum LATCHED tier peak (WATCH|ELEVATED|CRITICAL).")
+            d.add_argument("--resolved", choices=["yes", "no"], default=None,
+                           help="Only resolved / only unresolved markets.")
+            d.add_argument("--contested-only", action="store_true",
+                           help="Restrict to the contested price band 0.10-0.90.")
+            d.add_argument("--since", default=None, help="Detections on/after YYYY-MM-DD.")
+            d.add_argument("--limit", type=int, default=50)
+        elif name == "show":
+            d.add_argument("dossier_id", help="Dossier id (from `dossier list`).")
+            d.add_argument("--pdf", default=None,
+                           help="Also write a PDF to this path (needs abelard_common.render).")
+        elif name == "alerts":
+            d.add_argument("--composite-min", type=float, default=None,
+                           help="Override the configured alert bar (default m10.alert_composite_min).")
+            d.add_argument("--dry-run", action="store_true",
+                           help="Evaluate without consuming the alerts (leaves them pending).")
 
     return parser
 
@@ -863,13 +901,94 @@ def main(argv: list[str] | None = None) -> int:
                 if args.replay:
                     dl.replay = True
                 summary = run_scan(dl, loaded, lookback_hours=args.lookback_hours,
-                                   max_wallets=args.max_wallets)
+                                   max_wallets=args.max_wallets,
+                                   firstseen=not args.no_firstseen,
+                                   store_path=args.store)
                 if args.json:
                     _emit(summary, as_json=True)  # orchestration envelope
                 else:
                     sys.stdout.write(render_dossier_human(summary) + "\n")
                 return 0
             raise ValueError(f"unknown m10 command: {args.command}")
+        if args.group == "dossier":
+            # Read-only browse/render over the accumulating store (M10-D §3.3/§3.4).
+            import datetime as _dt
+
+            from . import dossier_render as dr
+            from . import dossier_store as ds
+
+            db_path = args.db or getattr(loaded.config, "dossier_db", None) or "data/dossiers.db"
+            con = ds.connect(db_path)
+            if args.command == "list":
+                since_ts = None
+                if args.since:
+                    since_ts = int(_dt.datetime.strptime(args.since, "%Y-%m-%d")
+                                   .replace(tzinfo=_dt.timezone.utc).timestamp())
+                rows = ds.query(
+                    con, category=args.category, min_tier_peak=args.min_tier,
+                    resolved=(None if args.resolved is None else args.resolved == "yes"),
+                    contested_only=args.contested_only, since_ts=since_ts, limit=args.limit,
+                )
+                if args.json:
+                    _emit({"count": len(rows), "dossiers": rows}, as_json=True)
+                    return 0
+                if not rows:
+                    sys.stdout.write("no dossiers match.\n")
+                    return 0
+                sys.stdout.write(
+                    f"{'dossier_id':22} {'tier/peak':18} {'contested':>12} {'actors':>6}  market\n")
+                for r in rows:
+                    tp = f"{r.get('tier') or '-'}/{r.get('tier_peak') or '-'}"
+                    q = (r.get("market_question") or "")[:52]
+                    cn = r.get("contested_notional")
+                    cn_s = f"${cn:,.0f}" if isinstance(cn, (int, float)) else "-"
+                    sys.stdout.write(
+                        f"{r['dossier_id']:22} {tp:18} {cn_s:>12} "
+                        f"{r.get('actor_count_post_collapse') or 1:>6}  {q}\n")
+                sys.stdout.write(f"\n{len(rows)} shown. Render one: consensus dossier show <id>\n")
+                return 0
+            if args.command == "show":
+                cur = con.execute("SELECT * FROM dossiers WHERE dossier_id=?", (args.dossier_id,))
+                cols = [d[0] for d in cur.description]
+                got = cur.fetchone()
+                if not got:
+                    log.error("no dossier %s in %s", args.dossier_id, db_path)
+                    return 1
+                row = dict(zip(cols, got))
+                sys.stdout.write(dr.render_markdown(row) + "\n")
+                if args.pdf:
+                    dr.render_pdf(row, args.pdf)
+                    sys.stdout.write(f"\n[pdf written: {args.pdf}]\n")
+                return 0
+            if args.command == "alerts":
+                from dataclasses import replace as _replace
+
+                from . import dossier_alert as dal
+                rule = dal.AlertRule.from_config(loaded.config.m10)
+                if args.composite_min is not None:
+                    rule = _replace(rule, composite_min=args.composite_min)
+                alerts = dal.evaluate(con, rule=rule, mark=not args.dry_run)
+                if args.json:
+                    _emit({"count": len(alerts), "alerts": alerts,
+                           "rule": {"composite_min": rule.composite_min,
+                                    "cluster_min_actors": rule.cluster_min_actors,
+                                    "categories": list(rule.categories)},
+                           "dry_run": bool(args.dry_run)}, as_json=True)
+                    return 0
+                sys.stdout.write(dal.render_alerts(alerts, rule=rule) + "\n")
+                if args.dry_run:
+                    sys.stdout.write("  [dry-run: alerts left pending]\n")
+                return 0
+            if args.command == "backfill":
+                stats = ds.backfill_resolutions(con, ds.tape_resolver(loaded.tape_path))
+                if args.json:
+                    _emit(stats, as_json=True)
+                    return 0
+                sys.stdout.write(
+                    f"resolution backfill: checked {stats['checked']} unresolved markets, "
+                    f"stamped {stats['stamped']}\n")
+                return 0
+            raise ValueError(f"unknown dossier command: {args.command}")
         if args.group == "m0f":
             from .m0f import run_pull, run_score, run_universe
 

@@ -1,4 +1,4 @@
-"""M10 live UNUSUAL_ACTIVITY scan (Detector B): scan pipeline, latency elevator,
+"""M10 live UNUSUAL_ACTIVITY scan (Detector B): scan pipeline, latency reporting,
 and the hard discipline rules (no EV, gaps declared, enrichment gated)."""
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def test_m10_scan_surfaces_dossier_and_has_no_ev(tmp_path):
     assert "not a validated trade signal" in d["caveat"].lower()
 
 
-def test_m10_latency_elevator_boosts_a_past_bar_wallet(tmp_path, requests_mock):
+def test_m10_latency_is_reported_not_multiplied_in(tmp_path, requests_mock):
     loaded = make_loaded(tmp_path, etherscan_key="K")
     _seed_tape(loaded)
     # Funding 60s before the bet from a low-fanout (dedicated) funder -> tight
@@ -68,8 +68,11 @@ def test_m10_latency_elevator_boosts_a_past_bar_wallet(tmp_path, requests_mock):
     d = enriched[0]
     assert d["funding"]["latency_s"] == 60
     assert d["funding"]["funder_kind"] == "dedicated"
-    assert d["latency_boost"] == 1.5
-    assert d["composite"] > d["composite_pre_elevator"]  # elevated, never suppressed
+    # v1.16 §1: latency is a REPORTED FACT, never a multiplier. It must NOT move the
+    # composite or the tier — it surfaces as a flag the human weighs.
+    assert d["fast_funded"] is True
+    assert "latency_boost" not in d and "composite_pre_elevator" not in d
+    assert d["composite"] <= 1.0                     # scale invariant restored
 
 
 def test_m10_enrichment_error_declares_not_imputes(tmp_path):
@@ -87,7 +90,9 @@ def test_m10_enrichment_error_declares_not_imputes(tmp_path):
         d = enriched[0]
         assert d["funding"]["latency_s"] is None
         assert d["funding"]["enrichment_error"]  # declared, not imputed
-        assert d["latency_boost"] == 1.0          # no lift on a failed pull
+        # a FAILED pull is declared, never imputed: not measured => None, not False
+        # ("no evidence of fast funding" and "we could not look" are different facts)
+        assert d["fast_funded"] is None
     assert s["status"] == "degraded"  # errors present
 
 

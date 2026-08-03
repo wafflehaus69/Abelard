@@ -289,6 +289,33 @@ class M10Config(_Strict):
     cluster_window_hours: int = Field(ge=1, default=12)
     cross_market_record_only: bool = True   # v1.3: cluster records, never scores
     excluded_categories: list[str] = Field(default_factory=list)
+    # --- M10-D §3.5 alerting: pre-registered, owner-configurable thresholds -------
+    # DELIBERATELY SEPARATE from tier_thresholds. The CRITICAL tier (0.70) ranks
+    # dossiers as "worth a look"; the alert bar decides what is worth INTERRUPTING a
+    # human for. RE-CALIBRATED 2026-07-31 on Basilic's live tape (14 daily replayed
+    # scans, 2026-07-18..07-31) AFTER the F-imputation fix, which alone removed ~83% of
+    # CRITICAL firings (18 -> 3 over the same fortnight):
+    #     0.70 -> 1.5/wk   0.80 -> 0.5/wk   0.90 -> 0.0/wk (never fires)
+    # Hence 0.80: ~1 page a fortnight — quiet, but not a monitor that never speaks.
+    # (The pre-fix calibration recommended 0.90; that was measured against inflated
+    # composites and is superseded.)
+    # AUTHORITATIVE calibration (4th), 2026-07-31, on the fill-factor-only composite
+    # after v1.16 §1 removed the latency multiplier. Etherscan key live. 14 daily
+    # replayed scans, Basilic live tape, deduped once per dossier:
+    #     0.70 -> 1.5/wk   0.75 -> 1.0/wk   0.80 -> 0.5/wk   0.85+ -> 0.0/wk
+    # 0.80 CONFIRMED: ~1 page a fortnight — the highest bar that still speaks.
+    # The [0,1] scale invariant is restored (max observed composite 0.841, was 1.267),
+    # so each threshold step now changes the rate. Under the old multiply-in elevator
+    # every bar in [0.75, 0.90] returned an identical, inert 2.0/wk.
+    # Superseded: 0.90 @ 0.5/wk (pre-F-imputation-fix, inflated) and the bimodal run.
+    # HELD, NOT CALIBRATED: the cluster arm (v1.16 §2.2). actor_count_post_collapse is
+    # NULL everywhere because the scan does not compute funding-mesh collapse yet;
+    # alert_cluster_min_actors below is inert until that is wired and calibrated.
+    alert_composite_min: float = Field(ge=0.0, le=10.0, default=0.80)
+    # Post-collapse ACTORS (never raw wallets — the §4.2 inversion).
+    alert_cluster_min_actors: int = Field(ge=2, default=3)
+    # Empty -> all categories are alertable.
+    alert_categories: list[str] = Field(default_factory=list)
 
     @field_validator("tier_thresholds")
     @classmethod
