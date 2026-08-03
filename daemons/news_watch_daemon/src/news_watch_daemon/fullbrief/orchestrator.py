@@ -94,6 +94,7 @@ from .theme_segments import (
     SAMPLE_HEADLINES_PER_THEME,
     ThemeSegmentInput,
     ThemeSegmentsError,
+    ThemeSegmentsMetadata,
     synthesize_theme_segments,
     template_summary,
 )
@@ -820,6 +821,24 @@ def _gather_theme_inputs(
     return inputs
 
 
+def _combine_segment_metadata(
+    a: ThemeSegmentsMetadata | None, b: ThemeSegmentsMetadata | None
+) -> ThemeSegmentsMetadata | None:
+    """Sum the token fields of two theme-segment calls (batched + retry) so the
+    cost envelope reflects both. Either may be None."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return ThemeSegmentsMetadata(
+        model_used=a.model_used,
+        input_tokens=a.input_tokens + b.input_tokens,
+        output_tokens=a.output_tokens + b.output_tokens,
+        cache_creation_input_tokens=a.cache_creation_input_tokens + b.cache_creation_input_tokens,
+        cache_read_input_tokens=a.cache_read_input_tokens + b.cache_read_input_tokens,
+    )
+
+
 def _build_theme_segments(
     conn: sqlite3.Connection,
     *,
@@ -879,6 +898,7 @@ def _build_theme_segments(
     summaries: dict[str, str] = {}
     metadata: Any | None = None
     degraded_reason: str | None = None
+    client: Any = None
     if not cfg.anthropic_api_key:
         degraded_reason = "ANTHROPIC_API_KEY not set"
     else:
@@ -891,6 +911,38 @@ def _build_theme_segments(
             degraded_reason = f"segment call failed: {exc}"
         except Exception as exc:  # noqa: BLE001 — SDK/network errors degrade, never abort the brief
             degraded_reason = f"segment call errored: {exc}"
+
+    # Self-heal a PARTIAL drop: content-avoidance on grim themes (war/casualties)
+    # makes the batched call occasionally omit a theme even with the completeness
+    # mandate. Re-ask for JUST the missing theme(s) with a forceful retry prompt —
+    # the model can't quietly omit the only items in a focused call. Fires only on
+    # a partial drop; a total-failure degrade (truncation/SDK error) is a different
+    # mode and is left to the template fallback.
+    if not degraded_reason and client is not None:
+        missing = [inp for inp in inputs if not summaries.get(inp.theme_id)]
+        if missing:
+            _LOG.warning(
+                "theme-segments: batched call dropped %d theme(s) (%s); "
+                "retrying them individually",
+                len(missing), ", ".join(m.theme_id for m in missing),
+            )
+            try:
+                retry_summaries, retry_meta = synthesize_theme_segments(
+                    client=client, model=model, max_tokens=max_tokens,
+                    inputs=missing, retry=True,
+                )
+                summaries.update(retry_summaries)
+                metadata = _combine_segment_metadata(metadata, retry_meta)
+                still = [m.theme_id for m in missing if not summaries.get(m.theme_id)]
+                if still:
+                    _LOG.warning(
+                        "theme-segments retry still missing %d theme(s) (%s) -> templates",
+                        len(still), ", ".join(still),
+                    )
+            except Exception as exc:  # noqa: BLE001 — retry is best-effort; leaves templates
+                _LOG.warning(
+                    "theme-segments retry failed: %s; missing theme(s) -> templates", exc
+                )
 
     segments: list[ThemeSegment] = []
     template_count = 0

@@ -111,11 +111,14 @@ def build_segment_prompt(
     inputs: list[ThemeSegmentInput],
     *,
     threshold: int = ACTIVE_TAG_THRESHOLD,
+    retry: bool = False,
 ) -> dict[str, Any]:
     """Build the `{system, messages}` payload for the batched call.
 
     The system block is static (cache-friendly); the per-cycle theme data
-    goes in the single user message.
+    goes in the single user message. `retry=True` prepends a forceful
+    completeness reminder — used when re-asking for theme(s) a prior batched
+    pass omitted (content-avoidance on grim war/casualty themes).
     """
     theme_blocks: list[str] = []
     for inp in inputs:
@@ -129,8 +132,16 @@ def build_segment_prompt(
             f"  attention_spike_terms: {conv}\n"
             f"  sample_headlines:\n{heads}"
         )
+    retry_prefix = (
+        "RETRY: an earlier pass OMITTED the theme(s) below from its output. You "
+        "MUST return a complete, factual summary for EVERY theme_id here — "
+        "including war, armed conflict, and casualty topics, reported neutrally "
+        "and without editorializing. Omitting any theme is a task failure.\n\n"
+        if retry else ""
+    )
     user_text = (
-        "Themes this window:\n\n" + "\n\n".join(theme_blocks)
+        retry_prefix
+        + "Themes this window:\n\n" + "\n\n".join(theme_blocks)
         + "\n\nReturn the JSON object now."
     )
     return {
@@ -178,6 +189,7 @@ def synthesize_theme_segments(
     max_tokens: int,
     inputs: list[ThemeSegmentInput],
     threshold: int = ACTIVE_TAG_THRESHOLD,
+    retry: bool = False,
 ) -> tuple[dict[str, str], ThemeSegmentsMetadata]:
     """Issue the single batched segment call; return ({theme_id: summary}, metadata).
 
@@ -186,7 +198,7 @@ def synthesize_theme_segments(
     unparseable output; SDK-level exceptions bubble up untouched so the
     orchestrator can degrade to template lines.
     """
-    payload = build_segment_prompt(inputs, threshold=threshold)
+    payload = build_segment_prompt(inputs, threshold=threshold, retry=retry)
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,

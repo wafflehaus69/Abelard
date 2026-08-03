@@ -192,3 +192,99 @@ def test_synthesize_theme_segments_raises_on_empty_text():
             client=client, model="claude-sonnet-4-6", max_tokens=1500,
             inputs=[_inp("t", tag_count=1)],
         )
+
+
+# ---------- retry-missing-themes hardening (2026-07-31) ----------
+
+def test_build_segment_prompt_retry_prefix():
+    """retry=True prepends a forceful completeness reminder; default omits it."""
+    retry_user = build_segment_prompt([_inp("t")], retry=True)["messages"][0]["content"]
+    assert retry_user.startswith("RETRY:")
+    assert "MUST return a complete, factual summary" in retry_user
+    plain_user = build_segment_prompt([_inp("t")])["messages"][0]["content"]
+    assert not plain_user.startswith("RETRY")
+
+
+def test_build_theme_segments_retries_a_dropped_theme(monkeypatch, tmp_path):
+    """A theme the batched call OMITS is recovered by a focused retry (not a
+    template); the retry hits only the missing theme and folds into cost."""
+    from unittest.mock import MagicMock
+
+    from news_watch_daemon.fullbrief import orchestrator as orch
+    from news_watch_daemon.fullbrief.theme_segments import ThemeSegmentsMetadata
+
+    monkeypatch.setattr(orch, "load_all_themes", lambda d: [
+        MagicMock(theme_id="theme_a", display_name="A", status="active"),
+        MagicMock(theme_id="theme_b", display_name="B", status="active"),
+    ])
+    monkeypatch.setattr(orch, "_gather_theme_inputs", lambda *a, **k: [
+        _inp("theme_a", tag_count=10, in_scope=True),
+        _inp("theme_b", tag_count=9, in_scope=True),
+    ])
+    monkeypatch.setattr(orch, "build_anthropic_client", lambda key: MagicMock())
+
+    meta = ThemeSegmentsMetadata(
+        model_used="m", input_tokens=100, output_tokens=50,
+        cache_creation_input_tokens=0, cache_read_input_tokens=0,
+    )
+    calls: list = []
+
+    def fake_synth(*, client, model, max_tokens, inputs, retry=False, **kw):
+        calls.append((tuple(i.theme_id for i in inputs), retry))
+        if not retry:
+            return ({"theme_a": "Summary A."}, meta)          # theme_b DROPPED
+        return ({i.theme_id: f"Recovered {i.theme_id}." for i in inputs}, meta)
+
+    monkeypatch.setattr(orch, "synthesize_theme_segments", fake_synth)
+
+    cfg = MagicMock(anthropic_api_key="k", themes_dir=tmp_path)
+    section, md = orch._build_theme_segments(
+        MagicMock(), cfg=cfg, window_since_unix=0, window_until_unix=1,
+        themes_covered=[], crossings=[],
+    )
+
+    by_id = {s.theme_id: s for s in section.segments}
+    assert by_id["theme_b"].summary == "Recovered theme_b."   # recovered, not template
+    assert by_id["theme_b"].is_template is False
+    assert section.template_count == 0
+    assert section.llm_degraded is False
+    # retry fired once, for JUST the dropped theme
+    assert calls == [(("theme_a", "theme_b"), False), (("theme_b",), True)]
+    # both calls folded into the cost metadata
+    assert md.input_tokens == 200
+
+
+def test_build_theme_segments_retry_still_missing_falls_back_to_template(monkeypatch, tmp_path):
+    """If the retry ALSO omits the theme, it degrades to a template (never crashes)."""
+    from unittest.mock import MagicMock
+
+    from news_watch_daemon.fullbrief import orchestrator as orch
+    from news_watch_daemon.fullbrief.theme_segments import ThemeSegmentsMetadata
+
+    monkeypatch.setattr(orch, "load_all_themes", lambda d: [
+        MagicMock(theme_id="theme_a", display_name="A", status="active"),
+        MagicMock(theme_id="theme_b", display_name="B", status="active"),
+    ])
+    monkeypatch.setattr(orch, "_gather_theme_inputs", lambda *a, **k: [
+        _inp("theme_a", tag_count=10, in_scope=True, headlines=["h"]),
+        _inp("theme_b", tag_count=9, in_scope=True, headlines=["h"]),
+    ])
+    monkeypatch.setattr(orch, "build_anthropic_client", lambda key: MagicMock())
+    meta = ThemeSegmentsMetadata(
+        model_used="m", input_tokens=1, output_tokens=1,
+        cache_creation_input_tokens=0, cache_read_input_tokens=0,
+    )
+    monkeypatch.setattr(
+        orch, "synthesize_theme_segments",
+        lambda **kw: ({"theme_a": "Summary A."}, meta),  # theme_b dropped both times
+    )
+
+    cfg = MagicMock(anthropic_api_key="k", themes_dir=tmp_path)
+    section, _ = orch._build_theme_segments(
+        MagicMock(), cfg=cfg, window_since_unix=0, window_until_unix=1,
+        themes_covered=[], crossings=[],
+    )
+    by_id = {s.theme_id: s for s in section.segments}
+    assert by_id["theme_b"].is_template is True
+    assert section.template_count == 1
+    assert section.llm_degraded is True
