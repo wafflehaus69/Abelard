@@ -80,3 +80,33 @@ def test_union_roster_and_actor_count_describe_the_same_wallet_set():
     actors = m10.collapse_actors({w: funding.get(w) for w in union})
     assert len(union) == 20
     assert actors is None, "a roster containing unenriched members must be UNRESOLVED"
+
+
+def test_etherscan_calls_are_paced_under_the_free_tier_limit(monkeypatch):
+    """Etherscan reports a rate-limit breach as HTTP 200 with status=0, so the shared
+    client's 429 retry never sees it and the call is lost — which silently degrades
+    funding coverage and therefore mesh collapse. Live calls must be paced."""
+    import time as _t
+
+    import consensus.sources_polygon as sp
+
+    sp._last_call_ts = 0.0
+    calls = []
+
+    class _DL:
+        replay = False
+        endpoints = type("E", (), {"etherscan_v2_api": "http://x"})()
+        loaded = type("L", (), {"secrets": type("S", (), {"etherscan_api_key": "k"})()})()
+
+        def fetch(self, **kw):
+            calls.append(_t.monotonic())
+            return {"status": "1", "result": []}
+
+        def parse_records(self, rows, **kw):
+            return []
+
+    dl = _DL()
+    for _ in range(3):
+        sp.get_erc20_transfers(dl, "0xabc")
+    gaps = [b - a for a, b in zip(calls, calls[1:])]
+    assert all(g >= sp._MIN_INTERVAL_S * 0.9 for g in gaps), f"calls not paced: {gaps}"

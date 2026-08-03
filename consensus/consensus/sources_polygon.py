@@ -26,6 +26,7 @@ stdout, or a ``--json`` report.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from .errors import DataLayerError
@@ -33,6 +34,27 @@ from .fetching import DataLayer
 from .models import Erc20Transfer
 
 _SOURCE = "etherscan_polygon"
+
+# Free tier allows 3 calls/sec. Etherscan signals a breach as HTTP 200 with
+# status=0 and a rate-limit message in the body, so the shared client's 429 retry
+# never sees it and the call is simply LOST (declared as an enrichment gap, which
+# silently degrades funding/mesh-collapse coverage). Pace live calls just under the
+# limit and retry once on a breach. Replay never touches the wire, so it never waits.
+_MIN_INTERVAL_S = 0.40
+_last_call_ts = 0.0
+
+
+def _pace() -> None:
+    global _last_call_ts
+    wait = _MIN_INTERVAL_S - (time.monotonic() - _last_call_ts)
+    if wait > 0:
+        time.sleep(wait)
+    _last_call_ts = time.monotonic()
+
+
+def _is_rate_limited(message: str, result: Any) -> bool:
+    blob = f"{message} {result}".lower()
+    return "rate limit" in blob or "max calls per sec" in blob
 
 # Polygon PoS chain id — a protocol constant (address-space identifier), not a
 # tunable algorithm parameter, hence not in config.yaml.
@@ -95,13 +117,25 @@ def get_erc20_transfers(
     # Cache key: identical, minus the secret.
     cache_params = {k: v for k, v in request_params.items() if k != "apikey"}
 
-    body = dl.fetch(
-        source=_SOURCE,
-        base_url=dl.endpoints.etherscan_v2_api,
-        endpoint=_ENDPOINT,
-        request_params=request_params,
-        cache_params=cache_params,
-    )
+    def _fetch() -> Any:
+        if not dl.replay:
+            _pace()
+        return dl.fetch(
+            source=_SOURCE,
+            base_url=dl.endpoints.etherscan_v2_api,
+            endpoint=_ENDPOINT,
+            request_params=request_params,
+            cache_params=cache_params,
+        )
+
+    body = _fetch()
+    # One retry on a paced-but-still-breached limit (a burst from another process on
+    # the same key). A second breach is a real failure and is declared, never imputed.
+    if (isinstance(body, dict) and str(body.get("status", "")) == "0"
+            and _is_rate_limited(str(body.get("message", "")), body.get("result"))
+            and not dl.replay):
+        time.sleep(1.0)
+        body = _fetch()
 
     if not isinstance(body, dict):
         raise DataLayerError(

@@ -37,8 +37,8 @@ no `~` inside a plist):
   <array>
     <string>/Users/USERNAME/Code/Abelard/consensus/.venv/bin/python</string>
     <string>-m</string><string>consensus.cli</string>
-    <string>dossier</string><string>run</string>
     <string>--json</string>
+    <string>dossier</string><string>run</string>
   </array>
   <key>WorkingDirectory</key><string>/Users/USERNAME/Code/Abelard/consensus</string>
   <key>StartCalendarInterval</key>
@@ -66,7 +66,7 @@ scan that consumes alerts.
 ## Verifying a run
 
 ```bash
-cd ~/Code/Abelard/consensus && .venv/bin/python -m consensus.cli dossier run --json
+cd ~/Code/Abelard/consensus && .venv/bin/python -m consensus.cli --json dossier run
 ```
 
 Envelope fields worth checking: `status` (`degraded` means declared gaps or
