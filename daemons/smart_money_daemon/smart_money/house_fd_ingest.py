@@ -90,9 +90,23 @@ def _get(url, ua):
     return requests.get(url, headers={"User-Agent": ua}, timeout=120)
 
 
-def fetch_year_index(year, raw_dir, ua):
-    """Annual-report (O/A) index entries for a year, or None if the zip is absent."""
+def fetch_year_index(year, raw_dir, ua, max_age_days=None):
+    """Annual-report (O/A) index entries for a year, or None if the zip is absent.
+
+    `max_age_days` forces a re-download when the cached zip is older than that. REQUIRED
+    for any scheduled use: the cache-if-exists rule is right for a closed historical year
+    but makes the CURRENT year permanently blind — new annual filings land in that same
+    zip all cycle, and a nightly leg reading a month-old cache would never see them."""
     zpath = raw_dir / "{}FD.zip".format(year)
+    stale = False
+    if max_age_days is not None and zpath.exists():
+        age = time.time() - zpath.stat().st_mtime
+        stale = age > max_age_days * 86400
+    if stale:
+        try:
+            zpath.unlink()
+        except OSError:
+            stale = False          # keep the cached copy rather than lose the index
     if not zpath.exists():
         r = _get(ZIP_URL.format(year=year), ua)
         if r.status_code == 404:

@@ -318,6 +318,66 @@ def leg_enrich(con, contact):
                     counts["price_ok"], counts["price_fail"]), counts["price_ok"]), counts
 
 
+def leg_congress_annual(con, contact, raw_dir, lookback_days=120):
+    """Annual FD HOLDINGS refresh, both chambers. Ingest-only, NO events.
+
+    `leg_congress` covers PTR *trades*; this covers the annual *holdings snapshot* that
+    /congress, the member books and the Phase F fusion anchor are built on. Without it the
+    holdings corpus silently ages a full year, because annual FDs land once a cycle
+    (~May) and nothing else refetches them.
+
+    CHEAP IN STEADY STATE by construction: both ingests check congress_fd_seen BEFORE
+    fetching a document, so a night with no new filings costs one House index read plus a
+    short Senate search — no PDF fetches, no parsing. Only genuinely new DocIDs do work.
+
+    Degrades per chamber: eFD is WAF-fronted and the House zip can 404 early in a cycle,
+    so each side is caught independently and reported rather than taking the scan down.
+    """
+    import datetime as _dt
+
+    sources = []
+    counts = {"house_new": 0, "house_rows": 0, "senate_new": 0, "senate_rows": 0}
+    ua = UA_TMPL.format(contact)
+    year = _dt.date.today().year
+    # Current year AND prior year: amendments to the prior cycle keep arriving, and early
+    # in a calendar year the current zip may not exist yet.
+    try:
+        from . import house_fd_ingest as hfd
+        unparsed = pathlib.Path(hfd.UNPARSED_DIR)
+        hraw = pathlib.Path(hfd.RAW_DIR_DEFAULT)
+        hraw.mkdir(parents=True, exist_ok=True)
+        for y in (year, year - 1):
+            # max_age_days=1 so the CURRENT cycle's zip is re-read daily; without it the
+            # disk cache would hide every filing added after the first download.
+            idx = hfd.fetch_year_index(y, hraw, ua, max_age_days=1)
+            if not idx:
+                continue
+            for filing in idx:
+                res = hfd.ingest_filing(con, y, filing, hraw, ua, unparsed)
+                if res["status"] != "seen":
+                    counts["house_new"] += 1
+                    counts["house_rows"] += res["rows"]
+        sources.append(_src("congress_annual:house", "OK", "new={} rows={}".format(
+            counts["house_new"], counts["house_rows"]), counts["house_rows"]))
+    except Exception as exc:  # noqa: BLE001 - per chamber, never abort the scan
+        sources.append(_src("congress_annual:house", "DEGRADED", str(exc)[:120]))
+    try:
+        from . import senate_fd_ingest as sfd
+        sess = bootstrap(UA_TMPL.format(contact), probe=False)
+        since = (_dt.date.today()
+                 - _dt.timedelta(days=lookback_days)).strftime("%m/%d/%Y")
+        for row in sfd.search_annual(sess, since):
+            res = sfd.ingest_report(con, sess, row)
+            if res["status"] != "seen":
+                counts["senate_new"] += 1
+                counts["senate_rows"] += res["rows"]
+        sources.append(_src("congress_annual:senate", "OK", "new={} rows={}".format(
+            counts["senate_new"], counts["senate_rows"]), counts["senate_rows"]))
+    except Exception as exc:  # noqa: BLE001 - eFD is WAF-fronted; degrade, do not abort
+        sources.append(_src("congress_annual:senate", "DEGRADED", str(exc)[:120]))
+    return sources, counts
+
+
 def leg_13f_holdings(con, contact, quarters=8):
     """SM-P1: durable per-holding 13F ingest into thirteenf_holdings, so the reported
     portfolios view auto-refreshes when new 13Fs land (Leg C only refreshes the JSON
@@ -359,12 +419,17 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
         src_u, cnt_u = _src("edgar_form4_universal", "SKIPPED", "disabled"), {}
         src_e, cnt_e = _src("enrich_scoped", "SKIPPED", "disabled"), {}
         src_h = _src("13f_holdings", "SKIPPED", "disabled")
+        src_ca, cnt_ca = [_src("congress_annual", "SKIPPED", "disabled")], {}
     else:
         src_u, cnt_u = leg_universal_ingest(con, contact)
         src_e, cnt_e = leg_enrich(con, contact)  # bounded scoped bands+prices
         src_h, _ = leg_13f_holdings(con, contact)  # SM-P1 durable 13F holdings ingest
+        # SM-C3: annual FD HOLDINGS refresh (both chambers). Ingest-only, no events —
+        # without it the holdings corpus behind /congress and the Phase F anchor ages a
+        # full year, since annual FDs land once a cycle and nothing else refetches them.
+        src_ca, cnt_ca = leg_congress_annual(con, contact, raw_dir)
 
-    sources = src_a + src_b + src_c + [src_u, src_e, src_h]
+    sources = src_a + src_b + src_c + src_ca + [src_u, src_e, src_h]
     all_events = ev_a + ev_b + ev_c
 
     # Event-level dedup across scans by event_id (scan_events ledger). A Form 4
@@ -406,6 +471,7 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
         "sources": sources,
         "counts": {"congress": cnt_a, "form4": cnt_b, "thirteenf": cnt_c,
                    "universal_ingest": cnt_u, "enrich": cnt_e,
+                   "congress_annual": cnt_ca,
                    "events_total": len(events)},
         "events": events,
         "cost": 0.0,
