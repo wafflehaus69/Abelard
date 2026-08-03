@@ -8,12 +8,14 @@ import time
 from smart_money import db as dbmod, waf_probe
 
 
-def _log(con, hour, ok, ms=100, ago=0):
+def _log(con, hour, ok, ms=100, ago=0, weekend=False):
+    # 2026-08-01 is a Saturday, 2026-07-29 a Wednesday.
+    day = "2026-08-01" if weekend else "2026-07-29"
     con.execute(
         "INSERT INTO efd_probe_log(probed_at_unix, probed_at_iso, hour_local, kind, ok, "
         "status, latency_ms, detail) VALUES(?,?,?,?,?,?,?,?)",
-        (int(time.time()) - ago, "iso", hour, "search", 1 if ok else 0,
-         "ok" if ok else "error", ms, ""))
+        (int(time.time()) - ago, "{}T{:02d}:00:00".format(day, hour), hour, "search",
+         1 if ok else 0, "ok" if ok else "error", ms, ""))
 
 
 def test_failed_probes_are_recorded_not_dropped(tmp_path):
@@ -50,7 +52,7 @@ def test_no_verdict_below_the_data_floor(tmp_path):
         _log(con, 22, False)
     con.commit()
     txt = waf_probe._render_map(waf_probe.window_map(con), 14)
-    assert "INSUFFICIENT DATA" in txt, txt
+    assert "INSUFFICIENT WEEKDAY DATA" in txt, txt
     assert "WINDOW CANDIDATE" not in txt
     con.close()
 
@@ -83,4 +85,55 @@ def test_map_window_is_time_bounded(tmp_path):
     con.commit()
     assert waf_probe.window_map(con, days=14) == []
     assert len(waf_probe.window_map(con, days=90)) == 1
+    con.close()
+
+
+def test_weekend_probes_cannot_carry_a_verdict(tmp_path):
+    """Day of week is a CONFOUND: weekend load on eFD is a fraction of weekday load, so a
+    load-shaped throttle lets weekend probes succeed at every hour. A pile of green
+    weekend samples must NOT license a 'no window' finding."""
+    con = dbmod.connect(str(tmp_path / "we.db"))
+    for hour in (6, 9, 12, 15, 18, 21):
+        for _ in range(10):
+            _log(con, hour, True, weekend=True)       # 60 green weekend probes
+    con.commit()
+    wd, we = waf_probe.dow_split(con)
+    assert we["n"] == 60 and wd["n"] == 0
+    txt = waf_probe._render_map(waf_probe.window_map(con), 14, wd, we,
+                                waf_probe.window_map(con, weekday_only=True))
+    assert "INSUFFICIENT WEEKDAY DATA" in txt, txt
+    assert "NO WINDOW" not in txt, "60 weekend probes must not produce a verdict"
+    con.close()
+
+
+def test_verdict_uses_weekday_rows_only(tmp_path):
+    """With enough weekday data the verdict is computed from WEEKDAY hours, even when
+    weekend samples would paint a rosier picture."""
+    con = dbmod.connect(str(tmp_path / "wd.db"))
+    for _ in range(12):
+        _log(con, 9, True, weekend=False)             # weekday 09:00 healthy
+    for _ in range(12):
+        _log(con, 22, False, weekend=False)           # weekday 22:00 dead
+    for _ in range(20):
+        _log(con, 22, True, weekend=True)             # weekend 22:00 fine - a trap
+    con.commit()
+    wd, we = waf_probe.dow_split(con)
+    assert wd["n"] == 24 and we["n"] == 20
+    txt = waf_probe._render_map(waf_probe.window_map(con), 14, wd, we,
+                                waf_probe.window_map(con, weekday_only=True))
+    assert "WINDOW CANDIDATE (weekday only)" in txt, txt
+    assert "09:00" in txt
+    con.close()
+
+
+def test_dow_split_reports_both_populations(tmp_path):
+    con = dbmod.connect(str(tmp_path / "sp.db"))
+    for _ in range(3):
+        _log(con, 9, True, weekend=False)
+    for _ in range(4):
+        _log(con, 9, False, weekend=True)
+    con.commit()
+    wd, we = waf_probe.dow_split(con)
+    assert (wd["n"], wd["ok"]) == (3, 3)
+    assert (we["n"], we["ok"]) == (4, 0)
     con.close()

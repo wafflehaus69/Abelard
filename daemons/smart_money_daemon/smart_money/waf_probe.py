@@ -62,13 +62,28 @@ def record(con, kind, ok, status, latency_ms, detail):
     con.commit()
 
 
-def window_map(con, days=14):
-    """hour-of-day -> (attempts, successes, rate, median latency). The deliverable."""
+def _is_weekend(iso):
+    try:
+        return dt.datetime.fromisoformat(iso).weekday() >= 5
+    except (TypeError, ValueError):
+        return None
+
+
+def window_map(con, days=14, weekday_only=False):
+    """hour-of-day -> (attempts, successes, rate, median latency).
+
+    DAY OF WEEK IS A CONFOUND, not a detail. If eFD's throttling is load-shaped, weekend
+    traffic is a fraction of weekday traffic and probes come back green at EVERY hour —
+    which would make an hours-only map read "no window" for the wrong reason. The verdict
+    is therefore computed from WEEKDAY samples (when the daemon actually has to run) and
+    weekend samples are reported separately as context."""
     since = int(time.time()) - days * 86400
     buckets = collections.defaultdict(lambda: {"n": 0, "ok": 0, "lat": []})
-    for hour, ok, ms in con.execute(
-            "SELECT hour_local, ok, latency_ms FROM efd_probe_log "
+    for hour, ok, ms, iso in con.execute(
+            "SELECT hour_local, ok, latency_ms, probed_at_iso FROM efd_probe_log "
             "WHERE probed_at_unix >= ?", (since,)):
+        if weekday_only and _is_weekend(iso) is not False:
+            continue
         b = buckets[hour]
         b["n"] += 1
         b["ok"] += ok or 0
@@ -84,7 +99,24 @@ def window_map(con, days=14):
     return out
 
 
-def _render_map(rows, days):
+def dow_split(con, days=14):
+    """(weekday, weekend) attempt/success counts — the confound, made visible."""
+    since = int(time.time()) - days * 86400
+    wd = {"n": 0, "ok": 0}
+    we = {"n": 0, "ok": 0}
+    for ok, iso in con.execute(
+            "SELECT ok, probed_at_iso FROM efd_probe_log WHERE probed_at_unix >= ?",
+            (since,)):
+        wknd = _is_weekend(iso)
+        if wknd is None:
+            continue
+        b = we if wknd else wd
+        b["n"] += 1
+        b["ok"] += ok or 0
+    return wd, we
+
+
+def _render_map(rows, days, wd=None, we=None, weekday_rows=None):
     total = sum(r["attempts"] for r in rows)
     lines = ["eFD SENATE AVAILABILITY WINDOW MAP  (trailing {}d, n={})".format(days, total),
              "=" * 62]
@@ -98,22 +130,40 @@ def _render_map(rows, days):
             r["hour"], r["attempts"], r["successes"], r["rate"],
             r["median_ms"] if r["median_ms"] is not None else "-"))
     lines.append("-" * 62)
-    # A verdict is only offered when there is enough data to support one. Under the floor
-    # the honest output is "insufficient", not a guess dressed as a finding.
+    # DAY-OF-WEEK CONFOUND. Weekend load on eFD is a fraction of weekday load, so if the
+    # throttle is load-shaped, weekend probes go green at EVERY hour and an hours-only map
+    # reads "no window" for the wrong reason. The verdict is therefore computed from
+    # WEEKDAY samples only — the days the daemon actually has to run.
+    if wd is not None and we is not None:
+        lines.append("DAY-OF-WEEK SPLIT (the confound):")
+        for lbl, b in (("weekday", wd), ("weekend", we)):
+            lines.append("  %-8s attempts %-4d successes %-4d %s" % (
+                lbl, b["n"], b["ok"],
+                ("%.1f%%" % (100.0 * b["ok"] / b["n"])) if b["n"] else "-"))
+        lines.append("-" * 62)
     FLOOR = 20
-    if total < FLOOR:
-        lines.append("INSUFFICIENT DATA (n={} < {}). No window verdict offered.".format(
-            total, FLOOR))
+    wd_n = wd["n"] if wd is not None else total
+    if wd_n < FLOOR:
+        lines.append("INSUFFICIENT WEEKDAY DATA (weekday n={} < {}). No window verdict "
+                     "offered.".format(wd_n, FLOOR))
+        lines.append("Weekend probes are NOT a substitute: if the throttle is load-shaped "
+                     "they succeed at every hour regardless, which would read as "
+                     "'no window' for entirely the wrong reason.")
+        return "\n".join(lines)
+    basis = weekday_rows or rows
+    if not basis:
+        lines.append("INSUFFICIENT WEEKDAY DATA. No window verdict offered.")
+        return "\n".join(lines)
+    best = max(basis, key=lambda r: (r["rate"], r["attempts"]))
+    worst = min(basis, key=lambda r: (r["rate"], -r["attempts"]))
+    if best["rate"] >= 60 and best["rate"] - worst["rate"] >= 30:
+        lines.append("WINDOW CANDIDATE (weekday only): {:02d}:00 at {}% ({}/{}) vs worst "
+                     "{:02d}:00 at {}%.".format(
+                         best["hour"], best["rate"], best["successes"],
+                         best["attempts"], worst["hour"], worst["rate"]))
     else:
-        best = max(rows, key=lambda r: (r["rate"], r["attempts"]))
-        worst = min(rows, key=lambda r: (r["rate"], -r["attempts"]))
-        if best["rate"] >= 60 and best["rate"] - worst["rate"] >= 30:
-            lines.append("WINDOW CANDIDATE: {:02d}:00 at {}% ({}/{}) vs worst {:02d}:00 "
-                         "at {}%.".format(best["hour"], best["rate"], best["successes"],
-                                          best["attempts"], worst["hour"], worst["rate"]))
-        else:
-            lines.append("NO WINDOW: success rate does not vary materially by hour "
-                         "(best {}% vs worst {}%).".format(best["rate"], worst["rate"]))
+        lines.append("NO WINDOW (weekday only): success rate does not vary materially by "
+                     "hour (best {}% vs worst {}%).".format(best["rate"], worst["rate"]))
     return "\n".join(lines)
 
 
@@ -132,7 +182,9 @@ def main(argv=None):
     con.execute("PRAGMA busy_timeout=30000")
     try:
         if args.map:
-            print(_render_map(window_map(con, args.days), args.days))
+            wd, we = dow_split(con, args.days)
+            print(_render_map(window_map(con, args.days), args.days, wd, we,
+                              window_map(con, args.days, weekday_only=True)))
             return 0
         if args.rider:
             # Randomized so repeated riders sample different minutes of the hour; the
