@@ -206,6 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("show", "Render one stored dossier (Markdown by default)."),
         ("alerts", "Evaluate alert thresholds over the store; prints pointers to dossiers."),
         ("backfill", "Stamp resolved outcomes onto stored dossiers (the §6 labeling job)."),
+        ("run", "Scheduled cycle: scan, persist, backfill resolutions, evaluate alerts."),
     ):
         d = dossier_cmds.add_parser(name, help=helptext)
         d.add_argument("--db", default=None, help="Dossier store path (default from config).")
@@ -228,6 +229,13 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Override the configured alert bar (default m10.alert_composite_min).")
             d.add_argument("--dry-run", action="store_true",
                            help="Evaluate without consuming the alerts (leaves them pending).")
+        elif name == "run":
+            d.add_argument("--lookback-hours", type=int, default=None,
+                           help="Scan window (default m10.unusual_lookback_hours).")
+            d.add_argument("--max-wallets", type=int, default=None,
+                           help="Enrichment gate cap (default m10.enrichment_max_wallets_per_scan).")
+            d.add_argument("--no-firstseen", action="store_true",
+                           help="Disable the live first-seen pull (scores S/D/C only, no factor F).")
 
     return parser
 
@@ -987,6 +995,51 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stdout.write(
                     f"resolution backfill: checked {stats['checked']} unresolved markets, "
                     f"stamped {stats['stamped']}\n")
+                return 0
+            if args.command == "run":
+                # Scheduled cycle (M10-D §3.5): scan -> persist -> stamp outcomes ->
+                # evaluate alerts. Emits a JSON envelope (daemon convention). Alerting
+                # is a POINTER surface; nothing here recommends an action.
+                from .m10 import run_scan as _run_scan
+                from . import dossier_alert as dal
+
+                dl = build_data_layer(loaded)
+                summary = _run_scan(dl, loaded, lookback_hours=args.lookback_hours,
+                                    max_wallets=args.max_wallets,
+                                    firstseen=not args.no_firstseen, store_path=db_path)
+                backfill = ds.backfill_resolutions(con, ds.tape_resolver(loaded.tape_path))
+                rule = dal.AlertRule.from_config(loaded.config.m10)
+                alerts = dal.evaluate(con, rule=rule)
+                res = summary.get("result", {})
+                envelope = {
+                    "daemon": "consensus_dossier",
+                    "schema": 1,
+                    "status": summary.get("status", "ok"),
+                    "started_ts": summary.get("started_ts"),
+                    "finished_ts": summary.get("finished_ts"),
+                    "result": {
+                        "window": res.get("window"),
+                        "fills_scanned": res.get("fills_scanned"),
+                        "candidates_scored": res.get("candidates_scored"),
+                        "enriched": res.get("enriched"),
+                        "tier_counts": res.get("tier_counts"),
+                        "stored": res.get("stored"),
+                        "resolutions": backfill,
+                        "alerts": len(alerts),
+                        "alert_pointers": [a["dossier_id"] for a in alerts],
+                        "declared_gaps": len(res.get("declared_gaps") or []),
+                    },
+                    "errors": summary.get("errors", []),
+                }
+                if args.json:
+                    _emit(envelope, as_json=True)
+                    return 0
+                r = envelope["result"]
+                sys.stdout.write(
+                    f"dossier run [{envelope['status']}] "
+                    f"fills={r['fills_scanned']} candidates={r['candidates_scored']} "
+                    f"stored={r['stored']} resolutions_stamped={backfill['stamped']}\n")
+                sys.stdout.write(dal.render_alerts(alerts, rule=rule) + "\n")
                 return 0
             raise ValueError(f"unknown dossier command: {args.command}")
         if args.group == "m0f":
