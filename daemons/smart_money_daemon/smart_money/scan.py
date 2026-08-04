@@ -20,8 +20,12 @@ from . import house_ingest
 from .amendments import apply_supersedes
 from .efd_session import bootstrap, post_data, EfdSessionError
 
-REGISTRY_PATH = os.path.join(os.path.dirname(__file__), "..", "analysis",
-                             "registry.json")
+# The registry must be read through find_artifact (STATE HOME first, repo snapshot as
+# fallback) — the same resolver queries.py uses. Hardcoding the repo path forked the two
+# readers: the dashboard saw the synced 19 manager_13f filers while leg_13f still iterated
+# a stale 6-entry repo copy, so the 13 filers added by SM-P2 had baselines seeded but
+# would still have emitted NO events on their next filing. One canonical read path.
+REGISTRY_PATH = dbmod.find_artifact("registry.json", "analysis")
 UA_TMPL = "Abelard-SmartMoney mdiba personal research {}"
 
 

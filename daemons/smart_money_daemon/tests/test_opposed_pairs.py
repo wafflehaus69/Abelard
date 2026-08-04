@@ -115,3 +115,17 @@ def test_options_are_a_distinct_instrument(tmp_path, monkeypatch):
     # same thesis on both sides -> not cross-thesis
     assert rows[0]["cross_thesis"] is False
     ro.close()
+
+
+def test_scan_and_queries_read_the_same_registry():
+    """SM-P2 event path: scan.REGISTRY_PATH once hardcoded the REPO copy while queries.py
+    resolved the STATE HOME copy. That fork let the dashboard show 19 tracked filers while
+    leg_13f still iterated a stale 6 — so newly added filers had baselines seeded yet
+    would emit NO events on their next filing. Both must resolve identically."""
+    import os
+
+    from smart_money import db as dbmod, scan
+    assert os.path.abspath(scan.REGISTRY_PATH) == os.path.abspath(
+        dbmod.find_artifact("registry.json", "analysis")), (
+            "scan and queries must read ONE registry; a fork silently halves the "
+            "event path")
