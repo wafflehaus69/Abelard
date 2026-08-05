@@ -28,6 +28,25 @@ from . import db as dbmod
 PROBE_KIND_SEARCH = "search"
 
 
+# A probe that cannot tell "eFD refused us" from "this host had no internet" produces a
+# FRAUDULENT availability map. On 2026-08-04 Basilic lost outbound DNS/HTTPS entirely
+# (every domain resolving to one IP pair, all connects failing) and ten consecutive probes
+# recorded as eFD failures — which read as the weekday throttle we were trying to measure.
+# Failures are therefore classified against a CONTROL host before being counted.
+CONTROL_URL = "https://www.google.com/generate_204"
+
+
+def _have_network(timeout=6):
+    """True if this host can reach the open internet at all. Used only to CLASSIFY a
+    probe failure, never to decide the probe's own result."""
+    import requests
+    try:
+        requests.get(CONTROL_URL, timeout=timeout)
+        return True
+    except Exception:  # noqa: BLE001 - any failure means treat the host as offline
+        return False
+
+
 def probe_once(kind=PROBE_KIND_SEARCH, contact="smartmoney@example.com"):
     """One probe. Returns (ok, status, latency_ms, detail). Never raises — a probe that
     blows up is itself a datapoint and must be recorded, not lost."""
@@ -49,6 +68,11 @@ def probe_once(kind=PROBE_KIND_SEARCH, contact="smartmoney@example.com"):
         return True, "ok", ms, "recordsTotal={}".format(body.get("recordsTotal"))
     except Exception as exc:  # noqa: BLE001 - a failed probe is data, never an abort
         ms = int((time.monotonic() - t0) * 1000)
+        # Distinguish "eFD blocked us" from "we had no network". Only the former is
+        # evidence about eFD availability; the latter says nothing and must not be
+        # counted as a refusal.
+        if not _have_network():
+            return False, "no_network", ms, "host offline: " + str(exc)[:120]
         return False, "error", ms, str(exc)[:160]
 
 
@@ -81,7 +105,7 @@ def window_map(con, days=14, weekday_only=False):
     buckets = collections.defaultdict(lambda: {"n": 0, "ok": 0, "lat": []})
     for hour, ok, ms, iso in con.execute(
             "SELECT hour_local, ok, latency_ms, probed_at_iso FROM efd_probe_log "
-            "WHERE probed_at_unix >= ?", (since,)):
+            "WHERE probed_at_unix >= ? AND status != 'no_network'", (since,)):
         if weekday_only and _is_weekend(iso) is not False:
             continue
         b = buckets[hour]
@@ -105,8 +129,8 @@ def dow_split(con, days=14):
     wd = {"n": 0, "ok": 0}
     we = {"n": 0, "ok": 0}
     for ok, iso in con.execute(
-            "SELECT ok, probed_at_iso FROM efd_probe_log WHERE probed_at_unix >= ?",
-            (since,)):
+            "SELECT ok, probed_at_iso FROM efd_probe_log WHERE probed_at_unix >= ? "
+            "AND status != 'no_network'", (since,)):
         wknd = _is_weekend(iso)
         if wknd is None:
             continue
@@ -116,7 +140,7 @@ def dow_split(con, days=14):
     return wd, we
 
 
-def _render_map(rows, days, wd=None, we=None, weekday_rows=None):
+def _render_map(rows, days, wd=None, we=None, weekday_rows=None, excluded=0):
     total = sum(r["attempts"] for r in rows)
     lines = ["eFD SENATE AVAILABILITY WINDOW MAP  (trailing {}d, n={})".format(days, total),
              "=" * 62]
@@ -134,6 +158,11 @@ def _render_map(rows, days, wd=None, we=None, weekday_rows=None):
     # throttle is load-shaped, weekend probes go green at EVERY hour and an hours-only map
     # reads "no window" for the wrong reason. The verdict is therefore computed from
     # WEEKDAY samples only — the days the daemon actually has to run.
+    if excluded:
+        lines.append("EXCLUDED as host-offline (no_network): {} probe(s) - these say "
+                     "NOTHING about eFD and are kept out of every rate above.".format(
+                         excluded))
+        lines.append("-" * 62)
     if wd is not None and we is not None:
         lines.append("DAY-OF-WEEK SPLIT (the confound):")
         for lbl, b in (("weekday", wd), ("weekend", we)):
@@ -183,8 +212,12 @@ def main(argv=None):
     try:
         if args.map:
             wd, we = dow_split(con, args.days)
+            since = int(time.time()) - args.days * 86400
+            excl = con.execute(
+                "SELECT count(*) FROM efd_probe_log WHERE probed_at_unix >= ? "
+                "AND status = 'no_network'", (since,)).fetchone()[0]
             print(_render_map(window_map(con, args.days), args.days, wd, we,
-                              window_map(con, args.days, weekday_only=True)))
+                              window_map(con, args.days, weekday_only=True), excl))
             return 0
         if args.rider:
             # Randomized so repeated riders sample different minutes of the hour; the

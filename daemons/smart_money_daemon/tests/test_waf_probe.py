@@ -137,3 +137,29 @@ def test_dow_split_reports_both_populations(tmp_path):
     assert (wd["n"], wd["ok"]) == (3, 3)
     assert (we["n"], we["ok"]) == (4, 0)
     con.close()
+
+
+def test_host_offline_probes_are_excluded_from_availability(tmp_path):
+    """A probe that cannot tell "eFD refused us" from "this host had no internet"
+    produces a FRAUDULENT map. On 2026-08-04 Basilic lost outbound DNS/HTTPS and ten
+    consecutive probes logged as eFD failures — which read as exactly the weekday
+    throttle the map exists to measure. no_network rows must be excluded from every rate
+    and reported separately."""
+    con = dbmod.connect(str(tmp_path / "off.db"))
+    for _ in range(10):
+        _log(con, 9, True, weekend=False)                       # real successes
+    for _ in range(10):                                          # local outage
+        con.execute(
+            "INSERT INTO efd_probe_log(probed_at_unix, probed_at_iso, hour_local, kind, "
+            "ok, status, latency_ms, detail) VALUES(?,?,?,?,?,?,?,?)",
+            (int(time.time()), "2026-07-29T09:00:00", 9, "search", 0,
+             "no_network", 200, "host offline"))
+    con.commit()
+    rows = waf_probe.window_map(con)
+    assert rows and rows[0]["attempts"] == 10, "offline probes must not inflate attempts"
+    assert rows[0]["rate"] == 100.0, "a local outage must not read as an eFD refusal"
+    wd, we = waf_probe.dow_split(con)
+    assert wd["n"] == 10 and wd["ok"] == 10
+    txt = waf_probe._render_map(rows, 14, wd, we, rows, excluded=10)
+    assert "EXCLUDED as host-offline" in txt and "10 probe(s)" in txt
+    con.close()
