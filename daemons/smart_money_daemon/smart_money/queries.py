@@ -1263,6 +1263,244 @@ def q_oge_holdings(con, filer=None):
             "note": "band-valued, coarse; restricted source, non-commercial use only"}
 
 
+_TIER_ANCHORED = "anchored"
+_TIER_ANCHORED_FLOWS = "anchored+flows"
+_TIER_FLOWS_ONLY = "flows-only"
+_TIER_FLOWS_OVER = "flows>anchor"
+# A person row whose name is a leaked eFD JSON blob (24 exist, one 26KB). Excluded from
+# identity matching — it can never match and would only slow the index.
+_MAX_PERSON_NAME = 60
+
+
+def _person_index(con):
+    """{(canon_last, first_token): [(person_id, name)]} over PTR persons."""
+    from . import names as _names
+    idx = defaultdict(list)
+    try:
+        rows = con.execute(
+            "SELECT person_id, name FROM persons WHERE type='congress' "
+            "AND length(name) <= ?", (_MAX_PERSON_NAME,))
+    except Exception:
+        return {}
+    for pid, nm in rows:
+        parts = [p.strip() for p in (nm or "").split(",")]
+        if len(parts) < 2:
+            continue
+        last = _names.canonical_key(parts[0])
+        first = _names.canonical_key(parts[1]).split()
+        idx[(last, first[0] if first else "")].append((pid, nm))
+    return idx
+
+
+def resolve_person(idx, last, first):
+    """(person_id, matched_name) for a holdings identity, or (None, None).
+
+    DETERMINISTIC ONLY, same doctrine as the party roster: an exact canonical
+    (last, first-token) match, then a PREFIX tie-break for the nickname case the corpus
+    actually contains (holdings 'Tillis, Thomas R' vs PTR 'Tillis, Thom'). A member with
+    no match is NOT an error — Hyde-Smith, Slotkin and Hirono hold annual-FD positions and
+    file no PTRs we hold, which is exactly the [anchored] tier."""
+    from . import names as _names
+    l = _names.canonical_key(last or "")
+    f = _names.canonical_key(first or "").split()
+    ft = f[0] if f else ""
+    hit = idx.get((l, ft), [])
+    if len(hit) == 1:
+        return hit[0]
+    if not hit:
+        for (kl, kf), v in idx.items():
+            if kl != l or not kf or not ft or len(v) != 1:
+                continue
+            if kf.startswith(ft) or ft.startswith(kf):
+                if min(len(kf), len(ft)) >= 3:      # Thom/Thomas, never T/Theodore
+                    return v[0]
+    return (None, None)
+
+
+def _mid(lo, hi):
+    """Band midpoint. An OPEN top band has no midpoint that means anything, so it
+    contributes its FLOOR — never an invented ceiling (corpus-wide convention)."""
+    if lo is None and hi is None:
+        return 0
+    if hi is None:
+        return lo or 0
+    if lo is None:
+        return hi
+    return (lo + hi) / 2.0
+
+
+def q_member_fusion(con, member_key=None):
+    """SM-C3 Phase F — one member's book, anchor fused with subsequent PTR flows.
+
+    KEY IS (ticker, owner). Owner is NEVER merged: a member's own position and their
+    spouse's are different disclosures and combining them would invent a holding neither
+    reported.
+
+    anchor  = the member's most recent annual FD position (band + coverage_year)
+    flows   = PTR transactions dated AFTER the anchor's coverage year ended
+    estimate= anchor band +/- flow midpoints, rendered as a RANGE, never a point
+
+    CONFIDENCE TIERS (per row, always shown):
+      anchored       anchor, no flows since — as-reported and STALE, not current
+      anchored+flows anchor plus later PTRs — the estimate rows
+      flows-only     PTRs with no anchor — new since the annual
+      flows>anchor   sells exceed what the anchor could hold. FLAGGED, never rendered
+                     as negative dollars. Causes include band coarseness, an owner
+                     mismatch between the two sources, or a paper/unparsed anchor year.
+                     Counted and visible, deliberately UNINTERPRETED.
+
+    NEVER infers full-vs-partial: a sale is only what the PTR states. A ticker-less
+    holding is UNFUSABLE (it can never join a flow) and is marked, so "no flows matched"
+    can never be read as "no flows occurred" — Mando's Phase H display ruling."""
+    confirmed = _confirmed_members(con)
+    members = []
+    for c, l, f, s, n in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, count(*) "
+            "FROM congress_holdings GROUP BY chamber, member_last, member_first, "
+            "state_dist"):
+        k = (c, l, f, s)
+        if confirmed and k not in confirmed:
+            continue
+        members.append({"key": "{}|{}|{}|{}".format(c, l or "", f or "", s or ""),
+                        "label": "{}, {} ({})".format(l or "?", f or "", c[:3].upper()),
+                        "rows": n})
+    members.sort(key=lambda m: m["label"])
+    base = {"as_of": _as_of(), "members": members}
+    if not members:
+        base.update({"member": None, "rows": [], "count": 0, "tiers": {},
+                     "anchor_year": None, "anchor_filed": None, "unfusable": 0})
+        return base
+    key = member_key if any(m["key"] == member_key for m in members) else members[0]["key"]
+    cham, last, first, sd = (key.split("|") + ["", "", ""])[:4]
+    last, first, sd = last or None, first or None, (sd or None)
+
+    yrs = [y for (y,) in con.execute(
+        "SELECT DISTINCT coverage_year FROM congress_holdings WHERE chamber=? AND "
+        "member_last IS ? AND member_first IS ? AND state_dist IS ? AND "
+        "coverage_year IS NOT NULL ORDER BY coverage_year DESC",
+        (cham, last, first, sd))]
+    anchor_year = yrs[0] if yrs else None
+    anchor_filed = None
+    if anchor_year is not None:
+        r = con.execute(
+            "SELECT max(filing_date) FROM congress_holdings WHERE chamber=? AND "
+            "member_last IS ? AND member_first IS ? AND state_dist IS ? AND "
+            "coverage_year=?", (cham, last, first, sd, anchor_year)).fetchone()
+        anchor_filed = r[0] if r else None
+    # Flows count only AFTER the anchor's coverage period ends. An annual covering CY2025
+    # already reflects everything through 2025-12-31, so double-counting a trade inside
+    # that window would inflate the estimate.
+    flow_after = "{}-12-31".format(anchor_year) if anchor_year else "0000-00-00"
+
+    anchors = {}
+    unfusable = 0
+    for name, tk, atype, owner, lo, hi in con.execute(
+            "SELECT asset_name, ticker, asset_type, owner, value_lo, value_hi "
+            "FROM congress_holdings WHERE chamber=? AND member_last IS ? AND "
+            "member_first IS ? AND state_dist IS ? AND coverage_year IS ?",
+            (cham, last, first, sd, anchor_year)):
+        ol = _OWNER_LABEL.get(owner, "self")
+        if not tk:
+            unfusable += 1
+            anchors[("\x00" + (name or "?"), ol)] = {
+                "asset_name": name, "ticker": None, "owner": ol, "lo": lo, "hi": hi,
+                "unfusable": True, "instrument": "OP" if atype == "OP" else "SH"}
+            continue
+        k = (tk.upper(), ol)
+        a = anchors.setdefault(k, {"asset_name": name, "ticker": tk.upper(), "owner": ol,
+                                   "lo": 0, "hi": 0, "unfusable": False,
+                                   "instrument": "OP" if atype == "OP" else "SH"})
+        a["lo"] = (a["lo"] or 0) + (lo or 0)
+        a["hi"] = None if (a["hi"] is None or hi is None) else a["hi"] + hi
+
+    pid, matched_name = resolve_person(_person_index(con), last, first)
+    flows = defaultdict(lambda: {"buy": 0.0, "sell": 0.0, "n_buy": 0, "n_sell": 0,
+                                 "last_tx": None})
+    if pid:
+        for tk, side, alo, ahi, tx, owner in con.execute(
+                "SELECT ticker, side, amt_low, amt_high, tx_date, owner "
+                "FROM congress_trades WHERE person_id=? AND superseded=0 AND "
+                "ticker IS NOT NULL AND tx_date > ? AND tx_date <= ?",
+                (pid, flow_after, _as_of()[:10])):
+            k = (tk.upper(), _OWNER_LABEL.get(owner, "self"))
+            fl = flows[k]
+            m = _mid(alo, ahi)
+            if str(side).startswith("purchase"):
+                fl["buy"] += m
+                fl["n_buy"] += 1
+            else:
+                fl["sell"] += m
+                fl["n_sell"] += 1
+            if fl["last_tx"] is None or (tx or "") > fl["last_tx"]:
+                fl["last_tx"] = tx
+
+    rows = []
+    tiers = defaultdict(int)
+    for k in set(anchors) | set(flows):
+        a = anchors.get(k)
+        fl = flows.get(k)
+        tk, ol = (a["ticker"], a["owner"]) if a else k
+        if a and a["unfusable"]:
+            tier = _TIER_ANCHORED
+        elif a and fl:
+            tier = _TIER_ANCHORED_FLOWS
+        elif a:
+            tier = _TIER_ANCHORED
+        else:
+            tier = _TIER_FLOWS_ONLY
+        alo = a["lo"] if a else None
+        ahi = a["hi"] if a else None
+        buy = fl["buy"] if fl else 0.0
+        sell = fl["sell"] if fl else 0.0
+        est_lo = est_hi = None
+        if a and not a["unfusable"]:
+            est_lo = (alo or 0) + buy - sell
+            est_hi = None if ahi is None else ahi + buy - sell
+            # Sells exceeding what the anchor band could hold. Flag it; NEVER show a
+            # negative dollar figure, and never silently clamp without saying so.
+            if (est_hi is not None and est_hi < 0) or (ahi is None and est_lo < 0):
+                tier = _TIER_FLOWS_OVER
+            est_lo = max(0.0, est_lo)
+            if est_hi is not None:
+                est_hi = max(0.0, est_hi)
+        elif fl:
+            est_lo, est_hi = max(0.0, buy - sell), None
+            if buy - sell < 0:
+                tier = _TIER_FLOWS_OVER
+        tiers[tier] += 1
+        rows.append({
+            "ticker": tk if not (a and a["unfusable"]) else None,
+            "asset_name": (a or {}).get("asset_name"),
+            "owner": ol, "instrument": (a or {}).get("instrument", "SH"),
+            "anchor_lo": alo, "anchor_hi": ahi,
+            "buy_flow": round(buy), "sell_flow": round(sell),
+            "n_buy": (fl or {}).get("n_buy", 0), "n_sell": (fl or {}).get("n_sell", 0),
+            "last_tx": (fl or {}).get("last_tx"),
+            "estimate_lo": None if est_lo is None else round(est_lo),
+            "estimate_hi": None if est_hi is None else round(est_hi),
+            "tier": tier, "unfusable": bool(a and a["unfusable"])})
+    rows.sort(key=lambda r: (-(r["estimate_lo"] or r["anchor_lo"] or 0), r["ticker"] or ""))
+    meta = {}
+    try:
+        for p, st in con.execute(
+                "SELECT party, state FROM congress_member_roster WHERE chamber=? AND "
+                "member_last IS ? AND member_first IS ? AND state_dist IS ?",
+                (cham, last, first, sd)):
+            meta = {"party": p, "state": st}
+    except Exception:
+        pass
+    base.update({
+        "member": "{}, {}".format(last or "?", first or ""), "member_key": key,
+        "chamber": cham, "party": meta.get("party"), "state": meta.get("state") or sd,
+        "anchor_year": anchor_year, "anchor_filed": anchor_filed,
+        "coverage_years": yrs, "ptr_person": matched_name, "ptr_linked": bool(pid),
+        "rows": rows, "count": len(rows), "tiers": dict(tiers), "unfusable": unfusable,
+        "note": "estimates are RANGES from coarse bands, never marks; flows counted only "
+                "after the anchor coverage year ended; full-vs-partial sale is never "
+                "inferred"})
+    return base
+
+
 def q_coverage_matrix(con):
     """SM-C3 Phase H: per-member, per-coverage-year parse state across the harvest.
 

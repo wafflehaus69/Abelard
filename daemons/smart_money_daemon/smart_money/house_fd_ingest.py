@@ -180,6 +180,16 @@ def _num(s):
     return int(s.replace(",", ""))
 
 
+def _cov_year(filing, zip_year):
+    """Calendar year a House annual COVERS. The index carries it explicitly as `Year`;
+    the zip year is only a fallback (they agree in every observed zip)."""
+    y = (filing or {}).get("Year")
+    try:
+        return int(str(y).strip())
+    except (TypeError, ValueError):
+        return zip_year
+
+
 def _iso_mdy(s):
     """'1/14/2026' -> '2026-01-14'. Unparseable stays None, never guessed."""
     m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})", s or "")
@@ -325,10 +335,13 @@ def ingest_filing(con, year, filing, raw_dir, ua, unparsed_dir):
             "person_id, row_idx, asset_name, ticker, asset_type, owner, value_lo, "
             "value_hi, income_type, ingested_at_unix) "
             "VALUES(?,'house',?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,?)",
-            # `year` is the House FD CYCLE year (the zip), so an annual filed in that
-            # cycle covers the PRIOR calendar year — unlike the Senate, where the title
-            # year is already the coverage year.
-            (doc, year, (year - 1) if year else None,
+            # COVERAGE YEAR comes from the index's own `Year` field, never inferred.
+            # {N}FD.zip holds annuals COVERING calendar year N, filed mostly in N+1
+            # (verified: every entry in the 2022/2023/2024/2025 zips carries Year=N while
+            # FilingDate is predominantly N+1). An earlier `year - 1` inference put every
+            # House coverage year one year early, which also moved the Phase F flow cutoff
+            # back a year and counted an extra year of PTRs as post-anchor.
+            (doc, year, _cov_year(filing, year),
              _iso_mdy(filing.get("FilingDate")), filing.get("FilingDate"),
              filing.get("Last"), filing.get("First"),
              filing.get("StateDst"), i, r["asset_name"], r["ticker"], r["asset_type"],

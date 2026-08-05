@@ -1,9 +1,10 @@
 """SM-C3 Phase H: coverage_year vs filing_date.
 
-`filing_year` meant DIFFERENT things per chamber — the House FD cycle year (coverage =
-year-1) but the Senate eFD title year (already the coverage year). Fusion against PTR
-flows depends on knowing which year a position DESCRIBES, so both are explicit now.
-These tests pin the asymmetry so it cannot silently regress.
+Both chambers label a filing by the year it COVERS, but they say so differently:
+{N}FD.zip holds House annuals covering CY N (filed mostly N+1, carrying an explicit
+`Year` field), while the Senate eFD title says "Annual Report for CY N". Fusion against
+PTR flows depends on knowing which year a position DESCRIBES — an off-by-one moves the
+flow cutoff a full year and counts an extra year of trades as post-anchor.
 """
 from smart_money import db as dbmod
 from smart_money.house_fd_ingest import _iso_mdy as h_iso
@@ -34,8 +35,9 @@ def test_migration_backfills_each_chamber_by_its_own_convention(tmp_path):
     dbmod._migrate_coverage(con)
     got = {r[0]: (r[1], r[2]) for r in con.execute(
         "SELECT chamber, coverage_year, filing_date FROM congress_holdings")}
-    # House 2025 cycle covers CY2024; Senate title year IS the coverage year
-    assert got["house"] == (2024, "2025-05-15"), got
+    # Both are the COVERAGE year: House {N}FD.zip covers CY N (Year field), Senate
+    # title year is CY N. An earlier `year - 1` inference on the House side was wrong.
+    assert got["house"] == (2025, "2025-05-15"), got
     assert got["senate"] == (2025, "2026-07-30"), got
     con.close()
 

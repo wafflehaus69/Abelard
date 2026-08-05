@@ -438,7 +438,10 @@ def _migrate_coverage(con):
         con.execute("UPDATE congress_holdings SET coverage_year=filing_year "
                     "WHERE coverage_year IS NULL AND chamber='senate' "
                     "AND filing_year IS NOT NULL")
-        con.execute("UPDATE congress_holdings SET coverage_year=filing_year-1 "
+        # House: {N}FD.zip holds annuals COVERING calendar year N (filed mostly N+1),
+        # so coverage_year == filing_year. An earlier `-1` here put every House coverage
+        # year one year early and moved the Phase F flow cutoff back a full year.
+        con.execute("UPDATE congress_holdings SET coverage_year=filing_year "
                     "WHERE coverage_year IS NULL AND chamber='house' "
                     "AND filing_year IS NOT NULL")
         # `period` holds the raw filed date as the source wrote it (M/D/YYYY or
