@@ -110,3 +110,17 @@ def test_mark_false_does_not_consume_the_alert():
     con = _con(_rec(composite=0.95))
     assert len(da.evaluate(con, now=1_300_000, mark=False)) == 1
     assert len(da.evaluate(con, now=1_300_000)) == 1     # still pending
+
+
+def test_incomplete_score_never_pages_and_never_sets_the_high_water_mark():
+    """Live false positive, 2026-08-05: a wallet whose freshness could not be resolved
+    was barred from a real tier by m0f (INSUFFICIENT_DATA, tier_peak NONE) yet paged on
+    a composite_peak of 0.842 whose own frozen composite was 0.194. A score the detector
+    refused to tier must neither set the peak nor reach the owner."""
+    con = ds.connect(":memory:")
+    ds.upsert(con, _rec(composite=0.194), scan_ts=1_000)
+    # a later scan scores high but is data-incomplete
+    ds.upsert(con, dict(_rec(composite=0.842), tier="INSUFFICIENT_DATA"), scan_ts=2_000)
+    row = ds.query(con)[0]
+    assert row["composite_peak"] != 0.842, "an incomplete score set the high-water mark"
+    assert da.evaluate(con, now=3_000) == [], "an untierable score paged the owner"

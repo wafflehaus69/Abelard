@@ -192,9 +192,16 @@ def upsert(con: sqlite3.Connection, rec: dict[str, Any], *, scan_ts: int | None 
     # gated scan paid for, silently shrinking the store (breaks CAPTURE WIDE and the
     # §6 labeled-dataset promise). COALESCE(new, old) keeps the earlier value.
     # Frozen-as-scored columns are exempt from update entirely (see _FROZEN_COLS).
+    # Only a COMPLETE score may set the high-water mark. m0f bars a data-incomplete
+    # candidate from a real tier (INSUFFICIENT_DATA) precisely because its composite is
+    # renormalised over the surviving factors and therefore inflated; letting that value
+    # advance composite_peak smuggles it past the guard and straight into the alert path,
+    # which reads the peak. Observed live: a wallet with tier INSUFFICIENT_DATA and
+    # tier_peak NONE paged on a peak of 0.842 whose own frozen composite was 0.194.
+    peak_candidate = rec.get("composite") if new_tier in TIER_RANK else None
     sets = ["last_scan_ts=?", "n_scans=n_scans+1", "tier_peak=?", "tier_peak_ts=?",
             "composite_peak=MAX(COALESCE(composite_peak,-1e9), COALESCE(?,-1e9))"]
-    vals: list[Any] = [scan_ts, peak, peak_ts, rec.get("composite")]
+    vals: list[Any] = [scan_ts, peak, peak_ts, peak_candidate]
     for c in _CAPTURE_COLS:
         if c in _FROZEN_COLS:
             continue          # detection-time snapshot: written once, never rewritten

@@ -67,8 +67,24 @@ class AlertRule:
         )
 
 
+#: Tiers that represent a COMPLETE score. INSUFFICIENT_DATA is deliberately absent —
+#: m0f assigns it when a factor could not be resolved, and its composite is then
+#: renormalised over the surviving factors and inflated.
+_REAL_TIERS = {"NONE", "WATCH", "ELEVATED", "CRITICAL"}
+
+
 def _reasons(row: dict[str, Any], rule: AlertRule) -> list[str]:
     out = []
+    # Never page on a score the detector itself refused to tier. m0f bars a
+    # data-incomplete candidate from a real tier because its composite is inflated by
+    # renormalisation; alerting on it anyway resurrects the imputed-freshness failure
+    # through the alert door. Observed live: a wallet whose freshness could not be
+    # resolved (first_seen unavailable, tier INSUFFICIENT_DATA, tier_peak NONE) paged
+    # on a peak composite of 0.842 while its own frozen composite was 0.194.
+    if (row.get("tier") or "NONE") not in _REAL_TIERS:
+        return out
+    if (row.get("tier_peak") or "NONE") not in _REAL_TIERS:
+        return out
     # High-water mark, not the frozen/decayed value: a footprint that peaked above the
     # bar must not escape alerting because a later scan re-scored it lower (constraint 6
     # — decay is trajectory, not retraction).
