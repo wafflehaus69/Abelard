@@ -308,11 +308,12 @@ class M10Config(_Strict):
     # so each threshold step now changes the rate. Under the old multiply-in elevator
     # every bar in [0.75, 0.90] returned an identical, inert 2.0/wk.
     # Superseded: 0.90 @ 0.5/wk (pre-F-imputation-fix, inflated) and the bimodal run.
-    # HELD, NOT CALIBRATED: the cluster arm (v1.16 §2.2). actor_count_post_collapse is
-    # NULL everywhere because the scan does not compute funding-mesh collapse yet;
-    # alert_cluster_min_actors below is inert until that is wired and calibrated.
+    # The cluster arm is CLOSED (2026-08-05); alert_cluster_min_actors is retired and
+    # ignored. Mesh collapse itself still runs and is still reported on every dossier.
     alert_composite_min: float = Field(ge=0.0, le=10.0, default=0.80)
-    # Post-collapse ACTORS (never raw wallets — the §4.2 inversion).
+    # RETIRED 2026-08-05: the cluster alert arm is closed permanently (nothing to
+    # calibrate — see dossier_alert's docstring). Kept as an accepted-but-ignored key so
+    # an existing config carrying it still loads instead of failing at startup.
     alert_cluster_min_actors: int = Field(ge=2, default=3)
     # Empty -> all categories are alertable.
     alert_categories: list[str] = Field(default_factory=list)

@@ -77,23 +77,19 @@ def test_stray_prefixed_category_still_matches_a_watch_list():
     assert len(da.evaluate(con, rule=rule, now=1_000)) == 1
 
 
-def test_mesh_collapse_cannot_fake_a_cluster_alert():
-    """§4.2 INVERSION: 20 wallets collapsing to 1 actor is n=1 evidence, not a cluster."""
-    con = _con(_rec(composite=0.10, actors=1, wallets=[f"0x{i}" for i in range(20)]))
-    assert da.evaluate(con, now=1_300_000) == []       # must stay silent
-    # v1.16 §2.2: the cluster arm is HELD by default — it cannot fire while the scan
-    # does not compute mesh collapse (actor counts are NULL), because the only
-    # alternative would be alerting on the raw wallet count, which overstates evidence.
-    con_held = _con(_rec(composite=0.10, actors=4, wallets=[f"0x{i}" for i in range(4)]))
-    assert da.evaluate(con_held, now=1_300_000) == []
-    # ...but the logic is correct once collapse exists and the arm is enabled.
-    con2 = _con(_rec(composite=0.10, actors=4, wallets=[f"0x{i}" for i in range(4)]))
-    rule = da.AlertRule(cluster_arm_enabled=True)
-    alerts = da.evaluate(con2, rule=rule, now=1_300_000)
-    assert len(alerts) == 1 and "post-collapse actors" in alerts[0]["why"][0]
-    # an UNRESOLVED collapse must never fire even with the arm on (unresolved != 20)
-    con3 = _con(_rec(composite=0.10, actors=None, wallets=[f"0x{i}" for i in range(20)]))
-    assert da.evaluate(con3, rule=rule, now=1_300_000) == []
+def test_cluster_facts_never_page_now_that_the_arm_is_closed():
+    """The cluster/coordination arm is CLOSED permanently (owner ruling 2026-08-05):
+    the measurement showed nothing to calibrate against. No cluster shape may page —
+    not a collapsed mesh, not a genuine multi-actor cluster, not an unresolved one.
+    Mesh collapse itself still runs; it informs the DOSSIER, never the alert."""
+    for actors, wallets in ((1, [f"0x{i}" for i in range(20)]),      # sybil mesh -> 1
+                            (4, [f"0x{i}" for i in range(4)]),       # genuine 4 actors
+                            (None, [f"0x{i}" for i in range(20)])):  # unresolved
+        con = _con(_rec(composite=0.10, actors=actors, wallets=wallets))
+        assert da.evaluate(con, now=1_300_000) == []
+    # and the rule no longer carries a cluster knob at all
+    assert not hasattr(da.AlertRule(), "cluster_arm_enabled")
+    assert not hasattr(da.AlertRule(), "cluster_min_actors")
 
 
 def test_contested_gate_and_category_filter():

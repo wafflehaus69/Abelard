@@ -29,6 +29,8 @@ import sqlite3
 import time
 from typing import Any, Callable, Iterable
 
+from .resolution import collapse_state, is_complete_score
+
 SCHEMA_VERSION = 1
 
 TIER_RANK = {"NONE": 0, "WATCH": 1, "ELEVATED": 2, "CRITICAL": 3}
@@ -198,7 +200,7 @@ def upsert(con: sqlite3.Connection, rec: dict[str, Any], *, scan_ts: int | None 
     # advance composite_peak smuggles it past the guard and straight into the alert path,
     # which reads the peak. Observed live: a wallet with tier INSUFFICIENT_DATA and
     # tier_peak NONE paged on a peak of 0.842 whose own frozen composite was 0.194.
-    peak_candidate = rec.get("composite") if new_tier in TIER_RANK else None
+    peak_candidate = rec.get("composite") if is_complete_score(new_tier) else None
     sets = ["last_scan_ts=?", "n_scans=n_scans+1", "tier_peak=?", "tier_peak_ts=?",
             "composite_peak=MAX(COALESCE(composite_peak,-1e9), COALESCE(?,-1e9))"]
     vals: list[Any] = [scan_ts, peak, peak_ts, peak_candidate]
@@ -328,19 +330,19 @@ def freshness_tag(first_seen_ts: int | None, ref_ts: int | None) -> str:
 
 def is_mesh_collapsed(row: dict[str, Any]) -> bool | None:
     """True/False when the post-collapse actor count is known; None when it is NOT.
+    Thin wrapper over :mod:`consensus.resolution` — the unresolved rule lives there,
+    not here (this helper previously carried its own copy, which is how the renderer
+    and the alert path each ended up with a different one)."""
+    state = collapse_state(row, _loads_wallets(row))
+    return None if state == "unresolved" else state == "collapsed"
 
-    A NULL actor count means the funding mesh was never computed — it does NOT mean
-    "no collapse occurred". Returning False there would fail OPEN, presenting an
-    unchecked cluster as verified-independent (the §4.2 inversion in reverse)."""
-    actors = row.get("actor_count_post_collapse")
-    if actors is None:
-        return None
+
+def _loads_wallets(row: dict[str, Any]) -> list[Any]:
     cw = row.get("cluster_wallets")
     try:
-        n_raw = len(json.loads(cw)) if cw else 1
+        return json.loads(cw) if cw else [row.get("wallet")]
     except Exception:
-        n_raw = 1
-    return actors < n_raw
+        return [row.get("wallet")]
 
 
 def query(con: sqlite3.Connection, *, category: str | None = None,

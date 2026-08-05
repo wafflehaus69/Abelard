@@ -23,7 +23,19 @@ elevator multiplied into the composite, which broke the [0,1] scale (values to 1
 made every bar in [0.75, 0.90] return an identical, inert 2.0/wk. The scale invariant is
 now restored (max observed 0.841) and each threshold step changes the rate.
 
-CLUSTER ARM: HELD (v1.16 §2.2) — see AlertRule.cluster_arm_enabled.
+CLUSTER ARM: CLOSED PERMANENTLY (owner ruling 2026-08-05). It was held under v1.16 §2.2
+pending calibration; the measurement showed there is nothing to calibrate. Over 14 daily
+replayed scans the store captured 1,700 dossiers but only 13 clustered footprints, with
+rosters of 3-4 wallets, and NONE resolved to an actor count because every one had a
+member below the enrichment gate. The gate selects the top wallets by composite rank
+while a cluster resolves only when ALL its members are enriched, so the two criteria are
+structurally misaligned and the cap keeps them that way by design. Clusters are also
+rare and small on this tape. The arm is therefore removed rather than left disabled — a
+dormant code path that can never fire is a liability, not an option.
+
+Mesh COLLAPSE itself remains and is still required: every dossier reports raw wallet
+count AND post-collapse actor count (§4.2), because an uncollapsed mesh rendered as N
+actors is the overstatement the invariant exists to prevent. Only the ALERT arm closes.
 """
 
 from __future__ import annotations
@@ -33,9 +45,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import resolution as _res
+
 # Calibrated defaults — see the module docstring for the measurement.
 ALERT_COMPOSITE_MIN = 0.80
-ALERT_CLUSTER_MIN_ACTORS = 3      # post-collapse ACTORS, not raw wallets (§4.2)
 # A dossier re-pages only if its peak composite rises this far above the value that
 # consumed its previous page. Large enough that scan-to-scan jitter cannot re-page
 # (which would defeat the quiet-week discipline), small enough that a real escalation
@@ -48,12 +61,8 @@ class AlertRule:
     """Pre-registered, owner-configurable alert thresholds (§3.5)."""
 
     composite_min: float = ALERT_COMPOSITE_MIN
-    cluster_min_actors: int = ALERT_CLUSTER_MIN_ACTORS
     categories: tuple[str, ...] = field(default_factory=tuple)  # empty = all
     require_contested: bool = True    # standing 0.10-0.90 gate on the signal surface
-    # v1.16 §2.2: HELD until funding-mesh collapse is wired into the scan and the arm
-    # is calibrated on real post-collapse actor counts. Single-wallet alerting proceeds.
-    cluster_arm_enabled: bool = False
 
     @classmethod
     def from_config(cls, m10: Any) -> "AlertRule":
@@ -61,29 +70,21 @@ class AlertRule:
         module constants are only the fallback when a field is absent."""
         return cls(
             composite_min=float(getattr(m10, "alert_composite_min", ALERT_COMPOSITE_MIN)),
-            cluster_min_actors=int(getattr(m10, "alert_cluster_min_actors",
-                                           ALERT_CLUSTER_MIN_ACTORS)),
             categories=tuple(getattr(m10, "alert_categories", ()) or ()),
         )
 
 
-#: Tiers that represent a COMPLETE score. INSUFFICIENT_DATA is deliberately absent —
-#: m0f assigns it when a factor could not be resolved, and its composite is then
-#: renormalised over the surviving factors and inflated.
-_REAL_TIERS = {"NONE", "WATCH", "ELEVATED", "CRITICAL"}
-
-
 def _reasons(row: dict[str, Any], rule: AlertRule) -> list[str]:
-    out = []
-    # Never page on a score the detector itself refused to tier. m0f bars a
-    # data-incomplete candidate from a real tier because its composite is inflated by
-    # renormalisation; alerting on it anyway resurrects the imputed-freshness failure
-    # through the alert door. Observed live: a wallet whose freshness could not be
-    # resolved (first_seen unavailable, tier INSUFFICIENT_DATA, tier_peak NONE) paged
-    # on a peak composite of 0.842 while its own frozen composite was 0.194.
-    if (row.get("tier") or "NONE") not in _REAL_TIERS:
-        return out
-    if (row.get("tier_peak") or "NONE") not in _REAL_TIERS:
+    """Why this dossier pages, or [] for silence.
+
+    Only the composite arm exists. The cluster/coordination arm is CLOSED permanently
+    (v1.16 §2.2 held it; closed by owner ruling 2026-08-05) — see the module docstring.
+    """
+    out: list[str] = []
+    # Never page on a score the detector itself refused to tier. The completeness rule
+    # lives in consensus.resolution so every consumer shares one definition; this used
+    # to be re-derived per call site and each copy could fail open.
+    if not _res.row_is_complete(row):
         return out
     # High-water mark, not the frozen/decayed value: a footprint that peaked above the
     # bar must not escape alerting because a later scan re-scored it lower (constraint 6
@@ -93,17 +94,6 @@ def _reasons(row: dict[str, Any], rule: AlertRule) -> list[str]:
         comp = row.get("composite")
     if comp is not None and comp >= rule.composite_min:
         out.append(f"composite {comp:.3f} >= {rule.composite_min:.2f}")
-    # v1.16 §2.2 — the cluster/coordination arm is HELD (disabled), not shipped at a
-    # threshold that cannot fire. m10 does not yet compute funding-mesh collapse, so
-    # actor_count_post_collapse is NULL everywhere. Alerting on the RAW wallet count
-    # instead would overstate evidence in the single most consequential direction (a
-    # 20-wallet mesh that is secretly one actor is n=1 — the Mojtaba case). Unresolved
-    # is NOT "20". Re-enable only once collapse is wired AND calibrated.
-    if rule.cluster_arm_enabled:
-        actors = row.get("actor_count_post_collapse")
-        if actors is not None and actors >= rule.cluster_min_actors:
-            out.append(f"coordinated cluster: {actors} post-collapse actors "
-                       f">= {rule.cluster_min_actors}")
     return out
 
 
@@ -151,8 +141,7 @@ def evaluate(con: sqlite3.Connection, *, rule: AlertRule | None = None,
             "composite": row.get("composite_peak") if row.get("composite_peak") is not None
             else row.get("composite"),
             "contested_notional": row.get("contested_notional"),
-            # None = UNRESOLVED, carried through as-is (never imputed to 1)
-            "actor_count_post_collapse": row.get("actor_count_post_collapse"),
+            "actor_count_post_collapse": _res.actor_count(row),   # None = UNRESOLVED
             "detection_ts": row.get("detection_ts"),
             "why": why,
             # Pointer, not advice. The dossier is the artifact to read.

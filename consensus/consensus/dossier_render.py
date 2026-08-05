@@ -15,6 +15,8 @@ whatever the store captured wide:
 
 from __future__ import annotations
 
+from . import resolution as _res
+
 import datetime as dt
 import json
 from typing import Any
@@ -76,7 +78,8 @@ def render_cex(cex_class: Any, confidence: Any, *, floor: float = CEX_CONFIDENCE
 def render_markdown(row: dict[str, Any], *, cex_floor: float = CEX_CONFIDENCE_FLOOR) -> str:
     wallets = _loads(row.get("cluster_wallets"), [row.get("wallet")])
     n_raw = len(wallets) if wallets else 1
-    actors = row.get("actor_count_post_collapse")   # None = UNRESOLVED, never imputed
+    actors = _res.actor_count(row)          # chokepoint: None = UNRESOLVED
+    state = _res.collapse_state(row, wallets)
     tier = row.get("tier") or "—"
     peak = row.get("tier_peak") or "—"
     L: list[str] = []
@@ -109,7 +112,7 @@ def render_markdown(row: dict[str, Any], *, cex_floor: float = CEX_CONFIDENCE_FL
     L.append("")
 
     L.append("## Cluster / actor")
-    if actors is None:
+    if state == "unresolved":
         # §4.2 / Rule 1: the funding mesh could not be computed — the EXPECTED outcome
         # of keeping the enrichment cap (a cluster member was never enriched). Declare
         # it. Imputing the raw count here would render an uncollapsed mesh as
