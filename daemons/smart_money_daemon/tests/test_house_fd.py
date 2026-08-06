@@ -79,3 +79,23 @@ def test_every_known_type_code_resolves_as_a_type_not_a_ticker():
         if len(code) <= 3:
             assert r["asset_type"] == code, (code, r)
         assert r["ticker"] is None, "type code leaked into ticker: {}".format(code)
+
+
+def test_band_complete_detects_a_wrapped_band():
+    """A value cell ending mid-band means the second amount wrapped to the next line."""
+    assert fd._band_complete(["$500,001", "-"]) is False
+    assert fd._band_complete(["$500,001", "-", "$1,000,000"]) is True
+    assert fd._band_complete(["None"]) is True
+    assert fd._band_complete(["Over", "$50,000,000"]) is True
+    assert fd._band_complete([]) is True
+
+
+def test_coverage_year_reads_the_explicit_index_field():
+    """{N}FD.zip holds annuals COVERING CY N (filed mostly N+1) and says so via `Year`.
+    Inferring `zip_year - 1` put every House coverage year one year early, which also
+    moved the Phase F flow cutoff back a full year."""
+    assert fd._cov_year({"Year": "2025"}, 2025) == 2025
+    assert fd._cov_year({"Year": " 2023 "}, 2099) == 2023
+    # fallback only when the field is absent or unusable
+    assert fd._cov_year({}, 2024) == 2024
+    assert fd._cov_year({"Year": ""}, 2024) == 2024

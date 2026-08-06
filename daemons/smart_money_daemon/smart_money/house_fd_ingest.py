@@ -198,6 +198,17 @@ def _iso_mdy(s):
     return "{}-{:02d}-{:02d}".format(m.group(3), int(m.group(1)), int(m.group(2)))
 
 
+_BAND_OPEN_RE = re.compile(r"\$[\d,]+\s*-\s*$")
+
+
+def _band_complete(tokens):
+    """False when a value cell ends mid-band ('$500,001 -'), meaning the second amount
+    wrapped onto the following line. Anything else — a full band, 'None',
+    'Over $X' — is complete."""
+    j = " ".join(tokens).strip()
+    return not bool(_BAND_OPEN_RE.search(j))
+
+
 def _parse_band(text):
     m = _BAND_RE.search(text)
     if m:
@@ -257,7 +268,8 @@ def parse_fd_assets(path):
     with pdfplumber.open(path) as pdf:
         if sum(len(p.extract_words()) for p in pdf.pages) == 0:
             return [], "paper"
-        records, current, header_seen = [], None, False
+        records, current, header_seen, awaiting = [], None, False, False
+        pending = {"asset": [], "owner": [], "income": []}
         for page in pdf.pages:
             bounds = None
             for line in _lines(page):
@@ -265,34 +277,62 @@ def parse_fd_assets(path):
                     anchors = _find_assets_header(line)
                     if anchors:
                         header_seen, bounds, current = True, _col_bounds(anchors), None
+                        awaiting = False
+                        pending = {"asset": [], "owner": [], "income": []}
                     continue
                 joined = " ".join(t for _, t in line)
                 if joined.startswith("* For the complete list") or \
                         re.match(r"^(Schedule [B-Z]\b|S [B-Z]:)", joined):
-                    bounds, current = None, None
+                    bounds, current, awaiting = None, None, False
+                    pending = {"asset": [], "owner": [], "income": []}
                     continue
                 bkt = _bucket(line, bounds)
                 asset, val = bkt["Asset"], bkt["Value"]
                 first = asset[0] if asset else ""
                 if first in ("L:", "D:", "L", "D"):
                     continue
-                has_val = "$" in " ".join(val)
-                # A NEW asset starts only on a real name line (asset col begins with an
-                # alphanumeric word) that carries a value band. A line whose asset col is
-                # just a wrapped type code ('[OP]') or a wrapped value hi is a continuation
-                # of the current asset, not a new one.
-                is_name = bool(asset) and first[:1].isalnum()
-                if is_name and has_val:
-                    current = {"asset": asset[:], "owner": " ".join(bkt["Owner"]),
-                               "value": val[:], "income": bkt["Income"][:]}
+                # THE VALUE LINE CLOSES A RECORD; the asset name accumulates BEFORE it.
+                #
+                # The previous rule required name and value on the SAME line, which is
+                # wrong for the dominant House template: the asset name (and its ticker
+                # and [TYPE] code) sit on their own lines, and the value lands on the
+                # following account line:
+                #     A=UnitedHealth Group Incorporated Common Stock | V=
+                #     A=(UNH) [ST]                                   | V=
+                #     A=Schwab One =>                                | V=$15,001 - $50,000
+                # Under the old rule the name was appended to the PREVIOUS record and the
+                # real record opened on "Schwab One =>" — which put UNH's ticker on a bank
+                # balance and gave it that row's $1,000,001-$5,000,000 band instead of its
+                # own $15,001-$50,000. A 100x error on a holding claim.
+                #
+                # A value cell of the literal word "None" still closes a record: the filer
+                # reported the asset with no value, which is a real disclosure state.
+                # A WRAPPED band splits across two lines, and its second half lands on the
+                # line that also carries the NEXT asset's name:
+                #     A=Bitwise Solana Staking ETF (BSOL) [EF] | V=
+                #     A=Schwab One =>                          | V=$500,001 -
+                #     A=Cash account [BA]                      | V=$1,000,000
+                # BSOL is $500,001-$1,000,000 and "Cash account" is a separate asset. So a
+                # line can be the TAIL of one record's value and the HEAD of the next
+                # record's name at the same time — split it, never assign it wholesale.
+                if awaiting and val:
+                    current["value"].extend(val)
+                    awaiting = not _band_complete(current["value"])
+                    pending["asset"].extend(asset)
+                    pending["owner"].extend(bkt["Owner"])
+                    continue
+                if val:
+                    current = {"asset": pending["asset"] + asset,
+                               "owner": " ".join(pending["owner"] + bkt["Owner"]),
+                               "value": val[:],
+                               "income": pending["income"] + bkt["Income"]}
                     records.append(current)
-                elif current is not None:                   # wrapped continuation
-                    if val:
-                        current["value"].extend(val)
-                    if asset:
-                        current["asset"].extend(asset)
-                    if bkt["Income"]:
-                        current["income"].extend(bkt["Income"])
+                    awaiting = not _band_complete(val)
+                    pending = {"asset": [], "owner": [], "income": []}
+                else:
+                    pending["asset"].extend(asset)
+                    pending["owner"].extend(bkt["Owner"])
+                    pending["income"].extend(bkt["Income"])
         if not records and not header_seen:
             return [], "unparsed_layout"
         rows = [_finalize(r) for r in records]

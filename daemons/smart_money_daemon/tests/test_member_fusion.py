@@ -166,3 +166,25 @@ def test_resolve_person_prefix_handles_thom_thomas():
     assert q.resolve_person(idx, "Tillis", "Thomas R")[0] == 7
     # a single initial must never match a full name
     assert q.resolve_person({("x", "theodore"): [(1, "X, Theodore")]}, "X", "T")[0] is None
+
+
+def test_anchor_reported_without_a_value_is_not_a_zero_floor(tmp_path, monkeypatch):
+    """Caught by the Moore hand-verification. Seeding the accumulator at 0 turned an
+    asset disclosed with NO band into "at least $0, open-ended" — a floor the filer never
+    stated — and then made a later sale look like it exceeded a known holding."""
+    res = _fusion(tmp_path, monkeypatch,
+                  holdings=[("DNUT", "Self", None, None)],
+                  trades=[("DNUT", "sale", 15001, 50000, "2026-03-01", "Self")])
+    r = _row(res, "DNUT")
+    assert (r["anchor_lo"], r["anchor_hi"]) == (None, None), "no invented floor"
+    assert r["estimate_lo"] is None, "an unvalued anchor cannot carry an estimate"
+    assert r["tier"] != "flows>anchor", "a sale cannot exceed a holding never valued"
+
+
+def test_multiple_lots_of_one_ticker_sum_into_one_anchor(tmp_path, monkeypatch):
+    """Two disclosed lots of the same ticker+owner are one position."""
+    res = _fusion(tmp_path, monkeypatch,
+                  holdings=[("AAPL", "Self", 1001, 15000),
+                            ("AAPL", "Self", 15001, 50000)])
+    r = _row(res, "AAPL")
+    assert (r["anchor_lo"], r["anchor_hi"]) == (16002, 65000)

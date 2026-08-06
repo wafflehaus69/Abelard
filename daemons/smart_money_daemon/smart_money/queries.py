@@ -1408,10 +1408,18 @@ def q_member_fusion(con, member_key=None):
             continue
         k = (tk.upper(), ol)
         a = anchors.setdefault(k, {"asset_name": name, "ticker": tk.upper(), "owner": ol,
-                                   "lo": 0, "hi": 0, "unfusable": False,
+                                   "lo": None, "hi": None, "valued": False,
+                                   "unfusable": False,
                                    "instrument": "OP" if atype == "OP" else "SH"})
+        # An asset disclosed with NO value band must stay (None, None). Seeding the
+        # accumulator at 0 turned "reported, unvalued" into "at least $0, open-ended" —
+        # a floor the filer never stated — and then made any later sale look like it
+        # exceeded a known holding.
+        if lo is None and hi is None:
+            continue
+        a["valued"] = True
         a["lo"] = (a["lo"] or 0) + (lo or 0)
-        a["hi"] = None if (a["hi"] is None or hi is None) else a["hi"] + hi
+        a["hi"] = None if hi is None else ((a["hi"] or 0) + hi)
 
     pid, matched_name = resolve_person(_person_index(con), last, first)
     flows = defaultdict(lambda: {"buy": 0.0, "sell": 0.0, "n_buy": 0, "n_sell": 0,
@@ -1453,7 +1461,12 @@ def q_member_fusion(con, member_key=None):
         buy = fl["buy"] if fl else 0.0
         sell = fl["sell"] if fl else 0.0
         est_lo = est_hi = None
-        if a and not a["unfusable"]:
+        # An anchor with no reported band cannot be combined with flows arithmetically.
+        # It is still ANCHORED (the asset was disclosed) but carries no estimate, and a
+        # later sale must NOT be read as exceeding it.
+        if a and not a["unfusable"] and not a.get("valued"):
+            pass
+        elif a and not a["unfusable"]:
             est_lo = (alo or 0) + buy - sell
             est_hi = None if ahi is None else ahi + buy - sell
             # Sells exceeding what the anchor band could hold. Flag it; NEVER show a
