@@ -22,10 +22,12 @@ import os
 import sys
 import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from . import db as dbmod
 from . import queries as q
+
+MEMBER_PREFIX = "/congress/member/"
 
 NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/insiders", "Insider books"),
        ("/disagreements", "Disagreements"), ("/congress", "Congress"), ("/oge", "OGE 278e"),
@@ -1279,6 +1281,128 @@ def _build_oge_csv(con, p, full):
     return buf.getvalue()
 
 
+_TIER_HELP = {
+    "anchored": "as-reported in the annual and STALE — no PTR since",
+    "anchored+flows": "annual position adjusted by later PTRs — an ESTIMATE",
+    "flows-only": "PTR activity with no annual position — new since the annual",
+    "flows>anchor": "sales exceed what the annual band could hold — FLAGGED, cause not "
+                    "interpreted (band coarseness, owner mismatch, or a paper/unparsed "
+                    "anchor year)",
+}
+_TIER_CLASS = {"anchored": "qoq-exited", "anchored+flows": "qoq-added",
+               "flows-only": "qoq-new", "flows>anchor": "qoq-trimmed"}
+_FUSION_CSV_COLS = ["ticker", "asset_name", "owner", "instrument", "tier", "anchor_lo",
+                    "anchor_hi", "buy_flow", "sell_flow", "n_buy", "n_sell", "last_tx",
+                    "estimate_lo", "estimate_hi", "unfusable"]
+
+
+def _range(lo, hi):
+    """A band is a RANGE. An open top stays open; nothing is collapsed to a point."""
+    if lo is None and hi is None:
+        return "<span class='muted'>-</span>"
+    if hi is None:
+        return "&ge; {}".format(_money0(lo))
+    return "{} &ndash; {}".format(_money0(lo), _money0(hi))
+
+
+def view_member(con, p):
+    """SM-C3 Phase F — one member's book: annual anchor fused with later PTR flows."""
+    res = q.q_member_fusion(con, member_key=p["member"] or None)
+    if not res.get("member"):
+        return _page("Member book", "<p class='muted'>No roster-confirmed members with "
+                                    "holdings yet.</p>", p)
+    active = p["sort"] or "estimate_lo"
+    rows = _sorted(res["rows"], active, p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("ticker", "ticker"), ("asset_name", "asset"), ("owner", "owner"),
+            ("tier", "basis"), ("anchor_lo", "annual (as reported)"),
+            ("buy_flow", "buys since"), ("sell_flow", "sells since"),
+            ("estimate_lo", "estimate (range)"), ("last_tx", "last PTR")]
+    trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw), active, p["dir"])]
+    for r in page_rows:
+        tier = r["tier"]
+        badge = "<span class='badge {}'>{}</span>".format(
+            _TIER_CLASS.get(tier, ""), html.escape(tier))
+        if r["unfusable"]:
+            badge += " <b class='restrict'>UNFUSABLE</b>"
+        est = ("<span class='muted'>n/a</span>" if r["estimate_lo"] is None
+               else _range(r["estimate_lo"], r["estimate_hi"]))
+        trs.append(
+            "<tr><td>{tk}</td><td>{an}</td><td>{ow}</td><td>{b}</td><td>{anc}</td>"
+            "<td>{buy}</td><td>{sell}</td><td>{est}</td><td>{tx}</td></tr>".format(
+                tk=(html.escape(r["ticker"]) if r["ticker"]
+                    else "<span class='muted'>(no ticker)</span>"),
+                an=html.escape(str(r["asset_name"] or "-"))[:56],
+                ow=("<b>{}</b>".format(html.escape(r["owner"])) if r["owner"] != "self"
+                    else html.escape(r["owner"])),
+                b=badge, anc=_range(r["anchor_lo"], r["anchor_hi"]),
+                buy=(_money0(r["buy_flow"]) if r["buy_flow"] else "-"),
+                sell=(_money0(r["sell_flow"]) if r["sell_flow"] else "-"),
+                est=est, tx=html.escape(r["last_tx"] or "-")))
+    trs.append("</table>")
+
+    sel = "".join("<option value='{}'{}>{}</option>".format(
+        html.escape(m["key"]), " selected" if m["key"] == res.get("member_key") else "",
+        html.escape(m["label"])) for m in res.get("members") or [])
+    form = ("<form method='get'>member <select name='member'>{s}</select> "
+            "<input type='hidden' name='per_page' value='{pp}'>"
+            "<input type='hidden' name='page' value='1'>"
+            "<input type='hidden' name='theme' value='{t}'>"
+            "<button>view</button></form>").format(
+                s=sel, pp=p["per_page"], t=html.escape(p.get("theme") or ""))
+    tier_line = " &middot; ".join(
+        "<b>{}</b> {}".format(k, v) for k, v in sorted(res["tiers"].items()))
+    ptr_note = ("linked to PTR filer <b>{}</b>".format(html.escape(res["ptr_person"]))
+                if res.get("ptr_linked") else
+                "<b>no PTR filer matched</b> — every row is annual-only, which may mean "
+                "they file no PTRs we hold, not that they did not trade")
+    head = (
+        "<p class='muted'><b>{m}</b> &middot; {ch}{pt}{st} &middot; anchor <b>CY{yr}</b> "
+        "filed {fd} &middot; {n} positions &middot; {ptr}</p>"
+        "<p class='muted'>basis: {tiers}</p>"
+    ).format(m=html.escape(res["member"]), ch=html.escape(res["chamber"] or "?"),
+             pt=(" &middot; " + html.escape(res["party"])) if res.get("party") else "",
+             st=(" &middot; " + html.escape(res["state"])) if res.get("state") else "",
+             yr=res["anchor_year"], fd=html.escape(res["anchor_filed"] or "?"),
+             n=res["count"], ptr=ptr_note, tiers=tier_line or "-")
+    caveat = (
+        "<p class='restrict-banner'><b>THIS PAGE DERIVES, IT DOES NOT REPORT.</b><br>"
+        "The annual column is as-filed. Everything right of it is COMPUTED: an estimate "
+        "is the annual band shifted by PTR band MIDPOINTS, rendered as a range and never "
+        "a mark. Annuals run up to ~18 months stale, so an <b>anchored</b> row is what was "
+        "reported then, not a current holding. Full-vs-partial sale is NEVER inferred — a "
+        "sale is only what the PTR states. {u} holding(s) here carry no ticker and are "
+        "marked <b class='restrict'>UNFUSABLE</b>: they can never join a flow, so "
+        "&ldquo;no flows matched&rdquo; must not be read as &ldquo;no flows "
+        "occurred&rdquo;. Counts are FLOORS where a filing year is paper or unparsed.</p>"
+        "<p class='muted'>{help}</p>"
+    ).format(u=res["unfusable"],
+             help=" &middot; ".join("<b>{}</b>: {}".format(k, html.escape(v))
+                                    for k, v in _TIER_HELP.items()))
+    links = ("<p class='muted'><a href='/trades'>PTR history</a> &middot; "
+             "<a href='/sentinels'>sentinel log</a> &middot; "
+             "<a href='/congress'>breadth board</a> &middot; "
+             "<a href='/congress_gaps'>coverage roll</a></p>")
+    body = [head, caveat, form, links, _pager(p, meta, "/member.csv"), "".join(trs),
+            _pager(p, meta, "/member.csv")]
+    return _page("Member book — {}".format(res["member"]), "".join(body), p)
+
+
+def _build_member_csv(con, p, full):
+    import csv
+    import io
+    res = q.q_member_fusion(con, member_key=p["member"] or None)
+    rows = _sorted(res["rows"], p["sort"] or "estimate_lo", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_FUSION_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 def view_congress_gaps(con, p):
     """SM-C2 P3: the coverage roll — who is behind the breadth counts, and who isn't."""
     res = q.q_congress_gaps(con)
@@ -1529,7 +1653,7 @@ def _page_brief_spec(con, p, path):
 
 
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
-          "/insiders": view_insiders, "/oge": view_oge,
+          "/insiders": view_insiders, "/oge": view_oge, "/member": view_member,
           "/disagreements": view_disagreements,
           "/congress_gaps": view_congress_gaps,
           "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
@@ -1557,6 +1681,13 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         p = _params(parse_qs(u.query))
         p["_path"] = u.path          # so the Print button can target THIS page
+        # /congress/member/<id> is the one PATH-parameterised route (the order specifies
+        # that URL shape). The id is the url-quoted member key "chamber|last|first|dist";
+        # everything else in the dashboard is exact-match + query params.
+        if u.path.startswith(MEMBER_PREFIX):
+            ident = unquote(u.path[len(MEMBER_PREFIX):]).strip("/")
+            if ident:
+                p["member"] = ident[:120]
         con = q.connect_ro(self.db_path)  # read-only, per request
         try:
             if u.path == "/brief.pdf":
@@ -1573,6 +1704,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._portfolios_csv(con, p, parse_qs(u.query))
             if u.path == "/disagreements.csv":
                 return self._disagreements_csv(con, p, parse_qs(u.query))
+            if u.path == "/member.csv":
+                return self._member_csv(con, p, parse_qs(u.query))
             if u.path == "/oge.csv":
                 return self._oge_csv(con, p, parse_qs(u.query))
             if u.path == "/insiders.csv":
@@ -1581,7 +1714,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._congress_gaps_csv(con, p, parse_qs(u.query))
             if u.path == "/congress.csv":
                 return self._congress_csv(con, p, parse_qs(u.query))
-            view = ROUTES.get(u.path)
+            view = view_member if u.path.startswith(MEMBER_PREFIX) else ROUTES.get(u.path)
             if not view:
                 return self._send(404, _page("Not found", "<p>No such view.</p>", p))
             self._send(200, view(con, p))
@@ -1655,6 +1788,13 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":
                             'attachment; filename="disagreements.csv"'})
+
+    def _member_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_member_csv(con, p, full)
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="member_book.csv"'})
 
     def _oge_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"

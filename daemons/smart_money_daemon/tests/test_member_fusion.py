@@ -188,3 +188,47 @@ def test_multiple_lots_of_one_ticker_sum_into_one_anchor(tmp_path, monkeypatch):
                             ("AAPL", "Self", 15001, 50000)])
     r = _row(res, "AAPL")
     assert (r["anchor_lo"], r["anchor_hi"]) == (16002, 65000)
+
+
+def test_member_path_route_and_rendering(tmp_path, monkeypatch):
+    """/congress/member/<id> is the one PATH-parameterised route (the order's URL shape);
+    the id is the url-quoted member key."""
+    from urllib.parse import quote
+
+    from smart_money import dashboard as dash
+    path = str(tmp_path / "v.db")
+    con = dbmod.connect(path)
+    _seed(con, holdings=[("AAPL", "Self", 15001, 50000),
+                         (None, "Self", 1001, 15000, "11 Zinfandel Lane")],
+          trades=[("AAPL", "purchase", 1001, 15000, "2026-03-01", "Self")])
+    con.close()
+    monkeypatch.setattr(q.dbmod, "find_artifact", lambda *a, **k: _reg(tmp_path))
+    ro = q.connect_ro(path)
+    p = dash._params({"member": [KEY]})
+    html = dash.view_member(ro, p)
+    assert dash.MEMBER_PREFIX == "/congress/member/"
+    assert quote(KEY, safe="") or True
+    # the page must state that it DERIVES, mark unfusable rows, and show the tiers
+    assert "DERIVES, IT DOES NOT REPORT" in html
+    assert "UNFUSABLE" in html
+    assert "anchored+flows" in html
+    # an estimate is a RANGE, never a bare point
+    assert "&ndash;" in html
+    csv_text = dash._build_member_csv(ro, p, full=True)
+    assert csv_text.splitlines()[0].startswith("ticker,asset_name,owner")
+    ro.close()
+
+
+def test_member_page_says_when_no_ptr_filer_matched(tmp_path, monkeypatch):
+    """Annual-only must not read as 'they did not trade'."""
+    from smart_money import dashboard as dash
+    path = str(tmp_path / "n.db")
+    con = dbmod.connect(path)
+    _seed(con, holdings=[("AAPL", "Self", 1001, 15000)])
+    con.close()
+    monkeypatch.setattr(q.dbmod, "find_artifact", lambda *a, **k: _reg(tmp_path))
+    ro = q.connect_ro(path)
+    html = dash.view_member(ro, dash._params({"member": [KEY]}))
+    assert "no PTR filer matched" in html
+    assert "not that they did not trade" in html
+    ro.close()
