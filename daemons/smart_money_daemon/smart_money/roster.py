@@ -133,7 +133,12 @@ def _verdict(cands, kind):
     parties = {c["party"] for c in cands}
     states = {c["state"] for c in cands}
     if len(parties) == 1 and len(states) == 1:
-        return {"party": parties.pop(), "state": states.pop(), "match_kind": kind}
+        # SM-C3 Phase R: carry the bioguide out only when the candidates agree on ONE
+        # person. Same key, same party, two different people is a party match but NOT an
+        # identity match, and a committee attached on that basis would be a false claim.
+        bg = {c.get("bioguide") for c in cands if c.get("bioguide")}
+        return {"party": parties.pop(), "state": states.pop(), "match_kind": kind,
+                "bioguide": (bg.pop() if len(bg) == 1 else None)}
     return None
 
 
@@ -143,6 +148,8 @@ def resolve(index, chamber, last, first, state_dist):
       'byname'   — same key, tie broken by the given name
       'incumbent'— same key, tie broken by taking the SEAT'S most recent holder
       'unmatched'— party None, never guessed
+    Also returns `bioguide`, but ONLY when the surviving candidates are one person — a
+    key that agrees on party across two people is not an identity match.
     """
     house_d, house_s, senate_idx = index
     st = (state_dist or "")[:2].upper()
@@ -178,7 +185,8 @@ def resolve(index, chamber, last, first, state_dist):
             v = _verdict(top, "incumbent")
             if v:
                 return v
-    return {"party": None, "state": None, "match_kind": "unmatched"}
+    return {"party": None, "state": None, "match_kind": "unmatched",
+            "bioguide": None}
 
 
 def sync(con, entries=None):
@@ -199,9 +207,10 @@ def sync(con, entries=None):
         tally[r["match_kind"]] += 1
         con.execute(
             "INSERT OR REPLACE INTO congress_member_roster(chamber, member_last, "
-            "member_first, state_dist, party, state, match_kind, synced_at_unix) "
-            "VALUES(?,?,?,?,?,?,?,?)",
-            (chamber, last, first, sd, r["party"], r["state"], r["match_kind"], now))
+            "member_first, state_dist, party, state, match_kind, synced_at_unix, "
+            "bioguide) VALUES(?,?,?,?,?,?,?,?,?)",
+            (chamber, last, first, sd, r["party"], r["state"], r["match_kind"], now,
+             r.get("bioguide")))
     con.commit()
     return tally
 

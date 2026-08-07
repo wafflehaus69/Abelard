@@ -30,7 +30,8 @@ from . import queries as q
 MEMBER_PREFIX = "/congress/member/"
 
 NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/insiders", "Insider books"),
-       ("/disagreements", "Disagreements"), ("/congress", "Congress"), ("/oge", "OGE 278e"),
+       ("/disagreements", "Disagreements"), ("/congress", "Congress"),
+       ("/committees", "Committees"), ("/oge", "OGE 278e"),
        ("/trades", "Trades"), ("/flows", "Net flows"), ("/clusters", "Clusters"),
        ("/sentinels", "Sentinels"), ("/ticker", "Ticker")]
 
@@ -303,6 +304,9 @@ def _params(qsd):
                       if c.isalnum() or c in ".-")[:10]
     cinstr = (one("cinstr") or "").upper()
     cowner = (one("cowner") or "").lower()
+    # Committee ids are thomas_ids (HSAG, HSAG15) - alnum only, so a hostile value can
+    # never reach the query as anything but a miss.
+    cmte = "".join(c for c in (one("cmte") or "").upper() if c.isalnum())[:16]
     p = {"window": _int(one("window"), 90), "floor": _int(one("floor"), 3),
          "anchor": one("anchor") or dt.date.today().isoformat(),
          "symbol": (one("symbol") or "").upper().strip(),
@@ -317,7 +321,7 @@ def _params(qsd):
          "metric": metric if metric in ("value", "shares") else "value",
          "sort": _sortkey(one("sort")), "dir": _dir(one("dir")),
          "ssort": _sortkey(one("ssort")), "sdir": _dir(one("sdir")),
-         "filer": filer, "period": period,
+         "filer": filer, "period": period, "cmte": cmte,
          "cticker": cticker, "cinstr": cinstr if cinstr in ("SH", "OP") else "SH",
          "cowner": cowner if cowner in ("self", "spouse", "dependent", "joint") else "all",
          "member": (one("member") or "")[:120],
@@ -1520,6 +1524,107 @@ def view_breadth_yoy(con, p):
                  "".join(body), p)
 
 
+_CMTE_CSV_COLS = ["ticker", "instrument", "holder_count", "floor_exposure",
+                  "anchor_years"]
+_ROLL_CSV_COLS = ["committee_id", "committee_name", "seats", "filers_we_hold"]
+
+
+def _cmte_caveats(res):
+    cov = res.get("coverage") or {}
+    per = " ".join("{} {}%".format(
+        c, round(100.0 * v["with_committee"] / v["rows"], 1) if v["rows"] else "-")
+        for c, v in sorted(cov.items()))
+    return (
+        "<p class='muted'><b>Partial by construction &mdash; {pct}% of anchor holdings "
+        "rows carry a committee</b> ({per}). A seat attaches only where a filer identity "
+        "resolved to one person who sits in the CURRENT Congress, so this is strictly "
+        "narrower than the roster join: a member who resolved cleanly but has since left "
+        "Congress carries no seat. Everything outside that is invisible here, not "
+        "absent from the corpus.</p>"
+        "<p class='muted'><b>Present-tense seats, dated holdings.</b> "
+        "congress-legislators publishes no historical membership, so this pairs a "
+        "member's seat TODAY with their latest annual FD &mdash; which may cover an "
+        "earlier year. It says <i>this member, who now sits on X, disclosed Y</i>; it "
+        "does not say they sat on X when they held Y. The anchor years are shown per "
+        "row.</p>"
+        "<p class='muted'><b>Counts only.</b> Holding a ticker inside a committee's "
+        "jurisdiction is not evidence of anything by itself &mdash; assignment and "
+        "portfolio both track a member's background. Nothing here is an inference, and "
+        "mega-caps and index funds top these counts mechanically.</p>".format(
+            pct=res.get("coverage_pct"), per=per))
+
+
+def view_committees(con, p):
+    """SM-C3 Phase R: COMMITTEE x HOLDINGS."""
+    cid = (p.get("cmte") or "").strip() or None
+    res = q.q_committee_holdings(con, committee_id=cid, min_holders=2 if cid else 1)
+    if not res["rows"] and not cid:
+        return _page("Committees", "<p class='muted'>No committee membership synced yet "
+                     "&mdash; run <code>python -m smart_money.committees</code>.</p>", p)
+    if cid:
+        rows = _sorted(res["rows"], p["sort"] or "holder_count", p["dir"])
+        page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+        cols = [("ticker", "ticker"), ("instrument", "instr"),
+                ("holder_count", "members holding"),
+                ("floor_exposure", "floor exposure"), ("anchor_years", "FD years")]
+        trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw),
+                                         p["sort"] or "holder_count", p["dir"])]
+        for r in page_rows:
+            trs.append("<tr><td><a href='/congress?cticker={t}'>{t}</a></td><td>{i}</td>"
+                       "<td>{h}</td><td>{e}</td><td>{y}</td></tr>".format(
+                           t=html.escape(r["ticker"]), i=html.escape(r["instrument"]),
+                           h=r["holder_count"], e=_fmt(r["floor_exposure"]),
+                           y=html.escape(r["anchor_years"])))
+        trs.append("</table>")
+        head = ("<p class='muted'><a href='/committees'>&laquo; all committees</a> "
+                "&middot; <b>{n}</b> &mdash; {s} seats, {f} of them filers whose annual "
+                "FD we hold. {c} tickers held by 2+ of them.</p>".format(
+                    n=html.escape(res["committee_name"] or cid), s=res["seats"],
+                    f=res["filers_we_hold"], c=res["count"]))
+        body = [head, _cmte_caveats(res), _pager(p, meta, "/committees.csv"),
+                "".join(trs), _pager(p, meta, "/committees.csv")]
+        return _page("Committee holdings - {}".format(res["committee_name"] or cid),
+                     "".join(body), p)
+    rows = _sorted(res["rows"], p["sort"] or "filers_we_hold", p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("committee_name", "committee"), ("seats", "seats"),
+            ("filers_we_hold", "filers we hold")]
+    trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw),
+                                     p["sort"] or "filers_we_hold", p["dir"])]
+    for r in page_rows:
+        trs.append("<tr><td><a href='/committees?cmte={i}'>{n}</a></td><td>{s}</td>"
+                   "<td>{f}</td></tr>".format(
+                       i=html.escape(r["committee_id"]),
+                       n=html.escape(r["committee_name"] or r["committee_id"]),
+                       s=r["seats"], f=r["filers_we_hold"]))
+    trs.append("</table>")
+    head = ("<p class='muted'><b>Committee roll</b> &mdash; {n} committees and "
+            "subcommittees. <b>filers we hold</b> is how many of a committee's members "
+            "have an annual FD in this corpus; that, not the seat count, is what a cut "
+            "on it can actually see.</p>".format(n=res["count"]))
+    body = [head, _cmte_caveats(res), _pager(p, meta, "/committees.csv"),
+            "".join(trs), _pager(p, meta, "/committees.csv")]
+    return _page("Committees", "".join(body), p)
+
+
+def _build_committees_csv(con, p, full):
+    import csv
+    import io
+    cid = (p.get("cmte") or "").strip() or None
+    res = q.q_committee_holdings(con, committee_id=cid, min_holders=2 if cid else 1)
+    cols = _CMTE_CSV_COLS if cid else _ROLL_CSV_COLS
+    rows = _sorted(res["rows"], p["sort"] or ("holder_count" if cid
+                                              else "filers_we_hold"), p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 _YOY_CSV_COLS = ["ticker", "instrument", "holders_both_prior", "holders_both_year",
                  "delta_comparable", "new_members", "exited_members", "delta_total",
                  "holders_prior", "holders_year", "first_seen_year", "new_to_corpus",
@@ -1778,6 +1883,7 @@ ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_con
           "/disagreements": view_disagreements,
           "/congress_gaps": view_congress_gaps,
           "/breadth_yoy": view_breadth_yoy,
+          "/committees": view_committees,
           "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
 
@@ -1836,6 +1942,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._congress_gaps_csv(con, p, parse_qs(u.query))
             if u.path == "/breadth_yoy.csv":
                 return self._breadth_yoy_csv(con, p, parse_qs(u.query))
+            if u.path == "/committees.csv":
+                return self._committees_csv(con, p, parse_qs(u.query))
             if u.path == "/congress.csv":
                 return self._congress_csv(con, p, parse_qs(u.query))
             view = view_member if u.path.startswith(MEMBER_PREFIX) else ROUTES.get(u.path)
@@ -1950,6 +2058,15 @@ class Handler(BaseHTTPRequestHandler):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_breadth_yoy_csv(con, p, full)
         fname = "breadth_change_{}.csv".format(
+            "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _committees_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_committees_csv(con, p, full)
+        fname = "committees_{}.csv".format(
             "all" if full else "page{}".format(p["page"]))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":

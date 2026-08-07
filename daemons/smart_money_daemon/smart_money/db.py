@@ -335,8 +335,30 @@ CREATE TABLE IF NOT EXISTS congress_member_roster(
   state TEXT,
   match_kind TEXT NOT NULL,
   synced_at_unix INTEGER NOT NULL,
+  -- SM-C3 Phase R. bioguide is the id committee membership is organised by, so without
+  -- it a committee join would have to go back through (chamber, surname, state,
+  -- district) and re-run the whole matching argument a second time. fetch_roster has
+  -- always carried it per entry; it simply was never written down.
+  bioguide TEXT,
   PRIMARY KEY(chamber, member_last, member_first, state_dist)
 );
+-- SM-C3 Phase R. Committee + subcommittee membership from unitedstates/congress-legislators,
+-- keyed by bioguide. One row per (bioguide, committee). Current Congress only -- the
+-- dataset publishes no historical membership file, so this CANNOT be used to ask what a
+-- member sat on in a prior year, and any view built on it must say so.
+CREATE TABLE IF NOT EXISTS congress_committees(
+  bioguide TEXT NOT NULL,
+  committee_id TEXT NOT NULL,
+  parent_id TEXT,
+  committee_name TEXT,
+  chamber TEXT,
+  title TEXT,
+  rank INTEGER,
+  side TEXT,
+  synced_at_unix INTEGER NOT NULL,
+  PRIMARY KEY(bioguide, committee_id)
+);
+CREATE INDEX IF NOT EXISTS idx_comm_id ON congress_committees(committee_id);
 -- Market-cap + SMID band cache (SM-A1-fix SMID scan). shares from SEC
 -- companyconcept (dei then us-gaap fallback), cap = shares x price. Both as-of
 -- dates recorded; a stale cap on a volatile small cap is a labeled error source.
@@ -468,6 +490,13 @@ def _migrate(con):
         )
         con.commit()
     _migrate_coverage(con)
+    rcols = {r[1] for r in con.execute("PRAGMA table_info(congress_member_roster)")}
+    if rcols and "bioguide" not in rcols:
+        # SM-C3 Phase R. Left NULL until the next roster sync repopulates it — the sync
+        # is a full rebuild, so no backfill is needed here and inventing one from names
+        # would re-run the matching argument the bioguide exists to end.
+        con.execute("ALTER TABLE congress_member_roster ADD COLUMN bioguide TEXT")
+        con.commit()
     f4cols = {r[1] for r in con.execute("PRAGMA table_info(form4_transactions)")}
     if f4cols and "issuer_cik" not in f4cols:
         con.execute("ALTER TABLE form4_transactions ADD COLUMN issuer_cik TEXT")

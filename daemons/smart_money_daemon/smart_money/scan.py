@@ -132,10 +132,25 @@ def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
     try:
         from . import roster
         rt = roster.sync(con)
-        counts["roster_resolved"] = rt["unique"] + rt["byname"]
+        # Every match_kind that ASSIGNS a party counts as resolved. 'incumbent' was
+        # omitted here, so the scan headline said 595 while its own table carried 598 —
+        # the scan disagreeing with what it just wrote. Small today, silently growing.
+        counts["roster_resolved"] = rt["unique"] + rt["byname"] + rt["incumbent"]
         counts["roster_unmatched"] = rt["unmatched"]
     except Exception as exc:  # noqa: BLE001 - degraded, surfaced in counts
         counts["roster_error"] = str(exc)[:80]
+
+    # SM-C3 Phase R: committee membership, keyed on the bioguide the roster just wrote.
+    # Runs AFTER the roster because it joins through it. Current-Congress snapshot, so a
+    # refresh is a full rebuild. Degrades on its own — committees are context, and losing
+    # them must never take the congress leg down.
+    try:
+        from . import committees
+        ct = committees.sync(con)
+        counts["committee_seats"] = ct["memberships"]
+        counts["committee_members"] = ct["members"]
+    except Exception as exc:  # noqa: BLE001 - degraded, surfaced in counts
+        counts["committee_error"] = str(exc)[:80]
     return events, sources, counts
 
 

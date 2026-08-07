@@ -1949,6 +1949,101 @@ def q_congress_breadth_watch(con, **kw):
     return res
 
 
+def q_committee_holdings(con, committee_id=None, min_holders=1):
+    """SM-C3 Phase R: COMMITTEE x HOLDINGS. Which tickers the members of one committee
+    hold, counted on each member's latest annual FD.
+
+    THREE LIMITS, all printed by the surface rather than left to the reader:
+
+    1. PARTIAL BY CONSTRUCTION. A committee attaches only where a filer identity resolved
+       to one person who holds a seat in the CURRENT Congress. That is 55.7% of anchor
+       rows (house 57.9%, senate 52.4%) — worse than the roster-join rate, because a
+       member who resolved cleanly but has since left Congress has no current seat.
+       `coverage` travels with every result.
+    2. PRESENT-TENSE MEMBERSHIP, DATED HOLDINGS. congress-legislators publishes no
+       historical membership, so this pairs a member's CURRENT seat with holdings from
+       whatever year their latest annual covers. It says "this member, who today sits on
+       X, disclosed Y" — never "they sat on X when they held Y". `anchor_years` shows
+       the spread so the mismatch is visible.
+    3. NO CAUSAL READING. Holding a ticker in a committee's jurisdiction is not evidence
+       of anything on its own; committee assignment and portfolio both correlate with a
+       member's background. This returns counts, never an inference.
+
+    Without `committee_id`, returns the committee roll (seats and filers per committee)
+    so the reader picks from what is actually joinable."""
+    cov = {}
+    try:
+        from . import committees as cmod
+        cov = cmod.coverage(con)
+    except Exception:                       # committees never synced — say so, don't fake
+        cov = {}
+    total = sum(c["rows"] for c in cov.values()) or 0
+    seen = sum(c["with_committee"] for c in cov.values()) or 0
+    base = {"as_of": _as_of(), "coverage": cov,
+            "coverage_pct": (round(100.0 * seen / total, 1) if total else None),
+            "note": "committee membership is a CURRENT-Congress snapshot joined to "
+                    "DATED holdings; a member who left Congress carries no seat",
+            "causal_note": "co-holding within a committee's jurisdiction is not evidence "
+                           "of anything by itself and is not presented as such"}
+    latest = {}
+    for c, l, f, s, y in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, MAX(coverage_year) "
+            "FROM congress_holdings WHERE coverage_year IS NOT NULL "
+            "GROUP BY chamber, member_last, member_first, state_dist"):
+        latest[(c, l, f, s)] = y
+    bio = {(c, l, f, s): b for c, l, f, s, b in con.execute(
+        "SELECT chamber, member_last, member_first, state_dist, bioguide "
+        "FROM congress_member_roster WHERE bioguide IS NOT NULL")}
+    seats = defaultdict(list)               # bioguide -> [(cid, name, title)]
+    names = {}
+    for bg, cid, nm, title in con.execute(
+            "SELECT bioguide, committee_id, committee_name, title "
+            "FROM congress_committees"):
+        seats[bg].append((cid, nm, title))
+        names[cid] = nm
+    if not committee_id:
+        roll = defaultdict(lambda: {"seats": 0, "filers": 0})
+        filers = {bio[k] for k in latest if k in bio}
+        for bg, ss in seats.items():
+            for cid, _nm, _t in ss:
+                roll[cid]["seats"] += 1
+                if bg in filers:
+                    roll[cid]["filers"] += 1
+        rows = [{"committee_id": cid, "committee_name": names.get(cid),
+                 "seats": v["seats"], "filers_we_hold": v["filers"]}
+                for cid, v in roll.items()]
+        rows.sort(key=lambda r: (-r["filers_we_hold"], -r["seats"]))
+        base.update({"committee_id": None, "rows": rows, "count": len(rows),
+                     "committees": len(rows)})
+        return base
+    members = {bg for bg, ss in seats.items()
+               if any(cid == committee_id for cid, _n, _t in ss)}
+    agg = defaultdict(lambda: {"members": set(), "mid": 0.0, "years": set()})
+    for c, l, f, s, y, tk, atype, vlo, vhi in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, coverage_year, "
+            "ticker, asset_type, value_lo, value_hi FROM congress_holdings "
+            "WHERE ticker IS NOT NULL AND ticker!='' AND coverage_year IS NOT NULL"):
+        k = (c, l, f, s)
+        if latest.get(k) != y or bio.get(k) not in members:
+            continue
+        a = agg[(tk.upper(), "OP" if atype == "OP" else "SH")]
+        a["members"].add(k)
+        a["mid"] += _floor_mid(vlo, vhi)
+        a["years"].add(y)
+    rows = [{"ticker": t, "instrument": i, "holder_count": len(a["members"]),
+             "floor_exposure": round(a["mid"]),
+             "anchor_years": ",".join(str(y) for y in sorted(a["years"]))}
+            for (t, i), a in agg.items() if len(a["members"]) >= min_holders]
+    rows.sort(key=lambda r: (-r["holder_count"], -r["floor_exposure"], r["ticker"]))
+    joined = {bg for bg in members if bg in set(bio.values())}
+    base.update({
+        "committee_id": committee_id, "committee_name": names.get(committee_id),
+        "rows": rows, "count": len(rows), "seats": len(members),
+        "filers_we_hold": len(joined),
+        "anchor_years": sorted({y for a in agg.values() for y in a["years"]})})
+    return base
+
+
 def q_congress_holders(con, ticker, instrument="SH"):
     """Drill-down: the members holding one (ticker, instrument) in their latest FD, with
     owner and value band. This expandable holder list IS the who-holds-what matrix."""
