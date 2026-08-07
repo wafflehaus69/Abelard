@@ -207,6 +207,7 @@ def build_parser() -> argparse.ArgumentParser:
         ("alerts", "Evaluate alert thresholds over the store; prints pointers to dossiers."),
         ("backfill", "Stamp resolved outcomes onto stored dossiers (the §6 labeling job)."),
         ("run", "Scheduled cycle: scan, persist, backfill resolutions, evaluate alerts."),
+        ("export", "Write the read-only dashboard JSON export from the store."),
     ):
         d = dossier_cmds.add_parser(name, help=helptext)
         d.add_argument("--db", default=None, help="Dossier store path (default from config).")
@@ -229,6 +230,9 @@ def build_parser() -> argparse.ArgumentParser:
                            help="Override the configured alert bar (default m10.alert_composite_min).")
             d.add_argument("--dry-run", action="store_true",
                            help="Evaluate without consuming the alerts (leaves them pending).")
+        elif name == "export":
+            d.add_argument("--out", default="data/dossier_export.json",
+                           help="Where to write the dashboard JSON (default data/dossier_export.json).")
         elif name == "run":
             d.add_argument("--lookback-hours", type=int, default=None,
                            help="Scan window (default m10.unusual_lookback_hours).")
@@ -995,6 +999,26 @@ def main(argv: list[str] | None = None) -> int:
                 sys.stdout.write(
                     f"resolution backfill: checked {stats['checked']} unresolved markets, "
                     f"stamped {stats['stamped']}\n")
+                return 0
+            if args.command == "export":
+                from . import dossier_export as dx
+                import time as _time
+                data = dx.write_export(db_path, args.out, now_ts=int(_time.time()))
+                t = data["totals"]; acc = data["accumulation"]
+                if args.json:
+                    _emit({"out": args.out, "totals": t,
+                           "blocks_per_day": acc["blocks_per_day"],
+                           "milestones": acc["milestones"]}, as_json=True)
+                    return 0
+                sys.stdout.write(
+                    f"export -> {args.out}\n"
+                    f"  dossiers {t['dossiers']} | resolved {t['resolved_dossiers']} "
+                    f"in {t['resolved_blocks']} market-blocks | alerted {t['alerted']}\n")
+                for k, m in acc["milestones"].items():
+                    eta = ("reached" if m["blocks_remaining"] == 0
+                           else (f"~{m['days_remaining']}d" if m["reachable"] else "never at this rate"))
+                    sys.stdout.write(f"  MDE {m['mde']:.2f}: need {m['target_blocks']} blocks "
+                                     f"({m['blocks_remaining']} to go) -> {eta}\n")
                 return 0
             if args.command == "run":
                 # Scheduled cycle (M10-D §3.5): scan -> persist -> stamp outcomes ->

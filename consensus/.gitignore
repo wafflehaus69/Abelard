@@ -10,3 +10,7 @@ venv/
 # Never committed — it can grow large and is machine-local. See config.yaml
 # data_layer.cache_path. Rule 1: signals trace back to these raw records.
 data/
+
+# Dashboard export is generated from the live store, not source
+dashboard/dossier_export.json
+dashboard/dossier_export.js
