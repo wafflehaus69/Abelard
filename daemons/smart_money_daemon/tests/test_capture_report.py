@@ -7,13 +7,14 @@ from smart_money import capture_report as cr, db as dbmod
 
 
 def _row(con, chamber="house", cov=2024, atype="ST", ticker="AAPL", lo=1001, hi=15000,
-         doc="d1", idx=[0]):
+         doc="d1", name="Asset", last="M", idx=[0]):
     idx[0] += 1
     con.execute(
         "INSERT INTO congress_holdings(doc_id, chamber, coverage_year, row_idx, "
-        "asset_name, ticker, asset_type, value_lo, value_hi, ingested_at_unix) "
-        "VALUES(?,?,?,?,?,?,?,?,?,0)",
-        (doc, chamber, cov, idx[0], "Asset", ticker, atype, lo, hi))
+        "asset_name, ticker, asset_type, value_lo, value_hi, member_last, "
+        "member_first, state_dist, ingested_at_unix) VALUES(?,?,?,?,?,?,?,?,?,?,'A',"
+        "'NC01',0)",
+        (doc, chamber, cov, idx[0], name, ticker, atype, lo, hi, last))
 
 
 def test_non_equity_rows_excluded_from_ticker_denominator(tmp_path):
@@ -128,4 +129,84 @@ def test_anchor_uses_latest_year_per_member_not_a_global_cutoff(tmp_path):
     a = cr.measure_anchor(con)
     assert a["members"] == 2, "both members contribute an anchor"
     assert sorted(a["years"]) == [2022, 2025], a["years"]
+    con.close()
+
+
+# ---- band gate per chamber (Mando 2026-08-07) ----
+
+def test_anchor_gate_is_reported_per_chamber_not_only_aggregate(tmp_path):
+    """A House cell below the bar must not hide inside an aggregate the Senate carries.
+    Live shape: house band 88.0% FAIL, senate 99.9% PASS, aggregate 92.9% PASS."""
+    con = dbmod.connect(str(tmp_path / "pc.db"))
+    for _ in range(88):
+        _row(con, cov=2025, chamber="house", last="H")
+    for _ in range(12):
+        _row(con, cov=2025, chamber="house", last="H", lo=None, hi=None)
+    for _ in range(100):
+        _row(con, cov=2025, chamber="senate", last="S")
+    con.commit()
+    a = cr.measure_anchor(con)
+    assert set(a["by_chamber"]) == {"house", "senate"}
+    h = a["by_chamber"]["house"]
+    assert cr._pct(h["band_hit"], h["band_den"]) == 88.0
+    assert cr._pct(a["band_hit"], a["band_den"]) == 94.0, "aggregate still passes"
+    txt = cr.render(cr.measure(con), a)
+    assert "BAND GATE NOW PER-CHAMBER" in txt
+    assert "88.0% FAIL" in txt
+    assert "PRE-EXISTING CONDITION NEWLY DISCLOSED" in txt
+    assert "not a regression" in txt
+    con.close()
+
+
+def test_a_chamber_at_the_bar_raises_no_disclosure_banner(tmp_path):
+    con = dbmod.connect(str(tmp_path / "ok.db"))
+    for _ in range(100):
+        _row(con, cov=2025, chamber="house", last="H")
+    con.commit()
+    txt = cr.render(cr.measure(con), cr.measure_anchor(con))
+    assert "BAND GATE NOW PER-CHAMBER" not in txt
+    con.close()
+
+
+def test_band_residue_splits_filer_side_from_parser_reachable(tmp_path):
+    """Mando's acceptance condition: the residue must be characterised BEFORE the floor
+    is called accepted. A row whose value survives in free text is ours to fix; a row the
+    filer left blank is not reachable by parsing at all."""
+    con = dbmod.connect(str(tmp_path / "res.db"))
+    _row(con, cov=2025, chamber="house", last="H", lo=None, hi=None,
+         name="Vanguard Utilities ETF (VPU)  C: Value on 12/31/2024 $79,259")
+    for _ in range(9):
+        _row(con, cov=2025, chamber="house", last="H", lo=None, hi=None,
+             name="Apple Inc (AAPL)")
+    con.commit()
+    r = cr.band_residue(con, "house")
+    assert r["missing"] == 10
+    assert r["parser_reachable"] == 1 and r["filer_side"] == 9
+    txt = cr.render_residue(r)
+    assert "filer_side" in txt and "parser_reachable" in txt
+    assert "BACKLOG, not a gate-blocker" in txt
+    assert "cannot fabricate a wrong estimate" in txt
+    con.close()
+
+
+def test_band_residue_only_counts_the_named_chamber_and_anchor_rows(tmp_path):
+    con = dbmod.connect(str(tmp_path / "res2.db"))
+    _row(con, cov=2025, chamber="house", last="H", lo=None, hi=None)
+    _row(con, cov=2025, chamber="senate", last="S", lo=None, hi=None)
+    _row(con, cov=2019, chamber="house", last="Old", lo=None, hi=None)
+    con.commit()
+    assert cr.band_residue(con, "house")["missing"] == 2, "Old anchors on 2019, its own"
+    assert cr.band_residue(con, "senate")["missing"] == 1
+    con.close()
+
+
+def test_the_band_ruling_travels_with_the_report(tmp_path):
+    con = dbmod.connect(str(tmp_path / "rul.db"))
+    for _ in range(10):
+        _row(con, cov=2025, chamber="house", last="H")
+    con.commit()
+    txt = cr.render(cr.measure(con), cr.measure_anchor(con))
+    assert "1,544/1,546 filer-side" in txt
+    assert "2 parser-reachable (backlog)" in txt
+    assert len(cr.BAND_BACKLOG) == 2, "the backlog is named, not just counted"
     con.close()

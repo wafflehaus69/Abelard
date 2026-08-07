@@ -23,6 +23,7 @@ any pass/fail so a single bad year cannot hide inside a healthy average.
 """
 import argparse
 import collections
+import re
 import sys
 
 from . import db as dbmod
@@ -57,6 +58,34 @@ RULING = (
     "A missing ticker yields an UNFUSABLE row, never a wrong claim; the residue is "
     "private companies and filer omissions, unreachable without guessing. Narrowing to "
     "active filers (96.0%) was REJECTED as gate-shopping.")
+
+# BAND GATE, PER CHAMBER — STANDING RULING (Mando, 2026-08-07). The aggregate band rate
+# passed at 92.9% only because the Senate's 99.9% carried a House 88.0% sitting below the
+# bar. Disclosed per chamber on the doctrine ledger: a bad cell hiding inside a healthy
+# aggregate is the silent-denominator family, and disclosure-that-reads-as-regression
+# beats concealment-that-reads-as-health.
+#   * NOT A REGRESSION. The number did not move; the denominator stopped hiding it.
+#   * Accepted on the SAME structure as the ticker ruling, because the risk is identical:
+#     a missing band cannot fabricate a wrong estimate. It degrades to an
+#     anchored-no-value row, which Phase F already renders honestly and refuses to carry
+#     an estimate for (the DNUT case).
+#   * RESIDUE CHARACTERISED before acceptance, as the ruling required: of 1,546
+#     band-missing House anchor rows, 1,544 (99.9%) are FILER-SIDE — the filing states no
+#     value and the raw text is not retained, so parsing cannot reach them. 2 (0.1%) are
+#     parser-reachable and are BACKLOG, not a gate-blocker.
+BAND_RULING = (
+    "Band gate now PER-CHAMBER (Mando 2026-08-07). House 88.0% is a PRE-EXISTING "
+    "CONDITION NEWLY DISCLOSED, not a regression. Accepted as a documented per-chamber "
+    "FLOOR: a missing band degrades to an anchored-no-value row, never a wrong estimate. "
+    "Residue characterised - 1,544/1,546 filer-side, 2 parser-reachable (backlog).")
+
+# The 2 parser-reachable House rows, kept by name so the backlog is concrete rather than
+# a number nobody can act on. Both carry a value in free text that the band parser does
+# not read: a "C: Value on 12/31/2024 $79,259" comment column, and a "No transactions
+# >$1,000" note. Neither shape is a band; reading them would need a comment-column parser.
+BAND_BACKLOG = (
+    "Vanguard Utilities ETF (VPU) - C: Value on 12/31/2024 $79,259 EquatePlus",
+    "Rocket Lab USA, Inc. (RKLB) - C: No transactions >$1,000")
 
 
 def measure(con):
@@ -108,23 +137,107 @@ def measure_anchor(con):
             "FROM congress_holdings WHERE coverage_year IS NOT NULL "
             "GROUP BY chamber, member_last, member_first, state_dist"):
         latest[(c, l, f, s)] = y
-    st = {"rows": 0, "tick_den": 0, "tick_hit": 0, "band_den": 0, "band_hit": 0,
-          "members": len(latest), "years": set()}
+    def _blank():
+        return {"rows": 0, "tick_den": 0, "tick_hit": 0, "band_den": 0, "band_hit": 0,
+                "members": 0, "years": set()}
+
+    st = _blank()
+    st["members"] = len(latest)
+    # PER CHAMBER as well as aggregate. Mando's ruling: a bad cell hiding inside a healthy
+    # aggregate is the silent-denominator family, and the same reasoning that put the
+    # ticker gate on anchor rows puts this split on the band gate. The corpus band rate
+    # reads 92.9% and PASSES only because the Senate's 99.9% carries a House 88.0% that is
+    # BELOW the bar. Disclosing that reads as a regression; it is a pre-existing condition
+    # newly disclosed, and concealment-that-reads-as-health is the worse failure.
+    st["by_chamber"] = {}
     for c, l, f, s, y, atype, ticker, lo, hi in con.execute(
             "SELECT chamber, member_last, member_first, state_dist, coverage_year, "
             "asset_type, ticker, value_lo, value_hi FROM congress_holdings"):
         if latest.get((c, l, f, s)) != y:
             continue
-        st["rows"] += 1
-        st["years"].add(y)
+        cell = st["by_chamber"].setdefault(c, _blank())
+        for tgt in (st, cell):
+            tgt["rows"] += 1
+            tgt["years"].add(y)
+        cell["members"] = cell.get("members", 0)
         if atype in TICKER_BEARING:
-            st["tick_den"] += 1
-            if ticker:
-                st["tick_hit"] += 1
-            st["band_den"] += 1
-            if lo is not None or hi is not None:
-                st["band_hit"] += 1
+            for tgt in (st, cell):
+                tgt["tick_den"] += 1
+                if ticker:
+                    tgt["tick_hit"] += 1
+                tgt["band_den"] += 1
+                if lo is not None or hi is not None:
+                    tgt["band_hit"] += 1
+    for k in latest:
+        ch = st["by_chamber"].get(k[0])
+        if ch is not None:
+            ch["members"] += 1
     return st
+
+
+def band_residue(con, chamber="house", limit=12):
+    """WHY the House anchor band rate sits at 88.0%. Mando's acceptance condition: the
+    residue must be CHARACTERISED before the floor can be called accepted, exactly as the
+    Phase H ticker ruling required.
+
+    Splits band-missing anchor rows into:
+      * `filer_side`   — the filer wrote no value at all. The House PDF prints "--" or
+        leaves the column empty for assets reported without a valuation, and the raw text
+        is not retained, so these are unrecoverable by parsing and are a property of the
+        source, not of us.
+      * `parser_reachable` — the row DOES carry evidence of a value we failed to read: a
+        dollar figure or a band phrase survives in the asset name. These are ours to fix
+        and become backlog, never a gate-blocker.
+    A missing band cannot fabricate a wrong number: Phase F renders an unvalued anchor as
+    anchored-no-value and refuses to carry an estimate for it (the DNUT case).
+    """
+    latest = {}
+    for c, l, f, s, y in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, MAX(coverage_year) "
+            "FROM congress_holdings WHERE coverage_year IS NOT NULL "
+            "GROUP BY chamber, member_last, member_first, state_dist"):
+        latest[(c, l, f, s)] = y
+    money = re.compile(r"\$\s?[\d,]{3,}")
+    out = {"chamber": chamber, "missing": 0, "filer_side": 0, "parser_reachable": 0,
+           "samples": []}
+    for c, l, f, s, y, atype, name, lo, hi in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, coverage_year, "
+            "asset_type, asset_name, value_lo, value_hi FROM congress_holdings "
+            "WHERE chamber=?", (chamber,)):
+        if latest.get((c, l, f, s)) != y or atype not in TICKER_BEARING:
+            continue
+        if lo is not None or hi is not None:
+            continue
+        out["missing"] += 1
+        if money.search(name or ""):
+            out["parser_reachable"] += 1
+            if len(out["samples"]) < limit:
+                out["samples"].append((name or "")[:96])
+        else:
+            out["filer_side"] += 1
+    return out
+
+
+def render_residue(res):
+    m = res["missing"] or 1
+    lines = ["BAND RESIDUE CHARACTERISATION - {} anchor rows".format(res["chamber"]),
+             "=" * 78,
+             "band-missing anchor rows: {}".format(res["missing"]),
+             "  filer_side        {:6d}  {:5.1f}%  no value in the filing; raw text not "
+             "retained, unrecoverable by parsing".format(
+                 res["filer_side"], 100.0 * res["filer_side"] / m),
+             "  parser_reachable  {:6d}  {:5.1f}%  a dollar figure survives in the row - "
+             "OURS to fix, filed as backlog".format(
+                 res["parser_reachable"], 100.0 * res["parser_reachable"] / m)]
+    if res["samples"]:
+        lines += ["", "parser-reachable samples:"]
+        lines += ["  " + s for s in res["samples"]]
+    lines += ["",
+              "A missing band cannot fabricate a wrong estimate. Phase F renders an",
+              "unvalued anchor as anchored-no-value and refuses to carry an estimate for",
+              "it, so this residue degrades honestly rather than producing a false number.",
+              "The parser-reachable share is BACKLOG, not a gate-blocker."]
+    return "\n".join(lines)
 
 
 def _pct(hit, den):
@@ -172,6 +285,29 @@ def render(cells, anchor=None):
         lines.append("  rows {}   ticker {}/{} = {}%   band {}/{} = {}%".format(
             anchor["rows"], anchor["tick_hit"], anchor["tick_den"], gtp,
             anchor["band_hit"], anchor["band_den"], gbp))
+        # PER CHAMBER, always. An aggregate that PASSES while one chamber sits below the
+        # bar is the silent-denominator failure this report exists to prevent.
+        for cham in sorted(anchor.get("by_chamber") or {}):
+            c = anchor["by_chamber"][cham]
+            ct, cb = _pct(c["tick_hit"], c["tick_den"]), _pct(c["band_hit"], c["band_den"])
+            lines.append(
+                "    {:<7} rows {:6d}  ticker {:>5}% {:<4}  band {:>5}% {:<4}".format(
+                    cham, c["rows"], ct,
+                    "PASS" if (ct or 0) >= TICKER_BAR else "FAIL",
+                    cb, "PASS" if (cb or 0) >= BAND_BAR else "FAIL"))
+        below = [ch for ch, c in (anchor.get("by_chamber") or {}).items()
+                 if (_pct(c["band_hit"], c["band_den"]) or 0) < BAND_BAR]
+        if below:
+            lines.append(
+                "  BAND GATE NOW PER-CHAMBER: {} below the {}% bar while the aggregate "
+                "passes. This is a PRE-EXISTING CONDITION NEWLY DISCLOSED, not a "
+                "regression - the number did not move, the denominator stopped hiding it. "
+                "Accepted as a documented per-chamber FLOOR on the same structure as the "
+                "Phase H ticker ruling: a missing band cannot fabricate a wrong estimate, "
+                "it degrades to an anchored-no-value row that Phase F already renders "
+                "honestly. Residue characterised via `--residue`; the parser-reachable "
+                "share is BACKLOG, not a gate-blocker.".format(
+                    "/".join(sorted(below)), BAND_BAR))
         tail = ("Anchor rows are what Phase F derives holding claims FROM, so this is the "
                 "population the bar governs (Mando ruling, SM-C3 Phase H).")
     else:
@@ -186,6 +322,7 @@ def render(cells, anchor=None):
     lines.append(tail)
     lines.append("-" * 78)
     lines.append("STANDING RULING: " + RULING)
+    lines.append("STANDING RULING: " + BAND_RULING)
     lines.append("=" * 78)
     lines.append("")
     lines.append("Corpus-wide band rate (ALL rows incl. non-equity): {}% - reported as a "
@@ -214,10 +351,15 @@ def render(cells, anchor=None):
 def main(argv=None):
     ap = argparse.ArgumentParser(description="SM-C3 Phase H capture report")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
+    ap.add_argument("--residue", metavar="CHAMBER", nargs="?", const="house",
+                    help="characterise that chamber's band-missing anchor rows")
     args = ap.parse_args(argv)
     con = dbmod.connect(args.db)
     try:
-        print(render(measure(con), measure_anchor(con)))
+        if args.residue:
+            print(render_residue(band_residue(con, args.residue)))
+        else:
+            print(render(measure(con), measure_anchor(con)))
     finally:
         con.close()
     return 0
