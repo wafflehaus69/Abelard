@@ -594,6 +594,45 @@ def view_sentinels(con, p):
     return _page("Smart Money — sentinel log", "".join(body), p)
 
 
+def _tension_block(t, level):
+    """SM-C3 Phase X: do the surfaces disagree, and is the disagreement even legible?"""
+    if not t:
+        return ""
+    verdict = ("<b>TENSION</b> &mdash; the surfaces disagree" if t["tension"]
+               else "<b>Agreement</b> &mdash; both read {}".format(t["consensus"])
+               if t["agreement"]
+               else "<b>No read</b> &mdash; fewer than two surfaces express a direction")
+    rows = []
+    for k in ("insider", "managers", "congress"):
+        leg = t["legs"][k]
+        votes = k in t["surfaces_with_direction"]
+        rows.append(
+            "<tr><td>{k}</td><td>{d}</td><td>{b}</td><td>{s}</td><td>{a}</td>"
+            "<td>{v}</td><td class='muted'>{u}</td></tr>".format(
+                k=k, d=html.escape(leg["direction"]), b=_fmt(leg["buy"]),
+                s=_fmt(leg["sell"]), a=html.escape(str(leg["as_of"] or "-")),
+                v="votes" if votes else "&mdash;", u=html.escape(leg["unit"])))
+    spread = ("<b>{} days</b> between the freshest and stalest voting surface. ".format(
+        t["as_of_spread_days"]) if t["as_of_spread_days"] is not None else "")
+    return (
+        "<h2>Three-surface tension ({}d window)</h2>"
+        "<p>{v}.</p>"
+        "<table><tr><th>surface</th><th>direction</th><th>buy</th><th>sell</th>"
+        "<th>as of</th><th>counts?</th><th>unit</th></tr>{rows}</table>"
+        "<p class='muted'><b>Congressional breadth does not vote here.</b> {n} members "
+        "disclosed this in their latest annual (house {h}, senate {s}; FD years {y}) "
+        "&mdash; but that is a <b>level</b>, and a holder count falls identically when a "
+        "member sells and when a member simply has not filed. Direction comes from PTR "
+        "flows only; the level rides as context.</p>"
+        "<p class='muted'>{sp}Form 4 lands ~2 days after the trade, a PTR is due within "
+        "45 and often later, a 13F is 45 days stale and marked at a quarter end. A "
+        "disagreement across those clocks may be the calendar rather than the "
+        "parties.</p>".format(
+            t["window_days"], v=verdict, rows="".join(rows),
+            n=level["holder_count"], h=level["house"], s=level["senate"],
+            y=", ".join(str(x) for x in level["anchor_years"]) or "-", sp=spread))
+
+
 def view_ticker(con, p):
     sym = p["symbol"]
     if not sym:
@@ -617,6 +656,7 @@ def view_ticker(con, p):
                t["congress"][:25]),
         "<h2>13F principal positions (direction-netted)</h2>",
         _table(["cik", "period", "net_value"], t["thirteenf_net"][:25]),
+        _tension_block(t["tension"], t["congress_holdings"]),
         "<p class='muted'>Price sparkline points {} (direct read-only SELECT).</p>".format(
             len(t["price_sparkline"])),
     ]

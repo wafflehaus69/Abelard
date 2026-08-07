@@ -754,8 +754,145 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
             "insider_by_code": insider,
             "ownership_pressure": q_ownership_pressure(con, tk, pressure_window, anchor)["rows"],
             "congress": congress, "thirteenf_net": holdings, "price_sparkline": spark,
+            # SM-C3 Phase X: the congressional ANNUAL surface, which this panel never
+            # read. It is a LEVEL and rides as context only — see q_surface_tension.
+            "congress_holdings": _congress_level(con, tk),
+            "tension": q_surface_tension(con, tk, window=pressure_window, anchor=anchor),
             "note": "prices via direct read-only SELECT; 13F net = long+call-put "
                     "per (cik, period); congress amounts are bands not points."}
+
+
+def _congress_level(con, tk):
+    """The congressional ANNUAL holdings LEVEL for one ticker: how many members disclosed
+    it in their latest annual, and the anchor years those filings cover.
+
+    This is a LEVEL, not a flow. It answers "how many members held this at the end of
+    their last reported year", and it moves for reasons that have nothing to do with
+    trading — a member leaving office, or simply not having filed yet, drops the count
+    exactly as a sale would."""
+    latest = {}
+    for c, l, f, s, y in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, MAX(coverage_year) "
+            "FROM congress_holdings WHERE coverage_year IS NOT NULL "
+            "GROUP BY chamber, member_last, member_first, state_dist"):
+        latest[(c, l, f, s)] = y
+    members, years, floor = set(), set(), 0.0
+    for c, l, f, s, y, lo, hi in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, coverage_year, "
+            "value_lo, value_hi FROM congress_holdings WHERE UPPER(ticker)=? "
+            "AND coverage_year IS NOT NULL", (tk,)):
+        k = (c, l, f, s)
+        if latest.get(k) != y:
+            continue
+        members.add(k)
+        years.add(y)
+        floor += _floor_mid(lo, hi)
+    return {"holder_count": len(members),
+            "house": sum(1 for m in members if m[0] == "house"),
+            "senate": sum(1 for m in members if m[0] == "senate"),
+            "anchor_years": sorted(years), "floor_exposure": round(floor),
+            "is_level": True,
+            "caveat": "a LEVEL, not a flow - this count falls identically on a sale and "
+                      "on a member who left office or has not filed yet"}
+
+
+_SURFACES = ("insider", "managers", "congress")
+
+
+def q_surface_tension(con, ticker, window=180, anchor=None):
+    """SM-C3 Phase X: do the three surfaces DISAGREE about one ticker?
+
+    THE RULE THAT SHAPES THIS. Only surfaces that support a DIRECTION may enter the
+    tension measure:
+      * insider  — Form 4 open-market P vs S. A transaction. Direction is stated.
+      * managers — 13F QoQ flow via _manager_flow. A position change between two
+                   quarter-ends. Direction is derived, and only for filers with >= 2
+                   periods; a single-filing filer expresses none and is not guessed at.
+      * congress — PTR flows (congress_trades). A transaction with a stated side.
+    Congressional BREADTH is deliberately NOT in this measure. A holder count is a LEVEL:
+    it falls identically whether a member sold or simply stopped filing, so putting it on
+    a direction axis would manufacture a disagreement out of a filing calendar. Breadth
+    rides alongside as context (`congress_level`) and never votes.
+
+    AS-OF DATES DIFFER AND ARE REPORTED. Form 4 lands ~2 days after the trade; a 13F is
+    45 days stale and marked at a quarter end; a PTR is due within 45 days but often
+    later. A tension between a fresh insider sale and a quarter-old 13F position is not
+    the two parties disagreeing — it may just be the clock. Every leg carries its own
+    latest observation date so the reader can see the spread."""
+    tk = (ticker or "").upper()
+    end = anchor or dt.date.today().isoformat()
+    start = _win(end, window)
+    legs = {}
+
+    buys, sells, last = 0, 0, None
+    for code, sh, txd in con.execute(
+            "SELECT code, shares, substr(tx_date,1,10) FROM form4_transactions "
+            "WHERE UPPER(ticker)=? AND code IN ('P','S') AND plan_flag=0 "
+            "AND substr(tx_date,1,10)>=? AND substr(tx_date,1,10)<=?", (tk, start, end)):
+        if code == "P":
+            buys += sh or 0
+        else:
+            sells += sh or 0
+        last = max(last or txd, txd)
+    legs["insider"] = {"direction": _dir(buys - sells), "buy": buys, "sell": sells,
+                       "as_of": last, "unit": "Form 4 open-market shares, discretionary"}
+
+    acc = dis = 0
+    per_seen = None
+    for cik, _name in _tracked_filers():
+        period, flows = _manager_flow(con, cik, None, None)
+        if not period:
+            continue
+        per_seen = max(per_seen or period, period)
+        # _manager_flow values are (direction, value, badge) tuples, not bare strings.
+        f = flows.get((tk, "SH")) or flows.get((tk, "OP"))
+        d = f[0] if f else None
+        if d == _DIR_ACC:
+            acc += 1
+        elif d == _DIR_DIS:
+            dis += 1
+    legs["managers"] = {"direction": _dir(acc - dis), "buy": acc, "sell": dis,
+                        "as_of": per_seen,
+                        "unit": "tracked 13F filers accumulating vs distributing QoQ"}
+
+    cb = cs = 0
+    clast = None
+    for side, txd in con.execute(
+            "SELECT side, tx_date FROM congress_trades WHERE UPPER(ticker)=? "
+            "AND superseded=0 AND tx_date>=? AND tx_date<=?", (tk, start, end)):
+        if (side or "").lower().startswith("purchase"):
+            cb += 1
+        else:
+            cs += 1
+        clast = max(clast or txd, txd)
+    legs["congress"] = {"direction": _dir(cb - cs), "buy": cb, "sell": cs,
+                        "as_of": clast, "unit": "congressional PTR filings"}
+
+    voting = [k for k in _SURFACES if legs[k]["direction"] in ("accumulating",
+                                                              "distributing")]
+    dirs = {legs[k]["direction"] for k in voting}
+    stale = sorted(d for d in (legs[k]["as_of"] for k in voting) if d)
+    return {
+        "ticker": tk, "window_days": window, "start": start, "end": end,
+        "legs": legs, "surfaces_with_direction": voting,
+        # A tension needs at least two surfaces that actually express a direction.
+        "tension": len(voting) >= 2 and len(dirs) > 1,
+        "agreement": (len(voting) >= 2 and len(dirs) == 1),
+        "consensus": (list(dirs)[0] if len(voting) >= 2 and len(dirs) == 1 else None),
+        "as_of_spread_days": (
+            (dt.date.fromisoformat(stale[-1]) - dt.date.fromisoformat(stale[0])).days
+            if len(stale) >= 2 else None),
+        "congress_level": _congress_level(con, tk),
+        "note": "congressional BREADTH is a level and does NOT vote here - a holder count "
+                "falls identically on a sale and on a lapsed filing. Direction comes from "
+                "PTR flows only.",
+        "staleness": "Form 4 ~2d, PTR <=45d and often later, 13F 45d stale at a quarter "
+                     "end. A disagreement across those clocks may be the calendar, not "
+                     "the parties."}
+
+
+def _dir(net):
+    return _DIR_ACC if net > 0 else _DIR_DIS if net < 0 else "flat"
 
 
 # ---------------------------------------------------------------- q_portfolio (SM-P1)
