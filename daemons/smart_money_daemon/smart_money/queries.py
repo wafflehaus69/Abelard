@@ -1669,6 +1669,227 @@ def q_congress_breadth(con, min_holders=1, owner_filter="all", members_only=True
                     "(mega-caps top raw breadth mechanically)"}
 
 
+_YOY_BAR = 95.0          # the Phase H ticker-capture bar, reused as the confidence bar
+
+
+def _capture_cells(con):
+    """{(chamber, coverage_year): {"ticker_pct", "members", "rows"}} — how well a
+    chamber-year was actually captured. Phase Y badges are only as trustworthy as the
+    year they are measured against, so this travels WITH the deltas."""
+    cells = {}
+    for cham, yr, den, hit, mem, rows in con.execute(
+            "SELECT chamber, coverage_year, "
+            "SUM(CASE WHEN asset_type IN ('ST','OP','EF') THEN 1 ELSE 0 END), "
+            "SUM(CASE WHEN asset_type IN ('ST','OP','EF') AND ticker IS NOT NULL "
+            "         AND ticker!='' THEN 1 ELSE 0 END), "
+            "COUNT(DISTINCT member_last||'|'||member_first||'|'||"
+            "               COALESCE(state_dist,'-')), COUNT(*) "
+            "FROM congress_holdings WHERE coverage_year IS NOT NULL "
+            "GROUP BY chamber, coverage_year"):
+        cells[(cham, yr)] = {
+            "ticker_pct": (round(100.0 * hit / den, 1) if den else None),
+            "members": mem, "rows": rows}
+    return cells
+
+
+def _yoy_years(con, year=None, prior=None):
+    """The two coverage years to compare. Defaults to the newest year that looks like a
+    FILED cycle rather than a trickle, and the year before it — CY2026 annuals are not due
+    until May 2027, so the handful of early/amended CY2026 rows must not be mistaken for
+    a year. `year`/`prior` override explicitly and are never second-guessed."""
+    counts = {}
+    for y, m in con.execute(
+            "SELECT coverage_year, COUNT(DISTINCT chamber||member_last||'|'||"
+            "member_first||'|'||COALESCE(state_dist,'-')) FROM congress_holdings "
+            "WHERE coverage_year IS NOT NULL GROUP BY coverage_year"):
+        counts[y] = m
+    if not counts:
+        return None, None, counts
+    if year is None:
+        best = max(counts.values())
+        # A year with under a fifth of the best-attested year's filers is a trickle.
+        seated = [y for y, m in counts.items() if m >= best * 0.2]
+        year = max(seated) if seated else max(counts)
+    if prior is None:
+        earlier = [y for y in counts if y < year]
+        prior = max(earlier) if earlier else None
+    return year, prior, counts
+
+
+def _floor_mid(lo, hi):
+    """Band contribution. An unbounded top band ('over $50,000,000') has no midpoint, so
+    it contributes its FLOOR — inventing a ceiling would put a number in the filer's
+    mouth. Same convention as the Phase F anchor."""
+    if lo is None and hi is None:
+        return 0.0
+    if hi is None:
+        return float(lo or 0)
+    if lo is None:
+        return float(hi)
+    return (lo + hi) / 2.0
+
+
+def _bucket(d):
+    for lo, hi, label in ((None, -10, "<= -10"), (-9, -5, "-9..-5"), (-4, -3, "-4..-3"),
+                          (-2, -1, "-2..-1"), (0, 0, "0"), (1, 2, "+1..+2"),
+                          (3, 4, "+3..+4"), (5, 9, "+5..+9")):
+        if (lo is None or d >= lo) and d <= hi:
+            return label
+    return ">= +10"
+
+
+_BUCKETS = ["<= -10", "-9..-5", "-4..-3", "-2..-1", "0", "+1..+2", "+3..+4", "+5..+9",
+            ">= +10"]
+
+
+def q_congress_breadth_yoy(con, year=None, prior=None, owner_filter="all",
+                           members_only=True):
+    """SM-C3 Phase Y: year-over-year breadth deltas per (ticker, instrument).
+
+    THE WHOLE DIFFICULTY IS THE DENOMINATOR. Members do not all file every year — CY2025
+    has 265 House filers against CY2024's 385, because extensions push filings months
+    past the May due date. Differencing raw holder counts would therefore report a mass
+    EXIT that is a filing-calendar artifact, not a sale. So the population is split:
+
+      * `both`    — filed in BOTH years. Only these members can evidence a NEW or an
+                    EXITED position, and only their delta is `delta_comparable`.
+      * `entered` — filed `year`, absent from `prior`. Their holdings inflate the raw
+                    delta upward and are NOT new positions.
+      * `left`    — filed `prior`, absent from `year`. Their holdings depress the raw
+                    delta and are NOT exits.
+
+    `delta_total` is reported alongside so the artifact is visible rather than hidden,
+    but `delta_comparable` is the one that means anything.
+
+    CAPTURE CONFIDENCE (Mando's binding condition): a NEW badge may only mean the
+    position was UNPARSED in the prior year, not that it was bought. Confidence is
+    measured PER MEMBER, not per chamber: a chamber-level flag fires on every row in the
+    corpus (both CY2024 cells are sub-bar) and so discriminates nothing. What actually
+    varies is whether the specific member carrying the badge had a clean prior-year
+    filing. `new_low_conf` / `exited_low_conf` count the badges whose own member was
+    sub-bar; `confidence` is "low" only when such a badge exists on that row. The
+    chamber-year cells stay on the envelope as a standing caveat.
+
+    Bands use the floor convention (`_floor_mid`): an unbounded top band contributes its
+    floor, never an invented ceiling.
+
+    DISTRIBUTION-FIRST. This returns the delta DISTRIBUTION and no threshold. There is
+    deliberately no watch-cut here — the cut does not exist until the distribution has
+    been seen and a bar has been set on it."""
+    year, prior, year_members = _yoy_years(con, year, prior)
+    cells = _capture_cells(con)
+    base = {"as_of": _as_of(), "year": year, "prior_year": prior,
+            "year_members": year_members, "capture": cells,
+            "bar": _YOY_BAR, "buckets": _BUCKETS,
+            "note": "delta_comparable counts ONLY members who filed in both years; "
+                    "delta_total includes roster churn and is not a holdings signal"}
+    if year is None or prior is None:
+        base.update({"rows": [], "count": 0, "population": {}, "distribution": {}})
+        return base
+    confirmed = _confirmed_members(con) if members_only else set()
+    parties = _member_parties(con)
+
+    # Per-member PRIOR-year ticker capture. A member with tickerless equity-like rows in
+    # `prior` may hold a position we simply could not read, so anything that looks NEW
+    # for them this year is not evidence of a purchase.
+    mcap = defaultdict(lambda: [0, 0])
+    for c, l, f, s, tk in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, ticker "
+            "FROM congress_holdings WHERE coverage_year=? AND asset_type IN "
+            "('ST','OP','EF')", (prior,)):
+        cell = mcap[(c, l, f, s)]
+        cell[0] += 1
+        if tk:
+            cell[1] += 1
+    dirty = {m for m, (den, hit) in mcap.items()
+             if den and 100.0 * hit / den < _YOY_BAR}
+
+    filed = {year: set(), prior: set()}
+    held = {year: defaultdict(set), prior: defaultdict(set)}
+    expo = defaultdict(float)
+    kinds = defaultdict(lambda: defaultdict(int))
+    for c, l, f, s, yr, ticker, atype, owner, vlo, vhi in con.execute(
+            "SELECT chamber, member_last, member_first, state_dist, coverage_year, "
+            "ticker, asset_type, owner, value_lo, value_hi FROM congress_holdings "
+            "WHERE ticker IS NOT NULL AND ticker!='' AND coverage_year IN (?,?)",
+            (year, prior)):
+        if owner_filter != "all" and _OWNER_LABEL.get(owner, "self") != owner_filter:
+            continue
+        mkey = (c, l, f, s)
+        if confirmed and mkey not in confirmed:      # candidates are not insiders
+            continue
+        filed[yr].add(mkey)
+        key = (ticker.upper(), "OP" if atype == "OP" else "SH")
+        held[yr][key].add(mkey)
+        if yr == year:
+            expo[key] += _floor_mid(vlo, vhi)
+            # A row whose type code the filer left blank is "none", not dropped and not
+            # guessed at — and a None dict key would not survive JSON anyway.
+            kinds[key][atype or "none"] += 1
+
+    both = filed[year] & filed[prior]
+    entered, left = filed[year] - filed[prior], filed[prior] - filed[year]
+    pop = {"both": len(both), "entered": len(entered), "left": len(left),
+           "filed_year": len(filed[year]), "filed_prior": len(filed[prior])}
+    for cham in ("house", "senate"):
+        pop[cham] = {"both": sum(1 for m in both if m[0] == cham),
+                     "entered": sum(1 for m in entered if m[0] == cham),
+                     "left": sum(1 for m in left if m[0] == cham)}
+
+    rows = []
+    for key in set(held[year]) | set(held[prior]):
+        cur_all, pri_all = held[year][key], held[prior][key]
+        cur_b, pri_b = cur_all & both, pri_all & both
+        newm, exitm = cur_b - pri_b, pri_b - cur_b
+        # A badge is soft when THAT member's prior-year filing was itself sub-bar.
+        n_low = len(newm & dirty)
+        e_low = len(exitm & dirty)
+        atypes = dict(kinds[key])
+        rows.append({
+            "ticker": key[0], "instrument": key[1],
+            "holders_year": len(cur_all), "holders_prior": len(pri_all),
+            "delta_total": len(cur_all) - len(pri_all),
+            "holders_both_year": len(cur_b), "holders_both_prior": len(pri_b),
+            "delta_comparable": len(cur_b) - len(pri_b),
+            "new_members": len(newm), "exited_members": len(exitm),
+            "new_low_conf": n_low, "exited_low_conf": e_low,
+            "dem": sum(1 for m in cur_b if parties.get(m) == "dem"),
+            "rep": sum(1 for m in cur_b if parties.get(m) == "rep"),
+            "floor_exposure": round(expo[key]),
+            # Filer-stated asset type, reported not interpreted: EF is the filer's own
+            # "exchange traded fund" code. Kept so the head of the delta distribution can
+            # be read for what it is (broad-market products vs single names) WITHOUT this
+            # query taking a position on which of them matter.
+            "asset_types": atypes,
+            "confidence": "low" if (n_low or e_low) else "ok",
+            "confidence_why": (
+                ["{} of {} new / {} of {} exited badges come from members whose CY{} "
+                 "filing was under the {}% ticker bar".format(
+                     n_low, len(newm), e_low, len(exitm), prior, _YOY_BAR)]
+                if (n_low or e_low) else [])})
+    rows.sort(key=lambda r: (-r["delta_comparable"], -r["holders_both_year"],
+                             r["ticker"]))
+
+    dist = {"delta_comparable": dict.fromkeys(_BUCKETS, 0),
+            "delta_total": dict.fromkeys(_BUCKETS, 0)}
+    for r in rows:
+        dist["delta_comparable"][_bucket(r["delta_comparable"])] += 1
+        dist["delta_total"][_bucket(r["delta_total"])] += 1
+    low = sum(1 for r in rows if r["confidence"] == "low")
+    base.update({"rows": rows, "count": len(rows), "population": pop,
+                 "distribution": dist, "low_confidence_rows": low,
+                 "sub_bar_members": len(dirty & both),
+                 # Standing caveat: BOTH CY2024 chamber cells are under the bar, so the
+                 # whole comparison rests on a prior year we did not fully read. That is
+                 # a property of the comparison, not of any one row.
+                 "sub_bar_cells": ["{} CY{} ticker capture {}%".format(
+                     ch, yr, (cells.get((ch, yr)) or {}).get("ticker_pct"))
+                     for ch in ("house", "senate") for yr in (prior, year)
+                     if (cells.get((ch, yr)) or {}).get("ticker_pct") is not None
+                     and cells[(ch, yr)]["ticker_pct"] < _YOY_BAR]})
+    return base
+
+
 def q_congress_holders(con, ticker, instrument="SH"):
     """Drill-down: the members holding one (ticker, instrument) in their latest FD, with
     owner and value band. This expandable holder list IS the who-holds-what matrix."""
