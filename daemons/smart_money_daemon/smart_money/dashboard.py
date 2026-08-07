@@ -1461,6 +1461,9 @@ def view_breadth_yoy(con, p):
                                      p["sort"] or "delta_comparable", p["dir"])]
     for r in page_rows:
         mark = (" <span class='badge'>NEW TO CORPUS</span>" if r["new_to_corpus"] else "")
+        if r["identity_discontinuity"]:
+            mark += (" <span class='badge' title='also filed as {t}'>ALSO FILED AS "
+                     "{t}</span>".format(t=html.escape(",".join(r["symbol_twins"]))))
         conf = ("<span class='warn' title='{}'>low</span>".format(
             html.escape("; ".join(r["confidence_why"]))) if r["confidence"] == "low"
             else "ok")
@@ -1500,6 +1503,13 @@ def view_breadth_yoy(con, p):
         "rather than half-counted. Exposure is a coarse band FLOOR (an open top band "
         "contributes its floor, never an invented ceiling).</p>".format(
             cut=html.escape(res["cut"])))
+    twins = (
+        "<p class='muted'><b>ALSO FILED AS</b> means another symbol carries the same "
+        "company name in these two years, so this row's cohort may span a notation "
+        "change. Fiserv is filed as both FISV and FI; union the two and FISV's +2 is +1. "
+        "The number here is <b>left exactly as computed</b> &mdash; the flag states the "
+        "fact and nothing is re-ranked or merged on it. {n} of {c} rows carry it.</p>"
+        .format(n=res["identity_discontinuity_rows"], c=res["count"]))
     marks = (
         "<p class='muted'><b>NEW TO CORPUS</b> means the ticker appears in no prior "
         "year's filings at all &mdash; look before reading it as accumulation. It does "
@@ -1517,7 +1527,7 @@ def view_breadth_yoy(con, p):
             p=res["prior_year"], bar=res["bar"], lm=res["sub_bar_members"],
             both=pop["both"],
             cells=html.escape("; ".join(res["sub_bar_cells"]) or "none")))
-    body = [head, context, denom, cut, marks, conf_note,
+    body = [head, context, denom, cut, marks, twins, conf_note,
             _pager(p, meta, "/breadth_yoy.csv"), "".join(trs),
             _pager(p, meta, "/breadth_yoy.csv")]
     return _page("Breadth change CY{} vs CY{}".format(res["year"], res["prior_year"]),
@@ -1628,7 +1638,8 @@ def _build_committees_csv(con, p, full):
 _YOY_CSV_COLS = ["ticker", "instrument", "holders_both_prior", "holders_both_year",
                  "delta_comparable", "new_members", "exited_members", "delta_total",
                  "holders_prior", "holders_year", "first_seen_year", "new_to_corpus",
-                 "floor_exposure", "confidence"]
+                 "identity_discontinuity", "symbol_twins", "floor_exposure",
+                 "confidence"]
 
 
 def _build_breadth_yoy_csv(con, p, full):
@@ -1855,6 +1866,8 @@ def _page_brief_spec(con, p, path):
                      (res["population"] or {}).get("left", 0)),
                  "NEW TO CORPUS marks a ticker absent from every prior year. It does not "
                  "say why - there is no corporate-actions feed here.",
+                 "ALSO FILED AS marks a symbol whose company name is shared with another "
+                 "symbol in these years (FISV/FI). The count is NOT adjusted for it.",
                  "Standing caveat: " + ("; ".join(res["sub_bar_cells"]) or "none")])
     if path == "/disagreements":
         res = q.q_opposed_pairs(con)

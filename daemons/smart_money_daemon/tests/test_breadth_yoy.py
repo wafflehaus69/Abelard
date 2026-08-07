@@ -466,3 +466,139 @@ def test_page_brief_spec_covers_the_view():
     finally:
         ro.close()
         os.unlink(p)
+
+
+# ---- identity discontinuity (FISV/FI), Mando 2026-08-07 ----
+
+def test_two_symbols_for_one_company_raise_the_discontinuity_flag():
+    """Fiserv is filed as both FISV and FI in the same corpus. The flag states that fact.
+    It does NOT union, re-rank, or claim a rename."""
+    rows = _cohort()
+    rows += [("house", 2024, "M0", "NC00", "FI", "ST"),
+             ("house", 2025, "M0", "NC00", "FISV", "ST"),
+             ("house", 2025, "M1", "NC01", "FISV", "ST"),
+             ("house", 2025, "M2", "NC02", "FISV", "ST")]
+    p = _db()
+    con = dbmod.connect(p)
+    _seed(con, rows)
+    # both notations, same company name
+    con.execute("UPDATE congress_holdings SET asset_name='Fiserv, Inc. Common Stock' "
+                "WHERE ticker='FI'")
+    con.execute("UPDATE congress_holdings SET asset_name='Fiserv, Inc. - Common Stock' "
+                "WHERE ticker='FISV'")
+    con.commit()
+    con.close()
+    ro = q.connect_ro(p)
+    try:
+        res = q.q_congress_breadth_watch(ro)
+        r = [x for x in res["rows"] if x["ticker"] == "FISV"]
+        assert len(r) == 1, "the row stays in the cut exactly as computed"
+        assert r[0]["identity_discontinuity"] is True
+        assert r[0]["symbol_twins"] == ["FI"]
+        assert r[0]["delta_comparable"] == 3, "the number is NOT adjusted"
+        assert res["identity_discontinuity_rows"] == 1
+    finally:
+        ro.close()
+        os.unlink(p)
+
+
+def test_a_lone_symbol_raises_no_discontinuity_flag():
+    rows = _cohort()
+    rows += [("house", 2025, "M%d" % i, "NC%02d" % i, "AMD", "ST") for i in range(2)]
+    p = _db()
+    con = dbmod.connect(p)
+    _seed(con, rows)
+    con.execute("UPDATE congress_holdings SET asset_name='Advanced Micro Devices Inc' "
+                "WHERE ticker='AMD'")
+    con.execute("UPDATE congress_holdings SET asset_name='Anchor Holdings Trust' "
+                "WHERE ticker='ANCHOR'")
+    con.commit()
+    con.close()
+    ro = q.connect_ro(p)
+    try:
+        res = q.q_congress_breadth_watch(ro)
+        r = [x for x in res["rows"] if x["ticker"] == "AMD"][0]
+        assert r["identity_discontinuity"] is False and r["symbol_twins"] == []
+    finally:
+        ro.close()
+        os.unlink(p)
+
+
+def test_a_generic_name_shared_by_many_symbols_cannot_fuse_them():
+    """A truncated or boilerplate asset name is not evidence of one company. Without a
+    cap, every row named 'Asset' would declare every ticker a twin of every other."""
+    rows = _cohort()
+    for i, tk in enumerate(("AAA", "BBB", "CCC", "DDD")):
+        rows.append(("house", 2025, "M%d" % i, "NC%02d" % i, tk, "ST"))
+    p = _db()
+    con = dbmod.connect(p)
+    _seed(con, rows)          # every asset_name is the literal string "Asset"
+    con.commit()
+    con.close()
+    ro = q.connect_ro(p)
+    try:
+        assert q._symbol_twins(ro, 2025, 2024) == {}, "5 symbols on one key is noise"
+    finally:
+        ro.close()
+        os.unlink(p)
+
+
+def test_company_key_strips_the_symbol_prefix_account_suffix_and_boilerplate():
+    """Every strip here was learned from a real row. eFD writes the symbol as a LEADING
+    prefix, which kept the two Fiserv notations apart - the exact pairing this detects."""
+    k = q._co_key
+    assert k("FISV - Fiserv, Inc. - Common Stock") == k("FI - Fiserv Inc") == "fiserv"
+    assert k("Fiserv, Inc. (FISV)") == k("Fiserv, Inc. Common Stock (FI)")
+    assert k("Alphabet Inc. Class A (GOOGL)") == k("Alphabet Inc (GOOG)")
+    # account suffix (House concatenates the custodian after a double space)
+    assert k("Vanguard FTSE Developed Markets ETF (VEA)  Joint Brokerage") == k(
+        "Vanguard FTSE Developed Markets ETF (VEA)  Schwab IRA")
+    # and unrelated issuers stay apart
+    assert k("BAC - Bank of America Corporation Common Stock") != k("ASML - ASML Holding N.V.")
+    assert k("Apple Inc") != k("Applied Materials Inc")
+
+
+def test_a_short_company_key_cannot_collide_two_unrelated_symbols():
+    """A 3-char key is mostly legal-form noise and would fuse unrelated issuers."""
+    p = _db()
+    con = dbmod.connect(p)
+    _seed(con, _cohort())
+    con.execute("UPDATE congress_holdings SET asset_name='Inc' WHERE ticker='ANCHOR'")
+    con.commit()
+    con.close()
+    ro = q.connect_ro(p)
+    try:
+        assert q._symbol_twins(ro, 2025, 2024) == {}
+    finally:
+        ro.close()
+        os.unlink(p)
+
+
+def test_view_marks_the_twin_without_adjusting_the_number():
+    from smart_money import dashboard as dash
+    rows = _cohort()
+    rows += [("house", 2024, "M0", "NC00", "FI", "ST"),
+             ("house", 2025, "M0", "NC00", "FISV", "ST"),
+             ("house", 2025, "M1", "NC01", "FISV", "ST"),
+             ("house", 2025, "M2", "NC02", "FISV", "ST")]
+    p = _db()
+    con = dbmod.connect(p)
+    _seed(con, rows)
+    con.execute("UPDATE congress_holdings SET asset_name='FI - Fiserv, Inc. Common "
+                "Stock' WHERE ticker='FI'")
+    con.execute("UPDATE congress_holdings SET asset_name='FISV - Fiserv, Inc. - Common "
+                "Stock' WHERE ticker='FISV'")
+    con.commit()
+    con.close()
+    ro = q.connect_ro(p)
+    try:
+        out = dash.view_breadth_yoy(ro, dash._params({}))
+        assert "ALSO FILED AS" in out and "FI</span>" in out
+        assert "left exactly as computed" in out
+        assert "nothing is re-ranked or merged" in out
+        csv_text = dash._build_breadth_yoy_csv(ro, dash._params({}), full=True)
+        assert "identity_discontinuity" in csv_text.splitlines()[0]
+        assert "symbol_twins" in csv_text.splitlines()[0]
+    finally:
+        ro.close()
+        os.unlink(p)

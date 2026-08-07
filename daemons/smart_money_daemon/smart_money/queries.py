@@ -21,6 +21,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import sqlite3
 import sys
 from collections import defaultdict
@@ -1729,6 +1730,68 @@ def _floor_mid(lo, hi):
     return (lo + hi) / 2.0
 
 
+_TWIN_MAX = 3          # a company key shared by more symbols than this is boilerplate
+_CO_NOISE = re.compile(
+    r"\b(inc|incorporated|corp|corporation|co|company|plc|ltd|limited|holdings?|"
+    r"class\s+[a-c]|common|stock|shares?|ordinary|the)\b\.?", re.I)
+
+
+_SYM_PREFIX = re.compile(r"^\s*[A-Z]{1,5}(?:\.[A-Z]{1,2})?\s*-\s*")
+
+
+def _co_key(asset_name):
+    """A company name reduced to a comparison key.
+
+    Three things have to come off before the name compares, each learned from a real row:
+      * the LEADING SYMBOL PREFIX. eFD writes "FISV - Fiserv, Inc. - Common Stock" and
+        "FI - Fiserv Inc"; keeping it keys them 'fisvfiserv' vs 'fifiserv' and the two
+        notations for one company never meet - which is the whole thing this detects.
+      * the ACCOUNT SUFFIX. The House concatenates the custodian after a double space
+        ("... ETF (VEA)  Joint Brokerage Account"), so the key would carry the brokerage.
+      * legal-form and share-class boilerplate, and the parenthetical symbol.
+    """
+    s = (asset_name or "").split("  ")[0]            # account suffix off first
+    s = _SYM_PREFIX.sub("", s)
+    s = re.sub(r"\([^)]*\)", " ", s)                 # drop the parenthetical symbol
+    s = _CO_NOISE.sub(" ", s)
+    return re.sub(r"[^a-z0-9]+", "", s.lower())[:40]
+
+
+def _symbol_twins(con, year, prior):
+    """{ticker: [other tickers filed under the SAME company name in the compared years]}.
+
+    An identity discontinuity, stated as a fact and nothing more. Fiserv is filed as both
+    FISV and FI in the same corpus: 'FI - Fiserv, Inc. Common Stock' (CY2023/24) and
+    'FISV - Fiserv, Inc. - Common Stock' (CY2025/26), with the House running the opposite
+    way. FISV's +2 falls to +1 when the two are unioned, so half of that delta is a
+    notation change rather than members buying.
+
+    This does NOT union anything and does NOT re-rank. It is the same design as
+    `new_to_corpus`: a flag that states what the corpus shows without claiming a cause —
+    a rename, a dual listing, and a filer typo would all raise it. Hand-editing the cut,
+    or quietly merging on this signal, would be the first silent judgment in the pipeline
+    and is not where that starts."""
+    by_name = defaultdict(set)
+    for tk, name in con.execute(
+            "SELECT UPPER(ticker), asset_name FROM congress_holdings "
+            "WHERE ticker IS NOT NULL AND ticker!='' AND coverage_year IN (?,?)",
+            (year, prior)):
+        key = _co_key(name)
+        if len(key) >= 4:                            # a 3-char key collides on noise
+            by_name[key].add(tk)
+    out = defaultdict(set)
+    for tks in by_name.values():
+        # A key shared by many symbols is a GENERIC STRING, not one company - a truncated
+        # or boilerplate asset name, not evidence of an identity. Two is the shape a
+        # notation change actually makes (FISV/FI); anything wider is noise and is dropped
+        # rather than allowed to fuse unrelated issuers.
+        if not 2 <= len(tks) <= _TWIN_MAX:
+            continue
+        for t in tks:
+            out[t] |= (tks - {t})
+    return {t: sorted(v) for t, v in out.items()}
+
+
 def _bucket(d):
     for lo, hi, label in ((None, -10, "<= -10"), (-9, -5, "-9..-5"), (-4, -3, "-4..-3"),
                           (-2, -1, "-2..-1"), (0, 0, "0"), (1, 2, "+1..+2"),
@@ -1818,6 +1881,7 @@ def q_congress_breadth_yoy(con, year=None, prior=None, owner_filter="all",
         "SELECT UPPER(ticker), MIN(coverage_year) FROM congress_holdings "
         "WHERE ticker IS NOT NULL AND ticker!='' AND coverage_year IS NOT NULL "
         "GROUP BY UPPER(ticker)")}
+    twins = _symbol_twins(con, year, prior)
 
     filed = {year: set(), prior: set()}
     held = {year: defaultdict(set), prior: defaultdict(set)}
@@ -1870,6 +1934,10 @@ def q_congress_breadth_yoy(con, year=None, prior=None, owner_filter="all",
             "new_low_conf": n_low, "exited_low_conf": e_low,
             "first_seen_year": first_seen.get(key[0]),
             "new_to_corpus": first_seen.get(key[0]) == year,
+            # Identity discontinuity: another symbol carries the same company name in the
+            # compared years. States the fact, claims no cause, changes no number.
+            "symbol_twins": twins.get(key[0], []),
+            "identity_discontinuity": bool(twins.get(key[0])),
             "dem": sum(1 for m in cur_b if parties.get(m) == "dem"),
             "rep": sum(1 for m in cur_b if parties.get(m) == "rep"),
             "floor_exposure": round(expo[key]),
@@ -1926,7 +1994,15 @@ def q_congress_breadth_watch(con, **kw):
     held on Dec 31, not that they bought it, and the disclosure lands months late. Wiring
     this to an alert would page on a year-old position.
 
-    Rows carry `new_to_corpus`: the ticker appears in no prior year's filings at all, so
+    Rows carry TWO cause-free markers, both stating a fact and neither re-ranking
+    anything. `identity_discontinuity`: another symbol carries the same company name in
+    the compared years, so this symbol's cohort may span a notation change. Fiserv is
+    filed as both FISV and FI, and FISV's +2 falls to +1 when the two are unioned. The
+    cut is left EXACTLY as computed - hand-editing it or quietly re-ranking on this
+    signal would be the first silent judgment in the pipeline. The systematic fix is a
+    rename-union pass, which is real work and is filed, not improvised here.
+
+    `new_to_corpus`: the ticker appears in no prior year's filings at all, so
     its 0 -> N warrants a look before being read as accumulation. The flag does NOT say
     why — Q (Qnity, a company that did not exist before CY2025) and SMCI (listed since
     2007, simply never held by anyone we track) both raise it. Such rows are RETURNED and
@@ -1941,6 +2017,8 @@ def q_congress_breadth_watch(con, **kw):
         "rows": rows, "count": len(rows), "min_delta": _CUT_MIN_DELTA,
         "asset_filter": "ST",
         "corporate_action_rows": sum(1 for r in rows if r["new_to_corpus"]),
+        "identity_discontinuity_rows": sum(1 for r in rows
+                                           if r["identity_discontinuity"]),
         "cut": "ST-only, delta_comparable >= +{} on the both-years cohort".format(
             _CUT_MIN_DELTA),
         "kind": "context",
