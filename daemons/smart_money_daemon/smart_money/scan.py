@@ -34,7 +34,8 @@ def _src(name, status, note="", items=0):
 
 
 def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
-    """House current-year delta + Senate search-delta (DEGRADED if WAF)."""
+    """House current-year delta + Senate search-delta. Both are first-class sources;
+    either DEGRADES on its own failure and never fakes a result."""
     sources = []
     events = []
     counts = {"house_new_filings": 0, "senate_new_filings": 0}
@@ -54,11 +55,13 @@ def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
     except Exception as exc:  # noqa: BLE001 - fail-loud into source status
         sources.append(_src("house_clerk", "DEGRADED", str(exc)[:120]))
 
-    # Senate: search-driven PTR delta. UN-DEGRADED 2026-07-30 — the eFD data endpoint is
-    # reachable again via post_data + X-CSRFToken (recon/EFD_WAF_FINDING.md superseded), so
-    # this now ENUMERATES recent PTRs and ingests new uuids (resume-safe via
-    # ingested_filings), instead of just probing. A 503 / any failure reverts to DEGRADED,
-    # never fakes.
+    # Senate: search-driven PTR delta. UN-DEGRADED on measurement, not on assumption —
+    # Phase W logged 36 probes over 13 days (weekday n=22) at 100% success across eight
+    # hours-of-day, so the 2026-07-20 "eFD blocks scripted access" claim is withdrawn and
+    # the Senate is a first-class source. That finding is DATED and EXPIRES 2026-11-06
+    # (recon/EFD_WAF_FINDING.md); the nightly probe keeps logging so a regression surfaces
+    # in the map on its own. This ENUMERATES recent PTRs and ingests new uuids (resume-safe
+    # via ingested_filings). Any failure still reverts to DEGRADED and never fakes.
     try:
         import pathlib as _pl
         from . import efd_ingest
@@ -258,6 +261,38 @@ def leg_universal_ingest(con, contact):
         return _src("edgar_form4_universal", "DEGRADED", str(exc)[:120]), counts
 
 
+_NON_TICKER = {"NONE", "N/A", "N.A.", "NA", ""}
+
+
+def _price_universe(con, scoped, start90):
+    """Sorted tickers whose LATEST close the nightly leg refreshes. Three populations:
+
+      * `scoped`      — overlay + network issuers + >=2-buyer 90d names (bands too).
+      * Form 4 P/S in the trailing 90d — the actively-traded slice, so the backfilled
+        corpus stays current instead of going stale (Mando ruling 2026-07-30).
+      * SM-P2 G1: every tracked filer's NEWEST-period long 13F holdings, so the
+        dollars-vs-thousands anchor has a live close to compare implied price against.
+        Priced only where 13F happened to overlap Form 4, a filer whose holdings never
+        appear in an insider trade reads `undetermined` — which is exactly how Affinity
+        (one position, QXO, never insider-traded) failed G1. Newest period only keeps
+        this bounded; older periods are the backfill's job (price_backfill.targets).
+    """
+    out = set(scoped)
+    for (tk,) in con.execute(
+        "SELECT DISTINCT UPPER(ticker) FROM form4_transactions WHERE code IN ('P','S') "
+            "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=?", (start90,)):
+        out.add(tk)
+    for (tk,) in con.execute(
+        "SELECT DISTINCT UPPER(h.ticker) FROM thirteenf_holdings h JOIN "
+        "(SELECT cik, MAX(period) p FROM thirteenf_holdings GROUP BY cik) m "
+            "ON h.cik=m.cik AND h.period=m.p "
+            "WHERE h.ticker IS NOT NULL AND h.put_call='long'"):
+        out.add(tk)
+    # Slashes / spaces are not valid Yahoo symbols and would crash the fetch.
+    return sorted(t for t in (x and x.upper().strip() for x in out)
+                  if t and t not in _NON_TICKER and "/" not in t and " " not in t)
+
+
 def leg_enrich(con, contact):
     """SM-O1/SM-R1 nightly enrichment leg. Refreshes the EOD price series for every
     ticker traded (P/S) in the last 90 days (~1k names, so the actively-traded corpus
@@ -281,20 +316,11 @@ def leg_enrich(con, contact):
         if t and t not in _NON:
             tickers.add(t)
     tickers = sorted(tickers)
-    # Every ticker traded (P/S) in the last 90 days gets its LATEST close refreshed
-    # nightly (~1k names, bounded cost), so the actively-traded slice of the backfilled
-    # corpus stays current instead of going stale (Mando ruling 2026-07-30: 90d window).
-    # Bands stay on the narrow set only — EDGAR companyconcept is costly and
-    # shares-outstanding is stable, so widening bands too would add a heavy sweep for
-    # no signal. Dormant names keep their backfilled close (re-run price_backfill to top up).
-    price_tickers = set(tickers)
-    for (tk,) in con.execute(
-        "SELECT DISTINCT UPPER(ticker) FROM form4_transactions WHERE code IN ('P','S') "
-        "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=?", (start90,)):
-        t = (tk or "").upper().strip()
-        if t and t not in _NON and "/" not in t and " " not in t:  # invalid Yahoo symbols
-            price_tickers.add(t)
-    price_tickers = sorted(price_tickers)
+    # Bands stay on the narrow `tickers` set only — EDGAR companyconcept is costly and
+    # shares-outstanding is stable, so widening bands too would add a heavy sweep for no
+    # signal. Prices cover the wider universe below. Dormant names keep their backfilled
+    # close (re-run price_backfill to top up).
+    price_tickers = _price_universe(con, tickers, start90)
     counts = {"tickers": len(tickers), "price_tickers": len(price_tickers),
               "bands": 0, "price_ok": 0, "price_fail": 0}
     if not price_tickers:
@@ -334,8 +360,10 @@ def leg_congress_annual(con, contact, raw_dir, lookback_days=120):
     fetching a document, so a night with no new filings costs one House index read plus a
     short Senate search — no PDF fetches, no parsing. Only genuinely new DocIDs do work.
 
-    Degrades per chamber: eFD is WAF-fronted and the House zip can 404 early in a cycle,
-    so each side is caught independently and reported rather than taking the scan down.
+    Degrades per chamber: eFD rate-shapes under unpaced load and the House zip can 404
+    early in a cycle, so each side is caught independently and reported rather than
+    taking the scan down. eFD is NOT treated as blocked — Phase W measured 100% weekday
+    availability at every sampled hour (recon/EFD_WAF_FINDING.md, expires 2026-11-06).
     """
     import datetime as _dt
 
@@ -377,7 +405,7 @@ def leg_congress_annual(con, contact, raw_dir, lookback_days=120):
                 counts["senate_rows"] += res["rows"]
         sources.append(_src("congress_annual:senate", "OK", "new={} rows={}".format(
             counts["senate_new"], counts["senate_rows"]), counts["senate_rows"]))
-    except Exception as exc:  # noqa: BLE001 - eFD is WAF-fronted; degrade, do not abort
+    except Exception as exc:  # noqa: BLE001 - degrade this chamber, do not abort the scan
         sources.append(_src("congress_annual:senate", "DEGRADED", str(exc)[:120]))
     return sources, counts
 

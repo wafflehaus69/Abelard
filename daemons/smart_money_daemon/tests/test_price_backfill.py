@@ -49,6 +49,52 @@ def test_targets_skip_invalid_symbols():
     os.unlink(path)
 
 
+_HI = ("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip, "
+       "ticker, issuer, put_call, value, shares, ingested_at_unix) "
+       "VALUES(?,?,?,?,?,?,'Co','long',1,1,0)")
+
+
+def test_targets_include_13f_holdings_so_the_unit_anchor_can_be_priced():
+    """G1 residue: _filer_unit_scale decides dollars-vs-thousands against an EOD close,
+    so a 13F name that never appears in a Form 4 must still be priced. Affinity holds
+    exactly one position (QXO) and no insider ever traded it, which left its unit
+    UNDETERMINED. A filer's unit may not depend on that coincidence."""
+    path, con = _db([("a", "AAA", "P", "2026-06-01")])
+    con.execute(_HI, ("1", "acc1", "2025-12-31", "2026-02-14", "c1", "QXO"))
+    con.execute(_HI, ("1", "acc2", "2026-03-31", "2026-05-15", "c1", "QXO"))
+    con.commit()
+    t = dict(pb.targets(con))
+    assert "AAA" in t and "QXO" in t, t
+    assert t["QXO"] == "2025-12-31", "earliest period held, not the latest"
+    con.close()
+    os.unlink(path)
+
+
+def test_13f_only_ticker_already_priced_is_skipped_by_only_missing():
+    path, con = _db([("a", "AAA", "P", "2026-06-01")])
+    con.execute(_HI, ("1", "acc1", "2026-03-31", "2026-05-15", "c1", "QXO"))
+    con.execute(_HI, ("1", "acc1", "2026-03-31", "2026-05-15", "c2", "ZZZ"))
+    con.execute("INSERT INTO prices VALUES('QXO','2026-03-31',19,19,'eod',0,0,'y')")
+    con.commit()
+    t = dict(pb.targets(con, only_missing=True))
+    assert "QXO" not in t and "ZZZ" in t, t
+    con.close()
+    os.unlink(path)
+
+
+def test_a_ticker_in_both_populations_is_fetched_once_from_the_earlier_date():
+    """AAA is both insider-traded (2026) and 13F-held (2025). One target — and it must
+    start at the EARLIER date, or the 2025 period keeps the gap that broke the anchor."""
+    path, con = _db([("a", "AAA", "P", "2026-06-01")])
+    con.execute(_HI, ("1", "acc1", "2025-03-31", "2025-05-15", "c1", "AAA"))
+    con.commit()
+    tg = pb.targets(con)
+    assert [t for t, _ in tg].count("AAA") == 1, tg
+    assert dict(tg)["AAA"] == "2025-03-31", "earlier of the two populations wins"
+    con.close()
+    os.unlink(path)
+
+
 def test_run_survives_non_price_exception():
     path, con = _db([("a", "AAA", "P", "2026-06-01"), ("b", "BBB", "P", "2026-05-01")])
     orig = prices.eod

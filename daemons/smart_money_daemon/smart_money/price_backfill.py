@@ -25,27 +25,52 @@ from . import prices
 _NON = {"NONE", "N/A", "N.A.", "NA", ""}
 
 
+def _ok_symbol(t):
+    """Yahoo-safe symbol filter — a ticker with a slash or space is not fetchable."""
+    t = (t or "").strip()
+    return t if t and t not in _NON and "/" not in t and " " not in t else None
+
+
 def targets(con, since=None, only_missing=False):
-    """[(ticker, earliest_trade_date)] for P/S tickers, earliest-trade ascending.
-    `since` bounds to tickers with a trade on/after that ISO date; `only_missing`
-    keeps just tickers that have zero EOD price rows today."""
+    """[(ticker, earliest_date)] for tickers we must be able to price, earliest first.
+
+    TWO populations, because two different readers depend on prices:
+      * Form 4 P/S tickers — the trades feed and Ticker page entry/latest closes.
+      * 13F holdings tickers — the G1 unit-scale anchor. `_filer_unit_scale` decides
+        dollars-vs-thousands by comparing implied price (value/shares) to the EOD close,
+        so a filer whose holdings carry NO price rows cannot be anchored at all. The
+        13F population was formerly absent here, which left the anchor dependent on a
+        13F name coinciding with a Form 4 name: Affinity (one position, QXO, never
+        insider-traded) came back `undetermined`, and 314 of 1,075 13F tickers had zero
+        coverage. A filer's unit is not allowed to rest on that coincidence.
+
+    `since` bounds to tickers active on/after that ISO date; `only_missing` keeps just
+    tickers that have zero EOD price rows today."""
     since = since or "0001-01-01"
     priced = set()
     if only_missing:
         priced = {r[0] for r in con.execute(
             "SELECT DISTINCT ticker FROM prices WHERE price_type='eod'")}
-    out = []
-    for t, e in con.execute(
-            "SELECT UPPER(ticker), MIN(substr(tx_date,1,10)) FROM form4_transactions "
-            "WHERE code IN ('P','S') AND ticker IS NOT NULL "
-            "AND substr(tx_date,1,10)>=? GROUP BY UPPER(ticker) ORDER BY 2", (since,)):
-        t = (t or "").strip()
-        if not t or t in _NON or not e or "/" in t or " " in t:  # invalid Yahoo symbols
+    rows = list(con.execute(
+        "SELECT UPPER(ticker), MIN(substr(tx_date,1,10)) FROM form4_transactions "
+        "WHERE code IN ('P','S') AND ticker IS NOT NULL "
+        "AND substr(tx_date,1,10)>=? GROUP BY UPPER(ticker)", (since,)))
+    rows += list(con.execute(
+        "SELECT UPPER(ticker), MIN(period) FROM thirteenf_holdings "
+        "WHERE ticker IS NOT NULL AND period IS NOT NULL AND period>=? "
+        "GROUP BY UPPER(ticker)", (since,)))
+    earliest = {}
+    for t, e in rows:
+        t = _ok_symbol(t)
+        if not t or not e:
             continue
         if only_missing and t in priced:
             continue
-        out.append((t, e))
-    return out
+        # A ticker in BOTH populations takes the EARLIER date: fetching from the later
+        # one would leave the older 13F period without the close its anchor needs.
+        if t not in earliest or e < earliest[t]:
+            earliest[t] = e
+    return sorted(earliest.items(), key=lambda x: x[1])
 
 
 def run(con, since=None, floor_days=None, only_missing=False, limit=None,

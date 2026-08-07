@@ -140,3 +140,82 @@ def test_enqueue_notable_only_and_idempotent():
     finally:
         del os.environ["ABELARD_QUEUE_DB_PATH"]
         os.remove(qpath)
+
+
+# ---- SM-P2 G1: the nightly price universe must cover the unit anchor ----
+
+_H13 = ("INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip, "
+        "ticker, issuer, put_call, value, shares, ingested_at_unix) "
+        "VALUES(?,?,?,?,?,?,'Co',?,1,1,0)")
+_F4 = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
+       "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, price, "
+       "value, ownership_after, tx_date, filed_date, role, ingest_regime) "
+       "VALUES(?,0,'P','1','Co','9',?,'P',0,1,1.0,1,NULL,?,?,NULL,'watchlist')")
+
+
+def test_price_universe_covers_13f_holdings_not_just_insider_trades():
+    """G1 residue: a filer whose only position never appears in a Form 4 (Affinity/QXO)
+    had no close to anchor dollars-vs-thousands against, so its unit read UNDETERMINED."""
+    from smart_money.scan import _price_universe
+    p = _fresh()
+    try:
+        con = dbmod.connect(p)
+        con.execute(_F4, ("a", "AAA", "2026-08-01", "2026-08-02"))
+        con.execute(_H13, ("1", "acc", "2026-03-31", "2026-05-15", "c1", "QXO", "long"))
+        con.commit()
+        u = _price_universe(con, [], "2026-06-01")
+        assert "QXO" in u and "AAA" in u, u
+        con.close()
+    finally:
+        os.unlink(p)
+
+
+def test_price_universe_takes_the_newest_period_per_filer_only():
+    """Bounded by design: a filer's stale periods are the backfill's job, not the
+    nightly leg's, so an exited name does not accrue a nightly fetch forever."""
+    from smart_money.scan import _price_universe
+    p = _fresh()
+    try:
+        con = dbmod.connect(p)
+        con.execute(_H13, ("1", "old", "2025-12-31", "2026-02-14", "c1", "GONE", "long"))
+        con.execute(_H13, ("1", "new", "2026-03-31", "2026-05-15", "c2", "HELD", "long"))
+        # a second filer's newest period is older - it still contributes ITS newest
+        con.execute(_H13, ("2", "b", "2025-12-31", "2026-02-14", "c3", "OTHER", "long"))
+        con.commit()
+        u = _price_universe(con, [], "2026-06-01")
+        assert "HELD" in u and "OTHER" in u, u
+        assert "GONE" not in u, "a superseded period must not be refreshed nightly"
+        con.close()
+    finally:
+        os.unlink(p)
+
+
+def test_price_universe_drops_symbols_yahoo_cannot_fetch():
+    from smart_money.scan import _price_universe
+    p = _fresh()
+    try:
+        con = dbmod.connect(p)
+        con.execute(_H13, ("1", "a", "2026-03-31", "2026-05-15", "c1", "UONE/K", "long"))
+        con.execute(_H13, ("1", "a", "2026-03-31", "2026-05-15", "c2", "BAD SYM", "long"))
+        con.execute(_H13, ("1", "a", "2026-03-31", "2026-05-15", "c3", "OK", "long"))
+        con.commit()
+        u = _price_universe(con, [], "2026-06-01")
+        assert u == ["OK"], u
+        con.close()
+    finally:
+        os.unlink(p)
+
+
+def test_price_universe_ignores_option_legs():
+    """put/call rows carry notional, not shares, so they cannot anchor a unit."""
+    from smart_money.scan import _price_universe
+    p = _fresh()
+    try:
+        con = dbmod.connect(p)
+        con.execute(_H13, ("1", "a", "2026-03-31", "2026-05-15", "c1", "PUTONLY", "put"))
+        con.execute(_H13, ("1", "a", "2026-03-31", "2026-05-15", "c2", "LONGONE", "long"))
+        con.commit()
+        assert _price_universe(con, [], "2026-06-01") == ["LONGONE"]
+        con.close()
+    finally:
+        os.unlink(p)
