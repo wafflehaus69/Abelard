@@ -308,6 +308,28 @@ def _price_universe(con, scoped, start90):
                   if t and t not in _NON_TICKER and "/" not in t and " " not in t)
 
 
+def leg_options(con):
+    """SM-O1 P2 options-chain snapshot leg. INGEST-ONLY and structurally unable to alert:
+    it returns a source status and counts, emits ZERO events, and its source name is on
+    the exit spine's exclusion list, exactly like the universal Form 4 leg.
+
+    The most fragile source in the stack. A bad night is a COUNTED GAP recorded in
+    options_snapshot_passes, never an interpolation and never a scan failure — options
+    chains cannot be reconstructed after the fact, so a missing night must stay missing
+    and stay visible."""
+    from . import options_chain
+    try:
+        st = options_chain.run(con, out=sys.stderr, progress_every=0)
+        note = "date={} oi_asof={} ok={} gaps={} contracts={}".format(
+            st["snapshot_date"], st["oi_asof"], st["ok"], st["gaps"], st["contracts"])
+        # A pass that captured NOTHING is degraded even though no exception escaped —
+        # "ran and got zero" must never read like "ran and there was nothing".
+        status = "OK" if st["contracts"] else "DEGRADED"
+        return _src("options_chains", status, note, st["contracts"]), st
+    except Exception as exc:  # noqa: BLE001 - fail loud into the source status
+        return _src("options_chains", "DEGRADED", str(exc)[:120]), {}
+
+
 def leg_enrich(con, contact):
     """SM-O1/SM-R1 nightly enrichment leg. Refreshes the EOD price series for every
     ticker traded (P/S) in the last 90 days (~1k names, so the actively-traded corpus
@@ -467,6 +489,7 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
         src_e, cnt_e = _src("enrich_scoped", "SKIPPED", "disabled"), {}
         src_h = _src("13f_holdings", "SKIPPED", "disabled")
         src_ca, cnt_ca = [_src("congress_annual", "SKIPPED", "disabled")], {}
+        src_o, cnt_o = _src("options_chains", "SKIPPED", "disabled"), {}
     else:
         src_u, cnt_u = leg_universal_ingest(con, contact)
         src_e, cnt_e = leg_enrich(con, contact)  # bounded scoped bands+prices
@@ -475,8 +498,11 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
         # without it the holdings corpus behind /congress and the Phase F anchor ages a
         # full year, since annual FDs land once a cycle and nothing else refetches them.
         src_ca, cnt_ca = leg_congress_annual(con, contact, raw_dir)
+        # SM-O1 P2: options chains. Ingest-only, zero events, excluded from the exit
+        # spine below - it is a collection leg, not a signal source.
+        src_o, cnt_o = leg_options(con)
 
-    sources = src_a + src_b + src_c + src_ca + [src_u, src_e, src_h]
+    sources = src_a + src_b + src_c + src_ca + [src_u, src_e, src_h, src_o]
     all_events = ev_a + ev_b + ev_c
 
     # Event-level dedup across scans by event_id (scan_events ledger). A Form 4
@@ -603,7 +629,8 @@ def main(argv=None):
     # logged but excluded here so an OK ingest can never mask all signal legs
     # being down, nor a degraded ingest trip a false alarm.
     statuses = [s["status"] for s in envelope["sources"]
-                if s["source"] not in ("edgar_form4_universal", "enrich_scoped")]
+                if s["source"] not in ("edgar_form4_universal", "enrich_scoped",
+                                       "options_chains")]
     if statuses and all(st == "DEGRADED" for st in statuses):
         print("[scan] ALL signal sources degraded", file=sys.stderr)
         return 1

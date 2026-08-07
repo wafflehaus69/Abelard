@@ -346,6 +346,47 @@ CREATE TABLE IF NOT EXISTS congress_member_roster(
 -- keyed by bioguide. One row per (bioguide, committee). Current Congress only -- the
 -- dataset publishes no historical membership file, so this CANNOT be used to ask what a
 -- member sat on in a prior year, and any view built on it must say so.
+-- SM-O1 P2: nightly options-chain snapshots. One row per contract per snapshot day.
+-- OI SEMANTICS: open_interest is OCC-settled T+1, so a chain pulled on snapshot_date
+-- carries the OI settled on oi_asof (the prior trading day) while `volume` is
+-- snapshot_date's. The two dates are stored SEPARATELY and on purpose: collapsing them
+-- would silently produce an off-by-one-day vol/OI ratio that still looks plausible.
+-- Idempotent on (contract, snapshot_date) so a re-run overwrites rather than doubles.
+CREATE TABLE IF NOT EXISTS options_chain_snapshots(
+  ticker TEXT NOT NULL,
+  snapshot_date TEXT NOT NULL,
+  expiry TEXT NOT NULL,
+  strike REAL NOT NULL,
+  option_type TEXT NOT NULL,          -- 'C' | 'P'
+  contract_symbol TEXT,
+  volume INTEGER,                     -- snapshot_date's trading
+  open_interest INTEGER,              -- settled as of oi_asof, NOT snapshot_date
+  oi_asof TEXT NOT NULL,
+  implied_vol REAL,
+  last_price REAL,
+  bid REAL,
+  ask REAL,
+  underlying_close REAL,
+  ingested_at_unix INTEGER NOT NULL,
+  PRIMARY KEY(ticker, snapshot_date, expiry, strike, option_type)
+);
+CREATE INDEX IF NOT EXISTS idx_opt_snap ON options_chain_snapshots(snapshot_date);
+CREATE INDEX IF NOT EXISTS idx_opt_tk ON options_chain_snapshots(ticker, snapshot_date);
+CREATE INDEX IF NOT EXISTS idx_opt_contract
+  ON options_chain_snapshots(contract_symbol, snapshot_date);
+-- Pass ledger. A missed night must be VISIBLE, not inferred from absent rows — absence
+-- reads identically to "nothing traded", and options data cannot be rebuilt afterwards.
+CREATE TABLE IF NOT EXISTS options_snapshot_passes(
+  snapshot_date TEXT PRIMARY KEY,
+  tickers INTEGER NOT NULL,
+  ok INTEGER NOT NULL,
+  gaps INTEGER NOT NULL,
+  no_chain INTEGER NOT NULL,
+  contracts INTEGER NOT NULL,
+  dropped INTEGER NOT NULL,
+  oi_asof TEXT,
+  ran_at_unix INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS congress_committees(
   bioguide TEXT NOT NULL,
   committee_id TEXT NOT NULL,
