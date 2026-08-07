@@ -1093,7 +1093,10 @@ def view_congress(con, p):
             "candidates who filed but never served — never guessed). Click a ticker for "
             "the holder list; click a column to sort. "
             "<a href='/congress_gaps'>Coverage roll &raquo;</a> — who is behind these "
-            "counts, and why they are floors.</p>".format(res["count"], diststr),
+            "counts, and why they are floors. "
+            "<a href='/breadth_yoy'>Breadth change &raquo;</a> — what moved between "
+            "annual cycles, on the members who filed both.</p>".format(
+                res["count"], diststr),
             _CONGRESS_CAVEAT, _congress_owner_form(p), _pager(p, meta, "/congress.csv"),
             "".join(trs), _pager(p, meta, "/congress.csv")]
     return _page("Congress breadth — who holds what", "".join(body), p)
@@ -1437,6 +1440,108 @@ def view_congress_gaps(con, p):
     return _page("Congress coverage roll", "".join(body), p)
 
 
+def view_breadth_yoy(con, p):
+    """SM-C3 Phase Y: what changed between two annual cycles. CONTEXT, never an alert."""
+    res = q.q_congress_breadth_watch(con)
+    if not res["year"] or not res["prior_year"]:
+        return _page("Breadth change", "<p class='muted'>Not enough coverage years in "
+                     "the holdings corpus to compare.</p>", p)
+    rows = _sorted(res["rows"], p["sort"] or "delta_comparable", p["dir"])
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("ticker", "ticker"), ("holders_both_prior", "CY{}".format(res["prior_year"])),
+            ("holders_both_year", "CY{}".format(res["year"])),
+            ("delta_comparable", "&Delta;"), ("new_members", "new"),
+            ("exited_members", "exited"), ("first_seen_year", "1st seen"),
+            ("floor_exposure", "floor exposure"), ("confidence", "confidence")]
+    trs = ["<table>" + _sort_headers(p, cols, lambda **kw: _qs(p, **kw),
+                                     p["sort"] or "delta_comparable", p["dir"])]
+    for r in page_rows:
+        mark = (" <span class='badge'>NEW TO CORPUS</span>" if r["new_to_corpus"] else "")
+        conf = ("<span class='warn' title='{}'>low</span>".format(
+            html.escape("; ".join(r["confidence_why"]))) if r["confidence"] == "low"
+            else "ok")
+        trs.append(
+            "<tr><td><a href='/congress?cticker={t}'>{t}</a>{mk}</td><td>{a}</td>"
+            "<td>{b}</td><td><b>{d:+d}</b></td><td>{n}</td><td>{x}</td><td>{fs}</td>"
+            "<td>{ex}</td><td>{c}</td></tr>".format(
+                t=html.escape(r["ticker"]), mk=mark, a=r["holders_both_prior"],
+                b=r["holders_both_year"], d=r["delta_comparable"], n=r["new_members"],
+                x=r["exited_members"], fs=r["first_seen_year"] or "-",
+                ex=_fmt(r["floor_exposure"]), c=conf))
+    trs.append("</table>")
+    pop = res["population"]
+    head = (
+        "<p class='muted'><a href='/congress'>&laquo; breadth board</a> &middot; "
+        "<b>CY{y} vs CY{p}</b> &mdash; {n} single-name positions that {b} or more "
+        "additional members held at the end of CY{y} than CY{p}.</p>".format(
+            y=res["year"], p=res["prior_year"], n=res["count"], b=res["min_delta"]))
+    context = (
+        "<p class='muted'><b>This is context, not an alert.</b> An annual FD says what a "
+        "member held on 31 Dec &mdash; not that they bought it, and not when. The filing "
+        "lands months later. Nothing on this page emits an event or pages anyone.</p>")
+    denom = (
+        "<p class='muted'><b>Counted on the {both} members who filed BOTH years.</b> "
+        "Members file on extensions, so CY{y} has {fy} filers against CY{p}'s {fp}. "
+        "Differencing raw counts would report {left} members' holdings as sales they "
+        "never made. {ent} members appear only in CY{y} and {left} only in CY{p}; "
+        "neither group can evidence a change, so neither is counted. "
+        "House both-years {hb}, Senate both-years {sb}.</p>".format(
+            both=pop["both"], y=res["year"], p=res["prior_year"],
+            fy=pop["filed_year"], fp=pop["filed_prior"], ent=pop["entered"],
+            left=pop["left"], hb=pop["house"]["both"], sb=pop["senate"]["both"]))
+    cut = (
+        "<p class='muted'><b>Cut: {cut}.</b> Single names only &mdash; the unfiltered "
+        "head is 71% index products, and a board that surfaces IVV every cycle says "
+        "nothing. A ticker one member reports as stock and another as a fund is left out "
+        "rather than half-counted. Exposure is a coarse band FLOOR (an open top band "
+        "contributes its floor, never an invented ceiling).</p>".format(
+            cut=html.escape(res["cut"])))
+    marks = (
+        "<p class='muted'><b>NEW TO CORPUS</b> means the ticker appears in no prior "
+        "year's filings at all &mdash; look before reading it as accumulation. It does "
+        "not say why: Q (Qnity Electronics) is new because the company did not exist "
+        "before CY{y}, while SMCI has been listed since 2007 and simply was not held by "
+        "anyone tracked here. We hold no corporate-actions feed and do not guess. "
+        "{ca} of {n} rows carry it.</p>".format(
+            y=res["year"], ca=res["corporate_action_rows"], n=res["count"]))
+    conf_note = (
+        "<p class='muted'><b>Confidence</b> is per member, not per chamber. A member "
+        "whose CY{p} filing fell under the {bar}% ticker-capture bar may have held a "
+        "position we could not read, so their <i>new</i> badge is marked low. "
+        "{lm} of the {both} both-years members are in that state. Standing caveat: "
+        "{cells}.</p>".format(
+            p=res["prior_year"], bar=res["bar"], lm=res["sub_bar_members"],
+            both=pop["both"],
+            cells=html.escape("; ".join(res["sub_bar_cells"]) or "none")))
+    body = [head, context, denom, cut, marks, conf_note,
+            _pager(p, meta, "/breadth_yoy.csv"), "".join(trs),
+            _pager(p, meta, "/breadth_yoy.csv")]
+    return _page("Breadth change CY{} vs CY{}".format(res["year"], res["prior_year"]),
+                 "".join(body), p)
+
+
+_YOY_CSV_COLS = ["ticker", "instrument", "holders_both_prior", "holders_both_year",
+                 "delta_comparable", "new_members", "exited_members", "delta_total",
+                 "holders_prior", "holders_year", "first_seen_year", "new_to_corpus",
+                 "floor_exposure", "confidence"]
+
+
+def _build_breadth_yoy_csv(con, p, full):
+    """CSV of the Phase Y cut, honoring the active sort."""
+    import csv
+    import io
+    res = q.q_congress_breadth_watch(con)
+    rows = _sorted(res["rows"], p["sort"] or "delta_comparable", p["dir"])
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_YOY_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 _GAP_CSV_COLS = ["member", "chamber", "party", "state", "match_kind", "years",
                  "year_count", "rows"]
 
@@ -1630,6 +1735,22 @@ def _page_brief_spec(con, p, path):
                 _GAP_CSV_COLS, srt(res["rows"], "rows"),
                 ["Breadth counts are FLOORS. Unmatched identities are dominated by "
                  "candidates who filed a disclosure but never served."])
+    if path == "/breadth_yoy":
+        res = q.q_congress_breadth_watch(con)
+        return ("Breadth change CY{} vs CY{}".format(res["year"], res["prior_year"]),
+                "{} single names - {} or more added holders - {} members filed both "
+                "years".format(res["count"], res["min_delta"],
+                               (res["population"] or {}).get("both", 0)),
+                _YOY_CSV_COLS, srt(res["rows"], "delta_comparable"),
+                ["CONTEXT, NEVER AN ALERT. An annual FD says what was held on 31 Dec, "
+                 "not that it was bought and not when.",
+                 "Counted only on members who filed BOTH years - {} entered and {} left "
+                 "the filing population and cannot evidence a change.".format(
+                     (res["population"] or {}).get("entered", 0),
+                     (res["population"] or {}).get("left", 0)),
+                 "NEW TO CORPUS marks a ticker absent from every prior year. It does not "
+                 "say why - there is no corporate-actions feed here.",
+                 "Standing caveat: " + ("; ".join(res["sub_bar_cells"]) or "none")])
     if path == "/disagreements":
         res = q.q_opposed_pairs(con)
         return ("Cross-manager disagreements",
@@ -1656,6 +1777,7 @@ ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_con
           "/insiders": view_insiders, "/oge": view_oge, "/member": view_member,
           "/disagreements": view_disagreements,
           "/congress_gaps": view_congress_gaps,
+          "/breadth_yoy": view_breadth_yoy,
           "/trades": view_trades, "/flows": view_flows, "/clusters": view_clusters,
           "/sentinels": view_sentinels, "/ticker": view_ticker}
 
@@ -1712,6 +1834,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._insiders_csv(con, p, parse_qs(u.query))
             if u.path == "/congress_gaps.csv":
                 return self._congress_gaps_csv(con, p, parse_qs(u.query))
+            if u.path == "/breadth_yoy.csv":
+                return self._breadth_yoy_csv(con, p, parse_qs(u.query))
             if u.path == "/congress.csv":
                 return self._congress_csv(con, p, parse_qs(u.query))
             view = view_member if u.path.startswith(MEMBER_PREFIX) else ROUTES.get(u.path)
@@ -1817,6 +1941,15 @@ class Handler(BaseHTTPRequestHandler):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_congress_gaps_csv(con, p, full)
         fname = "congress_coverage_{}.csv".format(
+            "all" if full else "page{}".format(p["page"]))
+        self._send(200, data, ctype="text/csv; charset=utf-8",
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(fname)})
+
+    def _breadth_yoy_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_breadth_yoy_csv(con, p, full)
+        fname = "breadth_change_{}.csv".format(
             "all" if full else "page{}".format(p["page"]))
         self._send(200, data, ctype="text/csv; charset=utf-8",
                    headers={"Content-Disposition":

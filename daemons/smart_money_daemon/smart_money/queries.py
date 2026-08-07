@@ -1804,6 +1804,21 @@ def q_congress_breadth_yoy(con, year=None, prior=None, owner_filter="all",
     dirty = {m for m, (den, hit) in mcap.items()
              if den and 100.0 * hit / den < _YOY_BAR}
 
+    # First coverage year each ticker appears ANYWHERE in the corpus. A ticker whose first
+    # appearance IS `year` was held by nobody in any prior filing, so a 0 -> N delta on it
+    # deserves a second look before it is read as accumulation.
+    #
+    # WHAT THIS DOES AND DOES NOT SAY. It says the ticker is new to OUR corpus. It does
+    # NOT say why, and must not be rendered as though it did — we hold no corporate-actions
+    # feed. Chasing ticker "Q" showed both readings live under one flag: Q (Qnity
+    # Electronics) is new because the company did not exist before CY2025, while HOOD and
+    # SMCI are new only because no member we track had held them. Same flag, different
+    # causes. The flag is a prompt to look, never a claim about what happened.
+    first_seen = {t: y for t, y in con.execute(
+        "SELECT UPPER(ticker), MIN(coverage_year) FROM congress_holdings "
+        "WHERE ticker IS NOT NULL AND ticker!='' AND coverage_year IS NOT NULL "
+        "GROUP BY UPPER(ticker)")}
+
     filed = {year: set(), prior: set()}
     held = {year: defaultdict(set), prior: defaultdict(set)}
     expo = defaultdict(float)
@@ -1853,6 +1868,8 @@ def q_congress_breadth_yoy(con, year=None, prior=None, owner_filter="all",
             "delta_comparable": len(cur_b) - len(pri_b),
             "new_members": len(newm), "exited_members": len(exitm),
             "new_low_conf": n_low, "exited_low_conf": e_low,
+            "first_seen_year": first_seen.get(key[0]),
+            "new_to_corpus": first_seen.get(key[0]) == year,
             "dem": sum(1 for m in cur_b if parties.get(m) == "dem"),
             "rep": sum(1 for m in cur_b if parties.get(m) == "rep"),
             "floor_exposure": round(expo[key]),
@@ -1888,6 +1905,48 @@ def q_congress_breadth_yoy(con, year=None, prior=None, owner_filter="all",
                      if (cells.get((ch, yr)) or {}).get("ticker_pct") is not None
                      and cells[(ch, yr)]["ticker_pct"] < _YOY_BAR]})
     return base
+
+
+_CUT_MIN_DELTA = 2         # Mando's Phase Y ruling, set on the shown distribution
+
+
+def q_congress_breadth_watch(con, **kw):
+    """SM-C3 Phase Y watch-cut, ratified by Mando on the shown delta distribution:
+    ST-only, delta_comparable >= +2, comparable cohort, capture-confidence on, from->to
+    counts visible.
+
+    ST-only because the raw delta head is 71% index products — at delta >= +3, 17 of 24
+    rows carried an EF or MF code. A cut that surfaces IVV every cycle is not a cut.
+    'ST-only' means the filer's OWN type codes for that ticker are exactly {ST}: a ticker
+    reported as ST by one member and EF by another is NOT single-name-clean and is left
+    out rather than half-counted.
+
+    THIS IS A CONTEXT SECTION, NEVER AN ALERT. It emits no event, sets no watermark, and
+    pages nobody. Breadth is a LEVEL, not a trade — a member's annual FD says what they
+    held on Dec 31, not that they bought it, and the disclosure lands months late. Wiring
+    this to an alert would page on a year-old position.
+
+    Rows carry `new_to_corpus`: the ticker appears in no prior year's filings at all, so
+    its 0 -> N warrants a look before being read as accumulation. The flag does NOT say
+    why — Q (Qnity, a company that did not exist before CY2025) and SMCI (listed since
+    2007, simply never held by anyone we track) both raise it. Such rows are RETURNED and
+    MARKED, never dropped: the position genuinely is newly held, and dropping it would
+    hide a real change in what members hold."""
+    res = q_congress_breadth_yoy(con, **kw)
+    rows = [r for r in res["rows"]
+            if r["delta_comparable"] >= _CUT_MIN_DELTA
+            and set(r["asset_types"]) == {"ST"}]
+    res = dict(res)
+    res.update({
+        "rows": rows, "count": len(rows), "min_delta": _CUT_MIN_DELTA,
+        "asset_filter": "ST",
+        "corporate_action_rows": sum(1 for r in rows if r["new_to_corpus"]),
+        "cut": "ST-only, delta_comparable >= +{} on the both-years cohort".format(
+            _CUT_MIN_DELTA),
+        "kind": "context",
+        "never_alert": "breadth is a LEVEL from an annual filed months late - it is "
+                       "context, and this surface emits no events"})
+    return res
 
 
 def q_congress_holders(con, ticker, instrument="SH"):
