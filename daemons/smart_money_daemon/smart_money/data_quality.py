@@ -54,19 +54,24 @@ def main(argv=None):
         ).fetchone()
         md.append("## {}".format(titles[chamber]))
         md.append("")
-        # F4 one-truth coverage statement per chamber. House was a year-walk to a
-        # true horizon; Senate was a full browser index harvest (WAF blocked the
-        # search endpoint), so state the verified coverage start, not a fake walk.
+        # F4 one-truth coverage statement per chamber. House was a year-walk to a true
+        # horizon; the Senate corpus was seeded by a one-time browser index harvest on
+        # 2026-07-20, when the search endpoint was believed blocked. That belief has
+        # since been withdrawn on measurement (recon/EFD_WAF_FINDING.md) and the nightly
+        # leg now enumerates via post_data — but the HISTORICAL corpus below still came
+        # from that harvest, so state the verified coverage start, not a fake walk.
         cov_start = ct.tx_date.min() if not ct.empty else "n/a"
         if chamber == "house":
             md.append("- Coverage: year-walk to electronic horizon **{}**; "
                       "earliest trade {}.".format(
                           hrow[0] if hrow else "WALK NOT COMPLETED", cov_start))
         else:
-            md.append("- Coverage: full browser index harvest of the eFD PTR "
-                      "corpus (search endpoint WAF-blocked, see recon/"
-                      "EFD_WAF_FINDING.md). Verified coverage from earliest "
-                      "trade **{}**; no year-walk applies.".format(cov_start))
+            md.append("- Coverage: one-time browser index harvest of the eFD PTR "
+                      "corpus (2026-07-20; the search endpoint was believed blocked "
+                      "at the time - that finding is withdrawn, see recon/"
+                      "EFD_WAF_FINDING.md, and the nightly leg now enumerates via the "
+                      "search endpoint). Verified coverage from earliest trade **{}**; "
+                      "no year-walk applies.".format(cov_start))
         md.append("- Filings seen: {} — status breakdown: {}".format(
             len(cf), cf.status.value_counts().to_dict()
         ))

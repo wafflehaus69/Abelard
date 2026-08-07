@@ -323,9 +323,10 @@ def _filing_from_index_row(row):
 
 
 def _ingest_from_index(con, ua, raw_dir, args):
-    """Detail-only ingest from a browser-harvested index. Uses the light
-    agreement session (no WAF-blocked data-endpoint probe); detail-page GETs
-    are not behind the WAF."""
+    """Detail-only ingest from a browser-harvested index. Uses the light agreement
+    session and skips the data-endpoint probe, because this path does not need the
+    search endpoint at all — it already has the uuids. Kept as a fallback for a
+    re-harvest; the live path enumerates via post_data (recon/EFD_WAF_FINDING.md)."""
     data = json.loads(pathlib.Path(args.index_file).read_text())
     rows = data["rows"]
     print(
@@ -376,8 +377,8 @@ def main(argv=None):
     ap.add_argument(
         "--index-file",
         default=None,
-        help="ingest details from a browser-harvested PTR index JSON instead of "
-        "the WAF-blocked search endpoint (see recon/EFD_WAF_FINDING.md)",
+        help="ingest details from a browser-harvested PTR index JSON instead of the "
+        "search endpoint - a fallback, not the live path (recon/EFD_WAF_FINDING.md)",
     )
     args = ap.parse_args(argv)
 

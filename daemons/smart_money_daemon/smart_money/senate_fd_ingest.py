@@ -6,8 +6,10 @@ reachable via post_data — see recon/EFD_WAF_FINDING.md), fetch each detail pag
 assets grid, and land per-asset rows into congress_holdings with chamber='senate'.
 Scripts-only, no LLM.
 
-FAIL-LOUD, never silently lose a filing (the source is WAF-fronted and rate-limits under
-load — recon/EFD_WAF_FINDING.md):
+FAIL-LOUD, never silently lose a filing. The source is NOT blocked (Phase W: 100% weekday
+availability at every sampled hour — recon/EFD_WAF_FINDING.md, expires 2026-11-06), but it
+DOES rate-shape under unpaced load, and a block returning later must be detected rather
+than absorbed. So the retry machinery below stays exactly as it is:
   * requests are PACED (0.5s) like the sibling efd_ingest / house_fd_ingest.
   * the detail GET checks HTTP status; a non-200 is a transient error, NOT terminal.
   * a 200 body is classified: an assets grid -> ok; a real eFD report skeleton (Part 3 /

@@ -1572,7 +1572,7 @@ def q_coverage_matrix(con):
 def q_congress_gaps(con):
     """SM-C2 P3: who is BEHIND the breadth counts. Per filer identity: chamber, party,
     how it resolved, filing years present, and holdings rows. The point is that breadth
-    counts are FLOORS — a member missing from the corpus (paper-only filing, WAF-blocked
+    counts are FLOORS — a member missing from the corpus (paper-only filing, a failed
     fetch, unparsed layout) depresses every ticker they hold, and an 'unmatched' identity
     is usually a CANDIDATE who filed but never served, not a data error."""
     parties = {}
