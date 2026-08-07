@@ -37,7 +37,7 @@ import time
 from . import db as dbmod
 from .efd_session import bootstrap, post_data
 from .efd_ingest import load_env, IngestError
-from .house_fd_ingest import _parse_band   # shared FD value-band vocabulary
+from .house_fd_ingest import _parse_band, NOT_TICKER as _NOT_TICKER, PLAN_CODE
 
 VIEW = "https://efdsearch.senate.gov/search/view/{kind}/{uuid}/"
 ANN_LINK = re.compile(r"/search/view/(annual|paper)/([0-9a-f-]{8,})/")
@@ -66,11 +66,6 @@ _LEAD_TICK = re.compile(r"^([A-Z]{1,5}(?:\.[A-Z]{1,2})?)\s*-\s*[A-Za-z]")
 _BARE_TICK = re.compile(r"^[A-Z]{1,5}$")           # whole name is a bare symbol ("VTV")
 # Trailing "(IBM)" when the filer typed a company name with the symbol in parens.
 _PAREN_TICK = re.compile(r"\(([A-Z]{1,5})\)")
-# Parenthesized tokens that look like tickers but are exchanges / structure labels.
-_NOT_TICKER = frozenset((
-    "NYSE", "AMEX", "OTC", "ARCA", "BATS", "LSE", "TSX", "ASX", "NASD",
-    "ADR", "ADS", "ORD", "LLC", "LP", "REIT", "ETF", "ETN", "FUND",
-    "INC", "CORP", "CO", "NA", "USD", "EUR", "GBP", "JPY", "COM"))
 # Asset types where a leading/parenthetical symbol convention is expected. The heuristic
 # extractors run only for these, so a bank-deposit "USAA - Federal Savings Bank" or a
 # muni-bond row can't mint a phantom ticker. The yahoo link is trusted for any type.
@@ -101,7 +96,9 @@ def _extract_ticker(asset_cell, strong_txt, atype):
     if _BARE_TICK.match(strong_txt):
         return strong_txt.upper()
     hit = None
-    for cand in _PAREN_TICK.findall(strong_txt):   # last symbol-shaped parens wins
+    # Plan codes out first -- see house_fd_ingest.PLAN_CODE for why a blunter digit rule
+    # is wrong.
+    for cand in _PAREN_TICK.findall(PLAN_CODE.sub(" ", strong_txt)):
         if cand.upper() not in _NOT_TICKER:
             hit = cand.upper()
     return hit

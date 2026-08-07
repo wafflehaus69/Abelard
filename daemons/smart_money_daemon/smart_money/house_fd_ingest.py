@@ -42,6 +42,15 @@ PACE_SECONDS = 0.5
 # 'O' = original annual report (sitting members), 'A' = amendment, 'C' = candidate.
 ANNUAL_TYPES = ("O", "A")
 
+# Retirement-plan codes, stripped from an asset name BEFORE symbol extraction.
+# A parenthetical belonging to a plan code is not a security:
+# Retirement-plan codes, stripped from an asset name BEFORE symbol extraction.
+# A parenthetical belonging to a plan code is not a security:
+# "401(k)" is a retirement PLAN, not Kellogg. This extractor takes the LAST symbol-shaped
+# parenthetical, so an account suffix was overwriting the real symbol -- "Vanguard Mid-Cap
+# Index Fund Admiral Shares (VIMAX) ... Vanguard - 401(K)" resolved to K. Measured: 884 of
+# 900 "K" rows were 401(k) labels and only 16 were genuinely Kellogg/Kellanova, and the
+# phantom carried 45-49 holders a year into breadth. Also covers 403(b) and 457(b).
 _TICKER_RE = re.compile(r"\(([A-Za-z0-9.\-]{1,10})\)")
 # House Schedule A asset-type codes, from the FD instruction booklet. This is a CLOSED
 # vocabulary and validating against it matters: `_TYPE_RE` used to accept ANY 2-3 letter
@@ -59,7 +68,39 @@ _TYPE_RE = re.compile(r"\[([A-Za-z0-9]{2,3})\]")
 # Filers also write tickers in SQUARE brackets ("ARK INNOVATION [ARKK]"), which the
 # parens-only ticker rule missed. Anything bracketed that is not a known type code and not
 # a footnote number is treated as a symbol candidate.
+# Retirement-plan codes: 401(k), 403(b), 457(b), 401(a), and the spaced variants
+# filers also type. Stripped from an asset name BEFORE symbol extraction, because
+# this extractor takes the LAST symbol-shaped parenthetical and a trailing plan code
+# was beating the real symbol. Measured: 884 of 900 "K" rows were 401(k) labels, only
+# 16 genuinely Kellogg, and the phantom carried 45-49 holders a year into breadth.
+# The rule is DELIBERATELY narrow. A blunter version - reject any parenthetical
+# preceded by a digit - looks equivalent and is not: it also strips "Vanguard Target
+# Retirement 2040 (VFORX)", and in a dry run it cleared SPY, QQQ, VFORX, RERGX and
+# ~1,800 other correct rows. Only the actual plan codes come out.
+PLAN_CODE = re.compile(r"\b(40[1239]|457)\s*\(\s*[kab]\s*\)", re.I)
 _BRACKET_TICKER_RE = re.compile(r"\[([A-Za-z]{1,5})\]")
+# Parenthesised tokens that look like symbols but are exchanges, structure labels, or the
+# ACCOUNT an asset sits in. One denylist for both chambers - senate_fd_ingest imports it
+# from here, the direction the dependency already runs.
+NOT_TICKER = frozenset((
+    "NYSE", "AMEX", "OTC", "ARCA", "BATS", "LSE", "TSX", "NASD",
+    "ADR", "ADS", "ORD", "LLC", "LP", "REIT", "ETF",
+    "INC", "CORP", "CO", "USD", "EUR", "GBP", "JPY", "COM",
+    # A filer writing "(IRA)" or "(ROLLOVER)" is labelling the account, not naming a
+    # security. Measured live: IRA 132 rows, SPOUSE 36, ROLLOVER 35, SEP 20 - every one
+    # an account label, none a ticker.
+    "IRA", "SEP", "SIMPLE", "ROTH", "ROLLOVER", "SPOUSE", "JOINT", "TRUST",
+    "ESTATE", "EST", "CUSTODIAL", "UTMA", "UGMA", "HSA", "PENSION", "ANNUITY",
+    "BROKERAGE", "SAVINGS", "CHECKING", "MONEY", "VESTED", "DEFERRED"))
+# Words that are BOTH a plausible account/structure label AND a real US symbol. Checked
+# against our own corpora: ETN is Eaton Corp plc (97 Form 4 rows), CASH is Pathward
+# Financial, FUND is Sprott Focus Trust, NA is VineBrook Homes Trust, ASX is ASE
+# Technology. Denying these outright cost 34 legitimate Eaton rows in the first cut of
+# the repair. They are NOT denied at extraction - the asset-type gate already keeps a
+# bank-deposit row from minting a symbol - and the repair reports them as a residue for
+# a human rather than deciding on their behalf.
+AMBIGUOUS_LABELS = frozenset(("ASX", "CASH", "ETN", "FUND", "NA"))
+_NOT_TICKER = NOT_TICKER          # internal alias, kept so call sites read the same
 _BAND_RE = re.compile(r"\$([\d,]+)\s*-\s*\$([\d,]+)")
 _OVER_RE = re.compile(r"[Oo]ver \$([\d,]+)")
 # Standard FD floor band, e.g. "None (or less than $1,001)" -> ($0, $1,001).
@@ -224,13 +265,21 @@ def _parse_band(text):
 
 def _finalize(rec):
     name = " ".join(rec["asset"]).strip()
+    # Strip plan codes FIRST. This extractor takes the LAST symbol-shaped parenthetical,
+    # so "401(K)" was beating the real symbol. A blunter rule -- reject any parenthetical
+    # preceded by a digit -- looked equivalent and was not: it also killed
+    # "Vanguard Target Retirement 2040 (VFORX)", clearing SPY, QQQ and 1,800 other good
+    # rows in a dry run. Only the actual plan codes are removed.
     ticker = None
-    for cand in _TICKER_RE.findall(name):        # last symbol-shaped parens wins
-        if re.fullmatch(r"[A-Za-z]{1,5}[A-Za-z.\-]{0,3}", cand):
+    name_for_ticker = PLAN_CODE.sub(" ", name)
+    for cand in _TICKER_RE.findall(name_for_ticker):   # last symbol-shaped parens wins
+        if (re.fullmatch(r"[A-Za-z]{1,5}[A-Za-z.\-]{0,3}", cand)
+                and cand.upper() not in _NOT_TICKER):
             ticker = cand.upper()
     if not ticker:                               # "ARK INNOVATION [ARKK]"
-        for cand in _BRACKET_TICKER_RE.findall(name):
-            if cand.upper() not in _FD_TYPES:    # never mistake a type code for a symbol
+        for cand in _BRACKET_TICKER_RE.findall(name_for_ticker):
+            if (cand.upper() not in _FD_TYPES     # never mistake a type code for a symbol
+                    and cand.upper() not in _NOT_TICKER):
                 ticker = cand.upper()
     # Only a KNOWN code counts as the asset type; a bracketed ETF symbol is not a type.
     tm = None

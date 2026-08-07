@@ -99,3 +99,80 @@ def test_coverage_year_reads_the_explicit_index_field():
     # fallback only when the field is absent or unusable
     assert fd._cov_year({}, 2024) == 2024
     assert fd._cov_year({"Year": ""}, 2024) == 2024
+
+
+# ---- account labels are not tickers (the 401(k) -> K contamination) ----
+
+def test_a_401k_suffix_does_not_overwrite_the_real_symbol():
+    """THE bug. This extractor takes the LAST symbol-shaped parenthetical, so an account
+    suffix beat the actual fund symbol. Measured live: 884 of 900 "K" rows were 401(k)
+    labels carrying 45-49 phantom holders a year into breadth."""
+    rec = {"asset": ["Vanguard Mid-Cap Index Fund Admiral Shares (VIMAX)",
+                     "Lowenstein Sandler - Vanguard - 401(K)"],
+           "value": ["$1,001 - $15,000"], "owner": "Self", "income": []}
+    out = fd._finalize(rec)
+    assert out["ticker"] == "VIMAX", out["ticker"]
+
+
+def test_a_bare_401k_row_yields_no_ticker_at_all():
+    """No security is named here, so the honest answer is NULL, not Kellogg."""
+    out = fd._finalize({"asset": ["Fidelity 401(k)"], "value": ["$1,001 - $15,000"],
+                        "owner": "Self", "income": []})
+    assert out["ticker"] is None
+
+
+def test_403b_and_457b_are_covered_by_the_same_rule():
+    for name in ("TIAA 403(b)", "Deferred Comp 457(b)"):
+        out = fd._finalize({"asset": [name], "value": ["$1,001 - $15,000"],
+                            "owner": "Self", "income": []})
+        assert out["ticker"] is None, name
+
+
+def test_kellogg_itself_still_parses():
+    """The rule must not cost us the real K. 'K' is only rejected when glued to a digit."""
+    out = fd._finalize({"asset": ["Kellanova Common Stock (K)"],
+                         "value": ["$1,001 - $15,000"], "owner": "Self", "income": []})
+    assert out["ticker"] == "K"
+
+
+def test_account_words_in_parens_are_not_symbols():
+    for name, want in (("Schwab Brokerage (IRA)", None),
+                       ("Fidelity (ROLLOVER)", None),
+                       ("Vanguard (SPOUSE)", None),
+                       ("Apple Inc (AAPL)", "AAPL")):
+        out = fd._finalize({"asset": [name], "value": ["$1,001 - $15,000"],
+                            "owner": "Self", "income": []})
+        assert out["ticker"] == want, (name, out["ticker"])
+
+
+def test_a_bracketed_account_word_is_also_rejected():
+    out = fd._finalize({"asset": ["Some Plan [IRA]"], "value": ["$1,001 - $15,000"],
+                        "owner": "Self", "income": []})
+    assert out["ticker"] is None
+
+
+def test_a_spaced_401_k_is_still_a_plan_not_a_ticker():
+    """Filers type '401 (K)' as well as '401(K)'. The space does not make it Kellogg."""
+    out = fd._finalize({"asset": ["Vanguard Mid-Cap Index VMCIX  Vivien G Scott 401 (K)"],
+                        "value": ["$1,001 - $15,000"], "owner": "Self", "income": []})
+    assert out["ticker"] is None
+
+
+def test_a_year_in_a_fund_name_is_not_a_plan_code():
+    """The regression this rule exists to avoid. A blunt 'reject any parenthetical after
+    a digit' looked equivalent and cleared SPY, QQQ and 1,800 other correct rows because
+    'Vanguard Target Retirement 2040 (VFORX)' has a digit before the parens."""
+    for name, want in (("Vanguard Target Retirement 2040 (VFORX)", "VFORX"),
+                       ("SPDR S&P 500 ETF Trust (SPY)", "SPY"),
+                       ("Invesco QQQ Trust Series 1 (QQQ)", "QQQ"),
+                       ("American Funds EuroPacific Growth R6 (RERGX)", "RERGX")):
+        out = fd._finalize({"asset": [name], "value": ["$1,001 - $15,000"],
+                            "owner": "Self", "income": []})
+        assert out["ticker"] == want, (name, out["ticker"])
+
+
+def test_only_real_plan_codes_are_stripped():
+    for name in ("Fidelity 401(k)", "TIAA 403 (b)", "Nationwide 457(b)", "ND Pers 401(a)"):
+        out = fd._finalize({"asset": [name], "value": ["$1,001 - $15,000"],
+                            "owner": "Self", "income": []})
+        assert out["ticker"] is None, name
