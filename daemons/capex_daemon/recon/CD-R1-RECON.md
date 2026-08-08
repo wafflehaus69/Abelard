@@ -675,6 +675,70 @@ $2.87B). No error, no gap, no null; just a plausible wrong number, 23× low in A
 **Resolution must be by recency per issuer, and the resolved tag must be recorded with the series.**
 This is §2.2/§2.5's finding reproduced accidentally, which is the strongest evidence for it.
 
+### Rulings recorded — binding requirements for CD-1
+
+Ratified 2026-08-07. Recorded here because this is the committed artifact for the recon; see the
+placement note at the end of this section for two destinations that do not exist on disk.
+
+**R1 — Tier graduation is automatic.** THIN → CORE at **4 consecutive derivable quarters**. No
+per-name ruling. THIN is a maturation queue with a known schedule; ANNUAL-DEGRADED is a permanent
+structural ceiling. The two must not share a tier — collapsing them lies in one direction or the
+other (holding new names back, or implying FPIs will improve).
+
+**R2 — Tag resolution is by recency per issuer, and it is doctrine-grade.**
+Named pattern: **plausible-stale-resolution** — the data-layer sibling of
+fires-always-discriminates-never. A fixed preference order returned AMZN at $7.42B against a true
+$173.03B: 23× low, no error, no null, no gap, and entirely plausible on its face. Three requirements:
+
+1. Resolve the capex tag **by recency per issuer**, never by a global preference order.
+2. **Record the resolved tag alongside every series row** — the series is not interpretable without it.
+3. **Magnitude cross-check against a known anchor (revenue)** per the G1 pattern. A 23× miss must not
+   survive a sanity bound.
+
+Evidence note: this pattern was reproduced live, accidentally, by the ratification audit itself
+(§ Hazard demonstrated on live data). That is stronger evidence than the argument that preceded it.
+
+**R3 — Entity state keys on CIK. Always.** Ticker is a **display attribute resolved at read time**,
+never a key and never cached. Re-resolution on every scan. Proof case: APLD carries a `formerNames`
+boundary dated 2026-08-06 while its `name` field still reads "Applied Digital Corp." — ingest keyed
+on ticker or cached name breaks **silently, within days**. Joins the existing ticker-identity
+precedent line (FISV/FI, MSTR, FB).
+
+**R4 — The aggregate publishes composition subtotals, never one blended number.** CORE=13 mixes
+three economic species:
+
+| bucket | members | economics |
+|---|---|---|
+| Hyperscalers | MSFT, GOOGL, AMZN, META, ORCL | landlord-and-tenant |
+| Neoclouds / miner-pivots | CORZ, WULF, CIFR, HUT, APLD, RIOT (+ CRWV, KEEL on graduation) | leveraged builders — the weakest-credit tier, where the break is theorised to occur |
+| REIT landlords | DLR, EQIX | the real-estate business the others are argued to be secretly in |
+
+Denominator-calibration doctrine applies. **Aggregate output = total + three-bucket decomposition,
+always together.** A headline that silently blends DLR's REIT economics with CRWV's debt-funded build
+would mislead in precisely the way this daemon exists to prevent.
+
+**R5 — SIC screening is barred as a universe method, and the finding has a second face.**
+SIC 6199 "Finance Services" is assigned to KEEL, WYFI, IREN, HUT, CORZ and CIFR — six
+datacenter/AI-infrastructure operators. Beyond the tooling nuisance: *the misclassification that
+breaks the screen is the same misclassification that creates the mispricing.* Entities the SIC system
+cannot categorise correctly are where category-repricing alpha lives. Logged here as the first
+empirical confirmation, at scale, that the "wrong SIC code" premise is real.
+
+**R6 — Guidance leg holds at phase 2.** CD-1's scope is already the largest single build in the
+organism (new parser primitive + tag maps + two ingest legs). Ship the structured legs, let the panel
+run, pull the prose leg forward only if the NBIS/guidance gap proves material in the first quarter of
+operation. The NBIS symmetry argument (§ Open items) is recorded but does not override sequence
+discipline. Mando can override.
+
+**Placement note — two destinations named in the rulings do not exist on disk.** Verified by
+repo-wide search excluding `.venv`/`.git`: `pre-consensus` → **0 files**; `fires-always` /
+`fires always` → **0**; `FISV` → **0**; `denominator-calibration` → **0**. `Hunt B` matches only
+`.claude/settings.local.json`, a cache DB, and `chatter_daemon/archive/*.json` — incidental
+substrings, no doctrinal document. `doctrine/` contains AGENTS, IDENTITY, MEMORY, METHODOLOGY,
+SECURITY, SOUL, THESES, USER, WORLDVIEW — there is no ledger artifact. R2 and R5 are therefore
+recorded **here** and await a home in the doctrine ledger and the pre-consensus thread wherever those
+actually live.
+
 ### Open items carried forward
 
 1. **NPORT-P probe** — horizon list, separate small recon. Fund-side monitoring of unfiled SPV debt
