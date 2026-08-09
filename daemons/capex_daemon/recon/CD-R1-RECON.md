@@ -692,8 +692,51 @@ $173.03B: 23× low, no error, no null, no gap, and entirely plausible on its fac
 
 1. Resolve the capex tag **by recency per issuer**, never by a global preference order.
 2. **Record the resolved tag alongside every series row** — the series is not interpretable without it.
-3. **Magnitude cross-check against a known anchor (revenue)** per the G1 pattern. A 23× miss must not
-   survive a sanity bound.
+3. **Magnitude cross-check against a known anchor** per the G1 pattern. A 23× miss must not survive a
+   sanity bound. Anchor hierarchy ruled 2026-08-07 and **measured** below.
+
+**R2a — the sanity bound, as measured.** Ruling: primary bound = PP&E-movement reconciliation
+(universal, balance-sheet-internal); revenue ratio demoted to secondary, applied only where the bucket
+makes it meaningful, reported not enforced. The primary bound was then tested live against the panel.
+Four qualifications, all evidence-backed:
+
+**(a) It must be evaluated on TTM sums, never on discrete quarters.** Measured quarterly residuals of
+ΔPP&E-gross against (capex + finance-lease additions):
+
+| issuer | recent quarterly residuals |
+|---|---|
+| MSFT | +8.3%, +0.4%, **−20.8%**, −11.2% |
+| META | +16.2%, +4.0%, −14.5%, −7.1%, +15.7% |
+| WULF | −15.0%, +14.3%, +8.7%, **+51.3%**, +17.7% |
+| RIOT | −43.4%, −1.0%, +10.5%, **+64.7%**, **−694.7%** |
+| APLD | −40.5%, −7.4%, −11.9%, +21.6%, **−358.9%** |
+| DLR | **−102.4%**, +62.7%, **−91.6%**, +13.9%, **−216.8%** |
+
+At TTM the same identity tightens to a usable band — ratio of (capex+lease) to ΔGross:
+MSFT **0.98×**, META **1.01×**, RIOT **0.98×**, ORCL **0.91×**, EQIX **0.73×**.
+Quarterly noise comes from disposals, retirements, impairments, acquisitions, FX and
+paid-vs-placed-in-service timing; TTM absorbs it.
+
+**(b) It is an order-of-magnitude bound, not a precision bound.** A ±20–30% TTM band is ordinary
+business noise, not error. The bound's job is catching the plausible-stale-resolution class — AMZN at
+23× (2,300%) — so it should flag outside roughly **0.5×–2.0×** and must not be tightened to a
+percentage tolerance it cannot meet.
+
+**(c) The anchor concept is itself issuer-specific — it needs a third tag map.** `[CURL-VERIFIED]`
+META uses `PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetBeforeAccumulatedDepreciationAndAmortization`
+($256.27B) — note it **bundles finance-lease ROU**, so capex alone can never reconcile.
+DLR uses `RealEstateInvestmentPropertyAtCost` ($31.63B) and has **zero** `PropertyPlantAndEquipment*`
+concepts. CORZ has no gross concept at all. META's plain `PropertyPlantAndEquipmentGross` goes stale
+at 2020-09-30; GOOGL's at 2025-03-31; CIFR's at 2024-06-30; HUT's at 2023-09-30. ORCL tags gross
+annually only — **no consecutive quarterly anchor pairs exist**.
+
+**(d) Therefore the bound is NOT universal, and coverage must be declared.** WULF, APLD and DLR have
+no annual anchor pair with four derivable quarters. Where the anchor is unavailable the series is
+reported **"unanchored"** — never silently passed — mirroring `_filer_unit_scale`'s `"undetermined"`
+basis exactly. G1 semantics throughout: bounds report, never silently correct.
+
+**Finance-lease additions must be included in the reconciled quantity.** MSFT's lease additions run to
+$9.15B in a single quarter (§2.4); omitting them guarantees a false failure.
 
 Evidence note: this pattern was reproduced live, accidentally, by the ratification audit itself
 (§ Hazard demonstrated on live data). That is stronger evidence than the argument that preceded it.
@@ -716,6 +759,17 @@ three economic species:
 Denominator-calibration doctrine applies. **Aggregate output = total + three-bucket decomposition,
 always together.** A headline that silently blends DLR's REIT economics with CRWV's debt-funded build
 would mislead in precisely the way this daemon exists to prevent.
+
+**R4a — concentration disclosure, not weighting.** The RIOT question (a builder-bucket subtotal
+dominated by CRWV at $16.60B TTM against RIOT's $0.28B — two orders of magnitude) is **dissolved, not
+solved**. The daemon publishes **sums and composition, never a weighted index**. A dominated subtotal
+is an honest sum; the hazard is purely interpretive, so the remedy is disclosure:
+
+1. Every bucket subtotal carries a **top-2 concentration share**.
+2. The per-name table is always **one level below** the aggregate, never optional.
+
+No weights, no index construction, no new methodology surface to defend. If a use case for an index
+ever emerges it is a separate ruled decision.
 
 **R5 — SIC screening is barred as a universe method, and the finding has a second face.**
 SIC 6199 "Finance Services" is assigned to KEEL, WYFI, IREN, HUT, CORZ and CIFR — six
