@@ -20,6 +20,7 @@ import datetime as dt
 import json
 import sqlite3
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any
 
 from . import resolution as _res
@@ -205,20 +206,48 @@ def _res_wallets(row: dict[str, Any]) -> list[Any]:
         return [row.get("wallet")]
 
 
+#: The dashboard template lives beside the package, in the repo's dashboard/ dir.
+_TEMPLATE = Path(__file__).resolve().parent.parent / "dashboard" / "dossier_dashboard.html"
+_SRC_TAG = '<script src="dossier_export.js"></script>'
+
+
+def write_html(data: dict[str, Any], out_path: str, *, template: Path | None = None) -> str:
+    """Write a SELF-CONTAINED dashboard: the template with the export inlined.
+
+    The two-file form (page + sibling .js) only works from its own directory — moved or
+    sent anywhere else the page loads with no data, which is a silent empty dashboard
+    rather than an error. Inlining makes the artifact portable, which is what "single
+    file, opens in a browser" has to mean in practice.
+    """
+    tpl = Path(template or _TEMPLATE).read_text(encoding="utf-8")
+    if _SRC_TAG not in tpl:
+        raise ValueError(f"dashboard template missing the data tag {_SRC_TAG!r}")
+    # </script> inside the payload would close the tag early; escape the only sequence
+    # that can do that. json.dumps already escapes everything else that matters.
+    blob = json.dumps(data).replace("</", "<\\/")
+    page = tpl.replace(_SRC_TAG, f"<script>window.DOSSIER_EXPORT = {blob};</script>")
+    Path(out_path).write_text(page, encoding="utf-8")
+    return out_path
+
+
 def write_export(db_path: str, out_path: str, *, now_ts: int) -> dict[str, Any]:
     con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     try:
         data = build_export(con, now_ts=now_ts)
     finally:
         con.close()
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=1)
-    # Also emit a JS sibling assigning the same payload to a global. The dashboard is a
-    # single local file opened straight from disk, and a file:// page cannot fetch() a
-    # local .json (CORS); a <script src> sibling loads with no server and no network.
     if out_path.endswith(".json"):
-        with open(out_path[:-5] + ".js", "w", encoding="utf-8") as fh:
+        stem = out_path[:-5]
+        # A JS sibling for the in-place template (a file:// page cannot fetch() a local
+        # .json), and the SELF-CONTAINED page, which is the artifact a human opens or
+        # forwards. The sibling form renders empty the moment the page is moved away
+        # from its directory, so the inlined one is the real deliverable.
+        with open(stem + ".js", "w", encoding="utf-8") as fh:
             fh.write("window.DOSSIER_EXPORT = ")
             json.dump(data, fh, indent=1)
             fh.write(";\n")
+        data["_dashboard_path"] = write_html(data, stem + "_dashboard.html")
     return data

@@ -1024,6 +1024,8 @@ def main(argv: list[str] | None = None) -> int:
                 # Scheduled cycle (M10-D §3.5): scan -> persist -> stamp outcomes ->
                 # evaluate alerts. Emits a JSON envelope (daemon convention). Alerting
                 # is a POINTER surface; nothing here recommends an action.
+                import time as _t
+
                 from .m10 import run_scan as _run_scan
                 from . import dossier_alert as dal
 
@@ -1032,6 +1034,16 @@ def main(argv: list[str] | None = None) -> int:
                                     max_wallets=args.max_wallets,
                                     firstseen=not args.no_firstseen, store_path=db_path)
                 backfill = ds.backfill_resolutions(con, ds.tape_resolver(loaded.tape_path))
+                # Refresh the dashboard export so the page a human opens is never stale
+                # (M10-Dash). Read-only over the store; a failure here must not fail the
+                # scan, so it is caught and DECLARED rather than swallowed.
+                dash_err = None
+                try:
+                    from . import dossier_export as _dx
+                    _dx.write_export(db_path, "data/dossier_export.json",
+                                     now_ts=int(_t.time()))
+                except Exception as _e:  # noqa: BLE001
+                    dash_err = f"dashboard export failed: {_e}"
                 rule = dal.AlertRule.from_config(loaded.config.m10)
                 alerts = dal.evaluate(con, rule=rule)
                 res = summary.get("result", {})
@@ -1053,7 +1065,7 @@ def main(argv: list[str] | None = None) -> int:
                         "alert_pointers": [a["dossier_id"] for a in alerts],
                         "declared_gaps": len(res.get("declared_gaps") or []),
                     },
-                    "errors": summary.get("errors", []),
+                    "errors": summary.get("errors", []) + ([dash_err] if dash_err else []),
                 }
                 if args.json:
                     _emit(envelope, as_json=True)
