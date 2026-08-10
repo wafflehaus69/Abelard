@@ -526,3 +526,27 @@ def test_the_migration_repairs_a_monday_session_back_across_the_weekend():
     finally:
         con.close()
         os.unlink(p)
+
+
+def test_the_migration_backfills_the_pass_ledger_not_only_the_rows():
+    """The ledger is what makes a missed night VISIBLE and what the P5 miss-rate is
+    computed from, so a null session there is not cosmetic. Healed on the same rule."""
+    p, con = _db()
+    try:
+        con.execute(
+            "INSERT INTO options_snapshot_passes(snapshot_date, tickers, ok, gaps, "
+            "no_chain, contracts, dropped, oi_asof, ran_at_unix) "
+            "VALUES('2026-08-08',32,27,0,5,10568,0,'2026-08-07',0)")
+        con.commit()
+        con.close()
+        con = dbmod.connect(p)                        # migration runs here
+        row = con.execute("SELECT session_date, oi_asof FROM options_snapshot_passes"
+                          ).fetchone()
+        assert row == ("2026-08-07", "2026-08-06"), row
+        con.close()
+        con = dbmod.connect(p)                        # idempotent
+        assert con.execute("SELECT session_date, oi_asof FROM options_snapshot_passes"
+                           ).fetchone() == ("2026-08-07", "2026-08-06")
+    finally:
+        con.close()
+        os.unlink(p)

@@ -576,6 +576,25 @@ def _migrate(con):
     if pcols and "session_date" not in pcols:
         con.execute("ALTER TABLE options_snapshot_passes ADD COLUMN session_date TEXT")
         con.commit()
+    # Backfill the LEDGER too, on the same weekday rule as the rows. Missed initially,
+    # which left older passes reading session=None — and the ledger is precisely what
+    # makes a missed night visible and what the P5 miss-rate is computed from, so a null
+    # there is not cosmetic. Both the session and the oi_asof are healed.
+    if pcols:
+        con.execute(
+            "UPDATE options_snapshot_passes SET session_date = CASE "
+            "WHEN CAST(strftime('%w', snapshot_date) AS INTEGER)=6 "
+            "  THEN date(snapshot_date,'-1 day') "
+            "WHEN CAST(strftime('%w', snapshot_date) AS INTEGER)=0 "
+            "  THEN date(snapshot_date,'-2 day') "
+            "ELSE snapshot_date END WHERE session_date IS NULL")
+        con.execute(
+            "UPDATE options_snapshot_passes SET oi_asof = CASE "
+            "WHEN CAST(strftime('%w', session_date) AS INTEGER)=1 "
+            "  THEN date(session_date,'-3 day') "
+            "ELSE date(session_date,'-1 day') END "
+            "WHERE session_date IS NOT NULL AND oi_asof >= session_date")
+        con.commit()
     rcols = {r[1] for r in con.execute("PRAGMA table_info(congress_member_roster)")}
     if rcols and "bioguide" not in rcols:
         # SM-C3 Phase R. Left NULL until the next roster sync repopulates it — the sync
