@@ -25,10 +25,14 @@ pure logic + the LLM boundary.
 from __future__ import annotations
 
 import json
+import logging
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..llm_text import extract_text_blocks, extract_usage, strip_code_fences
+
+_LOG = logging.getLogger("news_watch_daemon.fullbrief.theme_segments")
 
 
 # A theme with at least this many tagged headlines in-window is treated as
@@ -150,6 +154,39 @@ def build_segment_prompt(
     }
 
 
+# A JSON string body: any char that is not a quote/backslash, or an escape seq.
+_SALVAGE_STR = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def _salvage_segments(text: str, expected_ids: list[str]) -> dict[str, str]:
+    """Best-effort recovery of theme summaries from a MALFORMED batched JSON.
+
+    A single unescaped character in ONE summary makes `json.loads` reject the whole
+    object, losing all 12 themes. This scans the raw text for each expected
+    theme_id and extracts its JSON string value (escape-aware). A value is kept
+    only when it is cleanly delimited — the next non-space token is ',' or '}' —
+    so the one malformed theme is skipped (left to the orchestrator's per-theme
+    retry) while every clean theme is preserved.
+    """
+    out: dict[str, str] = {}
+    for tid in expected_ids:
+        key = re.search(r'"' + re.escape(tid) + r'"\s*:\s*', text)
+        if key is None:
+            continue
+        sm = _SALVAGE_STR.match(text, key.end())
+        if sm is None:
+            continue
+        if text[sm.end():].lstrip()[:1] not in (",", "}"):
+            continue  # value not cleanly delimited -> malformed; leave to retry
+        try:
+            value = json.loads(sm.group(0))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, str) and value.strip():
+            out[tid] = value.strip()
+    return out
+
+
 def parse_segment_response(text: str, expected_ids: list[str]) -> dict[str, str]:
     """Parse the batched JSON into {theme_id: summary}.
 
@@ -162,8 +199,18 @@ def parse_segment_response(text: str, expected_ids: list[str]) -> dict[str, str]
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
+        # One malformed character must not lose ALL themes: salvage the cleanly-
+        # delimited entries; the orchestrator retries whatever is still missing.
+        salvaged = _salvage_segments(text, expected_ids)
+        if salvaged:
+            _LOG.warning(
+                "theme-segments JSON malformed (%s); salvaged %d/%d theme(s), "
+                "rest -> retry/template", exc, len(salvaged), len(expected_ids),
+            )
+            return salvaged
         raise ThemeSegmentsError(
-            f"failed to parse theme-segments JSON: {exc}; raw[:400]={text[:400]!r}"
+            f"failed to parse theme-segments JSON and salvage recovered nothing: "
+            f"{exc}; raw[:400]={text[:400]!r}"
         ) from exc
     if not isinstance(data, dict):
         raise ThemeSegmentsError(

@@ -288,3 +288,38 @@ def test_build_theme_segments_retry_still_missing_falls_back_to_template(monkeyp
     assert by_id["theme_b"].is_template is True
     assert section.template_count == 1
     assert section.llm_degraded is True
+
+
+# ---------- salvage a malformed batched JSON (2026-08-07) ----------
+
+def test_parse_segment_response_salvages_malformed_json():
+    """One unescaped quote in theme_b rejects the whole object; salvage keeps the
+    clean themes and drops only the malformed one (left to the orchestrator retry)."""
+    malformed = (
+        '{"segments": {'
+        '"theme_a": "Clean A summary.", '
+        '"theme_b": "He said "unescaped" and broke the JSON.", '
+        '"theme_c": "Clean C summary."'
+        "}}"
+    )
+    out = parse_segment_response(malformed, ["theme_a", "theme_b", "theme_c"])
+    assert out == {"theme_a": "Clean A summary.", "theme_c": "Clean C summary."}
+    assert "theme_b" not in out  # malformed -> missing -> retry recovers it
+
+
+def test_parse_segment_response_salvage_preserves_escaped_quotes():
+    """A theme whose summary contains PROPERLY escaped quotes is fully salvaged."""
+    malformed = (
+        '{"segments": {'
+        '"theme_a": "The CEO said \\"we win\\" today.", '
+        '"theme_b": "broke it here " oops."'
+        "}}"
+    )
+    out = parse_segment_response(malformed, ["theme_a", "theme_b"])
+    assert out["theme_a"] == 'The CEO said "we win" today.'
+    assert "theme_b" not in out
+
+
+def test_parse_segment_response_raises_when_nothing_salvageable():
+    with pytest.raises(ThemeSegmentsError):
+        parse_segment_response("not json at all {{{", ["theme_a"])
