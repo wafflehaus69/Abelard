@@ -354,7 +354,9 @@ CREATE TABLE IF NOT EXISTS congress_member_roster(
 -- Idempotent on (contract, snapshot_date) so a re-run overwrites rather than doubles.
 CREATE TABLE IF NOT EXISTS options_chain_snapshots(
   ticker TEXT NOT NULL,
-  snapshot_date TEXT NOT NULL,
+  snapshot_date TEXT NOT NULL,       -- when WE pulled it (provenance)
+  session_date TEXT,                 -- the trading session the data describes
+
   expiry TEXT NOT NULL,
   strike REAL NOT NULL,
   option_type TEXT NOT NULL,          -- 'C' | 'P'
@@ -378,6 +380,7 @@ CREATE INDEX IF NOT EXISTS idx_opt_contract
 -- reads identically to "nothing traded", and options data cannot be rebuilt afterwards.
 CREATE TABLE IF NOT EXISTS options_snapshot_passes(
   snapshot_date TEXT PRIMARY KEY,
+  session_date TEXT,
   tickers INTEGER NOT NULL,
   ok INTEGER NOT NULL,
   gaps INTEGER NOT NULL,
@@ -531,6 +534,48 @@ def _migrate(con):
         )
         con.commit()
     _migrate_coverage(con)
+    ocols = {r[1] for r in con.execute("PRAGMA table_info(options_chain_snapshots)")}
+    if ocols and "session_date" not in ocols:
+        # SM-O1 P2: the leg rides a nightly scan, so it fires on weekends, and a weekend
+        # pull returns the PREVIOUS session verbatim (measured: Sat vs Sun matched on
+        # 9,499/9,500 contracts by volume). Backfilled by the weekday rule so existing
+        # rows become groupable immediately.
+        con.execute("ALTER TABLE options_chain_snapshots ADD COLUMN session_date TEXT")
+        con.execute(
+            "UPDATE options_chain_snapshots SET session_date = CASE "
+            "WHEN CAST(strftime('%w', snapshot_date) AS INTEGER)=6 "
+            "  THEN date(snapshot_date,'-1 day') "
+            "WHEN CAST(strftime('%w', snapshot_date) AS INTEGER)=0 "
+            "  THEN date(snapshot_date,'-2 day') "
+            "ELSE snapshot_date END WHERE session_date IS NULL")
+        con.commit()
+    # Repair rows written before oi_asof was derived from the SESSION rather than the
+    # pull date. A weekend pull got oi_asof == session_date, i.e. the chain claiming to
+    # carry its own session's settled OI - impossible under T+1. Measured before
+    # repairing: the Friday pull and the Saturday pull agreed on open interest for
+    # 10,568 of 10,568 contracts (100.0%), so the weekend rows do carry the Friday
+    # chain's Thursday-settled figure and the prior-trading-day target is right.
+    # Self-healing and idempotent: only rows that are still wrong are touched.
+    if ocols and "session_date" in {r[1] for r in con.execute(
+            "PRAGMA table_info(options_chain_snapshots)")}:
+        con.execute(
+            "UPDATE options_chain_snapshots SET oi_asof = CASE "
+            "WHEN CAST(strftime('%w', session_date) AS INTEGER)=1 "
+            "  THEN date(session_date,'-3 day') "
+            "ELSE date(session_date,'-1 day') END "
+            "WHERE session_date IS NOT NULL AND oi_asof >= session_date")
+        con.commit()
+    # Index created HERE, never in the eager schema block: CREATE TABLE IF NOT EXISTS is
+    # a no-op on an existing DB, so the column only exists after the ALTER above. Indexing
+    # it earlier raised "no such column: session_date" and took the whole connect() down.
+    if ocols:
+        con.execute("CREATE INDEX IF NOT EXISTS idx_opt_sess "
+                    "ON options_chain_snapshots(session_date)")
+        con.commit()
+    pcols = {r[1] for r in con.execute("PRAGMA table_info(options_snapshot_passes)")}
+    if pcols and "session_date" not in pcols:
+        con.execute("ALTER TABLE options_snapshot_passes ADD COLUMN session_date TEXT")
+        con.commit()
     rcols = {r[1] for r in con.execute("PRAGMA table_info(congress_member_roster)")}
     if rcols and "bioguide" not in rcols:
         # SM-C3 Phase R. Left NULL until the next roster sync repopulates it — the sync

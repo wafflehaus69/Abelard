@@ -119,14 +119,14 @@ def test_a_row_stores_volume_and_oi_against_different_dates(monkeypatch):
         os.unlink(p)
 
 
-def test_confirm_t1_refuses_a_verdict_without_two_days(monkeypatch):
+def test_confirm_t1_refuses_a_verdict_without_two_sessions(monkeypatch):
     p, con = _db()
     try:
         res = _result(calls=[_contract(100, 10, 20)])
         monkeypatch.setattr(oc, "_fetch", lambda *a, **k: (res, "{}"))
         oc.snapshot_ticker(con, None, None, "AAPL", TODAY)
         r = oc.confirm_t1(con)
-        assert r["ready"] is False and "need 2 snapshot days" in r["reason"]
+        assert r["ready"] is False and "need 2 trading sessions" in r["reason"]
     finally:
         con.close()
         os.unlink(p)
@@ -146,7 +146,7 @@ def test_confirm_t1_compares_and_does_not_conclude(monkeypatch):
         oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-07")
         r = oc.confirm_t1(con)
         assert r["ready"] is True and r["contracts"] == 1
-        # OI moved 40; the OLDER day's volume was 50, so a T+1 lag is consistent.
+        # OI moved 40; the OLDER session volume was 50, so a T+1 lag is consistent.
         assert r["consistent_with_prior_day_oi"] == 1
         assert "NOT a verdict" in r["note"]
     finally:
@@ -384,3 +384,145 @@ def test_the_leg_is_actually_called_by_the_scan():
     assert "leg_options(con)" in src, "run_scan must invoke the options leg"
     # and its status must reach the envelope, or the leg runs and reports nothing
     assert "src_o]" in src.replace(" ", ""), "the leg's source must join the list"
+
+
+# ---------------------------------------------------------------- weekend sessions
+
+def test_a_weekend_pull_is_labelled_with_the_prior_trading_session():
+    """The leg rides a nightly scan, so it fires on weekends - and a weekend pull returns
+    the previous session verbatim. Measured on the first three live snapshots: the
+    Saturday and Sunday pulls matched on 9,499 of 9,500 contracts by volume (99.99%)."""
+    assert oc.session_date("2026-08-07") == "2026-08-07"   # Friday -> itself
+    assert oc.session_date("2026-08-08") == "2026-08-07"   # Saturday -> Friday
+    assert oc.session_date("2026-08-09") == "2026-08-07"   # Sunday   -> Friday
+    assert oc.session_date("2026-08-10") == "2026-08-10"   # Monday   -> itself
+
+
+def test_rows_carry_both_the_pull_date_and_the_session(monkeypatch):
+    """The pull date stays for PROVENANCE; the session is what metrics must group on."""
+    p, con = _db()
+    try:
+        monkeypatch.setattr(oc, "_fetch",
+                            lambda *a, **k: (_result(calls=[_contract(100, 5, 9)]), "{}"))
+        oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-09")     # a Sunday
+        row = con.execute("SELECT snapshot_date, session_date FROM "
+                          "options_chain_snapshots").fetchone()
+        assert row == ("2026-08-09", "2026-08-07"), row
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_confirm_t1_needs_two_SESSIONS_not_two_calendar_pulls(monkeypatch):
+    """The bug this pins: the two most recent snapshots were Saturday and Sunday - the
+    same Friday session compared against itself. That would have produced a
+    confident-looking nothing rather than an honest 'not ready'."""
+    p, con = _db()
+    try:
+        monkeypatch.setattr(oc, "_fetch",
+                            lambda *a, **k: (_result(calls=[_contract(100, 5, 9)]), "{}"))
+        oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-08")     # Sat -> Fri
+        oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-09")     # Sun -> Fri
+        r = oc.confirm_t1(con)
+        assert r["ready"] is False, "two weekend pulls are ONE session"
+        assert "two trading sessions" in r["reason"] or "2 trading sessions" in r["reason"]
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_confirm_t1_runs_once_two_real_sessions_exist(monkeypatch):
+    p, con = _db()
+    try:
+        monkeypatch.setattr(oc, "_fetch",
+                            lambda *a, **k: (_result(calls=[_contract(100, 50, 900)]),
+                                             "{}"))
+        oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-06")     # Thursday
+        monkeypatch.setattr(oc, "_fetch",
+                            lambda *a, **k: (_result(calls=[_contract(100, 70, 940)]),
+                                             "{}"))
+        oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-07")     # Friday
+        r = oc.confirm_t1(con)
+        assert r["ready"] is True
+        assert (r["older_session"], r["newer_session"]) == ("2026-08-06", "2026-08-07")
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_oi_asof_derives_from_the_session_not_the_pull_date(monkeypatch):
+    """A Sunday pull returns FRIDAY's chain, and Friday's chain carries THURSDAY's
+    settled OI. Deriving oi_asof from the pull date gave oi_asof == session_date - the
+    chain claiming to carry its own day's settled figure, which is exactly the
+    off-by-one this column exists to prevent."""
+    p, con = _db()
+    try:
+        monkeypatch.setattr(oc, "_fetch",
+                            lambda *a, **k: (_result(calls=[_contract(100, 5, 9)]), "{}"))
+        oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-09")      # Sunday
+        pull, sess, oi = con.execute(
+            "SELECT snapshot_date, session_date, oi_asof FROM options_chain_snapshots"
+        ).fetchone()
+        assert (pull, sess) == ("2026-08-09", "2026-08-07")
+        assert oi == "2026-08-06", "Thursday, one session before Friday"
+        assert oi != sess, "OI can never be as-of its own session"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_a_weekday_pull_keeps_the_ordinary_t1_offset(monkeypatch):
+    p, con = _db()
+    try:
+        monkeypatch.setattr(oc, "_fetch",
+                            lambda *a, **k: (_result(calls=[_contract(100, 5, 9)]), "{}"))
+        oc.snapshot_ticker(con, None, None, "AAPL", "2026-08-10")      # Monday
+        pull, sess, oi = con.execute(
+            "SELECT snapshot_date, session_date, oi_asof FROM options_chain_snapshots"
+        ).fetchone()
+        assert (pull, sess, oi) == ("2026-08-10", "2026-08-10", "2026-08-07")
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_migration_repairs_a_weekend_row_written_with_the_old_rule():
+    """Rows written before oi_asof derived from the session got oi_asof == session_date -
+    the chain claiming its own session's settled OI. Self-healing and idempotent."""
+    p, con = _db()
+    try:
+        con.execute(
+            "INSERT INTO options_chain_snapshots(ticker, snapshot_date, session_date, "
+            "expiry, strike, option_type, volume, open_interest, oi_asof, "
+            "ingested_at_unix) VALUES('AAPL','2026-08-09','2026-08-07','2026-08-21',"
+            "100,'C',5,9,'2026-08-07',0)")
+        con.commit()
+        con.close()
+        con = dbmod.connect(p)                       # connect runs the migration
+        assert con.execute("SELECT oi_asof FROM options_chain_snapshots"
+                           ).fetchone()[0] == "2026-08-06"
+        con.close()
+        con = dbmod.connect(p)                       # second run must not shift it again
+        assert con.execute("SELECT oi_asof FROM options_chain_snapshots"
+                           ).fetchone()[0] == "2026-08-06"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_migration_repairs_a_monday_session_back_across_the_weekend():
+    p, con = _db()
+    try:
+        con.execute(
+            "INSERT INTO options_chain_snapshots(ticker, snapshot_date, session_date, "
+            "expiry, strike, option_type, volume, open_interest, oi_asof, "
+            "ingested_at_unix) VALUES('AAPL','2026-08-10','2026-08-10','2026-08-21',"
+            "100,'C',5,9,'2026-08-10',0)")
+        con.commit()
+        con.close()
+        con = dbmod.connect(p)
+        assert con.execute("SELECT oi_asof FROM options_chain_snapshots"
+                           ).fetchone()[0] == "2026-08-07", "Monday -> Friday"
+    finally:
+        con.close()
+        os.unlink(p)

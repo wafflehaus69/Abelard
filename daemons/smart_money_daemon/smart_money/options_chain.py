@@ -192,11 +192,12 @@ def pick_expiries(expirations, today, max_days=MAX_DAYS, floor=FLOOR_EXPIRIES,
     return near[:cap]
 
 
-def _rows(result, ticker, snapshot_date, oi_asof):
+def _rows(result, ticker, snapshot_date, oi_asof, sess=None):
     """Flatten one chain response into per-contract rows. A contract missing its strike
     or expiry is DROPPED and counted, never written with a guessed key."""
     quote = result.get("quote") or {}
     under = quote.get("regularMarketPrice")
+    sess = sess or session_date(snapshot_date)
     rows, bad = [], 0
     for block in result.get("options") or []:
         exp = block.get("expirationDate")
@@ -208,7 +209,7 @@ def _rows(result, ticker, snapshot_date, oi_asof):
                     bad += 1
                     continue
                 rows.append((
-                    ticker, snapshot_date,
+                    ticker, snapshot_date, sess,
                     _epoch_date(e).isoformat(),
                     float(strike), "C" if kind == "calls" else "P",
                     c.get("contractSymbol"),
@@ -219,7 +220,13 @@ def _rows(result, ticker, snapshot_date, oi_asof):
 
 
 def _prior_trading_day(day):
-    """OI is OCC-settled T+1, so today's chain carries the PRIOR TRADING DAY's OI.
+    """OI is OCC-settled T+1, so a session's chain carries the PRIOR TRADING DAY's OI.
+
+    Callers pass the SESSION, not the pull date. On a weekend pull those differ, and
+    using the pull date produced oi_asof == session_date — i.e. it claimed Friday's chain
+    carried Friday's own settled OI, which is precisely the off-by-one-day the whole
+    oi_asof column exists to prevent.
+
     Weekends are skipped; exchange holidays are NOT modelled here, which is why the
     offset is measured by `confirm_t1` rather than trusted."""
     d = dt.date.fromisoformat(day) if isinstance(day, str) else day
@@ -229,11 +236,34 @@ def _prior_trading_day(day):
     return d.isoformat()
 
 
+def session_date(day):
+    """The TRADING SESSION the pulled chain actually describes.
+
+    The leg rides a nightly scan, so it fires on weekends too — and a weekend pull
+    returns the previous session verbatim. Measured on the first three live snapshots:
+    the Saturday and Sunday pulls matched on 9,499 of 9,500 contracts by volume (99.99%)
+    and 99.9% by open interest. They are Friday, re-reported under a weekend date.
+
+    Left unmarked that is a metrics poison, not a curiosity: a daily vol/OI series would
+    carry three "days" for one session, and day-over-day OI deltas would show two
+    spurious zero-change days out of every seven. So the session is recorded ALONGSIDE
+    the pull date rather than instead of it — the pull date stays for provenance, the
+    session date is what P3 must group on.
+
+    Exchange holidays are not modelled (no calendar here), so a holiday pull still
+    labels itself as its own session. That residue is visible rather than guessed at:
+    duplicate sessions are detectable by the same volume-identity test used above."""
+    d = dt.date.fromisoformat(day) if isinstance(day, str) else day
+    while d.weekday() >= 5:
+        d -= dt.timedelta(days=1)
+    return d.isoformat()
+
+
 def snapshot_ticker(con, s, crumb, ticker, snapshot_date, oi_asof=None):
     """One ticker's chains for the ruled expiry depth. Returns {contracts, expiries,
     dropped}. Raises OptionsDegraded / OptionsSchemaError — the caller counts the gap."""
     sym = normalize(ticker)
-    oi_asof = oi_asof or _prior_trading_day(snapshot_date)
+    oi_asof = oi_asof or _prior_trading_day(session_date(snapshot_date))
     first, _raw = _fetch(s, crumb, sym)
     if first is None:                     # symbol has no options chain at all
         return {"contracts": 0, "expiries": 0, "dropped": 0, "no_chain": True}
@@ -250,9 +280,10 @@ def snapshot_ticker(con, s, crumb, ticker, snapshot_date, oi_asof=None):
         for r in rows:
             con.execute(
                 "INSERT OR REPLACE INTO options_chain_snapshots(ticker, snapshot_date, "
-                "expiry, strike, option_type, contract_symbol, volume, open_interest, "
-                "oi_asof, implied_vol, last_price, bid, ask, underlying_close, "
-                "ingested_at_unix) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", r)
+                "session_date, expiry, strike, option_type, contract_symbol, volume, "
+                "open_interest, oi_asof, implied_vol, last_price, bid, ask, "
+                "underlying_close, ingested_at_unix) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", r)
         total += len(rows)
     con.commit()
     return {"contracts": total, "expiries": len(exps), "dropped": dropped,
@@ -293,8 +324,8 @@ def run(con, tickers=None, snapshot_date=None, out=sys.stdout, progress_every=10
     day = snapshot_date or dt.date.today().isoformat()
     tks = tickers if tickers is not None else universe(con)
     st = {"tickers": len(tks), "ok": 0, "gaps": 0, "contracts": 0, "no_chain": 0,
-          "dropped": 0, "snapshot_date": day, "oi_asof": _prior_trading_day(day),
-          "errors": []}
+          "dropped": 0, "snapshot_date": day, "session_date": session_date(day),
+          "oi_asof": _prior_trading_day(session_date(day)), "errors": []}
     if not tks:
         return st
     s, crumb = session()
@@ -321,11 +352,12 @@ def run(con, tickers=None, snapshot_date=None, out=sys.stdout, progress_every=10
 def record_pass(con, st):
     """A pass ledger, so a missed night is VISIBLE rather than inferred from absence."""
     con.execute(
-        "INSERT OR REPLACE INTO options_snapshot_passes(snapshot_date, tickers, ok, "
-        "gaps, no_chain, contracts, dropped, oi_asof, ran_at_unix) "
-        "VALUES(?,?,?,?,?,?,?,?,?)",
-        (st["snapshot_date"], st["tickers"], st["ok"], st["gaps"], st["no_chain"],
-         st["contracts"], st["dropped"], st["oi_asof"], int(time.time())))
+        "INSERT OR REPLACE INTO options_snapshot_passes(snapshot_date, session_date, "
+        "tickers, ok, gaps, no_chain, contracts, dropped, oi_asof, ran_at_unix) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (st["snapshot_date"], st["session_date"], st["tickers"], st["ok"], st["gaps"],
+         st["no_chain"], st["contracts"], st["dropped"], st["oi_asof"],
+         int(time.time())))
     con.commit()
 
 
@@ -340,19 +372,25 @@ def confirm_t1(con, ticker=None):
 
     Returns a comparison, NOT a verdict. No vol/OI ratio may ship until a human has read
     this on real consecutive days."""
+    # DISTINCT SESSIONS, not distinct pull dates. The leg fires nightly including
+    # weekends, and a weekend pull returns the previous session verbatim — so the two
+    # most recent SNAPSHOTS were Saturday and Sunday, i.e. the same Friday session
+    # compared against itself, which would have produced a confident-looking nothing.
     days = [r[0] for r in con.execute(
-        "SELECT DISTINCT snapshot_date FROM options_chain_snapshots "
-        "ORDER BY snapshot_date DESC LIMIT 2")]
+        "SELECT DISTINCT COALESCE(session_date, snapshot_date) FROM "
+        "options_chain_snapshots ORDER BY 1 DESC LIMIT 2")]
     if len(days) < 2:
-        return {"ready": False, "reason": "need 2 snapshot days, have {}".format(
+        return {"ready": False, "reason": "need 2 trading sessions, have {}".format(
             len(days)), "days": days}
     new, old = days[0], days[1]
     sql = ("SELECT n.ticker, n.contract_symbol, n.open_interest, n.volume, "
            "o.open_interest, o.volume "
            "FROM options_chain_snapshots n "
            "JOIN options_chain_snapshots o "
-           "  ON o.contract_symbol = n.contract_symbol AND o.snapshot_date = ? "
-           "WHERE n.snapshot_date = ? AND n.contract_symbol IS NOT NULL")
+           "  ON o.contract_symbol = n.contract_symbol "
+           " AND COALESCE(o.session_date, o.snapshot_date) = ? "
+           "WHERE COALESCE(n.session_date, n.snapshot_date) = ? "
+           "  AND n.contract_symbol IS NOT NULL")
     params = [old, new]
     if ticker:
         sql += " AND n.ticker = ?"
@@ -370,7 +408,8 @@ def confirm_t1(con, ticker=None):
             agree_prior += 1
         if abs(delta) <= (vol_new or 0):
             agree_same += 1
-    return {"ready": True, "older": old, "newer": new, "contracts": matched,
+    return {"ready": True, "older_session": old, "newer_session": new,
+            "contracts": matched,
             "consistent_with_prior_day_oi": agree_prior,
             "consistent_with_same_day_oi": agree_same,
             "note": "a comparison, NOT a verdict - no vol/OI ratio ships until this is "
@@ -379,8 +418,8 @@ def confirm_t1(con, ticker=None):
 
 def render(st):
     lines = ["SM-O1 P2 OPTIONS CHAIN SNAPSHOT", "=" * 62,
-             "snapshot_date {}   oi_asof {} (OCC-settled T+1)".format(
-                 st["snapshot_date"], st["oi_asof"]),
+             "pulled {}   session {}   oi_asof {} (OCC-settled T+1)".format(
+                 st["snapshot_date"], st["session_date"], st["oi_asof"]),
              "tickers {}  ok {}  gaps {}  no_chain {}".format(
                  st["tickers"], st["ok"], st["gaps"], st["no_chain"]),
              "contracts {}  dropped {}".format(st["contracts"], st["dropped"])]
