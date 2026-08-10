@@ -288,13 +288,16 @@ def persist_transactions(con, accession, parsed, ticker, filed_date,
             "INSERT OR IGNORE INTO form4_transactions("
             "accession, tx_index, reporting_person, reporting_cik, issuer,"
             "issuer_cik, ticker, code, plan_flag, shares, price, value,"
-            "ownership_after, tx_date, filed_date, role, ingest_regime, value_flag)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "ownership_after, tx_date, filed_date, role, ingest_regime, value_flag,"
+            "security_title)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (accession, i, parsed.get("owner"), cik, parsed.get("issuer"),
              parsed.get("issuer_cik") or None, ticker,
              t.get("code"), 1 if parsed.get("plan_flag") else 0, shares, price,
              None if flag else value, _f(t.get("owned_after")), t.get("date"),
-             filed_date, parsed.get("role") or None, regime, flag),
+             filed_date, parsed.get("role") or None, regime, flag,
+             # Parsed since the module was written, dropped here until now.
+             t.get("security_title") or None),
         )
         n += 1
     return n, bool(parsed.get("owner"))

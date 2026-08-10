@@ -52,7 +52,8 @@ SELL_ELEVATED_RATIO = 3.0
 # adding a column to one without the other silently shifts every field after it.
 _F4_COLS = ("accession", "reporting_cik", "reporting_person", "issuer_cik",
             "ticker", "tx_date", "code", "plan_flag", "shares", "value", "price",
-            "filed_date", "ingest_regime", "value_flag", "issuer")
+            "filed_date", "ingest_regime", "value_flag", "issuer",
+            "security_title")
 
 
 # ---------------------------------------------------------------- infra
@@ -126,7 +127,7 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
     ph = ",".join("?" for _ in codes)
     q = ("SELECT accession, reporting_cik, reporting_person, issuer_cik, ticker, "
          "tx_date, code, plan_flag, shares, value, price, filed_date, ingest_regime, "
-         "value_flag, issuer "
+         "value_flag, issuer, security_title "
          "FROM form4_transactions WHERE code IN ({}) "
          "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=? "
          "AND substr(tx_date,1,10)<=?".format(ph))
@@ -226,7 +227,21 @@ def _issuer_class(ticker, issuer):
     return "operating"
 
 
-def _value_quality(shares, price, value, peer_median):
+# A title the filer wrote that ALREADY explains why the price is off the common close.
+# Not a guess: these are the issuer's own words for a different security.
+_NOT_COMMON = re.compile(
+    r"\b(PREFERRED|DEPOSITARY|DEPOSITORY|ADS|ADR|SERIES\s+[A-Z0-9]|UNIT|WARRANT|"
+    r"RIGHT|DEBENTURE|CLASS\s+[B-Z])\b", re.I)
+
+
+def _security_class(title):
+    """common | non_common | unknown, from the filer's own securityTitle."""
+    if not title:
+        return "unknown"
+    return "non_common" if _NOT_COMMON.search(title) else "common"
+
+
+def _value_quality(shares, price, value, peer_median, security_title=None):
     """Why a row's dollar value may not be a real dollar value. Returns a reason or None.
 
     Every test here is STRUCTURAL — it needs no market price, because the rows that need
@@ -254,7 +269,13 @@ def _value_quality(shares, price, value, peer_median):
         return "value_above_1b_review"
     if (peer_median and price and price > 0 and peer_median > 0
             and (price / peer_median > _PEER_RATIO_MAX
-                 or peer_median / price > _PEER_RATIO_MAX)):
+                 or peer_median / price > _PEER_RATIO_MAX)
+            # A stated preferred / depositary / unit title EXPLAINS the divergence, so
+            # the row is not suspect at all. BGDE's $1,000 against ~$7 common is a
+            # Series D Convertible Preferred; GAM's $24.66 against a $64.05 close is a
+            # 5.95% preferred. Both were being flagged as errors for want of a field the
+            # parser had all along.
+            and _security_class(security_title) != "non_common"):
         # Compared against what OTHER filers reported for the SAME ticker — the only
         # price reference that survives when the ticker has no market data. CNTM: $4,576
         # against peers near $8.90.
@@ -431,7 +452,9 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
                                    if (entry and exec_px and entry > 0) else None),
             "value_flag": r["value_flag"],
             "value_quality": _value_quality(r["shares"], r["price"], r["value"],
-                                            peer.get(tk)),
+                                            peer.get(tk), r["security_title"]),
+            "security_title": r["security_title"],
+            "security_class": _security_class(r["security_title"]),
             "issuer_class": _issuer_class(tk, r["issuer"]),
             # >1 means this economic block was reported by several affiliated filers.
             "cofiler_count": cofilers,

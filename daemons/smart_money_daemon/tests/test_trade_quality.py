@@ -303,3 +303,96 @@ def test_the_same_person_buying_twice_is_not_a_cofiling():
     finally:
         con.close()
         os.unlink(p)
+
+
+# ---------------------------------------------------------------- security class
+
+_F4T = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
+        "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, price, "
+        "value, ownership_after, tx_date, filed_date, role, ingest_regime, "
+        "security_title) VALUES(?,0,?,?,'Acme Inc','9',?,'P',0,?,?,?,NULL,?,?,NULL,"
+        "'watchlist',?)")
+
+
+def _buy_titled(con, tk, shares, price, title, person="P", cik="1",
+                date="2026-06-01", i=[0]):
+    i[0] += 1
+    con.execute(_F4T, ("t%d" % i[0], person, cik, tk, shares, price,
+                       round(shares * price, 2), date, date, title))
+
+
+def test_a_stated_preferred_title_explains_the_price_and_clears_the_flag():
+    """BGDE's $1,000 against ~$7 common is a Series D Convertible Preferred - correct,
+    and previously flagged as suspect only because securityTitle was parsed and then
+    dropped at the INSERT. With the field present the row is explained, not reviewed."""
+    p, con = _db()
+    try:
+        for j, px in enumerate((7.62, 7.33, 7.50)):
+            _buy_titled(con, "BGDE", 100, px, "Common Stock",
+                        person="C%d" % j, cik="c%d" % j)
+        _buy_titled(con, "BGDE", 16700, 1000.0,
+                    "Series D Convertible Preferred Stock",
+                    person="Pref", cik="pref")
+        rows = [r for r in _feed(con) if r["ticker"] == "BGDE"]
+        odd = [r for r in rows if r["exec_price"] == 1000.0][0]
+        assert odd["security_class"] == "non_common"
+        assert odd["value_quality"] is None, "explained by the filer's own title"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_an_unexplained_outlier_is_still_flagged_when_the_title_says_common():
+    """The escape hatch must not swallow real errors: a COMMON-titled row far off its
+    peers stays flagged."""
+    p, con = _db()
+    try:
+        for j, px in enumerate((8.83, 9.06, 8.93)):
+            _buy_titled(con, "CNTM", 500, px, "Common Stock",
+                        person="P%d" % j, cik="p%d" % j)
+        _buy_titled(con, "CNTM", 600, 4576.0, "Common Stock",
+                    person="Odd", cik="odd")
+        rows = [r for r in _feed(con) if r["ticker"] == "CNTM"]
+        odd = [r for r in rows if r["exec_price"] == 4576.0][0]
+        assert odd["security_class"] == "common"
+        assert odd["value_quality"] == "price_vs_ticker_peers"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_a_missing_title_leaves_the_row_reviewable_rather_than_excused():
+    """Existing rows predate the column. unknown must NOT be treated as non_common, or
+    the whole back corpus would silently excuse itself."""
+    p, con = _db()
+    try:
+        for j, px in enumerate((8.83, 9.06, 8.93)):
+            _buy_titled(con, "OLD", 500, px, None, person="P%d" % j, cik="p%d" % j)
+        _buy_titled(con, "OLD", 600, 4576.0, None, person="Odd", cik="odd")
+        rows = [r for r in _feed(con) if r["ticker"] == "OLD"]
+        odd = [r for r in rows if r["exec_price"] == 4576.0][0]
+        assert odd["security_class"] == "unknown"
+        assert odd["value_quality"] == "price_vs_ticker_peers"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_parser_output_reaches_the_column():
+    """form4.py parsed security_title from the day it was written and dropped it at the
+    Table I INSERT while writing it faithfully for derivatives."""
+    from smart_money import form4
+    p, con = _db()
+    try:
+        parsed = {"owner": "X", "owner_cik": "1", "issuer": "Acme", "issuer_cik": "9",
+                  "plan_flag": False, "role": None,
+                  "txns": [{"code": "P", "shares": "10", "price": "5",
+                                    "date": "2026-06-01", "owned_after": "0",
+                                    "security_title": "Common Stock"}]}
+        form4.persist_transactions(con, "acc-1", parsed, "ZZZ", "2026-06-02")
+        con.commit()
+        assert con.execute("SELECT security_title FROM form4_transactions"
+                           ).fetchone()[0] == "Common Stock"
+    finally:
+        con.close()
+        os.unlink(p)

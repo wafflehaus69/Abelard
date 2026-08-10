@@ -176,6 +176,15 @@ CREATE TABLE IF NOT EXISTS form4_transactions(
   role TEXT,
   ingest_regime TEXT NOT NULL DEFAULT 'watchlist',
   value_flag TEXT,
+  -- The filer's OWN words for what was bought ("Common Stock", "5.95% Preferred Stock",
+  -- "Depositary Shares for Series B Preferred"). form4.py has always PARSED this for
+  -- Table I and then dropped it at the INSERT, while writing it faithfully for
+  -- derivatives. Without it a preferred purchase and a unit error are indistinguishable:
+  -- GAM at $24.66 against a $64.05 common close is a 5.95% preferred, and BGDE at
+  -- $1,000 against ~$7 is a Series D Convertible Preferred - both CORRECT and both
+  -- previously flagged as suspect. One filing can even carry two securities under one
+  -- ticker: TSM acc 0001046179-26-000461 holds ADS at $390 and local common at $67.97.
+  security_title TEXT,
   PRIMARY KEY(accession, tx_index)
 );
 CREATE INDEX IF NOT EXISTS idx_f4_ticker ON form4_transactions(ticker);
@@ -611,6 +620,12 @@ def _migrate(con):
         # discovery rows tag 'universal'. One corpus, distinguishable by tag.
         con.execute("ALTER TABLE form4_transactions ADD COLUMN ingest_regime TEXT "
                     "NOT NULL DEFAULT 'watchlist'")
+        con.commit()
+    if f4cols and "security_title" not in f4cols:
+        # Forward-only. Existing rows stay NULL rather than being back-filled from a
+        # re-parse of 153,182 accessions; NULL honestly means "we did not record it",
+        # and a guess would be worse than the gap.
+        con.execute("ALTER TABLE form4_transactions ADD COLUMN security_title TEXT")
         con.commit()
     if f4cols and "value_flag" not in f4cols:
         # Reason a row's derived dollar value was quarantined by the parse-time
