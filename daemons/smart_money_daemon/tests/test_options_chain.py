@@ -372,3 +372,15 @@ def test_a_missing_result_KEY_is_still_schema_drift(monkeypatch):
         assert "result key missing" in str(exc)
     else:
         raise AssertionError("a missing result key must raise")
+
+
+def test_the_leg_is_actually_called_by_the_scan():
+    """The exit-spine exclusion lives in main() but the CALL lives in run_scan(). An
+    ad-hoc probe of main() alone reported the leg as unwired when it was wired - so pin
+    the call site itself, in the function that owns it."""
+    import inspect
+    from smart_money import scan
+    src = inspect.getsource(scan.run_scan)
+    assert "leg_options(con)" in src, "run_scan must invoke the options leg"
+    # and its status must reach the envelope, or the leg runs and reports nothing
+    assert "src_o]" in src.replace(" ", ""), "the leg's source must join the list"
