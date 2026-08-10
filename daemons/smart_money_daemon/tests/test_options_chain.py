@@ -321,3 +321,54 @@ def test_the_options_source_is_excluded_from_the_exit_spine():
     assert '"options_chains"' in src
     i = src.index("Exit spine")
     assert '"options_chains"' in src[i:], "must appear in the exclusion list"
+
+
+# ---------------------------------------------------------------- no_chain vs gap
+
+class _FakeResp:
+    def __init__(self, payload, text):
+        self._p, self.text, self.status_code = payload, text, 200
+
+    def json(self):
+        return self._p
+
+
+class _FakeSession:
+    def __init__(self, payload, text):
+        self._p, self._t = payload, text
+
+    def get(self, *a, **k):
+        return _FakeResp(self._p, self._t)
+
+
+def test_an_empty_result_is_no_chain_not_a_gap(monkeypatch):
+    """Observed live on CTRA: {"optionChain":{"result":[],"error":null}} is Yahoo saying
+    the symbol has NO OPTIONS, not a failure. The first cut raised on it and counted an
+    optionless ticker as a collection gap - and the miss rate is the stated trigger for
+    buying a paid EOD tier, so that fiction would have driven a purchase decision."""
+    p, con = _db()
+    try:
+        payload = {"optionChain": {"result": [], "error": None}}
+        monkeypatch.setattr(oc, "_pace", lambda: None)
+        monkeypatch.setattr(oc, "session",
+                            lambda: (_FakeSession(payload, '{"optionChain":{}}'), "cr"))
+        st = oc.run(con, tickers=["CTRA"], snapshot_date=TODAY,
+                    out=open(os.devnull, "w"), progress_every=0)
+        assert st["gaps"] == 0, "an optionless symbol is not a collection gap"
+        assert st["no_chain"] == 1 and st["errors"] == []
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_a_missing_result_KEY_is_still_schema_drift(monkeypatch):
+    """The distinction that makes the above safe: an empty LIST is an answer; a missing
+    KEY is drift and must fail loud with the body dumped."""
+    monkeypatch.setattr(oc, "_pace", lambda: None)
+    sess = _FakeSession({"optionChain": {"error": None}}, '{"optionChain":{}}')
+    try:
+        oc._fetch(sess, "crumb", "AAPL")
+    except oc.OptionsSchemaError as exc:
+        assert "result key missing" in str(exc)
+    else:
+        raise AssertionError("a missing result key must raise")

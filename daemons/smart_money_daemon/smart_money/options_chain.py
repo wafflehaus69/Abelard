@@ -139,11 +139,21 @@ def _fetch(s, crumb, ticker, expiry=None):
             p = _dump(ticker, r.text)
             raise OptionsDegraded("{} error={} raw={}".format(
                 ticker, chain["error"], p))
+        if "result" not in chain:
+            # The KEY is gone — that is schema drift and must fail loud.
+            p = _dump(ticker, r.text)
+            raise OptionsSchemaError("{} optionChain.result key missing raw={}".format(
+                ticker, p))
         result = chain.get("result")
         if not result:
-            p = _dump(ticker, r.text)
-            raise OptionsSchemaError("{} optionChain.result missing raw={}".format(
-                ticker, p))
+            # `{"result": [], "error": null}` is Yahoo saying this symbol has NO OPTIONS
+            # CHAIN. Observed live on CTRA. It is emphatically not a failure, and the
+            # first cut of this module raised on it — which would have counted an
+            # optionless ticker as a collection GAP. That number is not cosmetic: the
+            # miss rate is the stated trigger for buying a paid EOD tier, so inflating it
+            # with symbols that were never going to return a chain would drive a
+            # purchasing decision off a fiction.
+            return None, r.text
         return result[0], r.text
     raise OptionsDegraded("{} degraded after {} attempts last_err={}".format(
         ticker, MAX_ATTEMPTS, last_err))
@@ -225,12 +235,16 @@ def snapshot_ticker(con, s, crumb, ticker, snapshot_date, oi_asof=None):
     sym = normalize(ticker)
     oi_asof = oi_asof or _prior_trading_day(snapshot_date)
     first, _raw = _fetch(s, crumb, sym)
+    if first is None:                     # symbol has no options chain at all
+        return {"contracts": 0, "expiries": 0, "dropped": 0, "no_chain": True}
     exps = pick_expiries(first.get("expirationDates"), snapshot_date)
     if not exps:
         return {"contracts": 0, "expiries": 0, "dropped": 0, "no_chain": True}
     total, dropped = 0, 0
     for i, e in enumerate(exps):
         result = first if i == 0 and _served(first, e) else _fetch(s, crumb, sym, e)[0]
+        if result is None:                # chain vanished mid-pass; count it, don't fake
+            continue
         rows, bad = _rows(result, sym, snapshot_date, oi_asof)
         dropped += bad
         for r in rows:
