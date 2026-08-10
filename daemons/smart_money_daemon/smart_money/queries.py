@@ -48,9 +48,11 @@ SELL_MIN_BASELINE = 3
 SELL_ELEVATED_RATIO = 3.0
 
 # The form4 columns the flow queries pull, in order.
+# Positional zip against the SELECT in _fetch_f4 — the two MUST stay in lockstep, and
+# adding a column to one without the other silently shifts every field after it.
 _F4_COLS = ("accession", "reporting_cik", "reporting_person", "issuer_cik",
             "ticker", "tx_date", "code", "plan_flag", "shares", "value", "price",
-            "filed_date", "ingest_regime")
+            "filed_date", "ingest_regime", "value_flag", "issuer")
 
 
 # ---------------------------------------------------------------- infra
@@ -123,7 +125,8 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
     flow/cluster/sell aggregates), 'planned' (plan_flag=1, 10b5-1), or 'all'."""
     ph = ",".join("?" for _ in codes)
     q = ("SELECT accession, reporting_cik, reporting_person, issuer_cik, ticker, "
-         "tx_date, code, plan_flag, shares, value, price, filed_date, ingest_regime "
+         "tx_date, code, plan_flag, shares, value, price, filed_date, ingest_regime, "
+         "value_flag, issuer "
          "FROM form4_transactions WHERE code IN ({}) "
          "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=? "
          "AND substr(tx_date,1,10)<=?".format(ph))
@@ -188,10 +191,88 @@ def _scoped_tickers():
 
 
 # ---------------------------------------------------------------- q_insider_trades
+# A purchase more than 10x away from the trade-date close is not on the same share basis
+# as that close. 10x is the same ratio the parse-time guard already uses
+# (form4.CLOSE_RATIO_MAX), kept identical so one number governs the whole system.
+_FUND_TICKER = re.compile(r"^[A-Z]{4}X$")
+_FUND_NAME = re.compile(r"\b(FUNDS?|SERIES|ETF|PORTFOLIOS?)\b", re.I)
+_PEER_RATIO_MAX = 10.0
+# A single Form 4 open-market purchase above this is extraordinary rather than ordinary.
+# Chosen from the corpus distribution, not asserted: p50 $30,861, p99 $25.0m,
+# p99.9 $245m, p99.95 $844m. Exactly 8 rows (0.04%) clear $1bn -- and those 8 carry
+# 52.2% of the entire gross buy total. The bar therefore leaves 99.96% of rows untouched
+# while isolating the contamination that dominates every value-ranked surface.
+_VALUE_REVIEW_MAX = 1e9
+
+
+def _issuer_class(ticker, issuer):
+    """fund_certain | fund_named | operating — a LABEL, never a filter.
+
+    A '40-Act fund sponsor subscribing into its own fund is not a CEO buying the company
+    they run, and the two were pooled. Measured on this corpus: the 5-letter X-suffix
+    ticker convention is 62/62 (every one carries FUND or PORTFOLIO in the issuer name,
+    zero operating companies among 5,525 tickers), and an issuer name matching FUND /
+    SERIES / ETF adds 2,796 P rows at 13.3% of the P corpus. TRUST was tested and
+    REJECTED — roughly half its matches are operating companies (REITs, royalty trusts),
+    so it would mislabel real insider buying.
+
+    Nothing is dropped on this label. It exists so an aggregate can say which population
+    it is describing."""
+    tk = (ticker or "").upper()
+    if _FUND_TICKER.match(tk):
+        return "fund_certain"
+    if issuer and _FUND_NAME.search(issuer):
+        return "fund_named"
+    return "operating"
+
+
+def _value_quality(shares, price, value, peer_median):
+    """Why a row's dollar value may not be a real dollar value. Returns a reason or None.
+
+    Every test here is STRUCTURAL — it needs no market price, because the rows that need
+    catching are exactly the ones whose ticker has no usable price history. `value` itself
+    is never wrong arithmetically (it is round(shares*price,2) at ingest and matches in
+    20,664/20,664 P rows); the corruption is filer-side units that we then multiply.
+
+    Scale, measured: SVRE alone is $27.88bn of the $59.52bn gross P total (46.84%) from 18
+    rows, and MRUS a further 12.76% from 11. Two tickers, 29 rows, ~60% of every
+    value-ranked aggregate in the system.
+
+    These are REVIEW markers, not verdicts. BGDE reports $1,000/share against ~$7-8
+    neighbours and is CORRECT — a Series D Convertible Preferred. We do not store
+    security_title, so a different share class and a unit error look identical here, and
+    claiming otherwise would be a guess."""
+    if shares and price is not None and shares > 1 and price == shares:
+        # The filer put the share count in the price field. KRMD: 1,191 shares at a
+        # "price" of 1,191 -> $1,418,481 for a ~$3.90 stock. Deterministic, 4 rows.
+        return "price_equals_share_count"
+    if value is not None and abs(value) > _VALUE_REVIEW_MAX:
+        # Catches what a within-ticker peer test structurally CANNOT: when every row for
+        # a ticker shares the same distorted basis, the median is distorted too and the
+        # peer comparison is silent. SVRE is that case -- 2.5bn shares in one purchase,
+        # $27.9bn across 18 rows, and its own median price looks unremarkable.
+        return "value_above_1b_review"
+    if (peer_median and price and price > 0 and peer_median > 0
+            and (price / peer_median > _PEER_RATIO_MAX
+                 or peer_median / price > _PEER_RATIO_MAX)):
+        # Compared against what OTHER filers reported for the SAME ticker — the only
+        # price reference that survives when the ticker has no market data. CNTM: $4,576
+        # against peers near $8.90.
+        return "price_vs_ticker_peers"
+    return None
+
+
+_BASIS_RATIO_MAX = 10.0
+# A >100% move over this feed's window is far more often a split, ADR ratio or ticker
+# change than a real gain. It does NOT delete the number - it withdraws it from ranking
+# until the share basis is verified, which is the Rule 6 the data spec asks for.
+_RETURN_SANITY_MAX = 1.0
+
+
 _TRADE_SORT_FIELDS = {"person": "reporting_person", "ticker": "ticker",
                       "side": "code", "trade_date": "tx_date",
                       "reported_date": "filed_date", "value": "value",
-                      "shares": "shares"}
+                      "shares": "shares", "exec_price": "price"}
 
 
 def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
@@ -243,10 +324,33 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
     else:
         off = (page - 1) * per_page
         page_rows = rows[off:off + per_page]
+    # Per-ticker median reported price, from the rows in hand. The comparison that
+    # matters for a thin microcap is what OTHER filers said the same ticker was worth,
+    # because that is the only reference available when there is no market data.
+    _px = defaultdict(list)
+    for r in rows:
+        if r["price"] and r["price"] > 0 and r["ticker"]:
+            _px[r["ticker"].upper()].append(r["price"])
+    peer = {}
+    for t, v in _px.items():
+        v.sort()
+        peer[t] = v[len(v) // 2]
+    # CO-FILING GROUPS. Affiliated persons file SEPARATE accessions reporting the SAME
+    # shares (measured: no accession in the corpus carries two reporting owners, so this
+    # is never one filing double-read). Identical (ticker, date, shares, price) across
+    # more than one reporting CIK is one economic block reported N times — summing value
+    # over it overstates. The rows are MARKED and kept: two unrelated insiders buying the
+    # same round lot on the same day is possible, and deleting on suspicion would be the
+    # pipeline's first silent judgement.
+    _grp = defaultdict(set)
+    for r in rows:
+        _grp[(r["ticker"], r["tx_date"], r["shares"], r["price"])].add(r["reporting_cik"])
     out = []
     for r in page_rows:
         tk = (r["ticker"] or "").upper()
         disp = _disp_ticker(tk)                   # '-' for NONE / N/A / empty
+        gkey = (r["ticker"], r["tx_date"], r["shares"], r["price"])
+        cofilers = len(_grp.get(gkey) or ())
         real = disp != "-"
         trade_date = r["tx_date"]                 # Form 4 tx_date is the trade date
         date_is_reported = trade_date is None
@@ -255,6 +359,52 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
         entry, entry_d = _close_on(con, tk, trade_date) if real else (None, None)
         latest, latest_d = _latest_close(con, tk) if real else (None, None)
         pct = ((latest - entry) / entry) if (entry and latest) else None
+        # THE EXECUTION PRICE, which this feed used to load and then discard. Without it
+        # the reader has no way to tell what the insider actually paid, and the only
+        # per-share number on the row was `entry_close` — the MARKET close on the trade
+        # date, a different series entirely (prices.adj_close via _close_on). BRVE is the
+        # clean example: bought at $18 while the stock closed at $30.
+        exec_px = r["price"]
+        # value is round(shares*price, 2) at ingest, so this reconstructs the same number.
+        # Emitted anyway as an independent cross-check: if the two ever disagree, one of
+        # them is wrong and the row should not be trusted.
+        implied = ((r["value"] / r["shares"])
+                   if (r["value"] is not None and r["shares"]) else None)
+        # TWO DIFFERENT RETURNS, never one ambiguous one. `market_return_since_trade` is
+        # what the STOCK did from the trade-date close — it says nothing about the
+        # insider. `insider_return` is what the INSIDER made from what they actually paid.
+        # They diverge by >20pp on 1,402 P rows and >50pp on 885, so collapsing them into
+        # a single "pct_since_trade" was not a naming quibble.
+        ins_ret = (((latest - exec_px) / exec_px)
+                   if (latest and exec_px and exec_px > 0) else None)
+        # A return is only meaningful when the execution price and the market close are
+        # on the SAME SHARE BASIS. LEGO reports a $0.003 execution against a $9.98 close
+        # — a 3,325x "return" that is a reverse split, not a gain. Emitting insider_return
+        # unguarded would have replaced one misleading number with a far louder one.
+        # The row is NOT dropped and the number is NOT nulled: it is MARKED, and the
+        # surfaces refuse to rank on it. Marking rather than deleting matters because a
+        # genuine below-market allocation (BRVE at $18 against a $30 close) looks the same
+        # in kind and differs only in degree.
+        basis = None
+        if exec_px and entry and exec_px > 0 and entry > 0:
+            ratio = exec_px / entry
+            if ratio > _BASIS_RATIO_MAX or ratio < 1.0 / _BASIS_RATIO_MAX:
+                basis = "price_vs_close_{}x".format(
+                    int(max(ratio, 1.0 / ratio)))
+        elif exec_px is None:
+            basis = "no_execution_price"
+        elif not entry:
+            basis = "no_trade_date_close"
+        # SECOND guard, for a different failure. The basis check above compares the
+        # execution price to the TRADE-DATE close and so cannot see a corporate action
+        # that happened AFTER the trade: DBGI reports exec 0.7001 against a 0.70 close —
+        # perfectly consistent — and still yields +2092% because the latest close is on a
+        # post-reverse-split basis. GGAL slips the ratio test at 9.6x and is an ADR.
+        # An implied move of this size inside a <=1 quarter window is a share-basis
+        # change far more often than it is a gain, so the return stops being rankable
+        # while the number itself stays visible.
+        if basis is None and ins_ret is not None and abs(ins_ret) > _RETURN_SANITY_MAX:
+            basis = "return_{}x_check_corporate_action".format(int(abs(ins_ret)) + 1)
         try:
             lag = (dt.date.fromisoformat(r["filed_date"])
                    - dt.date.fromisoformat(trade_date)).days
@@ -267,8 +417,25 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
             "reported_date": r["filed_date"], "lag_days": lag,
             "shares": r["shares"], "value": r["value"],
             "plan_10b5_1": bool(r["plan_flag"]),
+            "exec_price": exec_px,
+            "implied_price": round(implied, 4) if implied is not None else None,
             "entry_close": entry, "latest_close": latest,
-            "pct_since_trade": round(pct, 4) if pct is not None else None,
+            # RENAMED from pct_since_trade, deliberately. The old name did not say WHOSE
+            # return it was, and it was read as the insider's when it is the stock's.
+            "market_return_since_trade": round(pct, 4) if pct is not None else None,
+            "insider_return": round(ins_ret, 4) if ins_ret is not None else None,
+            # None == the return is on a consistent basis and may be ranked on.
+            "return_basis_warning": basis,
+            "return_rankable": basis is None and ins_ret is not None,
+            "price_vs_close_pct": (round(exec_px / entry - 1, 4)
+                                   if (entry and exec_px and entry > 0) else None),
+            "value_flag": r["value_flag"],
+            "value_quality": _value_quality(r["shares"], r["price"], r["value"],
+                                            peer.get(tk)),
+            "issuer_class": _issuer_class(tk, r["issuer"]),
+            # >1 means this economic block was reported by several affiliated filers.
+            "cofiler_count": cofilers,
+            "cofiling_suspected": cofilers > 1,
             "smid_band": bands.get(tk),
             "provenance": ov.provenance(tk),      # book | watch | trump | thiel | None
         })

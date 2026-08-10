@@ -791,17 +791,35 @@ def view_trades(con, p):
             badges += '<span class="badge plan">10b5-1</span>'
         if t["smid_band"] in ("micro", "small", "mid"):
             badges += '<span class="badge smid">{}</span>'.format(t["smid_band"])
-        if t["pct_since_trade"] is None:
+        # The INSIDER's return, from what they actually paid - not the stock's return
+        # from the trade-date close. When the share basis is inconsistent the number is
+        # shown struck-through with its reason rather than hidden, so the reader can see
+        # both that something moved and that it cannot be ranked on.
+        ir = t["insider_return"]
+        if ir is None:
             pcell = "-"
+        elif not t["return_rankable"]:
+            pcell = ('<span class="muted" title="{w}">{v:+.0%} &#9888;</span>'.format(
+                w=html.escape(str(t["return_basis_warning"] or "")), v=ir))
         else:
             pcell = '<span class="{}">{:+.1%}</span>'.format(
-                "pos" if t["pct_since_trade"] >= 0 else "neg", t["pct_since_trade"])
+                "pos" if ir >= 0 else "neg", ir)
+        qflag = ""
+        if t.get("value_quality"):
+            qflag = ' <span class="badge warn" title="{q}">REVIEW</span>'.format(
+                q=html.escape(t["value_quality"]))
+        if t.get("cofiling_suspected"):
+            qflag += (' <span class="badge" title="same block reported by {n} filers">'
+                      'CO-FILED x{n}</span>'.format(n=t["cofiler_count"]))
+        if t.get("issuer_class") != "operating":
+            qflag += ' <span class="badge">{}</span>'.format(
+                html.escape((t.get("issuer_class") or "").replace("_", " ")))
         lag = "" if t["lag_days"] is None else " (+{}d)".format(t["lag_days"])
         body.append(
             "<tr><td>{p}</td><td>{tk}{b}</td><td>{s}</td><td>{d}</td><td>{r}{lag}</td>"
             "<td>{v}</td><td>{e}</td><td>{l}</td><td>{pct}</td></tr>".format(
                 p=html.escape(str(t["person"] or "-")),
-                tk=html.escape(str(t["ticker"] or "-")), b=badges,
+                tk=html.escape(str(t["ticker"] or "-")), b=badges + qflag,
                 s=html.escape(t["side"]), d=dcell,
                 r=html.escape(str(t["reported_date"] or "-")), lag=lag,
                 v=_fmt(t["value"]), e=_fmt(t["entry_close"]),
@@ -1743,9 +1761,16 @@ def _build_congress_csv(con, p, full):
     return buf.getvalue()
 
 
+# RENAMED: pct_since_trade -> market_return_since_trade, and exec_price /
+# insider_return added. The old name did not say whose return it was and was read as the
+# insider's when it is the stock's. This is a deliberate CSV schema change - a consumer
+# parsing by name is fine, one parsing by position is not.
 _CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
-             "reported_date", "lag_days", "shares", "value", "plan_10b5_1",
-             "entry_close", "latest_close", "pct_since_trade", "smid_band",
+             "reported_date", "lag_days", "shares", "exec_price", "implied_price",
+             "value", "plan_10b5_1", "entry_close", "latest_close",
+             "market_return_since_trade", "insider_return", "return_rankable",
+             "return_basis_warning", "price_vs_close_pct", "value_quality",
+             "issuer_class", "cofiler_count", "cofiling_suspected", "smid_band",
              "provenance"]
 
 

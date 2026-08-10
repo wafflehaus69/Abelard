@@ -127,7 +127,7 @@ def test_insider_trades_dedup_dates_plan_smid_price():
     assert t["reported_date"] == "2026-06-03", t           # latest filing kept
     assert t["lag_days"] == 2, t
     assert t["entry_close"] == 10.0 and t["latest_close"] == 12.0, t
-    assert abs(t["pct_since_trade"] - 0.2) < 1e-9, t        # +20%
+    assert abs(t["market_return_since_trade"] - 0.2) < 1e-9, t   # the STOCK, +20%
     assert t["smid_band"] == "small" and t["plan_10b5_1"] is False, t
     assert t["provenance"] is None, "ZZZ is in no overlay set -> no provenance tag"
     planned = q.q_insider_trades(con, side="sell", window=120, anchor="2026-06-30",
