@@ -273,8 +273,12 @@ def test_affiliated_filers_reporting_one_block_are_marked_not_merged():
     separate filings of one economic block. Summing value over both double-counts."""
     p, con = _db()
     try:
-        _buy(con, "SMMT", 3810000, 13.12, person="DUGGAN ROBERT W", cik="11")
-        _buy(con, "SMMT", 3810000, 13.12, person="Zanganeh Mahkam", cik="22")
+        # a genuine co-filing: both report the SAME beneficial block, so the holding
+        # after the transaction is identical
+        _buy_titled(con, "SMMT", 3810000, 13.12, "Common Stock",
+                    person="DUGGAN ROBERT W", cik="11", owned_after=9000000)
+        _buy_titled(con, "SMMT", 3810000, 13.12, "Common Stock",
+                    person="Zanganeh Mahkam", cik="22", owned_after=9000000)
         rows = [r for r in _feed(con) if r["ticker"] == "SMMT"]
         assert len(rows) == 2, "both filings survive - neither is deleted"
         assert all(r["cofiling_suspected"] for r in rows)
@@ -314,15 +318,15 @@ def test_the_same_person_buying_twice_is_not_a_cofiling():
 _F4T = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
         "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, price, "
         "value, ownership_after, tx_date, filed_date, role, ingest_regime, "
-        "security_title) VALUES(?,0,?,?,'Acme Inc','9',?,'P',0,?,?,?,NULL,?,?,NULL,"
+        "security_title) VALUES(?,0,?,?,'Acme Inc','9',?,'P',0,?,?,?,?,?,?,NULL,"
         "'watchlist',?)")
 
 
 def _buy_titled(con, tk, shares, price, title, person="P", cik="1",
-                date="2026-06-01", i=[0]):
+                date="2026-06-01", owned_after=None, i=[0]):
     i[0] += 1
     con.execute(_F4T, ("t%d" % i[0], person, cik, tk, shares, price,
-                       round(shares * price, 2), date, date, title))
+                       round(shares * price, 2), owned_after, date, date, title))
 
 
 def test_a_stated_preferred_title_explains_the_price_and_clears_the_flag():
@@ -464,7 +468,7 @@ def test_the_aggregate_subset_drops_fund_issuers():
     try:
         _buy_titled(con, "GOOD", 1000, 10.0, "Common Stock", person="A", cik="1")
         con.execute(_F4T, ("f1", "Sponsor", "9", "SCISX", 1000, 25.0, 25000.0,
-                           "2026-06-01", "2026-06-01", "Common Stock"))
+                           None, "2026-06-01", "2026-06-01", "Common Stock"))
         con.commit()
         raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
         assert [r["ticker"] for r in q.clean_subset(raw)] == ["GOOD"]
@@ -479,9 +483,9 @@ def test_a_cofiled_block_is_collapsed_to_one_not_removed_entirely():
     p, con = _db()
     try:
         _buy_titled(con, "SMMT", 3810000, 13.12, "Common Stock",
-                    person="DUGGAN ROBERT W", cik="22")
+                    person="DUGGAN ROBERT W", cik="22", owned_after=9000000)
         _buy_titled(con, "SMMT", 3810000, 13.12, "Common Stock",
-                    person="Zanganeh Mahkam", cik="11")
+                    person="Zanganeh Mahkam", cik="11", owned_after=9000000)
         con.commit()
         raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
         assert len(raw) == 2, "both filings exist in the raw view"
@@ -640,4 +644,25 @@ def test_a_below_market_purchase_is_emphasised_in_the_table():
         finally:
             ro.close()
     finally:
+        os.unlink(p)
+
+
+def test_two_people_taking_identical_tranches_are_not_a_cofiling():
+    """BRVE: Murdoch and Viehbacher each bought 83,333 shares at $18 in the same
+    placement and are plainly separate buyers - their post-transaction holdings differ
+    (2,940,670 vs 609,519). Keying on (ticker, date, shares, price) alone called them one
+    block and would have deleted a real $1.5m purchase from every total."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "BRVE", 83333, 18.0, "Common Stock",
+                    person="Murdoch Travis", cik="m", owned_after=2940670)
+        _buy_titled(con, "BRVE", 83333, 18.0, "Common Stock",
+                    person="Viehbacher Christopher", cik="v", owned_after=609519)
+        rows = [r for r in _feed(con) if r["ticker"] == "BRVE"]
+        assert len(rows) == 2
+        assert not any(r["cofiling_suspected"] for r in rows), "separate buyers"
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        assert len(q.clean_subset(raw)) == 2, "both purchases counted"
+    finally:
+        con.close()
         os.unlink(p)

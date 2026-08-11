@@ -53,7 +53,7 @@ SELL_ELEVATED_RATIO = 3.0
 _F4_COLS = ("accession", "reporting_cik", "reporting_person", "issuer_cik",
             "ticker", "tx_date", "code", "plan_flag", "shares", "value", "price",
             "filed_date", "ingest_regime", "value_flag", "issuer",
-            "security_title")
+            "security_title", "ownership_after")
 
 
 # ---------------------------------------------------------------- infra
@@ -127,7 +127,7 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
     ph = ",".join("?" for _ in codes)
     q = ("SELECT accession, reporting_cik, reporting_person, issuer_cik, ticker, "
          "tx_date, code, plan_flag, shares, value, price, filed_date, ingest_regime, "
-         "value_flag, issuer, security_title "
+         "value_flag, issuer, security_title, ownership_after "
          "FROM form4_transactions WHERE code IN ({}) "
          "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=? "
          "AND substr(tx_date,1,10)<=?".format(ph))
@@ -154,6 +154,22 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
 
 
 _PEER_MIN = 3
+
+
+def _cofiling_key(r):
+    """The key on which two filings are one economic block.
+
+    (ticker, date, shares, price) ALONE is not enough — it groups two people who each
+    took an identical tranche of the same placement. BRVE is the live case: Murdoch and
+    Viehbacher each bought 83,333 shares at $18, and they are plainly separate buyers
+    because their post-transaction holdings differ (2,940,670 vs 609,519).
+
+    A genuine co-filing reports the SAME beneficial block, so the reported holding AFTER
+    the transaction is identical too — Duggan/Zanganeh, Griffith/ICONIQ, General Atlantic
+    LFT/GenPar and Ye/Yang all match exactly. Measured across the corpus: of 592
+    multi-filer identical-lot groups, 350 agree on ownership_after and 242 do not, with
+    zero undecidable. Keying without it mislabelled 41% of them."""
+    return (r["ticker"], r["tx_date"], r["shares"], r["price"], r["ownership_after"])
 
 
 def _peer_medians(rows):
@@ -228,7 +244,7 @@ def clean_subset(rows, drop_bad_value=True, drop_funds=True,
         if drop_funds and _issuer_class(tk, r["issuer"]) != "operating":
             continue
         if collapse_cofiling:
-            gkey = (r["ticker"], r["tx_date"], r["shares"], r["price"])
+            gkey = _cofiling_key(r)
             if gkey in seen:
                 continue                  # a co-filed duplicate of one already kept
             seen.add(gkey)
@@ -453,13 +469,12 @@ def q_insider_trades(con, side="all", window=90, anchor=None, plan="all",
     # pipeline's first silent judgement.
     _grp = defaultdict(set)
     for r in rows:
-        _grp[(r["ticker"], r["tx_date"], r["shares"], r["price"])].add(r["reporting_cik"])
+        _grp[_cofiling_key(r)].add(r["reporting_cik"])
     out = []
     for r in page_rows:
         tk = (r["ticker"] or "").upper()
         disp = _disp_ticker(tk)                   # '-' for NONE / N/A / empty
-        gkey = (r["ticker"], r["tx_date"], r["shares"], r["price"])
-        cofilers = len(_grp.get(gkey) or ())
+        cofilers = len(_grp.get(_cofiling_key(r)) or ())
         real = disp != "-"
         trade_date = r["tx_date"]                 # Form 4 tx_date is the trade date
         date_is_reported = trade_date is None
