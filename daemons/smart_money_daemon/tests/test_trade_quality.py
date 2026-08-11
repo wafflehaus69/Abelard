@@ -745,3 +745,41 @@ def test_the_panel_page_explains_the_codes():
             ro.close()
     finally:
         os.unlink(p)
+
+
+def test_the_panel_says_which_period_each_block_covers():
+    """TSLA shows 26 open-market buys worth 1bn dollars in the all-time table and '0 buyers,
+    distributing' in the 180-day pressure block directly beneath it. Unlabelled the two
+    read as a contradiction; they are a difference of window."""
+    from smart_money import dashboard as dash
+    p, con = _db()
+    try:
+        _buy_titled(con, "AAA", 2000, 51.175, "Common Stock", date="2020-01-02")
+        con.commit()
+        con.close()
+        ro = q.connect_ro(p)
+        try:
+            out = dash.view_ticker(ro, dash._params({"symbol": ["AAA"]}))
+            assert "transaction type &mdash; all time" in out
+            assert "WHOLE filing history" in out
+            assert "Ownership pressure &mdash; last 180d" in out
+            assert "difference of period, not a" in out
+        finally:
+            ro.close()
+    finally:
+        os.unlink(p)
+
+
+def test_the_code_table_uses_readable_column_names():
+    p, con = _db()
+    try:
+        _buy_titled(con, "AAA", 2000, 51.175, "Common Stock")
+        con.commit()
+        row = q.q_ticker_panel(con, "AAA")["insider_by_code"][0]
+        for k in ("what", "cash", "10b5-1", "filings", "filers"):
+            assert k in row, k
+        for gone in ("plan_flag", "n", "distinct_filers"):
+            assert gone not in row, gone
+    finally:
+        con.close()
+        os.unlink(p)

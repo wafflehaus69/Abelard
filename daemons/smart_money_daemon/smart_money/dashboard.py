@@ -645,15 +645,19 @@ def view_ticker(con, p):
         "<p class='muted'>{} — overlay conviction={} watchlist={}. "
         "13F net = long+call-put; congress amounts are bands.</p>".format(
             html.escape(sym), ov["conviction"], ov["watchlist"]),
-        "<h2>Insider activity by transaction type</h2>",
+        "<h2>Insider activity by transaction type &mdash; all time</h2>",
         "<p class='muted'>Form 4 uses single-letter codes; the plain-English meaning is "
-        "in <b>what</b>. <b>cash?</b> = no means the shares moved without a purchase at a "
+        "in <b>what</b>. <b>cash</b> = no means the shares moved without a purchase at a "
         "market price (an option exercise, a grant, a gift), so a value of 0.00 on those "
-        "rows is expected, not missing data. Only <b>Open-market buy</b> is a discretionary "
-        "cash purchase.</p>",
-        _table(["code", "what", "cash", "plan_flag", "n", "shares", "value",
-                "distinct_filers"], t["insider_by_code"]),
-        "<h2>Ownership pressure (flow)</h2>",
+        "rows is expected, not missing data. Only <b>Open-market buy</b> is a "
+        "discretionary cash purchase. <b>This table covers the issuer's WHOLE filing "
+        "history</b> &mdash; the pressure and flow figures below are windowed, so a large "
+        "buy count here alongside zero buyers below is a difference of period, not a "
+        "contradiction.</p>",
+        _table(["code", "what", "cash", "10b5-1", "filings", "shares", "value",
+                "filers"], t["insider_by_code"]),
+        "<h2>Ownership pressure &mdash; last {}d</h2>".format(
+            t.get("pressure_window_days") or 180),
         _table(["net_shares", "distinct_buyers", "distinct_sellers", "direction"],
                t["ownership_pressure"]),
         "<h2>Congressional</h2>",

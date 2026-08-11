@@ -1073,10 +1073,15 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
     from .overlay import load_overlay
     tk = ticker.upper()
     conv, watch = load_overlay().match(tk)
+    # ALL TIME, deliberately - this is the issuer's whole Form 4 history by type, and it
+    # sits directly above a 180-day pressure figure. Unlabelled, the two read as a
+    # contradiction: TSLA shows 26 open-market buys worth $1bn here and "0 buyers,
+    # distributing" below, which looks like a bug and is only a difference of window.
     insider = [{"code": c, "what": tx_code_label(c) or "code {}".format(c or "?"),
                 "cash": "no" if (c or "").upper() in NO_CASH_CODES else "yes",
-                "plan_flag": pf, "n": n, "shares": sh, "value": val,
-                "distinct_filers": nb} for c, pf, n, sh, val, nb in con.execute(
+                "10b5-1": "yes" if pf else "no", "filings": n, "shares": sh,
+                "value": val,
+                "filers": nb} for c, pf, n, sh, val, nb in con.execute(
         "SELECT code, plan_flag, COUNT(*), SUM(shares), SUM(value), "
         "COUNT(DISTINCT reporting_cik) FROM form4_transactions WHERE UPPER(ticker)=? "
         "GROUP BY code, plan_flag ORDER BY COUNT(*) DESC", (tk,))]
@@ -1103,6 +1108,7 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
             "overlay": {"conviction": conv, "watchlist": watch},
             "insider_by_code": insider,
             "ownership_pressure": q_ownership_pressure(con, tk, pressure_window, anchor)["rows"],
+            "pressure_window_days": pressure_window,
             "congress": congress, "thirteenf_net": holdings, "price_sparkline": spark,
             # SM-C3 Phase X: the congressional ANNUAL surface, which this panel never
             # read. It is a LEVEL and rides as context only — see q_surface_tension.
