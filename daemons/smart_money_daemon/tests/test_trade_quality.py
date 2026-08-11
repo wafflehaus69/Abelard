@@ -318,15 +318,18 @@ def test_the_same_person_buying_twice_is_not_a_cofiling():
 _F4T = ("INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
         "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, price, "
         "value, ownership_after, tx_date, filed_date, role, ingest_regime, "
-        "security_title) VALUES(?,0,?,?,'Acme Inc','9',?,'P',0,?,?,?,?,?,?,NULL,"
+        "security_title) VALUES(?,0,?,?,'Acme Inc',?,?,'P',0,?,?,?,?,?,?,NULL,"
         "'watchlist',?)")
 
 
 def _buy_titled(con, tk, shares, price, title, person="P", cik="1",
-                date="2026-06-01", owned_after=None, i=[0]):
+                date="2026-06-01", owned_after=None, issuer_cik=None, i=[0]):
+    """issuer_cik defaults to the TICKER: clusters group by issuer, so a shared literal
+    would fuse unrelated tickers into one issuer bucket."""
     i[0] += 1
-    con.execute(_F4T, ("t%d" % i[0], person, cik, tk, shares, price,
-                       round(shares * price, 2), owned_after, date, date, title))
+    con.execute(_F4T, ("t%d" % i[0], person, cik, issuer_cik or ("IC-" + tk), tk,
+                       shares, price, round(shares * price, 2), owned_after,
+                       date, date, title))
 
 
 def test_a_stated_preferred_title_explains_the_price_and_clears_the_flag():
@@ -467,8 +470,8 @@ def test_the_aggregate_subset_drops_fund_issuers():
     p, con = _db()
     try:
         _buy_titled(con, "GOOD", 1000, 10.0, "Common Stock", person="A", cik="1")
-        con.execute(_F4T, ("f1", "Sponsor", "9", "SCISX", 1000, 25.0, 25000.0,
-                           None, "2026-06-01", "2026-06-01", "Common Stock"))
+        con.execute(_F4T, ("f1", "Sponsor", "9", "IC-SCISX", "SCISX", 1000, 25.0,
+                           25000.0, None, "2026-06-01", "2026-06-01", "Common Stock"))
         con.commit()
         raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
         assert [r["ticker"] for r in q.clean_subset(raw)] == ["GOOD"]
@@ -703,7 +706,7 @@ def test_non_cash_codes_are_marked_so_a_zero_value_reads_as_expected():
     has no market price."""
     p, con = _db()
     try:
-        con.execute(_F4T, ("m1", "X", "1", "AAA", 157213, None, None, None,
+        con.execute(_F4T, ("m1", "X", "1", "IC-AAA", "AAA", 157213, None, None, None,
                            "2026-06-01", "2026-06-01", "Common Stock"))
         con.execute("UPDATE form4_transactions SET code='M' WHERE accession='m1'")
         con.commit()
@@ -780,6 +783,119 @@ def test_the_code_table_uses_readable_column_names():
             assert k in row, k
         for gone in ("plan_flag", "n", "distinct_filers"):
             assert gone not in row, gone
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+# ---------------------------------------------------------------- cluster lookback
+
+def _cluster_seed(con):
+    """Three distinct buyers on one issuer in each of several periods back in time."""
+    # anchor is 2026-08-11, so the cutoffs are 08-04 / 07-12 / 05-13 / 02-12 / 2025-08-11
+    for j, (d, tk) in enumerate((("2026-08-05", "NOW"), ("2026-07-20", "M1"),
+                                 ("2026-05-20", "M3"), ("2026-03-01", "M6"),
+                                 ("2025-09-10", "Y1"), ("2023-01-10", "OLD"))):
+        for k in range(3):
+            _buy_titled(con, tk, 100, 10.0, "Common Stock",
+                        person="B%d%d" % (j, k), cik="c%d%d" % (j, k), date=d)
+    con.commit()
+
+
+def test_the_cluster_lookback_bounds_the_search():
+    p, con = _db()
+    try:
+        _cluster_seed(con)
+        seen = {}
+        for look in (7, 30, 90, 180, 365, "all"):
+            res = q.q_cluster_context(con, floor=3, anchor="2026-08-11",
+                                      lookback=look)
+            seen[look] = {r["ticker"] for r in res["rows"]}
+        assert seen[7] == {"NOW"}, seen[7]
+        assert seen[30] == {"NOW", "M1"}, seen[30]
+        assert "M3" in seen[90] and "M6" not in seen[90], seen[90]
+        assert "M6" in seen[180] and "Y1" not in seen[180], seen[180]
+        assert "Y1" in seen[365] and "OLD" not in seen[365], seen[365]
+        assert "OLD" in seen["all"], "all time reaches the whole corpus"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_all_is_unbounded_not_a_large_number():
+    """A filing older than any arbitrary ceiling must not fall silently outside."""
+    p, con = _db()
+    try:
+        for k in range(3):
+            _buy_titled(con, "ANCIENT", 100, 10.0, "Common Stock",
+                        person="B%d" % k, cik="c%d" % k, date="1994-03-01")
+        con.commit()
+        res = q.q_cluster_context(con, floor=3, anchor="2026-08-11", lookback="all")
+        assert {r["ticker"] for r in res["rows"]} == {"ANCIENT"}
+        assert res["lookback"] == "all" and res["lookback_start"] == "0001-01-01"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_lookback_does_not_change_what_counts_as_a_cluster():
+    """cluster_span_days is the DEFINITION - how close buys must fall - and is separate
+    from how far back the search runs. Widening the lookback must not loosen it."""
+    p, con = _db()
+    try:
+        # three buyers, but spread 200 days apart - never one cluster at span 30
+        for k, d in enumerate(("2026-01-05", "2026-04-05", "2026-07-05")):
+            _buy_titled(con, "SLOW", 100, 10.0, "Common Stock",
+                        person="B%d" % k, cik="c%d" % k, date=d)
+        con.commit()
+        for look in (180, 365, "all"):
+            res = q.q_cluster_context(con, floor=3, anchor="2026-08-11", lookback=look)
+            assert res["rows"] == [], "span 30 still governs at lookback %s" % look
+            assert res["cluster_span_days"] == 30
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_clusters_page_offers_every_requested_timeframe():
+    from smart_money import dashboard as dash
+    p, con = _db()
+    try:
+        _cluster_seed(con)
+        con.close()
+        ro = q.connect_ro(p)
+        try:
+            out = dash.view_clusters(ro, dash._params(
+                {"anchor": ["2026-08-11"], "ctf": ["30"]}))
+            for label in (">7d<", ">30d<", ">3mo<", ">6mo<", ">1y<", ">all<"):
+                assert label in out, label
+            assert "30d lookback" in out
+            assert "does not change what counts as a cluster" in out
+        finally:
+            ro.close()
+    finally:
+        os.unlink(p)
+
+
+def test_an_unknown_lookback_value_falls_back_rather_than_erroring():
+    from smart_money import dashboard as dash
+    assert dash._params({"ctf": ["bogus"]})["ctf"] == "180"
+    assert dash._params({})["ctf"] == "180"
+    assert dash._params({"ctf": ["all"]})["ctf"] == "all"
+
+
+def test_two_filings_with_no_reported_holding_are_not_called_one_block():
+    """Collapsing on absence of evidence would delete a real purchase. Two filers who
+    both omit the post-transaction holding are not thereby the same block."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "NOHOLD", 100, 10.0, "Common Stock", person="A", cik="1")
+        _buy_titled(con, "NOHOLD", 100, 10.0, "Common Stock", person="B", cik="2")
+        con.commit()
+        rows = [r for r in _feed(con) if r["ticker"] == "NOHOLD"]
+        assert not any(r["cofiling_suspected"] for r in rows)
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        assert len(q.clean_subset(raw)) == 2, "both purchases counted"
     finally:
         con.close()
         os.unlink(p)

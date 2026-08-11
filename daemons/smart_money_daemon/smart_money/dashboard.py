@@ -132,6 +132,7 @@ def _qs(params, **override):
                                        "scope")}
     base["smid"] = "1" if params.get("smid") else None
     base["capit"] = "1" if params.get("capit") else None
+    base["ctf"] = params.get("ctf")
     # src/spage carry only when non-default, so Trades/other URLs stay clean but
     # the Clusters sell-table page survives paging the buy table (and vice versa).
     base["src"] = params.get("src") if params.get("src") not in (None, "", "all") else None
@@ -327,7 +328,8 @@ def _params(qsd):
          "member": (one("member") or "")[:120],
          "myear": _int(one("myear"), None),
          "smid": one("smid") == "1",
-         "capit": one("capit") == "1"}
+         "capit": one("capit") == "1",
+         "ctf": (one("ctf") if one("ctf") in _CLUSTER_TF_VALUES else "180")}
     return p
 
 
@@ -514,11 +516,35 @@ def _cluster_filter_form(params):
              clr=("?theme=" + params["theme"]) if params.get("theme") else "")
 
 
+# Cluster lookback choices. "all" is genuinely unbounded rather than a large number, so
+# an old filing is never silently outside the search.
+_CLUSTER_TF = [("7", "7d"), ("30", "30d"), ("90", "3mo"), ("180", "6mo"),
+               ("365", "1y"), ("all", "all")]
+_CLUSTER_TF_VALUES = {v for v, _ in _CLUSTER_TF}
+
+
+def _cluster_tf_form(params):
+    opts = "".join(
+        "<option value='{v}'{sel}>{l}</option>".format(
+            v=v, l=l, sel=" selected" if v == params["ctf"] else "")
+        for v, l in _CLUSTER_TF)
+    hidden = "".join(
+        "<input type='hidden' name='{k}' value='{v}'>".format(k=k, v=html.escape(str(v)))
+        for k, v in (("floor", params["floor"]), ("anchor", params["anchor"]),
+                     ("per_page", params["per_page"]),
+                     ("capit", "1" if params["capit"] else ""),
+                     ("theme", params.get("theme") or "")) if v not in (None, ""))
+    return ("<form method='get' style='margin:.4rem 0'>cluster lookback "
+            "<select name='ctf' onchange='this.form.submit()'>{o}</select> "
+            "<button>apply</button>{h}</form>".format(o=opts, h=hidden))
+
+
 def _cluster_data(con, p):
     """The two cluster feeds AND their post-filter row lists, from one place so the
     on-screen tables and the CSV export never drift. Buy clusters honor the
     capitulation-only toggle; the sell feed keeps its >=3-seller baseline gate."""
-    cc = q.q_cluster_context(con, window=p["window"] * 2, floor=p["floor"], anchor=p["anchor"])
+    cc = q.q_cluster_context(con, floor=p["floor"], anchor=p["anchor"],
+                             lookback=p["ctf"])
     buy = cc["rows"]
     if p["capit"]:
         buy = [r for r in buy if r.get("capitulation")]
@@ -547,10 +573,23 @@ def view_clusters(con, p):
         "timeline; sell feed ranked by rate ratio (elevated tint at {}). Click any "
         "column header to sort that table.</p>".format(sd["elevated_ratio"]),
         _cluster_filter_form(p),
+        _cluster_tf_form(p),
         "<div class='expand'>{}</div>".format(
             _per_page_selector(p, ("page", "spage"))),
-        "<h2>Buy clusters (floor {}{}, {} matching)</h2>".format(
-            p["floor"], ", capitulation only" if p["capit"] else "", buy_meta["total"]),
+        # The two periods are different things and both belong in the heading: how far
+        # back we LOOKED, and how close together buys must fall to count as one cluster.
+        "<h2>Buy clusters &mdash; {look} lookback (floor {f}{c}, {n} matching)</h2>".format(
+            look=("all time" if cc["lookback"] == "all"
+                  else "{}d".format(cc["lookback"])),
+            f=p["floor"], c=", capitulation only" if p["capit"] else "",
+            n=buy_meta["total"]),
+        "<p class='muted'>A cluster is {sp} or fewer days apart with at least {f} "
+        "distinct discretionary buyers on one issuer. The <b>lookback</b> above sets how "
+        "far back that search runs; it does not change what counts as a cluster. "
+        "Searching from {st}.</p>".format(
+            sp=cc["cluster_span_days"], f=p["floor"],
+            st=("the start of the corpus" if cc["lookback"] == "all"
+                else cc["lookback_start"])),
         "<div class='expand'>{}</div>".format(
             _page_nav(p, buy_meta, "/clusters.csv", "page")),
         _sortable_table(p, buy_cols, buy_rows, qs_fn, buy_active, p["dir"],

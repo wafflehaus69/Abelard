@@ -168,7 +168,18 @@ def _cofiling_key(r):
     the transaction is identical too — Duggan/Zanganeh, Griffith/ICONIQ, General Atlantic
     LFT/GenPar and Ye/Yang all match exactly. Measured across the corpus: of 592
     multi-filer identical-lot groups, 350 agree on ownership_after and 242 do not, with
-    zero undecidable. Keying without it mislabelled 41% of them."""
+    zero undecidable. Keying without it mislabelled 41% of them.
+
+    A NULL holding NEVER matches another NULL. Two filings that both fail to report a
+    post-transaction holding are not thereby the same block - that would be collapsing on
+    absence of evidence, and it would delete a real purchase. Measured: 33 P rows (0.16%)
+    lack the field and exactly one group hinged on it, but the direction of the error
+    matters more than its size."""
+    if r["ownership_after"] is None:
+        # Accession differs between filers, so this can never match across them; the rest
+        # keeps two transactions inside one filing distinct.
+        return ("no-holding-reported", r["accession"], r["tx_date"], r["shares"],
+                r["price"])
     return (r["ticker"], r["tx_date"], r["shares"], r["price"], r["ownership_after"])
 
 
@@ -981,14 +992,21 @@ def q_principal_convergence(con, period=None):
 
 
 # ---------------------------------------------------------------- q_cluster_context
-def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None):
+def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None,
+                      lookback=None):
     """SM-R1: g1 buy-cluster CONTEXT with the capitulation-timeline read. A cluster
     is a per-issuer non-overlapping `window_days` window with >=floor distinct
     discretionary (plan_flag=0) P-buyers; `calendar_months` and the `capitulation`
     flag (all buys in ONE month = a coordinated bottom-fishing read vs slow
     accumulation) make the SM-verdict lesson visible. CONTEXT, never an alert."""
     anchor = anchor or dt.date.today().isoformat()
-    start = _win(anchor, window)
+    # `lookback` is how far BACK to search for clusters and is chosen by the reader;
+    # `window_days` is how close together the buys must fall to count as one cluster and
+    # is a property of the definition, not a display preference. They were conflated
+    # under one derived number before. None/'all' means the whole corpus - not a very
+    # large number, so a filing older than any arbitrary ceiling is never silently lost.
+    look = window if lookback is None else lookback
+    start = "0001-01-01" if look in (None, "all") else _win(anchor, int(look))
     by_issuer = defaultdict(list)
     for r in clean_subset(_fetch_f4(con, ("P",), start, anchor)):
         by_issuer[_issuer_key(r)].append(r)
@@ -1020,6 +1038,8 @@ def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None):
                 used += 1
     out.sort(key=lambda c: -c["n_buyers"])
     return {"as_of": _as_of(), "window_days": window, "floor": floor,
+            "lookback": ("all" if look in (None, "all") else int(look)),
+            "lookback_start": start, "cluster_span_days": window_days,
             "anchor": anchor, "count": len(out), "rows": out}
 
 
