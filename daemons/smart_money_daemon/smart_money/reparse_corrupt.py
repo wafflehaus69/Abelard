@@ -34,6 +34,38 @@ CORRUPT_SQL = (
     "ORDER BY accession")
 
 
+# SM data-quality backfill: accessions whose rows carry no security_title AND whose
+# ticker shows a systematic basis mismatch (>=3 priced P rows, >=80% of them >20% off the
+# trade-date close). form4.py parsed securityTitle from the beginning and dropped it at
+# the Table I INSERT; without it a preferred purchase is indistinguishable from a unit
+# error. Scoped to the tickers where that ambiguity actually bites - 78 tickers, 545
+# accessions - rather than re-parsing 153,182.
+MISSING_TITLE_SQL = (
+    "SELECT f.ticker, f.accession, f.issuer_cik, f.price, p.close "
+    "FROM form4_transactions f LEFT JOIN prices p "
+    "  ON p.ticker=f.ticker AND p.date=substr(f.tx_date,1,10) AND p.price_type='eod' "
+    "WHERE f.code='P' AND f.price>0 AND f.ticker IS NOT NULL")
+
+
+def missing_title_targets(con, min_rows=3, off_share=0.80, off_pct=0.20):
+    """[(accession, issuer_cik)] for the basis-mismatch tickers. Measured, not listed:
+    the signature is recomputed from the data so the set stays correct as the corpus
+    grows, instead of freezing today's 78 tickers into a constant."""
+    per = {}
+    for tk, acc, cik, px, close in con.execute(MISSING_TITLE_SQL):
+        d = per.setdefault(tk, {"n": 0, "off": 0, "accs": set()})
+        if close and close > 0:
+            d["n"] += 1
+            if abs(px / close - 1) > off_pct:
+                d["off"] += 1
+        d["accs"].add((acc, cik))
+    out = set()
+    for d in per.values():
+        if d["n"] >= min_rows and d["off"] / d["n"] >= off_share:
+            out |= d["accs"]
+    return sorted(out)
+
+
 def _txt_path(issuer_cik, accession):
     """EDGAR full-submission .txt sub-path for form4.fetch_form4_from_txt."""
     cik = str(issuer_cik).lstrip("0")
@@ -79,6 +111,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Targeted re-parse of corrupt Form 4 accessions")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)
+    ap.add_argument("--missing-title", action="store_true",
+                    help="backfill security_title on basis-mismatch tickers")
     ap.add_argument("--accession", action="append", default=[],
                     help="specific accession(s) to re-parse; default auto-detects "
                          "the pre-guard corruption signature")
@@ -99,12 +133,15 @@ def main(argv=None):
             r = con.execute("SELECT DISTINCT issuer_cik FROM form4_transactions "
                             "WHERE accession=?", (acc,)).fetchone()
             targets.append((acc, r[0] if r else None))
+    elif args.missing_title:
+        targets = missing_title_targets(con)
     else:
         targets = con.execute(
             CORRUPT_SQL, (form4.PRICE_SANITY_MAX, form4.VALUE_SANITY_MAX)).fetchall()
     print("[reparse] {} target accession(s)".format(len(targets)))
-    for acc, cik in targets:
-        print("  target {} issuer_cik={}".format(acc, cik))
+    if len(targets) <= 40:
+        for acc, cik in targets:
+            print("  target {} issuer_cik={}".format(acc, cik))
     if args.dry_run:
         return 0
     results = reparse(con, contact, targets, pace=args.pace)

@@ -199,6 +199,16 @@ def _f(x):
 # fixing it here is the real solution (the query guard only masked net-$).
 # Mechanism 4 (ADS) is NOT caught here — per-share price is plausible — and is a
 # documented residual pending an ADS-ratio or market-cap cross-check.
+_NON_COMMON_TITLE = re.compile(
+    r"\b(PREFERRED|DEPOSITARY|DEPOSITORY|ADS|ADR|UNIT|WARRANT|RIGHT|DEBENTURE)\b",
+    re.I)
+
+
+def _title_is_non_common(title):
+    """The filer's own words saying this is not the common stock the close describes."""
+    return bool(title and _NON_COMMON_TITLE.search(title))
+
+
 PRICE_SANITY_MAX = 10_000.0      # no US equity trades above ~$10k/share except BRK.A
 VALUE_SANITY_MAX = 1e11          # $100B; no single insider open-market txn nears it
 CLOSE_RATIO_MAX = 10.0           # flag if per-share price is >10x off the EOD close
@@ -221,7 +231,7 @@ def high_price_exempt(ticker):
 
 
 def value_sanity_flag(shares, price, value, value_denominated=False, close=None,
-                      high_price_ok=False):
+                      high_price_ok=False, security_title=None):
     """Reason string if the derived dollar `value` is untrustworthy, else None.
     Pure function, no I/O. `close` is the EOD close for the tx date when known;
     the close cross-check catches sub-ceiling corruption (e.g. a dropped decimal
@@ -233,7 +243,13 @@ def value_sanity_flag(shares, price, value, value_denominated=False, close=None,
         return "price_over_max"
     if value is not None and abs(value) > VALUE_SANITY_MAX:
         return "value_over_max"
+    # The close cross-check compares against the COMMON stock's close, so it is only
+    # meaningful for common stock. A preferred, a depositary share or a unit legitimately
+    # trades nowhere near it: BGDE's Series D Convertible Preferred at $1,000 is 112x its
+    # common close and entirely correct. Flagging it would NULL a real $16.7m purchase —
+    # which is exactly what a re-parse would have done before the title was persisted.
     if (close and close > 0 and price and price > 0
+            and not _title_is_non_common(security_title)
             and not (close / CLOSE_RATIO_MAX <= price <= close * CLOSE_RATIO_MAX)):
         return "price_vs_close"
     return None
@@ -278,9 +294,11 @@ def persist_transactions(con, accession, parsed, ticker, filed_date,
         # the reason) while keeping raw shares/price. The close cross-check is
         # looked up lazily only when the cheap checks pass, so the hot universal
         # ingest path pays one indexed prices lookup per otherwise-clean priced row.
+        title = t.get("security_title")
         flag = value_sanity_flag(shares, price, value, t.get("value_denominated", False),
-                                 high_price_ok=high_price_exempt(ticker))
-        if flag is None and price and price > 0:
+                                 high_price_ok=high_price_exempt(ticker),
+                                 security_title=title)
+        if flag is None and price and price > 0 and not _title_is_non_common(title):
             close = eod_close(con, ticker, t.get("date"))
             if close and not (close / CLOSE_RATIO_MAX <= price <= close * CLOSE_RATIO_MAX):
                 flag = "price_vs_close"

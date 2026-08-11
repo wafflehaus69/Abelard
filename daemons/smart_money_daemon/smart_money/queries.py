@@ -153,6 +153,89 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
     return _dedup_amendments(rows)
 
 
+_PEER_MIN = 3
+
+
+def _peer_medians(rows):
+    """{ticker: median reported price}, only where a real peer group exists.
+
+    A median of two prices is not a median: with one clean row at $10 and one corrupt at
+    $40m it lands on the corrupt one, and the CLEAN row is then the outlier. Below
+    _PEER_MIN the ticker gets no median at all and the peer test simply does not run -
+    silence being the honest answer when there is nothing to compare against."""
+    px = defaultdict(list)
+    for r in rows:
+        if r["price"] and r["price"] > 0 and r["ticker"]:
+            px[r["ticker"].upper()].append(r["price"])
+    out = {}
+    for t, v in px.items():
+        if len(v) < _PEER_MIN:
+            continue
+        v.sort()
+        out[t] = v[len(v) // 2]
+    return out
+
+
+def contaminated_filers(rows):
+    """{(ticker, reporting_cik)} where a value-quality marker fired on ANY of its rows.
+
+    Filer-side unit corruption is a property of the FILING CONVENTION, not of one line:
+    SVRE reports 18 rows on one distorted basis, of which only 7 individually clear the
+    $1bn review bar. Excluding just those 7 left the other 11 as $4.19bn and still the
+    largest position on the board - a partial clean that reads as a clean one.
+
+    Scoped to the FILER, not the ticker: SVRE's 18 rows are all VisionWave Holdings
+    (cik 0002038439) and MRUS's 11 are all Genmab A/S, so a per-filer rule catches both
+    in full. Propagating across the whole ticker would instead zero the dollars of every
+    unrelated insider who happened to buy the same stock - punishing them for someone
+    else's filing.
+
+    Aggregation only. Individual rows keep their own marker, the feed keeps showing all
+    of them, and this decides solely what a TOTAL is allowed to sum."""
+    peer = _peer_medians(rows)
+    out = set()
+    for r in rows:
+        tk = (r["ticker"] or "").upper()
+        if _value_quality(r["shares"], r["price"], r["value"], peer.get(tk),
+                          r["security_title"]):
+            out.add((tk, r["reporting_cik"]))
+    return out
+
+
+def clean_subset(rows, drop_bad_value=True, drop_funds=True,
+                 collapse_cofiling=True):
+    """The rows an AGGREGATE may sum. Three exclusions, each measured, each reversible.
+
+      1. Value-quality markers - a dollar figure we cannot trust must not be added up.
+         SVRE alone was 46.8% of the gross buy total.
+      2. Fund issuers - a '40-Act sponsor subscribing into its own fund is not insider
+         conviction in an operating company, and LNBIX alone is $250,000,006.
+      3. Co-filing duplicates COLLAPSED, not dropped. Affiliated persons file separate
+         accessions for one economic block; removing them all would delete the event,
+         so exactly one representative survives per group and the rest are set aside.
+         Deterministic by lowest reporting CIK so the survivor never changes run to run.
+
+    The trades FEED does not use this - it shows every row with its markers attached, so
+    the residue stays inspectable. This is only for surfaces that sum or rank."""
+    peer = _peer_medians(rows)
+    dirty = contaminated_filers(rows) if drop_bad_value else set()
+    kept, seen = [], set()
+    for r in sorted(rows, key=lambda x: (str(x["reporting_cik"] or ""),
+                                         str(x["accession"] or ""))):
+        tk = (r["ticker"] or "").upper()
+        if drop_bad_value and (tk, r["reporting_cik"]) in dirty:
+            continue
+        if drop_funds and _issuer_class(tk, r["issuer"]) != "operating":
+            continue
+        if collapse_cofiling:
+            gkey = (r["ticker"], r["tx_date"], r["shares"], r["price"])
+            if gkey in seen:
+                continue                  # a co-filed duplicate of one already kept
+            seen.add(gkey)
+        kept.append(r)
+    return kept
+
+
 def _issuer_key(r):
     return r["issuer_cik"] or ("TK:" + (r["ticker"] or "?"))
 
@@ -257,9 +340,14 @@ def _value_quality(shares, price, value, peer_median, security_title=None):
     neighbours and is CORRECT — a Series D Convertible Preferred. We do not store
     security_title, so a different share class and a unit error look identical here, and
     claiming otherwise would be a guess."""
-    if shares and price is not None and shares > 1 and price == shares:
-        # The filer put the share count in the price field. KRMD: 1,191 shares at a
-        # "price" of 1,191 -> $1,418,481 for a ~$3.90 stock. Deterministic, 4 rows.
+    if (shares and price is not None and shares > 1 and price == shares
+            # The coincidence alone is not evidence: a $10 stock bought in a 10-share lot
+            # has price == shares and is perfectly ordinary. It only means something when
+            # it ALSO produces a price nothing like what others paid for the same ticker.
+            # KRMD is 1,191 shares at a "price" of 1,191 against peers near $3.90.
+            and peer_median and peer_median > 0
+            and price / peer_median > _PEER_RATIO_MAX):
+        # The filer put the share count in the price field.
         return "price_equals_share_count"
     if value is not None and abs(value) > _VALUE_REVIEW_MAX:
         # Catches what a within-ticker peer test structurally CANNOT: when every row for
@@ -499,7 +587,14 @@ def q_net_flows(con, anchor=None, scope="all"):
     a = dt.date.fromisoformat(anchor)
     cutoffs = [(lbl, (a - dt.timedelta(days=d)).isoformat() if d else None)
                for lbl, d in _FLOW_WINDOWS]
-    rows = _fetch_f4(con, ("P", "S"), "0001-01-01", anchor, plan="all")
+    # Funds and co-filed duplicates are removed as ROWS. Untrustworthy VALUES are not:
+    # this surface zeroes the dollars while still counting the person, which is the
+    # better treatment - a corrupt price does not make the insider's identity corrupt.
+    # So the value test is applied below, inside row_ok, rather than here.
+    rows = clean_subset(_fetch_f4(con, ("P", "S"), "0001-01-01", anchor, plan="all"),
+                        drop_bad_value=False)
+    peer = _peer_medians(rows)
+    dirty = contaminated_filers(rows)
     scoped = _scoped_tickers() if scope != "all" else None
     agg = defaultdict(lambda: {lbl: {"val": 0.0, "sh": 0, "buyers": set(),
                                      "sellers": set()} for lbl, _ in _FLOW_WINDOWS})
@@ -517,9 +612,15 @@ def q_net_flows(con, anchor=None, scope="all"):
         # and share count are all sane. If not, drop BOTH its dollars and its shares
         # (value = shares*price, so one bad field poisons the other) — persons still
         # counts, since the insider's identity is not corrupt.
+        # The absolute ceilings alone were never going to catch this: SVRE's $27.9bn
+        # sits under the $100bn cap and its $3.45 price under the $10k one, so it passed
+        # every check and stood as 46.8% of the whole board. The same value-quality test
+        # the trades feed applies is therefore applied here too.
         row_ok = ((price is None or abs(price) <= _PRICE_SANITY_MAX)
                   and abs(val) <= _VALUE_SANITY_MAX
-                  and abs(sh) <= _SHARES_SANITY_MAX)
+                  and abs(sh) <= _SHARES_SANITY_MAX
+                  and ((r["ticker"] or "").upper(),
+                       r["reporting_cik"]) not in dirty)
         if (val or sh) and not row_ok:
             rows_excluded += 1
             val, sh = 0.0, 0
@@ -564,7 +665,7 @@ def q_ownership_pressure(con, target="all", window=90, anchor=None):
     watchlist path plus the universal recency slice."""
     anchor = anchor or dt.date.today().isoformat()
     start = _win(anchor, window)
-    rows = _fetch_f4(con, ("P", "S"), start, anchor, target)
+    rows = clean_subset(_fetch_f4(con, ("P", "S"), start, anchor, target))
     agg = defaultdict(lambda: {"buyers": set(), "sellers": set(),
                                "buy_shares": 0.0, "sell_shares": 0.0,
                                "n_buys": 0, "n_sells": 0, "ticker": None})
@@ -619,7 +720,8 @@ def q_sell_anomaly(con, window=90, anchor=None, min_baseline=SELL_MIN_BASELINE):
     anchor = anchor or dt.date.today().isoformat()
     wstart = _win(anchor, window)
     ystart = _win(anchor, SELL_NORM_DAYS)
-    rows = _fetch_f4(con, ("S",), ystart, anchor)  # 12mo pull; window is a subset
+    # 12mo pull; window is a subset
+    rows = clean_subset(_fetch_f4(con, ("S",), ystart, anchor))
     win_sellers, yr_sellers, tick = defaultdict(set), defaultdict(set), {}
     win_value = defaultdict(float)
     for r in rows:
@@ -873,7 +975,7 @@ def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None):
     anchor = anchor or dt.date.today().isoformat()
     start = _win(anchor, window)
     by_issuer = defaultdict(list)
-    for r in _fetch_f4(con, ("P",), start, anchor):
+    for r in clean_subset(_fetch_f4(con, ("P",), start, anchor)):
         by_issuer[_issuer_key(r)].append(r)
     out = []
     for key, rs in by_issuer.items():

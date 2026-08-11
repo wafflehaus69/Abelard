@@ -150,8 +150,12 @@ def test_price_equal_to_the_share_count_is_flagged():
     the quantity in the price field. Deterministic, needs no market data."""
     p, con = _db()
     try:
-        _buy(con, "KRMD", 1191, 1191.0)
-        assert _row(_feed(con), "KRMD")["value_quality"] == "price_equals_share_count"
+        for j, px in enumerate((3.96, 3.93, 3.91)):
+            _buy(con, "KRMD", 5000, px, person="Peer %d" % j, cik="k%d" % j)
+        _buy(con, "KRMD", 1191, 1191.0, person="Tharby Linda M", cik="th")
+        rows = [r for r in _feed(con) if r["ticker"] == "KRMD"]
+        bad = [r for r in rows if r["value_quality"]]
+        assert len(bad) == 1 and bad[0]["value_quality"] == "price_equals_share_count"
     finally:
         con.close()
         os.unlink(p)
@@ -393,6 +397,199 @@ def test_the_parser_output_reaches_the_column():
         con.commit()
         assert con.execute("SELECT security_title FROM form4_transactions"
                            ).fetchone()[0] == "Common Stock"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+# ---------------------------------------------------------------- the parse guard
+
+def test_the_close_check_does_not_null_a_legitimate_preferred():
+    """The close cross-check compares against the COMMON stock's close, so it is only
+    meaningful for common stock. BGDE's Series D Preferred at $1,000 is 112x its common
+    close and entirely correct - flagging it would NULL a real $16.7m purchase, which is
+    exactly what a re-parse would have done before the title was persisted."""
+    from smart_money import form4
+    assert form4.value_sanity_flag(
+        16700, 1000.0, 16700000.0, close=8.92,
+        security_title="Series D Convertible Preferred Stock") is None
+    assert form4.value_sanity_flag(
+        16700, 1000.0, 16700000.0, close=8.92,
+        security_title="American Depositary Shares") is None
+
+
+def test_the_close_check_still_fires_on_common_stock():
+    """The exemption must not become a blanket amnesty."""
+    from smart_money import form4
+    assert form4.value_sanity_flag(
+        100, 1000.0, 100000.0, close=8.92,
+        security_title="Common Stock") == "price_vs_close"
+    # and an unknown title stays checked - the back corpus must not excuse itself
+    assert form4.value_sanity_flag(
+        100, 1000.0, 100000.0, close=8.92, security_title=None) == "price_vs_close"
+
+
+def test_the_absolute_ceilings_are_not_exempted_by_a_title():
+    """A preferred title explains a price ABOVE the common close; it does not explain a
+    price above every US equity ever traded."""
+    from smart_money import form4
+    assert form4.value_sanity_flag(
+        1, 50000.0, 50000.0, close=8.92,
+        security_title="Series A Preferred Stock") == "price_over_max"
+
+
+# ---------------------------------------------------------------- clean subset
+
+def test_the_aggregate_subset_drops_untrustworthy_values():
+    p, con = _db()
+    try:
+        _buy_titled(con, "GOOD", 1000, 10.0, "Common Stock", person="A", cik="1")
+        for j, px in enumerate((3.96, 3.93, 3.91)):
+            _buy_titled(con, "KRMD", 5000, px, "Common Stock",
+                        person="Peer %d" % j, cik="k%d" % j)
+        _buy_titled(con, "KRMD", 1191, 1191.0, "Common Stock", person="T", cik="th")
+        con.commit()
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        clean = q.clean_subset(raw)
+        assert not [r for r in clean if r["price"] == 1191.0], "the bad row is gone"
+        assert [r for r in clean if r["ticker"] == "GOOD"], "the good row survives"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_aggregate_subset_drops_fund_issuers():
+    """LNBIX alone is $250,000,006 of sponsor subscription - not insider conviction."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "GOOD", 1000, 10.0, "Common Stock", person="A", cik="1")
+        con.execute(_F4T, ("f1", "Sponsor", "9", "SCISX", 1000, 25.0, 25000.0,
+                           "2026-06-01", "2026-06-01", "Common Stock"))
+        con.commit()
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        assert [r["ticker"] for r in q.clean_subset(raw)] == ["GOOD"]
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_a_cofiled_block_is_collapsed_to_one_not_removed_entirely():
+    """Removing every co-filed row would delete the economic event. Exactly one survives,
+    deterministically, so the block is counted once rather than twice or zero times."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "SMMT", 3810000, 13.12, "Common Stock",
+                    person="DUGGAN ROBERT W", cik="22")
+        _buy_titled(con, "SMMT", 3810000, 13.12, "Common Stock",
+                    person="Zanganeh Mahkam", cik="11")
+        con.commit()
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        assert len(raw) == 2, "both filings exist in the raw view"
+        clean = q.clean_subset(raw)
+        assert len(clean) == 1, "counted once"
+        assert clean[0]["reporting_cik"] == "11", "lowest CIK wins, deterministically"
+        assert q.clean_subset(raw)[0]["reporting_cik"] == "11", "stable across runs"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_two_genuinely_different_lots_are_both_kept():
+    """Collapsing keys on (ticker, date, shares, price) - a different size or price is a
+    different event and must survive."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "X", 100, 10.0, "Common Stock", person="A", cik="1")
+        _buy_titled(con, "X", 200, 10.0, "Common Stock", person="B", cik="2")
+        con.commit()
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        assert len(q.clean_subset(raw)) == 2
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_trades_feed_still_shows_everything_the_aggregate_excludes():
+    """The residue must stay inspectable - the feed is the place it stays visible."""
+    p, con = _db()
+    try:
+        for j, px in enumerate((3.96, 3.93, 3.91)):
+            _buy_titled(con, "KRMD", 5000, px, "Common Stock",
+                        person="Peer %d" % j, cik="k%d" % j)
+        _buy_titled(con, "KRMD", 1191, 1191.0, "Common Stock", person="T", cik="th")
+        rows = [r for r in _feed(con) if r["ticker"] == "KRMD"]
+        assert len(rows) == 4, "the feed keeps every row"
+        assert [r for r in rows if r["value_quality"]], "and marks the bad one"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_contamination_propagates_to_the_FILER_for_aggregation():
+    """SVRE reports 18 rows on one distorted basis and only 7 clear the $1bn bar
+    individually. Excluding just those left $4.19bn still topping the board - a partial
+    clean that reads as a clean one. Unit corruption is a property of the filing
+    convention, so it propagates to the ticker for TOTALS."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "SVRE", 2501582400, 3.45, "Common Stock",
+                    person="VisionWave", cik="1")           # >$1bn, trips the bar
+        _buy_titled(con, "SVRE", 100000000, 3.45, "Common Stock",
+                    person="VisionWave", cik="1", date="2026-06-02")   # under the bar
+        _buy_titled(con, "OK", 1000, 10.0, "Common Stock", person="B", cik="2")
+        con.commit()
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        assert ("SVRE", "1") in q.contaminated_filers(raw)
+        assert [r["ticker"] for r in q.clean_subset(raw)] == ["OK"], (
+            "both SVRE rows go, not just the one over the bar")
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_a_clean_filer_on_a_dirty_ticker_keeps_its_dollars():
+    p, con = _db()
+    try:
+        _buy_titled(con, "SVRE", 2501582400, 3.45, "Common Stock", person="V", cik="1")
+        _buy_titled(con, "AAPL", 1000, 200.0, "Common Stock", person="B", cik="2")
+        con.commit()
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        assert q.contaminated_filers(raw) == {("SVRE", "1")}
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_feed_still_shows_every_row_of_a_contaminated_ticker():
+    """Propagation governs TOTALS only. The rows stay individually visible and only the
+    ones that actually tripped a test carry a marker."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "SVRE", 2501582400, 3.45, "Common Stock", person="V", cik="1")
+        _buy_titled(con, "SVRE", 100000, 3.45, "Common Stock", person="W", cik="2",
+                    date="2026-06-02")
+        rows = [r for r in _feed(con) if r["ticker"] == "SVRE"]
+        assert len(rows) == 2, "both rows visible in the feed"
+        assert sum(1 for r in rows if r["value_quality"]) == 1, (
+            "only the row that tripped a test is marked")
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_an_innocent_insider_on_a_contaminated_ticker_is_not_punished():
+    """Propagating across the whole ticker would zero the dollars of everyone who
+    happened to buy the same stock, for someone else's filing convention."""
+    p, con = _db()
+    try:
+        _buy_titled(con, "CCC", 40000000, 40000000.0, "Common Stock",
+                    person="Bad Filer", cik="bad")
+        _buy_titled(con, "CCC", 100, 10.0, "Common Stock",
+                    person="Ordinary Insider", cik="good", date="2026-06-02")
+        con.commit()
+        raw = q._fetch_f4(con, ("P",), "2020-01-01", "2026-08-07", plan="all")
+        kept = q.clean_subset(raw)
+        assert [r["reporting_cik"] for r in kept] == ["good"]
     finally:
         con.close()
         os.unlink(p)
