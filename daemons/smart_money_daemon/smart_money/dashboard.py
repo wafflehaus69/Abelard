@@ -768,15 +768,23 @@ def view_trades(con, p):
                       'issuers</a>'.format(_qs(p, scope="all")))
     # entry / latest / % since are enriched only for the current page, so they are not
     # server-sortable (None key -> plain header); the raw columns are click-to-sort.
+    # "paid" is the EXECUTION price from the filing; "close" is the market close on the
+    # trade date. They are different numbers and the old single "entry" column showed only
+    # the second one, which read as the first.
     tcols = [("person", "person"), ("ticker", "ticker"), ("side", "side"),
              ("trade_date", "trade date"), ("reported_date", "reported"),
-             ("value", "value"), (None, "entry"), (None, "latest"), (None, "% since")]
+             ("value", "value"), ("exec_price", "paid"), (None, "close"),
+             (None, "latest"), (None, "insider %")]
     header = _sort_headers(p, tcols, lambda **kw: _qs(p, **kw), active, p["dir"])
     body = ["<p class='muted'>Amendment-deduped Form 4 open-market trades. Trade Date "
             "is the transaction date; a red Reported Date means the trade date was "
-            "unavailable and the filing date is shown instead. % since = entry close "
-            "on the trade date vs latest close. Click a column header to sort (entry / "
-            "latest / % since sort the current page only).</p>",
+            "unavailable and the filing date is shown instead. <b>paid</b> is the "
+            "execution price from the filing; <b>close</b> is the market close on the "
+            "trade date - they are different numbers, and a bold <b>paid</b> means the "
+            "two are 10%+ apart. <b>insider %</b> is the return from what the insider "
+            "PAID, not from the close; it is greyed with a warning when the share basis "
+            "is inconsistent (splits, ADRs) and must not be ranked on. Click a column "
+            "header to sort (close / latest / insider % sort the current page only).</p>",
             "<p class='muted'>{}</p>".format(scope_line),
             _trade_filter_form(p), _pager(p, res),
             "<table>" + header]
@@ -814,15 +822,27 @@ def view_trades(con, p):
         if t.get("issuer_class") != "operating":
             qflag += ' <span class="badge">{}</span>'.format(
                 html.escape((t.get("issuer_class") or "").replace("_", " ")))
+        # The execution price, highlighted when it is materially away from the close -
+        # a below-market allocation (BRVE at $18 into a $30 close) is a real signal and
+        # was invisible while the table showed only the close.
+        px = t["exec_price"]
+        if px is None:
+            pxcell = "-"
+        else:
+            vsc = t["price_vs_close_pct"]
+            pxcell = _fmt(px)
+            if vsc is not None and abs(vsc) >= 0.10:
+                pxcell = ('<b title="{d:+.0%} vs the trade-date close">{v}</b>'
+                          .format(d=vsc, v=_fmt(px)))
         lag = "" if t["lag_days"] is None else " (+{}d)".format(t["lag_days"])
         body.append(
             "<tr><td>{p}</td><td>{tk}{b}</td><td>{s}</td><td>{d}</td><td>{r}{lag}</td>"
-            "<td>{v}</td><td>{e}</td><td>{l}</td><td>{pct}</td></tr>".format(
+            "<td>{v}</td><td>{px}</td><td>{e}</td><td>{l}</td><td>{pct}</td></tr>".format(
                 p=html.escape(str(t["person"] or "-")),
                 tk=html.escape(str(t["ticker"] or "-")), b=badges + qflag,
                 s=html.escape(t["side"]), d=dcell,
                 r=html.escape(str(t["reported_date"] or "-")), lag=lag,
-                v=_fmt(t["value"]), e=_fmt(t["entry_close"]),
+                v=_fmt(t["value"]), px=pxcell, e=_fmt(t["entry_close"]),
                 l=_fmt(t["latest_close"]), pct=pcell))
     body.append("</table>")
     if not res["rows"]:

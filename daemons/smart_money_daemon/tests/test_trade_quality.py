@@ -593,3 +593,51 @@ def test_an_innocent_insider_on_a_contaminated_ticker_is_not_punished():
     finally:
         con.close()
         os.unlink(p)
+
+
+# ---------------------------------------------------------------- the rendered table
+
+def test_the_trades_table_shows_what_the_insider_paid():
+    """The row dict and the CSV carried exec_price, but the visible table did not - it
+    still showed only the trade-date close, which is what a reader takes for the price.
+    BRVE read back $30 when the insiders paid $18."""
+    from smart_money import dashboard as dash
+    p, con = _db()
+    try:
+        _buy_titled(con, "BRVE", 1111, 18.0, "Common Stock")
+        con.execute(_PX, ("BRVE", "2026-06-01", 30.0, 30.0))
+        con.execute(_PX, ("BRVE", "2026-08-07", 30.0, 30.0))
+        con.commit()
+        con.close()
+        ro = q.connect_ro(p)
+        try:
+            out = dash.view_trades(ro, dash._params(
+                {"scope": ["all"], "window": ["400"], "anchor": ["2026-08-07"]}))
+            assert ">paid<" in out, "the execution price needs its own column"
+            assert ">close<" in out, "and the close must say it is the close"
+            assert "18" in out and "30" in out, "both numbers on the row"
+            assert "execution price from the filing" in out
+        finally:
+            ro.close()
+    finally:
+        os.unlink(p)
+
+
+def test_a_below_market_purchase_is_emphasised_in_the_table():
+    """$18 into a $30 close is a 40% discount - the signal the old table hid."""
+    from smart_money import dashboard as dash
+    p, con = _db()
+    try:
+        _buy_titled(con, "BRVE", 1111, 18.0, "Common Stock")
+        con.execute(_PX, ("BRVE", "2026-06-01", 30.0, 30.0))
+        con.commit()
+        con.close()
+        ro = q.connect_ro(p)
+        try:
+            out = dash.view_trades(ro, dash._params(
+                {"scope": ["all"], "window": ["400"], "anchor": ["2026-08-07"]}))
+            assert "vs the trade-date close" in out
+        finally:
+            ro.close()
+    finally:
+        os.unlink(p)
