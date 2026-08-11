@@ -899,3 +899,64 @@ def test_two_filings_with_no_reported_holding_are_not_called_one_block():
     finally:
         con.close()
         os.unlink(p)
+
+
+# ---------------------------------------------------------------- money formatting
+
+def test_totals_render_as_dollars_with_separators():
+    from smart_money import dashboard as dash
+    assert dash._money_cell("value", 1000984274) == "$1,000,984,274"
+    assert dash._money_cell("total_value", 963039854.0) == "$963,039,854"
+    assert dash._money_cell("floor_exposure", 6817518) == "$6,817,518"
+    assert dash._money_cell("window_sell_value", 0) == "$0"
+
+
+def test_per_share_prices_keep_their_cents():
+    """$18.00 and $1,000,984,274 are both money, but rounding the first to $18 loses the
+    number that matters."""
+    from smart_money import dashboard as dash
+    assert dash._money_cell("exec_price", 18.0) == "$18.00"
+    assert dash._money_cell("entry_close", 30.0) == "$30.00"
+    assert dash._money_cell("exec_price", 0.003) == "$0.00"
+    assert dash._money_cell("price", 1191.0) == "$1,191.00"
+
+
+def test_non_money_columns_are_untouched():
+    from smart_money import dashboard as dash
+    assert dash._money_cell("shares", 2572732) == "2,572,732"
+    assert dash._money_cell("n_buyers", 3) == "3"
+    assert dash._money_cell("ticker", "BRVE") == "BRVE"
+    assert dash._money_cell("calendar_months", ["2026-06"]) == "2026-06"
+
+
+def test_a_missing_money_value_is_a_dash_not_zero_dollars():
+    """None means we do not have it; $0 means the filing said nothing changed hands."""
+    from smart_money import dashboard as dash
+    assert dash._money_cell("value", None) == "-"
+    assert dash._money_cell("exec_price", None) == "-"
+
+
+def test_a_non_numeric_money_field_does_not_crash_the_table():
+    from smart_money import dashboard as dash
+    assert dash._money_cell("value", "n/a") == "n/a"
+
+
+def test_the_sentinels_and_clusters_tables_show_dollars():
+    from smart_money import dashboard as dash
+    p, con = _db()
+    try:
+        for k, d in enumerate(("2026-08-01", "2026-08-02", "2026-08-03")):
+            _buy_titled(con, "CLU", 1000, 25.0, "Common Stock",
+                        person="B%d" % k, cik="c%d" % k, date=d)
+        con.commit()
+        con.close()
+        ro = q.connect_ro(p)
+        try:
+            out = dash.view_clusters(ro, dash._params(
+                {"anchor": ["2026-08-11"], "ctf": ["30"]}))
+            assert "total_value" in out, "a cluster shows its size in dollars"
+            assert "$75,000" in out, out[out.find("CLU"):][:400]
+        finally:
+            ro.close()
+    finally:
+        os.unlink(p)

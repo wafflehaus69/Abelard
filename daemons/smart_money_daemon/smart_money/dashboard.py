@@ -169,12 +169,42 @@ def _filter_form(params):
              f=html.escape(str(params.get("floor", 3))))
 
 
+# Column NAMES that hold dollars. Formatting is decided centrally by name rather than at
+# each call site, because "value" appears on eight surfaces and they had drifted into
+# three different renderings of the same quantity.
+_MONEY_COLS = frozenset((
+    "value", "total_value", "book_value", "midpoint_exposure", "floor_exposure",
+    "net_value", "window_sell_value", "value_all", "prior_value",
+    "exec_price", "implied_price", "entry_close", "latest_close", "close",
+    "price", "underlying_close", "deduplicated_economic_value",
+))
+# Per-share prices want cents; totals do not. $18.00 and $1,000,984,274 are both money,
+# but rounding the first to $18 loses the number that matters.
+_PRICE_COLS = frozenset((
+    "exec_price", "implied_price", "entry_close", "latest_close", "close", "price",
+    "underlying_close",
+))
+
+
+def _money_cell(key, v):
+    """Dollar-format a cell when its COLUMN is a money column, else fall back to _fmt."""
+    if key not in _MONEY_COLS or v is None or isinstance(v, (str, list, bool)):
+        return _fmt(v)
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return _fmt(v)
+    if key in _PRICE_COLS:
+        return "${:,.2f}".format(n)
+    return "${:,.0f}".format(n)
+
+
 def _table(cols, rows, hot=None):
     head = "".join("<th>{}</th>".format(html.escape(c)) for c in cols)
     out = ["<table><tr>{}</tr>".format(head)]
     for r in rows:
         cls = ' class="hot"' if hot and hot(r) else ""
-        cells = "".join("<td>{}</td>".format(html.escape(_fmt(r.get(c))))
+        cells = "".join("<td>{}</td>".format(html.escape(_money_cell(c, r.get(c))))
                         for c in cols)
         out.append("<tr{}>{}</tr>".format(cls, cells))
     out.append("</table>")
@@ -227,7 +257,7 @@ def _sortable_table(params, cols, rows, qs_fn, active, direction, hot=None,
     out = ["<table>" + header]
     for r in rows:
         c = ' class="hot"' if hot and hot(r) else ""
-        cells = "".join("<td>{}</td>".format(html.escape(_fmt(r.get(k))))
+        cells = "".join("<td>{}</td>".format(html.escape(_money_cell(k, r.get(k))))
                         for k, _ in cols)
         out.append("<tr{}>{}</tr>".format(c, cells))
     out.append("</table>")
@@ -239,8 +269,15 @@ def _sortable_table(params, cols, rows, qs_fn, active, direction, hot=None,
 def _fmt(v):
     if v is None:
         return "-"
+    if isinstance(v, bool):
+        return str(v)
     if isinstance(v, float):
         return "{:,.0f}".format(v) if abs(v) >= 1000 else "{:.2f}".format(v)
+    # Integers were falling through to str() and rendering as 2572732 while the same
+    # quantity stored as a float rendered 2,572,732 — the separator depended on the
+    # column's storage type rather than on the number.
+    if isinstance(v, int):
+        return "{:,}".format(v)
     if isinstance(v, list):
         return ",".join(str(x) for x in v)
     return str(v)
@@ -564,8 +601,10 @@ def view_clusters(con, p):
     sell_rows, sell_meta = _page_slice(sell, p["per_page"], p["spage"])
     sell_meta["csv_extra"] = {"which": "sell"}
     qs_fn = lambda **kw: _qs(p, **kw)
-    buy_cols = [(c, c) for c in ("ticker", "n_buyers", "n_buys", "span_days",
-                                 "calendar_months", "capitulation")]
+    # total_value was computed by the query and never displayed; a cluster's size in
+    # dollars is the first thing you want next to its buyer count.
+    buy_cols = [(c, c) for c in ("ticker", "n_buyers", "n_buys", "total_value",
+                                 "span_days", "calendar_months", "capitulation")]
     sell_cols = [(c, c) for c in ("ticker", "rate_ratio", "distinct_sellers_window",
                                   "distinct_sellers_12mo", "window_sell_value", "elevated")]
     body = [
@@ -878,10 +917,10 @@ def view_trades(con, p):
             pxcell = "-"
         else:
             vsc = t["price_vs_close_pct"]
-            pxcell = _fmt(px)
+            pxcell = _money_cell("exec_price", px)
             if vsc is not None and abs(vsc) >= 0.10:
                 pxcell = ('<b title="{d:+.0%} vs the trade-date close">{v}</b>'
-                          .format(d=vsc, v=_fmt(px)))
+                          .format(d=vsc, v=_money_cell("exec_price", px)))
         lag = "" if t["lag_days"] is None else " (+{}d)".format(t["lag_days"])
         body.append(
             "<tr><td>{p}</td><td>{tk}{b}</td><td>{s}</td><td>{d}</td><td>{r}{lag}</td>"
@@ -890,8 +929,9 @@ def view_trades(con, p):
                 tk=html.escape(str(t["ticker"] or "-")), b=badges + qflag,
                 s=html.escape(t["side"]), d=dcell,
                 r=html.escape(str(t["reported_date"] or "-")), lag=lag,
-                v=_fmt(t["value"]), px=pxcell, e=_fmt(t["entry_close"]),
-                l=_fmt(t["latest_close"]), pct=pcell))
+                v=_money_cell("value", t["value"]), px=pxcell,
+                e=_money_cell("entry_close", t["entry_close"]),
+                l=_money_cell("latest_close", t["latest_close"]), pct=pcell))
     body.append("</table>")
     if not res["rows"]:
         body.append("<p class='muted'>No trades match this window and filter.</p>")
@@ -1600,7 +1640,7 @@ def view_breadth_yoy(con, p):
                 t=html.escape(r["ticker"]), mk=mark, a=r["holders_both_prior"],
                 b=r["holders_both_year"], d=r["delta_comparable"], n=r["new_members"],
                 x=r["exited_members"], fs=r["first_seen_year"] or "-",
-                ex=_fmt(r["floor_exposure"]), c=conf))
+                ex=_money_cell("floor_exposure", r["floor_exposure"]), c=conf))
     trs.append("</table>")
     pop = res["population"]
     head = (
@@ -1709,7 +1749,8 @@ def view_committees(con, p):
             trs.append("<tr><td><a href='/congress?cticker={t}'>{t}</a></td><td>{i}</td>"
                        "<td>{h}</td><td>{e}</td><td>{y}</td></tr>".format(
                            t=html.escape(r["ticker"]), i=html.escape(r["instrument"]),
-                           h=r["holder_count"], e=_fmt(r["floor_exposure"]),
+                           h=r["holder_count"],
+                           e=_money_cell("floor_exposure", r["floor_exposure"]),
                            y=html.escape(r["anchor_years"])))
         trs.append("</table>")
         head = ("<p class='muted'><a href='/committees'>&laquo; all committees</a> "
