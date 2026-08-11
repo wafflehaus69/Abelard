@@ -625,7 +625,12 @@ def view_clusters(con, p):
         "<p class='muted'>A cluster is {sp} or fewer days apart with at least {f} "
         "distinct discretionary buyers on one issuer. The <b>lookback</b> above sets how "
         "far back that search runs; it does not change what counts as a cluster. "
-        "Searching from {st}.</p>".format(
+        "Searching from {st}.<br><b>capitulation</b> = every buy in the cluster landed "
+        "in ONE calendar month, i.e. the insiders moved together rather than "
+        "accumulating over time. It is a TIMING test only &mdash; nothing here looks at "
+        "the share price, so it does not claim the stock had fallen, and two buys either "
+        "side of a month boundary read as separate even when they are days apart. "
+        "<b>span_days</b> is the plainer version of the same question.</p>".format(
             sp=cc["cluster_span_days"], f=p["floor"],
             st=("the start of the corpus" if cc["lookback"] == "all"
                 else cc["lookback_start"])),

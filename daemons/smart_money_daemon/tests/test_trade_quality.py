@@ -960,3 +960,27 @@ def test_the_sentinels_and_clusters_tables_show_dollars():
             ro.close()
     finally:
         os.unlink(p)
+
+
+def test_the_clusters_page_explains_capitulation():
+    """The column name claims a market read the calculation does not make; the page has
+    to say what it actually measures."""
+    from smart_money import dashboard as dash
+    p, con = _db()
+    try:
+        for k, d in enumerate(("2026-08-01", "2026-08-02", "2026-08-03")):
+            _buy_titled(con, "CLU", 1000, 25.0, "Common Stock",
+                        person="B%d" % k, cik="c%d" % k, date=d)
+        con.commit()
+        con.close()
+        ro = q.connect_ro(p)
+        try:
+            out = dash.view_clusters(ro, dash._params(
+                {"anchor": ["2026-08-11"], "ctf": ["30"]}))
+            assert "ONE calendar month" in out
+            assert "TIMING test only" in out
+            assert "does not claim the stock had fallen" in out
+        finally:
+            ro.close()
+    finally:
+        os.unlink(p)
