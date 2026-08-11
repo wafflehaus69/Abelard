@@ -1024,6 +1024,47 @@ def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None):
 
 
 # ---------------------------------------------------------------- q_ticker_panel
+# SEC Form 4 transaction codes, per the form's own instructions. A bare letter is
+# unreadable to anyone who does not have the table memorised, and the panel was showing
+# nothing else. Every code the form defines is here, not only the ones the corpus happens
+# to contain today, so a newly-seen code never renders as a bare letter.
+TX_CODE_LABEL = {
+    # General
+    "P": "Open-market buy",
+    "S": "Open-market sale",
+    "V": "Early report",
+    # Rule 16b-3 exempt
+    "A": "Grant / award",
+    "D": "Returned to issuer",
+    "F": "Tax withholding",
+    "I": "In-plan trade",
+    "M": "Option exercise",
+    # Derivatives
+    "C": "Conversion",
+    "E": "Short expired",
+    "H": "Long expired",
+    "O": "Exercise (OTM)",
+    "X": "Exercise (ITM)",
+    # Other
+    "G": "Gift",
+    "L": "Small acquisition",
+    "W": "Inherited",
+    "Z": "Voting trust",
+    "J": "Other (footnoted)",
+    "K": "Equity swap",
+    "U": "Tender / buyout",
+}
+# Codes that move shares WITHOUT cash changing hands at a market price, so a $0 value on
+# them is expected rather than a parse failure. The panel says so, because "value 0.00"
+# next to 19.8m shares otherwise reads as broken data.
+NO_CASH_CODES = frozenset(("M", "C", "A", "G", "J", "W", "Z", "E", "H", "D", "F"))
+
+
+def tx_code_label(code):
+    """'M' -> 'Option exercise'. An unknown code is returned as-is rather than guessed."""
+    return TX_CODE_LABEL.get((code or "").strip().upper())
+
+
 def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=None):
     """SM-R1: three-surface drill-down for one ticker — insider (Form 4 + the flow
     pressure) | congressional | 13F principal positions (direction-netted) — plus a
@@ -1032,7 +1073,9 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
     from .overlay import load_overlay
     tk = ticker.upper()
     conv, watch = load_overlay().match(tk)
-    insider = [{"code": c, "plan_flag": pf, "n": n, "shares": sh, "value": val,
+    insider = [{"code": c, "what": tx_code_label(c) or "code {}".format(c or "?"),
+                "cash": "no" if (c or "").upper() in NO_CASH_CODES else "yes",
+                "plan_flag": pf, "n": n, "shares": sh, "value": val,
                 "distinct_filers": nb} for c, pf, n, sh, val, nb in con.execute(
         "SELECT code, plan_flag, COUNT(*), SUM(shares), SUM(value), "
         "COUNT(DISTINCT reporting_cik) FROM form4_transactions WHERE UPPER(ticker)=? "

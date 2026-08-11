@@ -645,9 +645,14 @@ def view_ticker(con, p):
         "<p class='muted'>{} — overlay conviction={} watchlist={}. "
         "13F net = long+call-put; congress amounts are bands.</p>".format(
             html.escape(sym), ov["conviction"], ov["watchlist"]),
-        "<h2>Insider (Form 4) by code</h2>",
-        _table(["code", "plan_flag", "n", "shares", "value", "distinct_filers"],
-               t["insider_by_code"]),
+        "<h2>Insider activity by transaction type</h2>",
+        "<p class='muted'>Form 4 uses single-letter codes; the plain-English meaning is "
+        "in <b>what</b>. <b>cash?</b> = no means the shares moved without a purchase at a "
+        "market price (an option exercise, a grant, a gift), so a value of 0.00 on those "
+        "rows is expected, not missing data. Only <b>Open-market buy</b> is a discretionary "
+        "cash purchase.</p>",
+        _table(["code", "what", "cash", "plan_flag", "n", "shares", "value",
+                "distinct_filers"], t["insider_by_code"]),
         "<h2>Ownership pressure (flow)</h2>",
         _table(["net_shares", "distinct_buyers", "distinct_sellers", "direction"],
                t["ownership_pressure"]),

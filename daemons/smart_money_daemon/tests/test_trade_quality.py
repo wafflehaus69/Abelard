@@ -666,3 +666,82 @@ def test_two_people_taking_identical_tranches_are_not_a_cofiling():
     finally:
         con.close()
         os.unlink(p)
+
+
+# ---------------------------------------------------------------- code labels
+
+def test_every_code_the_corpus_actually_uses_has_a_plain_english_label():
+    """A bare letter is unreadable without the SEC table memorised, and the panel showed
+    nothing else. These 18 are the codes present in the live corpus."""
+    for code in ("S", "A", "F", "M", "P", "D", "G", "J", "C", "L", "U", "X", "I", "W",
+                 "Z", "O", "E", "H", "K", "V"):
+        assert q.tx_code_label(code), "no label for %s" % code
+
+
+def test_the_labels_say_the_right_thing():
+    assert q.tx_code_label("P") == "Open-market buy"
+    assert q.tx_code_label("S") == "Open-market sale"
+    assert q.tx_code_label("M") == "Option exercise"
+    assert q.tx_code_label("F") == "Tax withholding"
+    assert q.tx_code_label("A") == "Grant / award"
+    assert q.tx_code_label("C") == "Conversion"
+    assert q.tx_code_label("G") == "Gift"
+
+
+def test_an_unknown_code_is_not_guessed_at():
+    assert q.tx_code_label("QQ") is None
+    assert q.tx_code_label(None) is None
+    assert q.tx_code_label("") is None
+
+
+def test_codes_are_matched_case_and_space_insensitively():
+    assert q.tx_code_label(" p ") == "Open-market buy"
+
+
+def test_non_cash_codes_are_marked_so_a_zero_value_reads_as_expected():
+    """19,800,000 shares at value 0.00 looks like broken data until you know a conversion
+    has no market price."""
+    p, con = _db()
+    try:
+        con.execute(_F4T, ("m1", "X", "1", "AAA", 157213, None, None, None,
+                           "2026-06-01", "2026-06-01", "Common Stock"))
+        con.execute("UPDATE form4_transactions SET code='M' WHERE accession='m1'")
+        con.commit()
+        panel = q.q_ticker_panel(con, "AAA")
+        row = panel["insider_by_code"][0]
+        assert row["what"] == "Option exercise"
+        assert row["cash"] == "no", "an exercise is not a cash purchase"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_an_open_market_buy_is_marked_as_cash():
+    p, con = _db()
+    try:
+        _buy_titled(con, "AAA", 2000, 51.175, "Common Stock")
+        con.commit()
+        row = q.q_ticker_panel(con, "AAA")["insider_by_code"][0]
+        assert row["what"] == "Open-market buy" and row["cash"] == "yes"
+    finally:
+        con.close()
+        os.unlink(p)
+
+
+def test_the_panel_page_explains_the_codes():
+    from smart_money import dashboard as dash
+    p, con = _db()
+    try:
+        _buy_titled(con, "AAA", 2000, 51.175, "Common Stock")
+        con.commit()
+        con.close()
+        ro = q.connect_ro(p)
+        try:
+            out = dash.view_ticker(ro, dash._params({"symbol": ["AAA"]}))
+            assert "Insider activity by transaction type" in out
+            assert "Open-market buy" in out
+            assert "value of 0.00 on those" in out, "explains the zero-value rows"
+        finally:
+            ro.close()
+    finally:
+        os.unlink(p)
