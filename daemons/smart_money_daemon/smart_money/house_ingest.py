@@ -42,6 +42,27 @@ DATE_RE = re.compile(r"^\d{2}/\d{2}/\d{4}$")
 TICKER_RE = re.compile(r"\(([A-Za-z0-9.\-]{1,10})\)")
 CODE_RE = re.compile(r"\[([A-Z]{2,3})\]")
 
+# The Clerk stamps each transaction line with an amendment marker. Two caption
+# spellings reach us: older PDFs extract as "FIlINg STATuS:", while newer ones
+# carry a broken ToUnicode CMap whose caption letters decode to NULs — once
+# _lines() strips those the caption collapses to "F S:". The status value
+# itself survives intact in both. Matching only one spelling loses every
+# amendment on the other vintage, so both are matched here and in normalize_row.
+STATUS_VALUES = ("New", "Amended", "Deleted")
+STATUS_LINE_RE = re.compile(
+    r"^(?:F\s+S:|FIlINg\s+STATuS:|FILING\s+STATUS:)\s*"
+    r"(New|Amended|Deleted)\b",
+    re.I,
+)
+STATUS_IN_TEXT = re.compile(
+    r"(?:F\s+S|FIlINg\s+STATuS|FILING\s+STATUS)\s*:\s*(New|Amended|Deleted)\b",
+    re.I,
+)
+DESC_IN_TEXT = re.compile(r"DESCRIPTION\s*:\s*(.*)$", re.I)
+# Present only on lines that amend or delete a prior record; the Clerk omits it
+# on ordinary new disclosures, which makes its presence positive evidence.
+CLERK_ID_RE = re.compile(r"^\d{10}$")
+
 # House asset-type codes, fd.house.gov/reference/asset-type-codes.aspx.
 # ST maps to Stock so Phase 2's asset_type filter works across chambers.
 ASSET_CODES = {
@@ -186,6 +207,14 @@ def parse_ptr_pdf(path):
                     current = None
                     page_anchors = None
                     continue
+                m_status = STATUS_LINE_RE.match(joined)
+                if m_status:
+                    # Belongs to the row it trails, never to the asset name.
+                    # Must be tested before the skip below, which would
+                    # otherwise swallow the "F S:" vintage entirely.
+                    if current is not None:
+                        current["filing_status"] = m_status.group(1).capitalize()
+                    continue
                 if re.match(r"^(F S:|S O:|D:|L:|F I|T R)", joined):
                     continue
                 bucket = {name: [] for name, _, _ in bounds}
@@ -196,6 +225,7 @@ def parse_ptr_pdf(path):
                             break
                 date_txt = " ".join(bucket["Date"])
                 if DATE_RE.match(date_txt):
+                    ids = [t for t in bucket.get("ID", []) if CLERK_ID_RE.match(t)]
                     current = {
                         "owner": " ".join(bucket["Owner"]) or "Self",
                         "asset": bucket["Asset"][:],
@@ -203,12 +233,14 @@ def parse_ptr_pdf(path):
                         "tx_date": date_txt,
                         "notif_date": " ".join(bucket["Notification"]),
                         "amount": bucket["Amount"][:],
+                        "clerk_id": ids[0] if ids else None,
                     }
                     rows.append(current)
                 elif current is not None and (bucket["Asset"] or bucket["Amount"]):
                     a = bucket["Asset"]
                     if a and (
                         a[0] == "D:" or (a[0] == "D" and len(a) > 1 and a[1] == ":")
+                        or a[0].upper().startswith("DESCRIPTION:")
                     ):
                         # description line, spans columns — keep as comment
                         current.setdefault("desc", []).extend(
@@ -239,6 +271,16 @@ HOUSE_BANDS_CANON.setdefault(_canon_band("Spouse/DC Over $1,000,000"), (1000001,
 
 def normalize_row(row, doc_id):
     asset_text = " ".join(row["asset"])
+    # Older PDFs bleed the Clerk's per-line annotations into the asset column.
+    # Lift them out here as well as in parse_ptr_pdf so a row is cleaned
+    # whichever path its text arrived by, and so the ticker regex never sees
+    # parentheses that belong to a free-text description.
+    m_status = STATUS_IN_TEXT.search(asset_text)
+    status_text = m_status.group(1).capitalize() if m_status else None
+    asset_text = STATUS_IN_TEXT.sub(" ", asset_text)
+    m_desc = DESC_IN_TEXT.search(asset_text)
+    desc_text = m_desc.group(1).strip() if m_desc else None
+    asset_text = DESC_IN_TEXT.sub(" ", asset_text)
     amount_text = re.sub(r"\s+", " ", " ".join(row["amount"])).strip()
     m_band = BAND_RE.search(amount_text)
     if m_band and _canon_band(m_band.group(0)) in HOUSE_BANDS_CANON:
@@ -256,7 +298,9 @@ def normalize_row(row, doc_id):
             )
         low = high = int(round(float(m_exact.group(1).replace(",", ""))))
         spill = amount_text[m_exact.end():].strip()
-    comment_bits = [b for b in (" ".join(row.get("desc", [])), spill) if b]
+    comment_bits = [
+        b for b in (" ".join(row.get("desc", [])), desc_text, spill) if b
+    ]
     side_key = re.sub(r"\s+", " ", row["tx_type"]).strip().upper()
     if side_key not in SIDE_MAP:
         raise IngestError(
@@ -277,6 +321,8 @@ def normalize_row(row, doc_id):
         "asset_name": re.sub(r"\s+", " ", asset_text).strip(),
         "asset_type": asset_type,
         "comment": " | ".join(comment_bits) or None,
+        "filing_status": row.get("filing_status") or status_text,
+        "clerk_line_id": row.get("clerk_id"),
     }
 
 
@@ -344,12 +390,14 @@ def ingest_filing(con, filing, year, raw_dir, ua):
             "INSERT OR REPLACE INTO congress_trades("
             "person_id, ticker, side, amt_low, amt_high, tx_date, disclosure_date,"
             "lag_days, chamber, source, raw_ref, owner, asset_name, asset_type,"
-            "comment, filing_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "comment, filing_id, filing_status, clerk_line_id)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 person_id, n["ticker"], n["side"], n["amt_low"], n["amt_high"],
                 n["tx_date"], disclosure, lag, "house", "house_clerk",
                 "{}#{}".format(doc_id, i), n["owner"], n["asset_name"],
-                n["asset_type"], n["comment"], doc_id,
+                n["asset_type"], n["comment"], doc_id, n["filing_status"],
+                n["clerk_line_id"],
             ),
         )
     record("electronic", len(rows))

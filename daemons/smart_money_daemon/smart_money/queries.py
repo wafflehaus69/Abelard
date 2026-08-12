@@ -1085,6 +1085,43 @@ def tx_code_label(code):
     return TX_CODE_LABEL.get((code or "").strip().upper())
 
 
+def annotate_potential_amendments(rows):
+    """Flag repeat disclosures the Clerk never marked as amendments.
+
+    A member sometimes re-discloses a transaction in a later filing - typically
+    an omnibus catch-up PTR - and nothing in the source links the two. Where
+    the Clerk DID mark the line, amendments.apply_supersedes has already
+    resolved it and the loser never reaches this function. What is left is a
+    repeat with no source evidence either way.
+
+    Doctrine forbids collapsing on resemblance alone, so nothing is dropped or
+    merged here. The later row is annotated with the disclosure date of the
+    earlier one it may be restating, and the reader decides. Rows repeated
+    WITHIN a single filing are left untouched: the source PDFs show members
+    genuinely listing the same asset on several lines, so those are real.
+    """
+    key_of = {}
+    for r in rows:
+        key = (r.get("name"), r.get("tx_date"), r.get("side"),
+               r.get("amt_low"), r.get("amt_high"))
+        key_of.setdefault(key, []).append(r)
+    for members in key_of.values():
+        if len(members) < 2:
+            continue
+        if len({m.get("filing_id") for m in members}) < 2:
+            continue  # same filing: distinct source lines, not a repeat
+        first = min(m.get("disclosure_date") or "" for m in members)
+        for m in members:
+            if (m.get("disclosure_date") or "") == first:
+                continue
+            d = first
+            m["note"] = (
+                "*POTENTIAL AMENDMENT* DTD {}/{}/{}".format(d[5:7], d[8:10], d[2:4])
+                if len(d) >= 10 else "*POTENTIAL AMENDMENT*"
+            )
+    return rows
+
+
 def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=None):
     """SM-R1: three-surface drill-down for one ticker — insider (Form 4 + the flow
     pressure) | congressional | 13F principal positions (direction-netted) — plus a
@@ -1105,13 +1142,16 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
         "SELECT code, plan_flag, COUNT(*), SUM(shares), SUM(value), "
         "COUNT(DISTINCT reporting_cik) FROM form4_transactions WHERE UPPER(ticker)=? "
         "GROUP BY code, plan_flag ORDER BY COUNT(*) DESC", (tk,))]
-    congress = [{"name": nm, "side": sd, "amt_low": lo, "amt_high": hi,
-                 "tx_date": txd, "disclosure_date": disc, "owner": ow}
-                for nm, sd, lo, hi, txd, disc, ow in con.execute(
-        "SELECT p.name, ct.side, ct.amt_low, ct.amt_high, ct.tx_date, "
-        "ct.disclosure_date, ct.owner FROM congress_trades ct JOIN persons p "
-        "USING(person_id) WHERE UPPER(ct.ticker)=? AND ct.superseded=0 "
-        "ORDER BY ct.tx_date DESC", (tk,))]
+    congress = annotate_potential_amendments(
+        [{"name": nm, "side": sd, "amt_low": lo, "amt_high": hi,
+          "tx_date": txd, "disclosure_date": disc, "owner": ow,
+          "filing_id": fid, "filing_status": fst}
+         for nm, sd, lo, hi, txd, disc, ow, fid, fst in con.execute(
+            "SELECT p.name, ct.side, ct.amt_low, ct.amt_high, ct.tx_date, "
+            "ct.disclosure_date, ct.owner, ct.filing_id, ct.filing_status "
+            "FROM congress_trades ct JOIN persons p "
+            "USING(person_id) WHERE UPPER(ct.ticker)=? AND ct.superseded=0 "
+            "ORDER BY ct.tx_date DESC", (tk,))])
     net13f = defaultdict(float)
     for cik, per, pc, val in con.execute(
         "SELECT cik, period, put_call, value FROM thirteenf_holdings WHERE UPPER(ticker)=?",

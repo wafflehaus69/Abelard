@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS congress_trades(
   comment TEXT,
   filing_id TEXT NOT NULL,
   superseded INTEGER NOT NULL DEFAULT 0,
+  filing_status TEXT,
+  clerk_line_id TEXT,
   UNIQUE(filing_id, raw_ref)
 );
 CREATE TABLE IF NOT EXISTS ingested_filings(
@@ -541,6 +543,17 @@ def _migrate(con):
         con.execute(
             "ALTER TABLE congress_trades ADD COLUMN superseded INTEGER NOT NULL DEFAULT 0"
         )
+        con.commit()
+    if "filing_status" not in cols:
+        # The Clerk's per-line New/Amended/Deleted marker. Parsed since the
+        # first House ingest but discarded before insert, so existing rows are
+        # NULL until reparse_status backfills them. NULL means "not yet
+        # extracted", never "no amendment" — readers must not treat the two
+        # as equivalent.
+        con.execute("ALTER TABLE congress_trades ADD COLUMN filing_status TEXT")
+        con.execute("ALTER TABLE congress_trades ADD COLUMN clerk_line_id TEXT")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_trades_fstatus ON "
+                    "congress_trades(filing_status)")
         con.commit()
     _migrate_coverage(con)
     ocols = {r[1] for r in con.execute("PRAGMA table_info(options_chain_snapshots)")}

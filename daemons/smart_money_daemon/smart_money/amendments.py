@@ -1,14 +1,30 @@
-"""F5 amendment dedup policy (ORDER SM-2). Binding for the future delta-scan;
-moot on today's backfill which has no matched amendments, but implemented and
-unit-tested now so the delta-scan inherits it.
+"""Amendment dedup policy for congressional PTRs (ORDER SM-2, revised).
 
-Policy: an amendment PTR supersedes its original, matched on
-(person_id, tx_date, ticker, side, amt_low, amt_high). Keep the latest
-filing_id's row; mark the superseded original row superseded=1. Scoring reads
-superseded=0 only. An amendment row with no matching original scores as a new
-event (stays superseded=0).
+Policy: an amendment supersedes its original, matched on
+(person_id, tx_date, ticker, side, amt_low, amt_high). Keep the rows of the
+latest filing in the group; mark the rest superseded=1. Scoring reads
+superseded=0 only. An amendment with no earlier filing to supersede scores as a
+new event and stays live.
 
-Amendment filings are identified by 'amend' in ingested_filings.report_label.
+Evidence for "this is an amendment" comes from two places, in order of quality:
+
+  1. congress_trades.filing_status - the Clerk's own per-line New/Amended/
+     Deleted marker, backfilled by reparse_status. This is the real signal.
+  2. ingested_filings.report_label containing 'amend' - the original gate.
+     Retained because it catches a handful of filings, but it is nearly useless
+     on its own: the Clerk files amended PTRs under an ordinary 'P' type, so
+     the label almost never says 'amend' even when every line in the document
+     is marked Deleted.
+
+Supersession is decided per (group, filing), not per row. A single filing
+legitimately lists the same asset on several lines - verified against the
+source PDFs - so superseding individual rows would silently drop real
+disclosures. Whole filings win or lose together.
+
+A Deleted line is the filer retracting a disclosure. It is never itself a live
+transaction, whether or not we hold the original it retracts; treating one as
+live would invent a transaction the filer explicitly withdrew.
+
 'Latest' is decided by filed_date then filing_id, deterministic.
 """
 import argparse
@@ -17,6 +33,7 @@ import sys
 from . import db as dbmod
 
 MATCH_COLS = ("person_id", "tx_date", "ticker", "side", "amt_low", "amt_high")
+AMEND_STATUSES = ("Amended", "Deleted")
 
 
 def apply_supersedes(con) -> dict:
@@ -24,18 +41,14 @@ def apply_supersedes(con) -> dict:
     superseded from scratch each call."""
     con.execute("UPDATE congress_trades SET superseded=0")
 
-    amend_filings = {
+    label_filings = {
         row[0]
         for row in con.execute(
             "SELECT filing_id FROM ingested_filings "
             "WHERE LOWER(COALESCE(report_label,'')) LIKE '%amend%'"
         )
     }
-    if not amend_filings:
-        con.commit()
-        return {"amendment_filings": 0, "superseded": 0, "unmatched": 0}
 
-    # filing order key for 'latest'
     order = {
         fid: (fd or "", fid)
         for fid, fd in con.execute(
@@ -45,35 +58,50 @@ def apply_supersedes(con) -> dict:
 
     rows = con.execute(
         "SELECT trade_id, person_id, tx_date, ticker, side, amt_low, amt_high, "
-        "filing_id FROM congress_trades"
+        "filing_id, filing_status FROM congress_trades"
     ).fetchall()
 
     groups = {}
-    for tid, pid, tx, tk, side, lo, hi, fid in rows:
-        key = (pid, tx, tk, side, lo, hi)
-        groups.setdefault(key, []).append((tid, fid))
+    for tid, pid, tx, tk, side, lo, hi, fid, fstat in rows:
+        groups.setdefault((pid, tx, tk, side, lo, hi), []).append(
+            (tid, fid, (fstat or ""))
+        )
 
-    superseded = 0
+    dead = set()
+    status_filings = set()
     unmatched = 0
-    for key, members in groups.items():
-        has_amend = any(fid in amend_filings for _, fid in members)
-        if not has_amend:
+
+    for members in groups.values():
+        filings = {fid for _, fid, _ in members}
+        has_status = False
+        for tid, fid, fstat in members:
+            if fstat in AMEND_STATUSES:
+                has_status = True
+                status_filings.add(fid)
+            if fstat == "Deleted":
+                # Retracted by the filer. Dies regardless of what else is in
+                # the group, including when it is the only thing we hold.
+                dead.add(tid)
+        if not has_status and not (filings & label_filings):
             continue
-        if len(members) == 1:
-            unmatched += 1  # lone amendment, no original to supersede
+        if len(filings) == 1:
+            unmatched += 1  # lone amendment, no earlier filing to supersede
             continue
-        # keep the latest filing, supersede the rest
-        winner = max(members, key=lambda m: order.get(m[1], ("", m[1])))
-        for tid, fid in members:
-            if tid != winner[0]:
-                con.execute(
-                    "UPDATE congress_trades SET superseded=1 WHERE trade_id=?", (tid,)
-                )
-                superseded += 1
+        latest = max(filings, key=lambda f: order.get(f, ("", f)))
+        for tid, fid, _ in members:
+            if fid != latest:
+                dead.add(tid)
+
+    for tid in dead:
+        con.execute(
+            "UPDATE congress_trades SET superseded=1 WHERE trade_id=?", (tid,)
+        )
     con.commit()
     return {
-        "amendment_filings": len(amend_filings),
-        "superseded": superseded,
+        "amendment_filings": len(label_filings | status_filings),
+        "label_filings": len(label_filings),
+        "status_filings": len(status_filings),
+        "superseded": len(dead),
         "unmatched": unmatched,
     }
 
@@ -85,8 +113,10 @@ def main(argv=None):
     con = dbmod.connect(args.db)
     stats = apply_supersedes(con)
     print(
-        "[amend] amendment_filings={} superseded_rows={} lone_amendments={}".format(
-            stats["amendment_filings"], stats["superseded"], stats["unmatched"]
+        "[amend] amendment_filings={} (label={} status={}) superseded_rows={} "
+        "lone_amendments={}".format(
+            stats["amendment_filings"], stats["label_filings"],
+            stats["status_filings"], stats["superseded"], stats["unmatched"]
         )
     )
     return 0
