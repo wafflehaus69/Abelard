@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from news_watch_daemon.db import connect, init_db
-from news_watch_daemon.scrape.dedup import compute_dedupe_hash
+from abelard_common.dedupe import compute_dedupe_hash
 from news_watch_daemon.scrape.orchestrator import (
     DEDUP_WINDOW_S,
     DEFAULT_SINCE_LOOKBACK_S,
@@ -995,7 +995,7 @@ def test_orchestrator_populates_language_column_at_insertion(conn):
     Note: this test uses three items with distinct dedupe-hash
     normalizations. Edge cases like emoji-only headlines are covered
     by the classifier unit tests in test_lang_classifier.py — those
-    inputs normalize to empty under scrape.dedup._DROP_CHARS_RE (ASCII-
+    inputs normalize to empty under abelard_common.dedupe._DROP_CHARS_RE (ASCII-
     only) and would collide on dedupe_hash with the Cyrillic-only item
     here, masking the language assertion. The dedup behavior for non-
     Latin scripts is its own concern (Pass F follow-up).

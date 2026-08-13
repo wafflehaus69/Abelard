@@ -3,6 +3,13 @@ name = "news-watch-daemon"
 version = "0.1.0"
 description = "Narrative-state engine for OpenClaw: scrapes headlines, synthesizes per-theme narratives, alerts on shifts."
 requires-python = ">=3.11"
+# abelard_common is a real import dependency (alert.abelard_queue_sink, and as
+# of the dedupe hoist scrape.orchestrator + synthesize.materiality). It is NOT
+# declared below: it is a monorepo editable install, not a published package, so
+# a bare `abelard-common` requirement would resolve against PyPI and fail.
+# Install it FIRST: pip install -e ../common
+# Matches consensus/pyproject.toml and abelard_queue/pyproject.toml; scripts/setup.sh
+# does this automatically.
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",

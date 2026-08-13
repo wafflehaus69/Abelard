@@ -49,7 +49,7 @@ from ..theme_config import ThemeConfig
 from ..translation import run_translation_pass
 from .content_blocklist import classify_blocklist
 from .cross_source_log import write_observation as write_cross_source_observation
-from .dedup import compute_dedupe_hash
+from abelard_common.dedupe import compute_dedupe_hash
 from .sports_filter import classify_sports
 from .ticker_extract import TrackedTickers, log_tracked_ticker_match
 

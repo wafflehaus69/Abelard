@@ -23,7 +23,7 @@ Dedup key (Mando's Step 8 directive):
 
     fingerprint(event) = compute_dedupe_hash(event.headline_summary)
 
-Reuses Pass A's scrape/dedup.py normalization (lowercase, drop
+Reuses the shared abelard_common.dedupe normalization (lowercase, drop
 non-alphanum, collapse whitespace, truncate to 80 chars, SHA256[:32]).
 This is the same "same logical event, regardless of wording" key the
 scrape layer uses to dedup near-duplicate Reuters wire variants. The
@@ -46,7 +46,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..scrape.dedup import compute_dedupe_hash
+from abelard_common.dedupe import compute_dedupe_hash
 from .archive import ArchiveError, list_brief_ids, read_brief
 from .brief import Brief
 

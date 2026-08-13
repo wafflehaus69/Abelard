@@ -4,43 +4,43 @@ from __future__ import annotations
 
 import re
 
-from news_watch_daemon.scrape.dedup import compute_dedupe_hash, normalize_headline
+from abelard_common.dedupe import compute_dedupe_hash, normalize_text
 
 
 # ---------- normalization ----------
 
 
 def test_normalize_lowercases():
-    assert normalize_headline("Iran Tests Missile") == "iran tests missile"
+    assert normalize_text("Iran Tests Missile") == "iran tests missile"
 
 
 def test_normalize_collapses_whitespace():
-    assert normalize_headline("Iran   tests\n\tmissile") == "iran tests missile"
+    assert normalize_text("Iran   tests\n\tmissile") == "iran tests missile"
 
 
 def test_normalize_strips_punctuation():
-    assert normalize_headline("Iran's missile, fired today!") == "irans missile fired today"
+    assert normalize_text("Iran's missile, fired today!") == "irans missile fired today"
 
 
 def test_normalize_drops_special_characters():
-    assert normalize_headline("U.S.–Iran tensions ↑") == "usiran tensions"
+    assert normalize_text("U.S.–Iran tensions ↑") == "usiran tensions"
 
 
 def test_normalize_strips_leading_trailing_whitespace():
-    assert normalize_headline("   hi   ") == "hi"
+    assert normalize_text("   hi   ") == "hi"
 
 
 def test_normalize_truncates_to_80_chars():
     long = "a" * 200
-    assert len(normalize_headline(long)) == 80
+    assert len(normalize_text(long)) == 80
 
 
 def test_normalize_handles_empty():
-    assert normalize_headline("") == ""
+    assert normalize_text("") == ""
 
 
 def test_normalize_handles_only_punctuation():
-    assert normalize_headline("!@#$%^&*()") == ""
+    assert normalize_text("!@#$%^&*()") == ""
 
 
 # ---------- hash ----------

@@ -31,9 +31,9 @@ from __future__ import annotations
 
 import pytest
 
-from news_watch_daemon.scrape.dedup import (
+from abelard_common.dedupe import (
     compute_dedupe_hash,
-    normalize_headline,
+    normalize_text,
 )
 
 
@@ -174,7 +174,7 @@ def test_cyrillic_normalize_preserves_cyrillic_chars():
     """The normalized form of a Cyrillic headline contains Cyrillic
     letters (lowercased) — not the empty string the pre-fix regex
     would have produced."""
-    result = normalize_headline("Российские военные провели учения")
+    result = normalize_text("Российские военные провели учения")
     assert result, "Cyrillic headline must not normalize to empty string"
     # At least one Cyrillic char in result (block U+0400-U+04FF)
     assert any("Ѐ" <= ch <= "ӿ" for ch in result), (
@@ -189,7 +189,7 @@ def test_cyrillic_normalize_preserves_cyrillic_chars():
 def test_cyrillic_normalize_lowercases_via_python_str_lower():
     """Lock the .lower() step's behavior on Cyrillic: "РОССИЯ" -> "россия".
     A future refactor that changes .lower() handling would surface here."""
-    result = normalize_headline("РОССИЯ")
+    result = normalize_text("РОССИЯ")
     assert result == "россия"
 
 
@@ -200,7 +200,7 @@ def test_cyrillic_normalize_lowercases_via_python_str_lower():
 
 def test_cjk_normalize_preserves_chars():
     """CJK Unified Ideographs (U+4E00-U+9FFF) survive normalization."""
-    result = normalize_headline("中国新闻报道")  # "中国新闻报道"
+    result = normalize_text("中国新闻报道")  # "中国新闻报道"
     assert result
     assert any("一" <= ch <= "鿿" for ch in result), (
         f"Normalized form lost all CJK chars: {result!r}"
@@ -209,7 +209,7 @@ def test_cjk_normalize_preserves_chars():
 
 def test_arabic_normalize_preserves_chars():
     """Arabic block (U+0600-U+06FF) survives normalization."""
-    result = normalize_headline("أخبار عربية")  # "أخبار عربية"
+    result = normalize_text("أخبار عربية")  # "أخبار عربية"
     assert result
     assert any("؀" <= ch <= "ۿ" for ch in result), (
         f"Normalized form lost all Arabic chars: {result!r}"
@@ -218,7 +218,7 @@ def test_arabic_normalize_preserves_chars():
 
 def test_hebrew_normalize_preserves_chars():
     """Hebrew block (U+0590-U+05FF) survives normalization."""
-    result = normalize_headline("חדשות ארץ")  # "חדשות ארץ"
+    result = normalize_text("חדשות ארץ")  # "חדשות ארץ"
     assert result
     assert any("֐" <= ch <= "׿" for ch in result), (
         f"Normalized form lost all Hebrew chars: {result!r}"
@@ -227,7 +227,7 @@ def test_hebrew_normalize_preserves_chars():
 
 def test_greek_normalize_preserves_chars():
     """Greek block (U+0370-U+03FF) survives normalization."""
-    result = normalize_headline("Ελληνικά νέα")  # "Ελληνικά νέα"
+    result = normalize_text("Ελληνικά νέα")  # "Ελληνικά νέα"
     assert result
     assert any("Ͱ" <= ch <= "Ͽ" for ch in result), (
         f"Normalized form lost all Greek chars: {result!r}"
@@ -238,7 +238,7 @@ def test_punctuation_still_dropped():
     """ASCII punctuation outside [a-z0-9 ] is still dropped, unchanged
     from pre-fix behavior. The dedup invariant for English content
     relies on this."""
-    result = normalize_headline("Hello, world! [link](url)")
+    result = normalize_text("Hello, world! [link](url)")
     # Expected: "hello world linkurl" (commas, !, [, ], (, ) all dropped)
     assert "," not in result
     assert "!" not in result
@@ -254,7 +254,7 @@ def test_emoji_still_dropped():
     """Emoji are NOT in any of the allow-set script blocks — still
     dropped. Surrounding text is preserved."""
     # Unicorn 🦄 (U+1F984) — pictograph, outside all allow-set blocks
-    result = normalize_headline("Russia \U0001f984 news")
+    result = normalize_text("Russia \U0001f984 news")
     assert "russia" in result
     assert "news" in result
     assert "\U0001f984" not in result
@@ -265,7 +265,7 @@ def test_unicode_punctuation_still_dropped():
     allow-set — still dropped. Locked because these are common in
     Bloomberg/Trump headlines and the invariance regression test
     depends on them being dropped consistently pre and post fix."""
-    result = normalize_headline("Trump’s “Big Deal” — maybe")
+    result = normalize_text("Trump’s “Big Deal” — maybe")
     # Curly apostrophe (U+2019), curly quotes (U+201C/U+201D), em dash (U+2014) all dropped
     assert "’" not in result
     assert "“" not in result
@@ -284,7 +284,7 @@ def test_truncation_is_character_count_not_byte_count():
     or .ljust(80, ...) on bytes)."""
     # 120 Cyrillic 'а' chars (U+0430) — well over the 80-char cap.
     long_cyrillic = "а" * 120
-    result = normalize_headline(long_cyrillic)
+    result = normalize_text(long_cyrillic)
     assert len(result) == 80, (
         f"Expected 80-char result; got {len(result)} chars. "
         f"Truncation may have switched to byte-counting."
