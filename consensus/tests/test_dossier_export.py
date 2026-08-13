@@ -64,3 +64,15 @@ def test_contested_and_headline_stay_separate():
     card = dx.build_export(con, now_ts=2)["recent"][0]
     assert card["headline_notional"] == 50_000.0
     assert card["contested_notional"] is None   # unknown, never copied from headline
+
+
+def test_a_not_measured_factor_is_never_rendered_as_zero():
+    """85% of live cards have F unmeasured (the wallet was not gated for enrichment).
+    An empty bar is visually identical to a zero bar, so the template must render a
+    null factor as an explicit not-measured placeholder — otherwise the page repeats,
+    in pixels, the imputed-freshness error the scoring path was fixed to stop making."""
+    tpl = open(dx._TEMPLATE, encoding="utf-8").read()
+    assert "not measured" in tpl
+    assert "v == null" in tpl, "template does not branch on an unmeasured factor"
+    # the contested column must say why it is empty rather than showing a bare dash
+    assert "c.contested_notional == null" in tpl
