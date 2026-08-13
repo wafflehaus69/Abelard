@@ -5,6 +5,12 @@ principle, originating incident, operative rule. Entries are appended, never
 silently edited; supersessions reference the superseded entry. Daemon-specific
 doctrine lives in per-daemon AGENTS.md; only lessons that transfer live here.
 
+**Canonicity (ratified by Mando, 2026-08-08): this monorepo copy is canonical.**
+Unlike MEMORY.md and THESES.md — where the Orban workspace copy leads and the
+monorepo mirror is stale — ENGINEERING.md has no upstream counterpart and is
+authored here. `deploy_doctrine.sh` must not overwrite or delete it from a
+workspace that does not carry it.
+
 ## E1 — Fail loud, never fake data, never empty success
 Founding principle. A function that cannot produce its answer raises or returns
 an explicit failure object. No silent defaults, no fabricated rows, no ok:true
@@ -116,3 +122,16 @@ Incident: CD-R1 — Tesla annual series read as deceleration while the
 half-year cut read +113%. Rule: phase/direction classification must run at
 the finest reliable cadence; an aggregation window can invert the sign of
 the conclusion it feeds.
+
+## E18 — One writer per working tree
+Ruled by Mando 2026-08-08; drafted by ClaudeCode from the originating incident
+rather than by Abelard — reword to the ledger's voice if wanted.
+Incident: CD-R1 — two sessions committed against the same checkout of `main`.
+The resulting non-linear history read as three lost commits under a truncated
+`git log`, and work crossed a standing disk-review-before-push gate. Nothing
+was actually lost; the alarm itself was the cost.
+Rule: a working tree has one writer at a time — either serialize sessions on a
+shared checkout, or give each concurrent workstream its own `git worktree`.
+Corollary: never report branch state from a truncated `git log`. Non-linear
+history truncates misleadingly; verify with `merge-base --is-ancestor` (and the
+reflog) before declaring commits lost.
