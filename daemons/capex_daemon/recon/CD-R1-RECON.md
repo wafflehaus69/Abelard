@@ -793,6 +793,47 @@ SECURITY, SOUL, THESES, USER, WORLDVIEW — there is no ledger artifact. R2 and 
 recorded **here** and await a home in the doctrine ledger and the pre-consensus thread wherever those
 actually live.
 
+### E15 re-check — 2026-08-13 (recon dated 2026-08-07)
+
+Negative verdicts carry a re-check obligation. Two were re-run six days on; **both moved.**
+
+**1. META companyfacts omission — VERDICT EXPIRED.** `[CURL-VERIFIED 2026-08-13]`
+`companyconcept` now returns the missing period: `start=2026-01-01 end=2026-06-30`,
+**val = 49,113,000,000**, `form=10-Q`, `filed=2026-07-30`. The filing was absent from the API on
+2026-08-07 (8 days after filing) and present by 2026-08-13 (14 days after).
+
+Two consequences, pulling in opposite directions:
+
+- **The mechanism is latency, not permanent exclusion.** §2.9 called this an omission with "no error
+  signal"; that stands for the window, but the correct characterisation is a **multi-day, per-issuer,
+  silent ingestion lag** — bounded, not permanent. E6's three exclusion mechanisms are therefore not
+  equivalent: *dimensioned* and *custom-namespace* facts are permanently absent, while
+  *not-yet-ingested* resolves on its own. Only the first two justify filing-level parsing on
+  correctness grounds.
+- **The latency argument survives intact, and is arguably stronger.** A daemon whose purpose is early
+  deceleration detection cannot use an API that is 8–14 days stale precisely during the post-filing
+  window when the signal arrives. The parser is justified on freshness for this mechanism rather than
+  on permanence.
+
+**Validation of the fallback path.** The value now published by the API, $49,113,000,000, is
+**exactly** the figure recovered from the filing instance on 2026-08-07 (§2.9). The inline-XBRL parse
+was correct to the dollar, six days before the API agreed.
+
+**2. APLD "rename in flight" — CLAIM WITHDRAWN.** `[CURL-VERIFIED 2026-08-13]` There was no rename.
+`formerNames` carries an entry identical to the current `name` ("Applied Digital Corp.") ending
+2026-08-06; the filings around that date are Form 4s, a 144 and a 13G/A, with **no 8-K item 5.03**.
+The 10-K of 2026-07-29 files as `apld-20260531.htm` under the same name. This is an EDGAR
+identity-record artifact, not a corporate action.
+
+The R3 / E10 rule is unaffected — KEEL←Bitfarms carries it alone and carries it well. But the APLD
+case is worth keeping as a *different* hazard: **a `formerNames` entry equal to the current name will
+trip naive rename-detection.** Change-detection must compare normalized name values *across scans*,
+never `name` against the `formerNames` list. Corrected in `doctrine/ENGINEERING.md` E10.
+
+**Still-open re-check obligations:** `NotYetCommenced` absent across all six probe issuers (§2.6);
+NBIS 6-K exhibits carrying no XBRL (§2.8); the ABS/BDC and NPORT-P surfaces (§5.8). All structural
+rather than timing-dependent, so lower expiry risk — but none re-verified since 2026-08-07.
+
 ### Open items carried forward
 
 1. **NPORT-P probe** — horizon list, separate small recon. Fund-side monitoring of unfiled SPV debt

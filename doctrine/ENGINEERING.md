@@ -78,6 +78,17 @@ the durable identifier (CIK for EDGAR); tickers and names are display
 attributes resolved at read time and re-resolved every scan; renames get
 identity-discontinuity markers, never hand-edits.
 
+**Citation correction (ClaudeCode, 2026-08-13, per E15 re-check).** The APLD
+half of the cited evidence was misread and does not describe a rename. APLD's
+`formerNames` carries an entry whose name is *identical* to its current `name`
+("Applied Digital Corp.") with an end date of 2026-08-06; no 8-K item 5.03 was
+filed and no new name exists. It is an EDGAR identity-record artifact, not a
+rename in flight. The rule is unaffected and KEEL←Bitfarms supports it fully.
+The APLD case survives as a *different* hazard worth keeping: a `formerNames`
+entry equal to the current name will trip naive rename-detection that diffs
+`name` against `formerNames`, so change-detection must compare normalized name
+*values across scans*, not name against the former-names list.
+
 ## E11 — Silent-fallback boundaries are not containment
 Incident: ML-1 — local-model inference silently failed over to cloud Opus with
 ok:true and relabeled provider; auth isolation did not stop it. Rule: any
@@ -135,3 +146,30 @@ shared checkout, or give each concurrent workstream its own `git worktree`.
 Corollary: never report branch state from a truncated `git log`. Non-linear
 history truncates misleadingly; verify with `merge-base --is-ancestor` (and the
 reflog) before declaring commits lost.
+
+## E19 — An inter-judge agreement rate is not a calibration metric
+Ruled by Mando 2026-08-13; drafted by ClaudeCode from the originating incident
+rather than by Abelard — reword to the ledger's voice if wanted.
+Incident: SC-1 Phase 3C — scout pre-registered "LLM veto rate over
+mechanical-GREEN > 10% = halt" as its rubric-calibration gate. Four consecutive
+measurements halted: 45.8% → 39.8% → 26.2% → 23.1%. Every halt traced to corpus
+data quality, not rubric miscalibration. Per source the rate was 0–12% on five
+of six sources and 45.3% on Questbook alone — a permissionless venue where
+anyone can post, supplying 40.8% of the denominator and 80% of the vetoes, with
+literal test rows (`Test123`, `wdsa`, `nothing fuck`) that are structurally
+complete and semantically empty. The best mechanical proxy for the LLM's veto
+(no published settlement evidence) was 51% precise, 21 of 41, and still left
+10.1% while yellowing 20 real programs.
+Rule: the two judges have deliberately opposite defaults — the mechanical rubric
+passes on absent triggers, the LLM suspects on thin data. Where a corpus is
+thin, they diverge precisely because each is working correctly, so their
+disagreement rate measures corpus thinness, not calibration. Retire such a rate
+as a halt condition. Keep it as a per-source monitor and alarm on MOVEMENT, not
+on level: a jump means a source degraded or a prompt drifted, which is the
+question the metric can actually answer.
+Precondition, and the reason retirement is safe here: the gated mechanism must
+be ruled permanent and downward-only, so its failure mode is a review rather
+than a record. A veto that is permanent by ruling is not an error source, and
+its firing rate is therefore not an error rate. Corollary: three times running,
+a gate that will not close because the DATA is thin is evidence about the
+corpus; treat the fourth failure as a finding, not as another patch target.
