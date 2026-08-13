@@ -218,6 +218,17 @@ if (!D) {
     ? `<span class="fx" title="${k} not measured — wallet not enriched this scan"><b>${k}</b><span class="bar nm"></span></span>`
     : `<span class="fx"><b>${k}</b><span class="bar">
       <i style="width:${Math.max(0, Math.min(1, v)) * 100}%"></i></span></span>`;
+  const nResA = D.recent.filter(c => c.resolved).length;
+  const nBlkA = new Set(D.recent.filter(c => c.resolved).map(c => c.market)).size;
+  $("cardsA").insertAdjacentHTML("beforebegin",
+    `<div class="note" style="border-left:2px solid var(--warn);padding-left:10px">
+     <b>The outcome column is a per-row fact, not a hit rate.</b> These are the newest
+     ${D.recent.length} footprints by detection time, of which ${nResA} have resolved —
+     out of ${T.resolved_dossiers} resolved footprints in the store, so this view is a
+     recency sample, not a scorecard. Those ${nResA} span only ${nBlkA} distinct
+     market(s): rows from one event are correlated and count once, which is why Panel B
+     measures in blocks. Reading a win rate off this column would repeat the exact error
+     that made an earlier result look powered when it was not.</div>`);
   $("cardsA").innerHTML = `<table><tr><th>market</th><th>tier</th><th>factors F/S/D/C</th>
       <th>contested</th><th>headline</th><th>cluster</th><th>outcome</th></tr>` +
     D.recent.map(c => {
@@ -228,8 +239,19 @@ if (!D) {
             ? `<span class="tag unres">${c.raw_wallets} wallets → ${c.actor_count} actor(s)</span>
                <div class="note" style="margin:2px 0 0">n=${c.actor_count} evidence, not ${c.raw_wallets}</div>`
             : (c.raw_wallets > 1 ? `${c.actor_count} independent actors` : "solo"));
+      // A bare verdict invites reading the column as a hit rate. Every verdict carries
+      // its entry price, because a win at 0.998 is the ~99.8% base rate — yield carry,
+      // information-free — which is exactly the confound Panel D names and which this
+      // column would otherwise launder into apparent predictive skill.
+      const vw = (c.entry_vwap == null || isNaN(c.entry_vwap)) ? null : Number(c.entry_vwap);
+      const band = vw == null ? `<div class="note">entry price not measured</div>`
+        : (vw > 0.90
+            ? `<div class="note">entry ${vw.toFixed(3)} — carry band; winning here is
+               near-automatic and information-free</div>`
+            : `<div class="note">entry ${vw.toFixed(3)}</div>`);
       const outcome = !c.resolved ? `<span class="tag">unresolved</span>`
-        : (c.outcome_for_side === 1 ? "flagged side won" : (c.outcome_for_side === 0 ? "flagged side lost" : "—"));
+        : (c.outcome_for_side == null ? "—"
+           : (c.outcome_for_side === 1 ? "flagged side won" : "flagged side lost") + band);
       const tier = c.score_complete ? esc(c.tier || "—")
         : `<span class="tag unres">untiered</span>`;
       return `<tr>
