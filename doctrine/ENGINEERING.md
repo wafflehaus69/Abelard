@@ -173,3 +173,28 @@ than a record. A veto that is permanent by ruling is not an error source, and
 its firing rate is therefore not an error rate. Corollary: three times running,
 a gate that will not close because the DATA is thin is evidence about the
 corpus; treat the fourth failure as a finding, not as another patch target.
+
+## E20 — Worktree guardrail: commit in the turn you edit, or take your own tree
+Ruled by Mando 2026-08-13; drafted by ClaudeCode from the originating incident
+rather than by Abelard — reword to the ledger's voice if wanted. Operationalizes
+[E18], which stated the principle; this entry states what to actually do.
+Incident: E19 above was drafted into this file and left modified across turns on
+a checkout a second session was writing to. At 18:31 that session's commit
+captured it — `97fa231` records the APLD citation correction *and* all 26 lines
+of E19 under a message naming only the former. Nothing was lost and nothing
+leaked (scout_daemon was untracked, so its `.env` was never a staging
+candidate), but the ruling became unfindable in the log by its own subject. The
+obvious repair, amending the message, was already unavailable: by the time it
+was noticed the commit had been pushed, and three further commits sat on top.
+Rule: on a shared checkout, a tracked file you have edited is committed in the
+same turn you edit it, or you work in your own `git worktree`. Never carry a
+modified tracked file across turns while another writer may be live.
+Corollary — staging: stage by explicit pathspec. `git add -A` / `git add .`
+captures whatever is in the tree, including another session's in-flight edits,
+and the resulting commit message will describe only your half of it.
+Corollary — the repair window closes at PUSH, not at the next commit. "Safe
+because unpushed" is a claim to verify, not assume: check
+`git rev-list --count origin/main..HEAD` and `git merge-base --is-ancestor`
+BEFORE promising a message can still be fixed. Published history is repaired by
+a new commit that references the old one, never by a force-push to a branch a
+production host pulls.
