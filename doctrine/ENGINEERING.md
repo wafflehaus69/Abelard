@@ -148,8 +148,8 @@ history truncates misleadingly; verify with `merge-base --is-ancestor` (and the
 reflog) before declaring commits lost.
 
 ## E19 — An inter-judge agreement rate is not a calibration metric
-Ruled by Mando 2026-08-13; drafted by ClaudeCode from the originating incident
-rather than by Abelard — reword to the ledger's voice if wanted.
+Ruled by Mando 2026-08-13. Rule reworded to the ledger's voice by Mando the
+same day; the incident paragraph is as ClaudeCode drafted it.
 Incident: SC-1 Phase 3C — scout pre-registered "LLM veto rate over
 mechanical-GREEN > 10% = halt" as its rubric-calibration gate. Four consecutive
 measurements halted: 45.8% → 39.8% → 26.2% → 23.1%. Every halt traced to corpus
@@ -160,19 +160,15 @@ literal test rows (`Test123`, `wdsa`, `nothing fuck`) that are structurally
 complete and semantically empty. The best mechanical proxy for the LLM's veto
 (no published settlement evidence) was 51% precise, 21 of 41, and still left
 10.1% while yellowing 20 real programs.
-Rule: the two judges have deliberately opposite defaults — the mechanical rubric
-passes on absent triggers, the LLM suspects on thin data. Where a corpus is
-thin, they diverge precisely because each is working correctly, so their
-disagreement rate measures corpus thinness, not calibration. Retire such a rate
-as a halt condition. Keep it as a per-source monitor and alarm on MOVEMENT, not
-on level: a jump means a source degraded or a prompt drifted, which is the
-question the metric can actually answer.
-Precondition, and the reason retirement is safe here: the gated mechanism must
-be ruled permanent and downward-only, so its failure mode is a review rather
-than a record. A veto that is permanent by ruling is not an error source, and
-its firing rate is therefore not an error rate. Corollary: three times running,
-a gate that will not close because the DATA is thin is evidence about the
-corpus; treat the fourth failure as a finding, not as another patch target.
+Rule: When two judges are built with opposite defaults — one passing on absent
+triggers, one suspecting on thin data — their disagreement rate measures the
+corpus, not the calibration. Do not gate on it. A veto that is permanent and
+downward-only has no error rate to bound. Monitor its firing per-source and
+alert on movement: a moving rate means a source degraded or a prompt drifted; a
+level means only that a venue is thin.
+Corollary: three times running, a gate that will not close because the DATA is
+thin is evidence about the corpus; treat the fourth failure as a finding, not as
+another patch target.
 
 ## E20 — Worktree guardrail: commit in the turn you edit, or take your own tree
 Ruled by Mando 2026-08-13; drafted by ClaudeCode from the originating incident
