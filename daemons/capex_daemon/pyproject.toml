@@ -1,0 +1,35 @@
+[project]
+name = "capex-daemon"
+version = "0.1.0"
+description = "AI capital-expenditure sensor over SEC XBRL for OpenClaw. Normalizes a quarterly capex panel, credit-to-capex, and forward commitments across hyperscalers, neoclouds and datacenter REITs. The daemon is dumb; Abelard judges. Zero LLM calls."
+requires-python = ">=3.12"
+# abelard_common is a real import dependency (http_client for every EDGAR call —
+# no fourth copy, per ORDER CD-1-BUILD). It is NOT declared below: it is a
+# monorepo editable install, not a published package, so a bare
+# `abelard-common` requirement would resolve against PyPI and fail.
+# Install it FIRST: pip install -e ../common
+# Matches news_watch_daemon/pyproject.toml and consensus/pyproject.toml.
+dependencies = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "requests-mock>=1.12",
+]
+
+[project.scripts]
+capex-daemon = "capex_daemon.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["capex_daemon*"]
+
+[tool.setuptools.package-data]
+capex_daemon = ["data/*.csv"]
