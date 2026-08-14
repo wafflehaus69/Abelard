@@ -68,27 +68,30 @@ def test_contested_and_headline_stay_separate():
 
 def test_a_not_measured_factor_is_never_rendered_as_zero():
     """85% of live cards have F unmeasured (the wallet was not gated for enrichment).
-    An empty bar is visually identical to a zero bar, so the template must render a
-    null factor as an explicit not-measured placeholder — otherwise the page repeats,
-    in pixels, the imputed-freshness error the scoring path was fixed to stop making."""
-    tpl = open(dx._TEMPLATE, encoding="utf-8").read()
-    assert "not measured" in tpl
-    assert "v == null" in tpl, "template does not branch on an unmeasured factor"
-    # the contested column must say why it is empty rather than showing a bare dash
-    assert "c.contested_notional == null" in tpl
+    An empty bar is visually identical to a measured zero, so the RENDERED page must mark
+    it as not-measured — otherwise the page repeats, in pixels, the imputed-freshness
+    error the scoring path was fixed to stop making."""
+    import consensus.dossier_html as dh
+    con = ds.connect(":memory:")
+    ds.upsert(con, _rec(f_factor=None), scan_ts=1)
+    page = dh.render_page(dx.build_export(con, now_ts=2))
+    assert "bar nm" in page, "an unmeasured factor drew as a zero-width (=zero) bar"
+    assert "not measured" in page
 
 
 def test_outcome_column_cannot_read_as_a_hit_rate():
     """Live review finding: Panel A showed 3 wins / 0 losses — the only outcome evidence
     on the page — from ONE correlated event, all at entry ~0.998 (the carry band, where
-    winning is the base rate), all tiered NONE, with no price column to reveal it. That
-    is the flattering-GO in visual form. Every verdict must carry its entry price, and
-    the column must state it is not a hit rate."""
-    tpl = open(dx._TEMPLATE, encoding="utf-8").read()
-    assert "not a hit rate" in tpl
-    assert "carry band" in tpl, "a win at 0.998 must be labelled as carry, not skill"
-    assert "c.entry_vwap" in tpl, "verdicts render without their entry price"
-    assert "recency sample" in tpl
+    winning is the base rate), with no price column to reveal it. Every verdict must carry
+    its entry price, and the column must say it is not a hit rate."""
+    import consensus.dossier_html as dh
+    con = ds.connect(":memory:")
+    ds.upsert(con, _rec(entry_vwap=0.998), scan_ts=1)
+    ds.backfill_resolutions(con, lambda cid: ("0xT", 1_500_000))
+    page = dh.render_page(dx.build_export(con, now_ts=2_000_000))
+    assert "not a hit rate" in page and "recency sample" in page
+    assert "carry band" in page, "a win at 0.998 must be labelled carry, not skill"
+    assert "0.998" in page, "verdict rendered without its entry price"
 
 
 def test_entry_vwap_is_exported_so_the_page_can_show_it():

@@ -206,26 +206,19 @@ def _res_wallets(row: dict[str, Any]) -> list[Any]:
         return [row.get("wallet")]
 
 
-#: The dashboard template lives beside the package, in the repo's dashboard/ dir.
-_TEMPLATE = Path(__file__).resolve().parent.parent / "dashboard" / "dossier_dashboard.html"
-_SRC_TAG = '<script src="dossier_export.js"></script>'
+def write_html(data: dict[str, Any], out_path: str) -> str:
+    """Write the SELF-CONTAINED, PRE-RENDERED dashboard.
 
-
-def write_html(data: dict[str, Any], out_path: str, *, template: Path | None = None) -> str:
-    """Write a SELF-CONTAINED dashboard: the template with the export inlined.
-
-    The two-file form (page + sibling .js) only works from its own directory — moved or
-    sent anywhere else the page loads with no data, which is a silent empty dashboard
-    rather than an error. Inlining makes the artifact portable, which is what "single
-    file, opens in a browser" has to mean in practice.
+    v1.18: the page is built as static markup by :mod:`consensus.dossier_html` and needs
+    NO JavaScript to show its data. The previous version rendered client-side from an
+    inlined payload, which worked in a browser and showed the owner four empty panels,
+    because the surface the file is actually viewed through renders HTML without running
+    scripts: the static prose appeared and every JS-populated panel was blank. A page
+    that needs JS also cannot fail loud when JS is the thing missing.
     """
-    tpl = Path(template or _TEMPLATE).read_text(encoding="utf-8")
-    if _SRC_TAG not in tpl:
-        raise ValueError(f"dashboard template missing the data tag {_SRC_TAG!r}")
-    # </script> inside the payload would close the tag early; escape the only sequence
-    # that can do that. json.dumps already escapes everything else that matters.
-    blob = json.dumps(data).replace("</", "<\\/")
-    page = tpl.replace(_SRC_TAG, f"<script>window.DOSSIER_EXPORT = {blob};</script>")
+    from . import dossier_html
+    page = dossier_html.render_page(data)
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Path(out_path).write_text(page, encoding="utf-8")
     return out_path
 
@@ -249,5 +242,5 @@ def write_export(db_path: str, out_path: str, *, now_ts: int) -> dict[str, Any]:
             fh.write("window.DOSSIER_EXPORT = ")
             json.dump(data, fh, indent=1)
             fh.write(";\n")
-        data["_dashboard_path"] = write_html(data, stem + "_dashboard.html")
+        write_html(data, stem + "_dashboard.html")
     return data
