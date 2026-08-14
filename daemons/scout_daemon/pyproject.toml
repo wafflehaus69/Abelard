@@ -1,0 +1,30 @@
+[project]
+name = "scout-daemon"
+version = "0.1.0"
+description = "The Tribe's income-discovery sensor: read-only discovery, classification, and ranking of income-generation surfaces available to an autonomous agent tribe. Proposes; never executes, never submits, never creates an account."
+requires-python = ">=3.12"
+# abelard_common is a real import dependency (scout imports abelard_common.dedupe).
+# It is NOT declared below: it is a monorepo editable install, not a published
+# package, so a bare `abelard-common` requirement would resolve against PyPI and
+# fail. Install it FIRST: pip install -e ../common
+# Matches consensus/pyproject.toml and abelard_queue/pyproject.toml.
+dependencies = [
+    "python-dotenv>=1.0",
+    "anthropic>=0.40,<2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+scout-daemon = "scout_daemon.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scout_daemon*"]
