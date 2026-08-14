@@ -118,6 +118,20 @@ CREATE TABLE IF NOT EXISTS anchor_checks(
     PRIMARY KEY (cik, window_end)
 );
 
+-- Tier transitions. Graduation is automatic at the ruled boundary and needs no
+-- per-name ruling, but it is never silent: every crossing is an event, and a
+-- DOWNGRADE means coverage regressed and must surface loudly.
+CREATE TABLE IF NOT EXISTS tier_events(
+    cik TEXT NOT NULL,
+    observed_unix INTEGER NOT NULL,
+    old_tier TEXT,
+    new_tier TEXT NOT NULL,
+    consecutive_quarters INTEGER,
+    direction TEXT NOT NULL,
+    reason TEXT,
+    PRIMARY KEY (cik, observed_unix)
+);
+
 -- Watermarks advance only on success-with-items (E12).
 CREATE TABLE IF NOT EXISTS watermarks(
     key TEXT PRIMARY KEY,
