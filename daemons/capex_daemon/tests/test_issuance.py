@@ -39,10 +39,17 @@ def test_values_differing_in_both_directions_are_distinct_instruments():
 
 # --- rule (c): refuse containment ----------------------------------------
 
+def q(**periods):
+    """q(q1=100, q2=200) -> quarterly 2026 periods, all inside the live window."""
+    ends = {"q1": ("2026-01-01", "2026-03-31"), "q2": ("2026-01-01", "2026-06-30"),
+            "q3": ("2026-01-01", "2026-09-30")}
+    return {ends[k]: v for k, v in periods.items()}
+
+
 def test_persistent_containment_refuses_rather_than_summing():
     """A child never exceeding a parent may be a subset; summing double-counts."""
-    parent = s(y2023=1_000, y2024=2_000, y2025=3_000)
-    child = s(y2023=100, y2024=200, y2025=300)
+    parent = q(q1=1_000, q2=2_000, q3=3_000)
+    child = q(q1=100, q2=200, q3=300)
     branch, shared, detail = issuance.classify_pair(child, parent)
     assert branch == issuance.BRANCH_REFUSED
     assert len(shared) == 3
@@ -51,8 +58,31 @@ def test_persistent_containment_refuses_rather_than_summing():
 
 def test_a_single_shared_period_is_not_enough_to_refuse():
     """One period of containment is coincidence, not evidence."""
-    branch, _, _ = issuance.classify_pair(s(y2025=100), s(y2025=1_000))
+    branch, _, _ = issuance.classify_pair(q(q1=100), q(q1=1_000))
     assert branch != issuance.BRANCH_REFUSED
+
+
+def test_historical_overlap_outside_the_live_window_does_not_refuse():
+    """EQIX refused on a 2009 pair that cannot touch any current total; the era
+    map already owns those periods."""
+    old_child = s(y2009=1, y2010=2)
+    old_parent = s(y2009=100, y2010=200)
+    branch, _, detail = issuance.classify_pair(old_child, old_parent, cutoff="2026-01-01")
+    assert branch == issuance.BRANCH_SUMMED
+    assert "predate the live window" in detail
+
+
+def test_zero_periods_do_not_manufacture_containment():
+    """0 <= X holds trivially; an absence of activity is not subset evidence."""
+    child = q(q1=0, q2=0, q3=500)
+    parent = q(q1=100, q2=200, q3=300)
+    branch, _, detail = issuance.classify_pair(child, parent)
+    assert branch == issuance.BRANCH_SUMMED
+
+
+def test_counterparty_concepts_are_excluded_from_the_instrument_stack():
+    """ProceedsFromRelatedPartyDebt says who lent, not what was borrowed."""
+    assert "ProceedsFromRelatedPartyDebt" in issuance.COUNTERPARTY_CONCEPTS
 
 
 # --- derived totals -------------------------------------------------------

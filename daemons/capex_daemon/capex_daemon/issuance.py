@@ -34,6 +34,21 @@ IDENTITY_TOLERANCE = 0.005
 # A pair is "contained" when the smaller never exceeds the larger in any shared
 # period. One shared period is not evidence; require a few before refusing.
 MIN_SHARED_PERIODS_FOR_CONTAINMENT = 2
+# Only overlap near the frontier can move a published total. Decade-old
+# co-reporting is history the era map already owns — EQIX refused on a 2009 pair
+# and DLR on 2009-2019 ones, none of which touch any current period. Same
+# scoping the concept resolver applies; it simply was not carried across.
+LIVE_WINDOW_DAYS = 400
+
+# Counterparty concepts describe WHO lent, not WHAT was borrowed. The same
+# borrowing is also tagged by instrument, so summing a counterparty view with
+# instrument views double-counts, and its persistent smallness reads as
+# containment. WULF's ProceedsFromRelatedPartyDebt sat under three different
+# instrument parents for exactly this reason. Excluded from the instrument
+# stack by ruling; still stored per-concept, never summed into a total.
+COUNTERPARTY_CONCEPTS = frozenset({
+    "ProceedsFromRelatedPartyDebt",
+})
 
 
 class PairVerdict:
@@ -54,25 +69,55 @@ def _close(x, y):
     return abs(x - y) / scale <= IDENTITY_TOLERANCE
 
 
-def classify_pair(series_a, series_b):
+def _frontier_cutoff(*series):
+    from datetime import date, timedelta
+    ends = [p[1] for s in series for p in s if p[1]]
+    if not ends:
+        return None
+    try:
+        return (date.fromisoformat(max(ends)) - timedelta(days=LIVE_WINDOW_DAYS)).isoformat()
+    except ValueError:
+        return None
+
+
+def classify_pair(series_a, series_b, cutoff=None):
     """Decide which branch a co-reporting pair lands in.
 
-    ``series_*`` are {period_key: value}. Only shared periods are considered —
-    a concept that stopped reporting cannot be double-tagging a live one.
+    ``series_*`` are {period_key: value}. Only shared periods **near the
+    frontier** count: overlap the era map has long since owned cannot move a
+    current total, and refusing on it withholds a healthy series.
+
+    Zero-valued periods are excluded from the containment test. ``0 <= X`` holds
+    trivially, so a concept reporting no activity in a shared period would
+    otherwise manufacture containment evidence out of an absence.
     """
-    shared = sorted(set(series_a) & set(series_b))
+    shared_all = sorted(set(series_a) & set(series_b))
+    if not shared_all:
+        return BRANCH_SUMMED, shared_all, "no shared periods; disjoint by construction"
+    if cutoff is None:
+        cutoff = _frontier_cutoff(series_a, series_b)
+    shared = [p for p in shared_all if not cutoff or (p[1] and p[1] >= cutoff)]
     if not shared:
-        return BRANCH_SUMMED, shared, "no shared periods; disjoint by construction"
+        return (BRANCH_SUMMED, shared_all,
+                "all {} shared period(s) predate the live window; historical overlap "
+                "already owned by the era map".format(len(shared_all)))
+
     if all(_close(series_a[p], series_b[p]) for p in shared):
         return (BRANCH_COLLAPSED, shared,
-                "identical across all {} shared period(s)".format(len(shared)))
-    a_le = all(series_a[p] <= series_b[p] or _close(series_a[p], series_b[p]) for p in shared)
-    b_le = all(series_b[p] <= series_a[p] or _close(series_b[p], series_a[p]) for p in shared)
-    if (a_le or b_le) and len(shared) >= MIN_SHARED_PERIODS_FOR_CONTAINMENT:
+                "identical across all {} live shared period(s)".format(len(shared)))
+
+    informative = [p for p in shared if series_a[p] or series_b[p]]
+    if len(informative) < MIN_SHARED_PERIODS_FOR_CONTAINMENT:
+        return (BRANCH_SUMMED, shared,
+                "only {} live shared period(s) carry activity; too thin to infer "
+                "containment".format(len(informative)))
+    a_le = all(series_a[p] <= series_b[p] or _close(series_a[p], series_b[p]) for p in informative)
+    b_le = all(series_b[p] <= series_a[p] or _close(series_b[p], series_a[p]) for p in informative)
+    if a_le or b_le:
         smaller, larger = ("a", "b") if a_le else ("b", "a")
-        return (BRANCH_REFUSED, shared,
-                "{} is at or below {} in all {} shared periods; subset not ruled out".format(
-                    smaller, larger, len(shared)))
+        return (BRANCH_REFUSED, informative,
+                "{} is at or below {} in all {} live periods carrying activity; "
+                "subset not ruled out".format(smaller, larger, len(informative)))
     return BRANCH_SUMMED, shared, "values differ in both directions; distinct instruments"
 
 
@@ -119,15 +164,24 @@ def resolve_total(indexed, resolution, unit_filter=("USD",)):
     if not concepts:
         return IssuanceResolution(STATUS_OK, (), (), (), "no debt concept present")
     series_map = build_series_map(indexed, concepts, unit_filter)
+    excluded = sorted(c for c in series_map if c in COUNTERPARTY_CONCEPTS)
+    for c in excluded:
+        series_map.pop(c)
     live = sorted(series_map)
+    if not live:
+        return IssuanceResolution(STATUS_OK, (), tuple(excluded), (),
+                                  "only counterparty concepts present; no instrument line")
     if len(live) == 1:
-        return IssuanceResolution(STATUS_OK, live, (), (),
-                                  "single concept {}".format(live[0]))
+        return IssuanceResolution(
+            STATUS_OK, live, tuple(excluded), (),
+            "single concept {}{}".format(
+                live[0], "; counterparty views excluded: " + ", ".join(excluded) if excluded else ""))
 
+    cutoff = _frontier_cutoff(*series_map.values())
     verdicts, collapsed, refused = [], set(), []
     for i, a in enumerate(live):
         for b in live[i + 1:]:
-            branch, shared, detail = classify_pair(series_map[a], series_map[b])
+            branch, shared, detail = classify_pair(series_map[a], series_map[b], cutoff)
             verdicts.append(PairVerdict(a, b, branch, shared, detail))
             if branch == BRANCH_COLLAPSED:
                 collapsed.add(b)          # keep the alphabetically-first member
