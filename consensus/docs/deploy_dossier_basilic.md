@@ -89,3 +89,17 @@ arm therefore has nothing to calibrate against and stays disabled rather than
 shipping at a threshold that cannot fire, or firing on raw wallet count (which
 would overstate coordination — the failure the collapse exists to prevent).
 Single-wallet alerting runs normally.
+
+## Reading the powered-date countdown
+
+Panel B's headline date is projected on **contested blocks only** — footprints entered
+inside the 0.10–0.90 band. Blocks entered at carry odds are counted separately and shown
+as an "optimistic bound" that the test can never actually reach, because a market whose
+outcome is near-automatic carries no information for an informed-money test to detect.
+
+If the two dates diverge sharply (measured 2026-08-15: ~106 days contested vs ~25 days
+all-block), the countdown is running toward a **signal-starved** test, not a fair one.
+That is worth knowing before the test lands rather than after — see
+`docs/m0b_report.md` §9, which binds the eventual powered-test report to state its
+denominator and forbids claiming the edge was fairly tested unless the contested count
+itself cleared the power floor.

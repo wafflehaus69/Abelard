@@ -187,3 +187,46 @@ cannot rescue this NO-GO):** the edge concentrates where the theory predicts —
 +5.3pp)** footprints. A future test of a *tighter* cell (CRITICAL ∩ ≤7d) on the L2 forward
 tape is the honest next question — but on **this** sample, at the pre-registered bar, the
 answer is NO-GO.
+
+---
+
+## 9. Interpretation guard for the FUTURE powered test (addendum v1.19 §3)
+
+**Binding on whoever writes the eventual powered-test report — including a future me.**
+
+The dossier store accumulates resolved, outcome-stamped footprints toward a re-test with
+real power (the §6 mechanism). That test must state **up front** whether it was powered
+over **contested blocks** or over **all blocks**, because those support different
+conclusions and only one of them is a verdict on the method.
+
+**A block is not an informative block.** M0-C taught that correlated rows inside one
+market are not independent, so significance rides on blocks. The same argument goes one
+level deeper: a block entered at carry odds (≥0.90 or ≤0.10) has no information for the
+test to find. Winning there is the base rate. Padding the block count with carry inflates
+apparent progress toward a test those blocks can never answer.
+
+**The live tape is carry-dominated.** Measured 2026-08-15 on the live store: 44 of 62
+resolved footprints (71%) were carry-band; the contested slice spanned **7 of 26** resolved
+blocks. Projected on the contested rate, a powered test at the plausible-edge ceiling was
+**~106 days out**, not the ~25 days the all-block count implied. The dashboard reports the
+contested figure as the headline for exactly this reason.
+
+**Therefore the report may NOT claim** *"informed-money edge was fairly tested and failed"*
+unless the **contested-block count itself cleared the power floor** (155 blocks for
+MDE 0.10, 618 for MDE 0.05). If it did not, the honest statement is:
+
+> The live tape produced too few informative footprints to test the edge. Over what was
+> captured, no edge — but the test was starved of signal, not merely of edge.
+
+That distinction is the difference between **"the method is dead"** and **"this venue's
+current tape has little to detect."** They are not the same conclusion, they license
+different next steps, and conflating them would be the flattering-NO — the mirror of the
+flattering-GO this project has spent four milestones refusing.
+
+**Checklist for that report:**
+1. State the denominator in the headline: contested blocks or all blocks.
+2. Report the contested-block count against the power floor, before any verdict.
+3. If contested < floor → the verdict is **UNDERPOWERED / signal-starved**, never NO-GO.
+4. Report the carry share of the sample, so a reader can judge what was testable.
+5. Do not aggregate carry and contested into one edge estimate without reporting both
+   separately as well.
