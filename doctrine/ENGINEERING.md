@@ -224,3 +224,33 @@ because unpushed" is a claim to verify, not assume: check
 BEFORE promising a message can still be fixed. Published history is repaired by
 a new commit that references the old one, never by a force-push to a branch a
 production host pulls.
+
+## E21 — Temporal migration and concurrent stacking are different problems
+Ruled by Mando 2026-08-13; drafted by ClaudeCode from the originating incident
+rather than by Abelard — reword to the ledger's voice if wanted. Extends [E7],
+which fixed resolution-by-recency and did not anticipate that recency itself
+assumes a single line.
+Incident: CD-1 B3. Recency-based resolution, adopted to stop
+plausible-stale-resolution, elected WULF's `ProceedsFromShortTermDebt` at
+$92,750,000 while `ProceedsFromIssuanceOfSecuredDebt` stood at $3,132,938,000
+and `ProceedsFromConvertibleDebt` at $975,329,000 in the same year — a 34x
+undercount produced by the fix for a 23x undercount. Panel-wide, 6 of 14 CORE
+issuers carry a live debt stack.
+Rule: before resolving a concept, decide which problem you have. A **temporal
+migration** is one line retagged over time — the newest tag is the answer and
+the old one owns only its own periods. A **concurrent stack** is several
+instruments reported in the same filing — every member is live, selection
+undercounts by construction, and recency picks arbitrarily among equals. Capex
+migrates; debt stacks. A resolver must distinguish them and must never present
+a selection from a stack as a total.
+Corollary — collapse before summing, and refuse containment. Two concepts
+carrying byte-identical values across all co-reported periods are one instrument
+double-tagged: collapse, keep one, record it. Differing values are distinct
+instruments: sum. A child persistently at or below a parent in the same periods
+may be a subset rather than a sibling, and summing would double-count: refuse,
+emit the pair with values, and have it ruled.
+Corollary — scope the ambiguity test to the frontier. Disagreement at a
+decade-old migration boundary is expected and already resolved by the era map;
+only disagreement inside the live window can move today's number. An
+unscoped check refuses healthy series (it killed a correct AMZN resolution over
+a 2016 handover reading $7.804B against $6.737B).
