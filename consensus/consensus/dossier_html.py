@@ -166,6 +166,9 @@ def render_page(data: dict[str, Any] | None) -> str:
     M = A.get("milestones") or {}
     ceil_m = M.get("ceiling_0.10") or {}
     trade_m = M.get("tradeable_0.05") or {}
+    CM = A.get("contested_milestones") or {}
+    c_ceil = CM.get("ceiling_0.10") or {}
+    c_trade = CM.get("tradeable_0.05") or {}
 
     def eta(m: dict[str, Any]) -> str:
         if not m:
@@ -181,7 +184,8 @@ def render_page(data: dict[str, Any] | None) -> str:
             "signal.</strong><p>It surfaces verifiable on-chain facts as an input to your "
             "own judgement, and it compounds a labelled dataset that is the only honest "
             "route to a decisive answer on whether any edge exists. On the current rate a "
-            f"powered re-test at the plausible-edge ceiling is <b>{_e(eta(ceil_m))}</b>. If "
+            f"powered re-test at the plausible-edge ceiling is <b>{_e(eta(c_ceil or ceil_m))}</b> "
+            "— measured on CONTESTED blocks, the only ones that could carry information. If "
             "that line goes flat or the date runs years out, the correct decision is to "
             "switch it off — this page is built to tell you that too.</p>"
             "<p class='sub'>The trade question was asked four times and answered no. That "
@@ -196,17 +200,39 @@ def render_page(data: dict[str, Any] | None) -> str:
 
     def panel_b() -> str:
         rows = "".join(
-            f"<tr><td>{_e(lbl)}</td><td>{_e(m.get('target_blocks'))}</td>"
-            f"<td>{_e(m.get('blocks_remaining'))}</td><td>{_e(eta(m))}</td></tr>"
-            for lbl, m in (("detect a 10pp effect (plausible ceiling)", ceil_m),
-                           ("detect a 5pp effect (tradeable floor)", trade_m)) if m)
-        return (_kpi([(T.get("resolved_blocks", "—"), "resolved market-blocks (the unit that counts)"),
-                      (T.get("resolved_dossiers", "—"), "resolved footprints (raw rows — overstates power)"),
-                      (A.get("blocks_per_day", "—"), "blocks/day observed"),
+            f"<tr><td>{_e(lbl)}</td><td>{_e(cm.get('target_blocks'))}</td>"
+            f"<td><b>{_e(eta(cm))}</b></td><td>{_e(eta(am))}</td></tr>"
+            for lbl, cm, am in (
+                ("detect a 10pp effect (plausible ceiling)", c_ceil, ceil_m),
+                ("detect a 5pp effect (tradeable floor)", c_trade, trade_m)) if cm or am)
+        n_carry = T.get("resolved_carry", 0)
+        n_cont = T.get("resolved_contested", 0)
+        n_res = T.get("resolved_dossiers", 0) or 1
+        mech = T.get("resolved_mechanical", 0)
+        # v1.19 §2.3 — one unmissable figure. If most of what resolves is carry, the
+        # countdown is counting toward a STARVED test, and that must be impossible to miss.
+        agg = (f"<div class='err' style='background:#241f14;border-color:#e0b341'>"
+               f"<b>{n_carry} of {n_res} resolved footprints are carry-band</b> "
+               f"({n_carry/n_res*100:.0f}%) — entered at odds where the outcome is "
+               f"near-automatic and winning carries no information. Only <b>{n_cont}</b> "
+               f"are contested, spanning <b>{_e(T.get('contested_blocks'))}</b> of the "
+               f"{_e(T.get('resolved_blocks'))} resolved blocks. "
+               + (f"{mech} are mechanical-count markets by title (a lower bound). "
+                  if mech else "")
+               + "A block is not an informative block: the powered date below is driven by "
+               "the CONTESTED rate, because carry blocks cannot inform a test of "
+               "informed-money edge. Counting them would inflate progress toward a test "
+               "they can never answer.</div>")
+        return (agg
+                + _kpi([(T.get("contested_blocks", "—"), "CONTESTED blocks (what the test can actually use)"),
+                      (T.get("resolved_blocks", "—"), "all resolved blocks (optimistic bound)"),
+                      (A.get("contested_blocks_per_day", "—"), "contested blocks/day"),
                       (T.get("dossiers", "—"), "footprints captured")])
-                + _series_svg(A.get("series") or [], (ceil_m.get("target_blocks") or 155))
-                + (f"<table><tr><th>target</th><th>blocks needed</th><th>remaining</th>"
-                   f"<th>at current rate</th></tr>{rows}</table>" if rows else
+                + _series_svg(A.get("contested_series") or [],
+                              (c_ceil.get("target_blocks") or 155))
+                + (f"<table><tr><th>target</th><th>blocks needed</th>"
+                   f"<th>on CONTESTED blocks (headline)</th>"
+                   f"<th>on all blocks (optimistic bound)</th></tr>{rows}</table>" if rows else
                    "<div class='none'>no milestones computed</div>")
                 + f"<div class='note'>{_e(A.get('assumption', ''))} This is an estimate, "
                   "not a promise: it assumes the observed rate holds.</div>")
@@ -305,9 +331,9 @@ def render_page(data: dict[str, Any] | None) -> str:
     body = (head
             + panel("The dataset compounding <span class='sub'>— why this keeps running</span>",
                     "Resolved, outcome-stamped footprints accumulating. Counted in independent "
-                    "market-blocks, not rows: correlated footprints inside one market count "
-                    "once, which is the error that made an earlier result look powered when "
-                    "it was not.", panel_b)
+                    "market-blocks, not rows — and then only the CONTESTED blocks, because a "
+                    "block entered at carry odds has no information for the test to find. "
+                    "The curve below plots contested blocks only.", panel_b)
             + "<div class='grid two'>"
             + panel("What it stayed quiet about",
                     "A product whose value is partly restraint has to show the restraint.", panel_c)

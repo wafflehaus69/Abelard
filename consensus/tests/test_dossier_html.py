@@ -80,3 +80,61 @@ def test_empty_store_reads_as_empty_not_broken():
     page = dh.render_page(dx.build_export(ds.connect(":memory:"), now_ts=2))
     assert "true empty state" in page
     assert "failed to build" not in page
+
+
+def test_contested_projection_is_distinct_from_the_all_block_projection():
+    """v1.19: a block is not an INFORMATIVE block. Carry blocks cannot inform a test of
+    informed-money edge, so counting them inflates progress toward a test they can never
+    answer."""
+    con = ds.connect(":memory:")
+    for i in range(9):                    # 9 carry blocks
+        ds.upsert(con, dict(_rec_base(), wallet=f"0xC{i}", condition_id=f"0xM{i}",
+                            entry_vwap=0.99), scan_ts=1)
+    ds.upsert(con, dict(_rec_base(), wallet="0xK", condition_id="0xMK",
+                        entry_vwap=0.42), scan_ts=1)      # 1 contested block
+    ds.backfill_resolutions(con, lambda cid: ("0xT", 1_500_000))
+    d = dx.build_export(con, now_ts=2_000_000)
+    assert d["totals"]["resolved_blocks"] == 10
+    assert d["totals"]["contested_blocks"] == 1
+    assert d["totals"]["resolved_carry"] == 9 and d["totals"]["resolved_contested"] == 1
+    a, c = d["accumulation"]["milestones"], d["accumulation"]["contested_milestones"]
+    assert c["ceiling_0.10"]["blocks_remaining"] > a["ceiling_0.10"]["blocks_remaining"]
+    # the contested rate must use the SAME window, else the scarce series looks faster
+    assert d["accumulation"]["contested_blocks_per_day"] <= d["accumulation"]["blocks_per_day"]
+
+
+def test_pure_carry_store_does_not_silently_project_on_the_inflated_total():
+    """Negative test (v1.19 §4): if nothing contested has ever resolved, the page must
+    show a contested count of ~0 and must not present the all-block date as the answer."""
+    con = ds.connect(":memory:")
+    for i in range(5):
+        ds.upsert(con, dict(_rec_base(), wallet=f"0xC{i}", condition_id=f"0xM{i}",
+                            entry_vwap=0.995), scan_ts=1)
+    ds.backfill_resolutions(con, lambda cid: ("0xT", 1_500_000))
+    d = dx.build_export(con, now_ts=2_000_000)
+    assert d["totals"]["contested_blocks"] == 0
+    assert d["accumulation"]["contested_milestones"]["ceiling_0.10"]["reachable"] is False
+    page = dh.render_page(d)
+    assert "are carry-band" in page and "100%" in page
+    assert "not reachable at the current rate" in page
+
+
+def test_the_carry_aggregate_is_a_single_unmissable_figure():
+    con = ds.connect(":memory:")
+    ds.upsert(con, dict(_rec_base(), entry_vwap=0.99), scan_ts=1)
+    ds.backfill_resolutions(con, lambda cid: ("0xT", 1_500_000))
+    page = dh.render_page(dx.build_export(con, now_ts=2_000_000))
+    assert "resolved footprints are carry-band" in page
+    assert "CONTESTED blocks" in page and "optimistic bound" in page
+
+
+def _rec_base():
+    return dict(wallet="0xW", condition_id="0xM", token_id="0xT", side="BUY",
+                market_question="Will X happen?", market_category="politics", event_slug="e",
+                first_seen_ts=1_000_000, first_seen_source="activity", detection_ts=1_100_000,
+                entry_vwap=0.42, price_at_detection=None, contested_notional=None,
+                headline_notional=25_000.0, f_factor=None, s_factor=0.6, d_factor=0.6,
+                c_factor=0.7, latency_factor=None, composite=0.9, tier="CRITICAL",
+                cluster_id=None, cluster_wallets=["0xW"], actor_count_post_collapse=1,
+                cross_market_cluster=None, funding_summary=None, cex_class=None,
+                cex_confidence=None, provenance={"s": 1})

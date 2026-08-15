@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import sqlite3
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -71,6 +72,36 @@ def _notional_bucket(n: Any) -> str:
     return ">1M"
 
 
+#: Titles that are structurally noise for an informed-money detector: high-frequency
+#: mechanical counts where there is nothing to know in advance. Cheap title heuristic —
+#: it under-catches by design, and anything it misses simply stays classified by price.
+_MECHANICAL = re.compile(
+    r"tweets?|post.*this week|generic ballot|approval rating|"
+    r"how many times|number of times|mentions?", re.I)
+
+
+def info_class(row: dict[str, Any]) -> str:
+    """carry | contested | unknown — the INFORMATION axis (v1.19 §2.1).
+
+    carry     = entry in the favourite/longshot bands, where the outcome is near-
+                automatic and winning carries no information.
+    contested = entry inside 0.10-0.90, the only slice where informed money could
+                plausibly live.
+    unknown   = entry price not measured; never silently folded into either (Rule 1).
+    """
+    try:
+        v = float(row.get("entry_vwap"))
+    except (TypeError, ValueError):
+        return "unknown"
+    return "contested" if 0.10 < v < 0.90 else "carry"
+
+
+def is_mechanical(row: dict[str, Any]) -> bool:
+    """Structurally uninformative market shape, by title. Declared as a heuristic:
+    it is a lower bound on how much of the tape is mechanical, never an upper one."""
+    return bool(_MECHANICAL.search(row.get("market_question") or ""))
+
+
 def _freshness(row: dict[str, Any]) -> str:
     fs, det = row.get("first_seen_ts"), row.get("detection_ts")
     if fs is None or det is None:
@@ -106,12 +137,41 @@ def build_export(con: sqlite3.Connection, *, now_ts: int) -> dict[str, Any]:
     span_days = max(1, len(by_day))
     rate = blocks_now / span_days if span_days else 0.0
 
-    def eta(target: int) -> dict[str, Any]:
-        need = max(0, target - blocks_now)
-        days = (need / rate) if rate > 0 else None
+    # v1.19 §2.2: a block is not an INFORMATIVE block. A block counts as contested if it
+    # holds at least one resolved footprint entered inside the contested band; carry-only
+    # blocks can never inform an informed-money test, so counting them toward the powered
+    # date inflates apparent progress. This is the M0-C block-vs-row lesson one level
+    # deeper: not all blocks are equal, just as not all rows were independent.
+    contested_rows = [r for r in resolved if info_class(r) == "contested"]
+    c_blocks = {r["condition_id"] for r in contested_rows}
+    c_by_day: dict[str, set[str]] = defaultdict(set)
+    for r in contested_rows:
+        ts = r.get("resolution_ts") or r.get("last_scan_ts")
+        if ts:
+            c_by_day[dt.datetime.fromtimestamp(int(ts), dt.timezone.utc)
+                     .strftime("%Y-%m-%d")].add(r["condition_id"])
+    c_series, c_seen = [], set()
+    for day in sorted(c_by_day):
+        c_seen |= c_by_day[day]
+        c_series.append({"date": day, "blocks": len(c_seen)})
+    # Rate over the SAME observation window as the all-block rate. Dividing by only the
+    # days that happened to yield a contested block would make the scarce series look
+    # FASTER than the abundant one (measured: 7.0/day vs 5.2/day, projecting 21d vs 25d)
+    # — precisely the inflation this instrumentation exists to expose.
+    c_rate = len(c_blocks) / span_days if span_days else 0.0
+
+    def _eta(target: int, have: int, per_day: float) -> dict[str, Any]:
+        need = max(0, target - have)
+        days = (need / per_day) if per_day > 0 else None
         return {"target_blocks": target, "blocks_remaining": need,
                 "days_remaining": round(days) if days is not None else None,
                 "reachable": days is not None}
+
+    def eta(target: int) -> dict[str, Any]:
+        return _eta(target, blocks_now, rate)
+
+    def c_eta(target: int) -> dict[str, Any]:
+        return _eta(target, len(c_blocks), c_rate)
 
     # --- Panel C: restraint ---------------------------------------------------------
     untierable = [r for r in rows if not _res.is_complete_score(r.get("tier"))]
@@ -154,6 +214,8 @@ def build_export(con: sqlite3.Connection, *, now_ts: int) -> dict[str, Any]:
             "resolved": bool(r.get("resolved")),
             "outcome_for_side": r.get("outcome_for_side"),
             "score_complete": _res.is_complete_score(r.get("tier")),
+            "info_class": info_class(r),
+            "mechanical": is_mechanical(r),
         })
 
     return {
@@ -165,11 +227,28 @@ def build_export(con: sqlite3.Connection, *, now_ts: int) -> dict[str, Any]:
             "alerted": sum(1 for r in rows if r.get("alerted_ts")),
             "untierable": len(untierable),
             "false_positives_refused": refused,
+            # v1.19 §2.3 — the aggregate the owner asked to see stated out loud.
+            "resolved_carry": sum(1 for r in resolved if info_class(r) == "carry"),
+            "resolved_contested": len(contested_rows),
+            "resolved_info_unknown": sum(1 for r in resolved if info_class(r) == "unknown"),
+            "resolved_mechanical": sum(1 for r in resolved if is_mechanical(r)),
+            "contested_blocks": len(c_blocks),
         },
         "accumulation": {
             "series": cumulative,
             "blocks_per_day": round(rate, 3),
             "observed_days": span_days,
+            "contested_series": c_series,
+            "contested_blocks_per_day": round(c_rate, 3),
+            # HEADLINE projection: contested rate. The all-block figures below are the
+            # OPTIMISTIC BOUND — reachable only if carry blocks could inform the test,
+            # which they cannot.
+            "contested_milestones": {
+                "ceiling_0.10": {**c_eta(blocks_for_mde(PLAUSIBLE_CEILING)),
+                                 "mde": PLAUSIBLE_CEILING},
+                "tradeable_0.05": {**c_eta(blocks_for_mde(TRADEABLE_FLOOR)),
+                                   "mde": TRADEABLE_FLOOR},
+            },
             "milestones": {
                 "ceiling_0.10": {**eta(blocks_for_mde(PLAUSIBLE_CEILING)),
                                  "mde": PLAUSIBLE_CEILING},
