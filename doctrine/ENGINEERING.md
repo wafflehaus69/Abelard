@@ -147,6 +147,36 @@ Corollary: never report branch state from a truncated `git log`. Non-linear
 history truncates misleadingly; verify with `merge-base --is-ancestor` (and the
 reflog) before declaring commits lost.
 
+**Amendment (Mando, 2026-08-13, ruling R-B6-5).** Serialization is withdrawn:
+**a worktree per workstream is the standing mechanism.** Two corrections to the
+entry above, both material.
+
+*The deciding incident was one failure, not two.* All seven CD-R1 commits staged
+by explicit pathspec; exactly one (`97fa231`) swept foreign content. What
+happened twice was E18 *biting* — the truncated-`git log` false alarm, then the
+E19 sweep. Staging-by-path failed once. Recorded because a doctrine entry
+resting on an inflated count is the failure E8 exists to prevent.
+
+*Pathspec staging is necessary and insufficient.* The sweep happened **through**
+an explicit pathspec, because the foreign edit sat inside a file this session
+was legitimately editing. No staging discipline can separate two writers inside
+one file; only separate trees can.
+
+**Ledger write protocol (resolves the E18/E20 conflict class).** ENGINEERING.md
+is cross-workstream by nature, so a worktree-local ledger defeats its purpose
+and is the one thing that does not move into the worktree:
+
+  * Ledger entries commit **in the shared checkout only**, as **single-file
+    commits**, **atomic**, **one entry per commit**.
+  * On numbering collision the *later* writer renumbers their own entry.
+  * Entry IDs are **stable once pushed** and are never renumbered afterwards.
+
+This harmonizes with [E20] rather than contradicting it: E20's "commit in the
+turn you edit" is exactly what a single-file atomic ledger commit does. The
+conflict was only ever that E18 offered serialization as an equal option while
+E20 assumed a shared checkout would keep being written to; the protocol removes
+the choice for work and makes the ledger a named exception.
+
 ## E19 — An inter-judge agreement rate is not a calibration metric
 Ruled by Mando 2026-08-13. Rule reworded to the ledger's voice by Mando the
 same day; the incident paragraph is as ClaudeCode drafted it.
