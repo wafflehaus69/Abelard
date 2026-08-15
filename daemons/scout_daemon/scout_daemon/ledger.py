@@ -208,6 +208,11 @@ def apply_schema(conn: sqlite3.Connection) -> None:
         f"CREATE TABLE IF NOT EXISTS opportunities (\n    {columns}\n);"
     )
     conn.executescript(_AUX_SCHEMA)
+    # Append-only verdict history (doctrine E21). Lives in its own module
+    # because it is the ONE table here that must never be updated in place.
+    from . import verdicts as _verdicts
+
+    conn.executescript(_verdicts.VERDICT_SCHEMA)
     conn.execute(
         "INSERT INTO schema_meta(key, value) VALUES('ledger_schema_version', ?) "
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -326,6 +331,9 @@ def upsert_items(
     tos_class: str = TOS_WIRE,
 ) -> tuple[int, int]:
     """Insert or refresh rows. Returns (inserted, updated)."""
+    # Local import: verdicts -> classify -> ledger is circular at module level.
+    from . import verdicts as _verdicts
+
     inserted = updated = 0
     names = list(_COLUMNS)
     placeholders = ",".join("?" for _ in names)
@@ -353,6 +361,20 @@ def upsert_items(
                 [values[n] for n in updatable] + [opportunity_id],
             )
             updated += 1
+
+        # E21: the UPDATE above overwrites this row's previous verdict. Append
+        # the observation FIRST-CLASS before that loss becomes permanent --
+        # this table is the only place the history survives.
+        _verdicts.record_verdict(
+            conn,
+            opportunity_id=opportunity_id,
+            scan_id=scan_id,
+            observed_unix=now_unix,
+            mechanical_class=values.get("mechanical_class") or "",
+            legitimacy_class=values.get("legitimacy_class"),
+            classes_disagreed=bool(values.get("classes_disagreed")),
+            class_reason=values.get("class_reason"),
+        )
     conn.commit()
     return inserted, updated
 
