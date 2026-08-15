@@ -38,12 +38,16 @@ ANCHOR_BAND = (0.5, 2.0)
 ANCHOR_WINDOW_QUARTERS = 4
 
 # ---- Tier boundaries ----
-# THIN below 4 consecutive derivable quarters; both live rulings agree.
+# Ruled R-B6-2 (Mando, 2026-08-13): graduation stands at 4 consecutive derivable
+# quarters, automatic and logged. The 12-quarter zero-gap window measured during
+# the roster audit justified the initial CORE roster; it was evidence, never a
+# membership bar. A 4-quarter graduate carries short TTM history and its panel
+# rows say so — disclosure, not disqualification.
 THIN_MAX_QUARTERS = 4
-# UNSET pending Mando's ruling on the CD-1-SPEC 3.1 conflict: R1 as ruled puts
-# CORE at >=4, the ratified CORE=13 roster implies >=12. Names between 4 and 11
-# resolve to TIER_UNRULED_BAND rather than to a guessed side.
-CORE_MIN_QUARTERS = None
+CORE_MIN_QUARTERS = 4
+# Below this many quarters a CORE member's TTM rests on less than three years of
+# history; panel rows carry SHORT-HISTORY so the reader can discount it.
+SHORT_HISTORY_QUARTERS = 12
 
 # ---- OPEN per ruling (b): calendar-offset tolerance, pending distribution ----
 CALENDAR_OFFSET_TOLERANCE_DAYS = None

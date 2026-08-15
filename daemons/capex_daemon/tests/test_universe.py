@@ -51,19 +51,33 @@ def test_core_above_the_contested_band():
 
 
 @pytest.mark.parametrize("n", [4, 7, 9, 11])
-def test_contested_band_is_reported_unruled_not_guessed(n):
-    """R1 says >=4 is CORE; the ratified CORE=13 roster implies >=12. Until
-    Mando rules (CD-1-SPEC 3.1), 4..11 resolves to neither side."""
+def test_graduation_at_four_makes_core_with_short_history(n):
+    """R-B6-2: graduation stands at 4. Short history is disclosed on the row,
+    never used to withhold membership."""
     e = universe.load()["0001769628"]  # CRWV, 9 quarters at recon
     tier, reason = universe.tier_for(e, n)
-    assert tier == universe.TIER_UNRULED_BAND
-    assert "conflict" in reason
+    assert tier == universe.TIER_CORE
+    assert "SHORT-HISTORY" in reason
+    assert universe.is_short_history(n) is True
 
 
-def test_core_threshold_is_unset_pending_ruling():
-    """E8: an unset constant stays None; consumers surface it, never default it."""
-    assert config.CORE_MIN_QUARTERS is None
+def test_long_history_core_is_not_flagged_short():
+    e = universe.load()["0000789019"]  # MSFT, 72 quarters
+    tier, reason = universe.tier_for(e, 72)
+    assert tier == universe.TIER_CORE
+    assert "SHORT-HISTORY" not in reason
+    assert universe.is_short_history(72) is False
+
+
+def test_three_quarters_is_still_thin():
+    e = universe.load()["0002071778"]  # FRMI
+    assert universe.tier_for(e, 3)[0] == universe.TIER_THIN
+
+
+def test_calendar_offset_tolerance_stays_unset():
+    """E8: ruling (b) left it OPEN pending an observed distribution."""
     assert config.CALENDAR_OFFSET_TOLERANCE_DAYS is None
+    assert config.CORE_MIN_QUARTERS == 4
 
 
 def test_fpi_and_mirror_bypass_coverage_tiering():

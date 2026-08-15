@@ -84,13 +84,19 @@ def tier_for(entity, consecutive_quarters):
     if n < config.THIN_MAX_QUARTERS:
         return TIER_THIN, "{} consecutive quarters, below the {}-quarter floor".format(
             n, config.THIN_MAX_QUARTERS)
-    if config.CORE_MIN_QUARTERS is None:
-        # Both live rulings agree above 11; they disagree on 4..11.
-        if n >= 12:
-            return TIER_CORE, "{} consecutive quarters; above the contested band".format(n)
-        return TIER_UNRULED_BAND, (
-            "{} consecutive quarters sits in the 4-11 band where R1 and the ratified "
-            "CORE=13 roster conflict (CD-1-SPEC 3.1); unruled".format(n))
-    if n >= config.CORE_MIN_QUARTERS:
-        return TIER_CORE, "{} consecutive quarters".format(n)
-    return TIER_UNRULED_BAND, "{} consecutive quarters".format(n)
+    if n < config.SHORT_HISTORY_QUARTERS:
+        return TIER_CORE, "{} consecutive quarters; graduated at {} (R-B6-2), SHORT-HISTORY".format(
+            n, config.CORE_MIN_QUARTERS)
+    return TIER_CORE, "{} consecutive quarters".format(n)
+
+
+def is_short_history(consecutive_quarters):
+    """True when a CORE member's TTM rests on under three years of history.
+
+    Graduation at four quarters is ruled and automatic; the thinness of the
+    resulting series is disclosed on the panel row rather than used to withhold
+    membership (R-B6-2).
+    """
+    if consecutive_quarters is None:
+        return True
+    return consecutive_quarters < config.SHORT_HISTORY_QUARTERS

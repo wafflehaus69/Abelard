@@ -66,7 +66,23 @@ measured coverage, re-evaluated every scan.
 | **ANNUAL-DEGRADED** | FPI; no structured quarterly capex exists | NBIS, BABA (2) — ruling (c), no v1 expansion |
 | **MIRROR** | demand/supply sensor; revenue or backlog is the read, not own capex | SNOW (1) ruled; **+25 sweep names UNRATIFIED, see below** |
 
-### 3.1 UNRESOLVED — the tier ladder (Phase 0.3 reconciliation)
+### 3.1 RESOLVED — the tier ladder (ruling R-B6-2, Mando 2026-08-13)
+
+**Graduation stands at 4 consecutive derivable quarters, automatic and logged.**
+CORE membership = the ruled 13 + graduates. The 12-quarter zero-gap window measured during the
+roster audit **justified the initial roster; it was evidence, never a membership bar.**
+
+A 4-quarter graduate carries short TTM history and its panel rows say so — `SHORT-HISTORY` is a
+disclosure, not a disqualification (E14: composition travels with the number).
+
+Consequence: **CRWV (9), IREN (7), GLXY (7), WYFI (7) are CORE.** `DEGRADED-SHORT` is deleted; it was
+ClaudeCode drift that bridged two rulings instead of surfacing their conflict. The historical record
+of that conflict is retained below because the drift, not just its resolution, is the lesson.
+
+<details>
+<summary>Superseded — the conflict as recorded at Phase 0.3</summary>
+
+### Superseded: the tier ladder conflict
 
 Two ratified rulings conflict. Recorded, not reconciled (E3).
 
@@ -90,6 +106,22 @@ DEGRADED-SHORT at 4, DEGRADED-SHORT → CORE at 12."
 
 **The 25 MIRROR names** originate from the CD-R1 sweep and appear in no ruling. Flagged, not kept
 and not dropped, per the order's instruction. SNOW alone is ruled MIRROR on measured evidence.
+
+</details>
+
+### 3.2 CORZ is anchored — correction (ruling R-B6-3)
+
+CD-R1 recorded "CORZ has no PP&E anchor concept at all" and the spec carried CORZ→UNANCHORED into
+§8 and B7's acceptance criterion. **That is wrong.** B3 resolved CORZ's anchor to
+`PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetBeforeAccumulatedDepreciationAndAmortization`,
+7 facts from 2022-12-31 — the same combined concept META uses.
+
+The original claim died of a **too-narrow search**: CD-R1 looked for
+`PropertyPlantAndEquipmentGross` and concluded absence from its absence. E15 discharging against our
+own artifact rather than an external source — the system working as designed.
+
+B7's acceptance criterion amends to **CORZ→anchored**. B8's UNANCHORED gate demo re-targets to
+whichever issuer genuinely produces that state; the demo requires a real subject, not a scripted one.
 
 **R1 — graduation is automatic**, at whatever boundaries §3.1 resolves to. No per-name ruling.
 A tier **downgrade** is a loud event: it means coverage regressed and must appear in the coverage
