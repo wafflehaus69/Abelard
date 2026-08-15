@@ -254,3 +254,69 @@ decade-old migration boundary is expected and already resolved by the era map;
 only disagreement inside the live window can move today's number. An
 unscoped check refuses healthy series (it killed a correct AMZN resolution over
 a 2016 handover reading $7.804B against $6.737B).
+
+## E22 — Debounce the judge, and gate the monitor by power
+Ruled by Mando 2026-08-15; drafted by ClaudeCode from the originating
+measurements — reword to the ledger's voice if wanted. **Ordered as "E21"; that
+number was taken by a concurrent session before this landed, so it is E22.**
+Extends [E19], which retired the veto rate as a gate but left it alerting
+per-source with no noise floor beneath it.
+
+Incident: SC-1. Re-running classification over a 21-minute gap — during which
+listings cannot meaningfully change — flipped 4 of 157 mechanical-GREEN rows,
+every one with byte-identical stored title, payout and contention. The judge is
+stochastic. Reported per-source rates moved accordingly on unchanged data:
+opire's veto rate halved, 14.8% → 7.4%, in those 21 minutes, and a 6.7% → 25.0%
+jump on superteam that had been raised as a source-degradation signal turned out
+to be two rows flipping.
+
+Rule, three parts.
+
+**1. Persona vetoes are unchanged** — permanent, downward-only,
+promotion-ineligible. Small, deliberate, semantic. They are exempt from the
+debounce below: debouncing a permanent gate would let two lucky scans unlock
+something ruled unlockable, so the exemption is correctness, not convenience.
+
+**2. Ordinary vetoes debounce asymmetrically.** A veto takes effect on ONE
+observation; recovery to effective-GREEN requires the TWO most recent scans both
+clean. Measured at the observed floor P = 2.55%, over 20,000 rows × 400 scans:
+
+    design                standing false-VETO   standing false-GREEN
+    no debounce  (1,1)          2.551%                2.5499%
+    RULED        (1,2)          5.017%                0.0658%
+    symmetric    (2,2)          0.128%                0.1316%
+    inverted     (2,1)          0.065%                5.0118%
+
+**Both columns must be quoted together or the rule reads as a mistake.** Against
+no debounce, (1,2) makes false vetoes 1.97× MORE common and false GREENs 39×
+LESS common. That is the trade, and it follows scout's cost asymmetry:
+over-classification costs Mando a review, under-classification costs the tribe
+its record. The expensive error is the false GREEN, so the design spends false
+vetoes to buy them down. The ~0.06% figure that motivated this rule is real and
+belongs to the false-GREEN column; attached to false-VETO — where the true value
+is 5.017%, worse than no debounce — it inverts the argument. Implemented as
+derived state over an append-only per-(row, scan) verdict table; raw history is
+never overwritten, because a record that can be edited is not one.
+
+**3. Monitor alerts are gated by power, tested on FLIP COUNTS.** A per-source
+movement alert fires only when the observed flip count beats the floor by a
+binomial test at that source's n (α = 0.05, provisional, review at first alert).
+Test flips, not rate deltas: a rate delta conflates composition change with
+flips, which is exactly how two flipped rows presented as an 18-point jump.
+At the measured floor this means n=20 needs ≥3 flips (15 pp), n=27 needs ≥3
+(11.1 pp), n=53 needs ≥4 (7.5 pp), n≈150 needs ≥8 (≈5 pp). Under-powered sources
+are LISTED as under-powered — never silently suppressed — and roll into the
+aggregate monitor, which is the only place n currently supports inference.
+
+**The floor is a trailing estimate, not a constant.** P = 2.55% rests on a
+single 21-minute control: 95% Wilson [1.00%, 6.37%], known to within a factor of
+six. Every near-in-time scan pair updates it, and the power table above moves
+with it. Any rule quoting P quotes the interval too.
+
+Provenance limit: verdict history begins at scan `d697dd6f` (2026-08-11), the
+oldest epoch snapshot available at migration. 1,534 observations across three
+scans were backfilled from snapshots; 420 rows carry full depth-3 history, 109
+depth-2, 56 depth-1. Nothing before 2026-08-11 exists — the four earlier
+`.bak-*` files predate the current ledger generation and were deliberately not
+backfilled, so any derived state for a row is only as old as its first recorded
+verdict, and a depth-1 row has had no opportunity to debounce at all.
