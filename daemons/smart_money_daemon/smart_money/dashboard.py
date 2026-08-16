@@ -266,6 +266,24 @@ def _sortable_table(params, cols, rows, qs_fn, active, direction, hot=None,
     return "".join(out)
 
 
+def _stamped(name):
+    """Datestamp a download filename so repeated pulls do not overwrite each
+    other and it stays obvious when each was taken.
+    'net_flows_all.csv' -> 'net_flows_all 08.12.26 20.41.csv'.
+
+    The stem is scrubbed first: some callers build the name from query-string
+    input, and an unescaped quote or newline there would be header injection.
+    The scrub runs BEFORE the stamp so the requested space survives it.
+    """
+    stem, dot, ext = name.rpartition(".")
+    if not dot:
+        stem, ext = name, ""
+    stem = "".join(c if (c.isalnum() or c in "._-") else "_" for c in stem)
+    ext = "".join(c for c in ext if c.isalnum())
+    ts = dt.datetime.now().strftime("%m.%d.%y %H.%M")
+    return "{} {}{}{}".format(stem, ts, "." if ext else "", ext)
+
+
 def _fmt(v):
     if v is None:
         return "-"
@@ -2098,6 +2116,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _send_download(self, data, fname, ctype="text/csv; charset=utf-8"):
+        """Single door for every CSV and PDF download, so the timestamp cannot
+        be forgotten at one route and silently differ from the rest."""
+        self._send(200, data, ctype=ctype,
+                   headers={"Content-Disposition":
+                            'attachment; filename="{}"'.format(_stamped(fname))})
+
     def do_GET(self):
         u = urlparse(self.path)
         p = _params(parse_qs(u.query))
@@ -2154,18 +2179,14 @@ class Handler(BaseHTTPRequestHandler):
         data = _build_trades_csv(con, p, full)
         fname = "insider_trades_{}_{}_{}.csv".format(
             p["side"], p["scope"], "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _sentinels_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_sentinels_csv(con, p, full)
         fname = "sentinel_log_{}_{}.csv".format(
             p["src"], "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _clusters_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
@@ -2175,18 +2196,14 @@ class Handler(BaseHTTPRequestHandler):
         pg = p["spage"] if which == "sell" else p["page"]
         fname = "clusters_{}_{}.csv".format(
             which, "all" if full else "page{}".format(pg))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _flows_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_flows_csv(con, p, full)
         fname = "net_flows_{}_{}_{}.csv".format(
             p["metric"], p["scope"], "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _portfolios_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
@@ -2194,39 +2211,29 @@ class Handler(BaseHTTPRequestHandler):
         fname = "portfolio_{}_{}_{}.csv".format(
             p["filer"] or "default", p["period"] or "latest",
             "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _congress_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_congress_csv(con, p, full)
         what = "holders_{}".format(p["cticker"]) if p["cticker"] else "breadth_{}".format(p["cowner"])
         fname = "congress_{}_{}.csv".format(what, "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _disagreements_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_disagreements_csv(con, p, full)
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="disagreements.csv"'})
+        self._send_download(data, "disagreements.csv")
 
     def _member_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_member_csv(con, p, full)
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="member_book.csv"'})
+        self._send_download(data, "member_book.csv")
 
     def _oge_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_oge_csv(con, p, full)
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="oge_278e_RESTRICTED.csv"'})
+        self._send_download(data, "oge_278e_RESTRICTED.csv")
 
     def _insiders_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
@@ -2234,36 +2241,28 @@ class Handler(BaseHTTPRequestHandler):
         fname = "insider_book_{}_{}.csv".format(
             (p["member"] or "default").replace("|", "_"),
             "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _congress_gaps_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_congress_gaps_csv(con, p, full)
         fname = "congress_coverage_{}.csv".format(
             "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _breadth_yoy_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_breadth_yoy_csv(con, p, full)
         fname = "breadth_change_{}.csv".format(
             "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _committees_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_committees_csv(con, p, full)
         fname = "committees_{}.csv".format(
             "all" if full else "page{}".format(p["page"]))
-        self._send(200, data, ctype="text/csv; charset=utf-8",
-                   headers={"Content-Disposition":
-                            'attachment; filename="{}"'.format(fname)})
+        self._send_download(data, fname)
 
     def _brief(self, con, p, qsd=None):
         from . import brief
@@ -2281,7 +2280,8 @@ class Handler(BaseHTTPRequestHandler):
                                floor=p["floor"])
         with open(tmp, "rb") as fh:
             data = fh.read()
-        self._send(200, data, ctype="application/pdf")
+        self._send_download(data, "brief_{}.pdf".format(view or "front"),
+                            ctype="application/pdf")
 
     def do_POST(self):    # no writes, ever
         self._send(405, "method not allowed")

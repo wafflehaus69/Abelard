@@ -309,3 +309,41 @@ def test_serve_refuses_public_bind():
         except SystemExit:
             raised = True
         assert raised, "serve must refuse to bind {!r}".format(bad)
+
+
+def test_stamped_inserts_timestamp_before_extension():
+    """Downloads carry MM.DD.YY HH.MM so repeated pulls of the same report do
+    not silently overwrite each other in the browser's download folder."""
+    import datetime as _dt
+    import re as _re
+    out = dash._stamped("net_flows_all.csv")
+    assert out.startswith("net_flows_all "), out
+    assert out.endswith(".csv"), out
+    stamp = out[len("net_flows_all "):-len(".csv")]
+    assert _re.match(r"^\d{2}\.\d{2}\.\d{2} \d{2}\.\d{2}$", stamp), stamp
+    # and it is actually now, not a constant
+    assert stamp.startswith(_dt.datetime.now().strftime("%m.%d.%y")), stamp
+
+
+def test_stamped_handles_pdf_and_multidot_names():
+    assert dash._stamped("brief_front.pdf").endswith(".pdf")
+    # only the LAST dot separates the extension
+    out = dash._stamped("oge_278e_RESTRICTED.csv")
+    assert out.startswith("oge_278e_RESTRICTED "), out
+    assert out.endswith(".csv"), out
+
+
+def test_stamped_scrubs_header_injection():
+    """The PDF route builds its name from the ?view= query param, so a quote or
+    newline there would break out of the Content-Disposition header."""
+    for bad in ('brief_a"; drop=1.pdf', "brief_a\r\nX-Evil: 1.pdf",
+                "brief_../../etc/passwd.pdf"):
+        out = dash._stamped(bad)
+        for ch in ('"', "\r", "\n", "/", "\\", ";"):
+            assert ch not in out, (bad, out)
+
+
+def test_stamped_survives_a_name_with_no_extension():
+    out = dash._stamped("noext")
+    assert out.startswith("noext "), out
+    assert "." in out, "the timestamp itself still uses dots"
