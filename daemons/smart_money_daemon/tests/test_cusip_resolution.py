@@ -257,3 +257,43 @@ def test_withheld_rows_keep_their_symbol_and_are_flagged():
             "openfigi_checked_no_us"
     finally:
         os.remove(path)
+
+
+def test_manual_override_pins_a_ticker_and_propagates():
+    """OpenFIGI has no US record for Centessa Pharmaceuticals, so the automatic
+    rule correctly withheld it and left a meaningless '260'. CNTA is the real
+    Nasdaq symbol and the filer names the issuer outright."""
+    path = _db()
+    try:
+        con = dbmod.connect(path)
+        con.execute("INSERT INTO cusip_ticker(cusip, ticker, name, mapped_via,"
+                    " mapped_at_unix) VALUES "
+                    "('152309100','260',NULL,'openfigi_checked_no_us',0)")
+        con.execute(
+            "INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, "
+            "cusip, ticker, issuer, put_call, value, shares, ingested_at_unix) "
+            "VALUES ('1','a','2026-06-30','2026-08-14','152309100','260',"
+            "'Centessa Pharmaceuticals plc','long',106201725,1,0)")
+        con.commit()
+        n = repair_cusips.set_manual(con, "152309100", "CNTA", "Mando ruling")
+        assert n == 1
+        assert con.execute(
+            "SELECT ticker FROM thirteenf_holdings").fetchone()[0] == "CNTA"
+        assert con.execute(
+            "SELECT ticker, mapped_via FROM cusip_ticker").fetchone() == (
+                "CNTA", "manual")
+    finally:
+        os.remove(path)
+
+
+def test_a_manual_pin_is_not_re_targeted_by_the_automatic_pass():
+    """A human ruling must not be silently undone by the next repair run."""
+    path = _db()
+    try:
+        con = dbmod.connect(path)
+        con.execute("INSERT INTO cusip_ticker(cusip, ticker, name, mapped_via,"
+                    " mapped_at_unix) VALUES ('152309100','CNTA',NULL,'manual',0)")
+        con.commit()
+        assert "152309100" not in repair_cusips.targets(con)
+    finally:
+        os.remove(path)

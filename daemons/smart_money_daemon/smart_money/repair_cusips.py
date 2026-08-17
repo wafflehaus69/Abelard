@@ -156,6 +156,31 @@ def apply(con, got):
     return cache, holdings, flagged
 
 
+def set_manual(con, cusip, ticker, why):
+    """Pin a CUSIP to a ticker a human has ruled on, and propagate to holdings.
+
+    Needed because OpenFIGI is not always able to answer. Centessa Pharmaceuticals
+    plc (152309100) has no exchCode='US' record, so the automatic rule withheld it
+    and left the meaningless '260' in place — but CNTA is its real Nasdaq symbol
+    and the filer names the issuer outright. Others in the same bucket have no good
+    answer from any source and must stay as they are rather than be blanked.
+
+    Recorded as mapped_via='manual' so it is never silently re-resolved away by a
+    later automatic pass, and never mistaken for something OpenFIGI decided.
+    """
+    con.execute(
+        "INSERT INTO cusip_ticker(cusip, ticker, name, mapped_via, mapped_at_unix) "
+        "VALUES (?,?,?,'manual',?) ON CONFLICT(cusip) DO UPDATE SET "
+        "ticker=excluded.ticker, mapped_via='manual', "
+        "mapped_at_unix=excluded.mapped_at_unix",
+        (cusip, ticker, why, int(time.time())))
+    cur = con.execute(
+        "UPDATE thirteenf_holdings SET ticker=? WHERE cusip=? AND (ticker IS NOT ?)",
+        (ticker, cusip, ticker))
+    con.commit()
+    return cur.rowcount
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Re-resolve suspect CUSIP tickers")
     ap.add_argument("--db", default=dbmod.DB_PATH_DEFAULT)

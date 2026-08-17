@@ -432,9 +432,20 @@ def _tracked_books_strip(books):
     cards = []
     ordered = sorted(books["filers"], key=lambda b: -(b.get("book_value") or 0))
     for b in ordered:
+        # The two largest cards here are Alphabet and NVIDIA — operating companies
+        # marking balance-sheet stakes, not managers expressing a view — and they
+        # rendered indistinguishably from a hedge fund's book.
+        badge = ("" if b.get("discretionary", True) else
+                 " <span class='badge smid' title='operating company marking a "
+                 "balance-sheet stake, not a manager expressing a view'>"
+                 "balance sheet</span>")
+        warn = b.get("magnitude_warning")
+        warn_html = ("<br><span class='reported'>{}</span>".format(
+            html.escape(warn)) if warn else "")
         if not b["period"]:
-            cards.append("<div class='book'><b>{}</b><br><span class='muted'>no "
-                         "filings</span></div>".format(html.escape(b["name"] or "?")))
+            cards.append("<div class='book'><b>{}</b>{}<br><span class='muted'>no "
+                         "filings</span>{}</div>".format(
+                             html.escape(b["name"] or "?"), badge, warn_html))
             continue
         top = ", ".join("{} {}%".format(
             html.escape(t["ticker"]), "?" if t["pct"] is None else t["pct"])
@@ -443,12 +454,13 @@ def _tracked_books_strip(books):
         d2f_txt = ("filing window passed" if d2f is not None and d2f < 0 else
                    "{}d to next filing".format(d2f) if d2f is not None else "-")
         cards.append(
-            "<div class='book'><a href='/portfolios?filer={cik}'><b>{name}</b></a><br>"
-            "<span class='muted'>{per} &middot; {book}</span><br>top3 {top}<br>"
-            "<span class='muted'>{d2f}</span></div>".format(
+            "<div class='book'><a href='/portfolios?filer={cik}'><b>{name}</b></a>{badge}"
+            "<br><span class='muted'>{per} &middot; {book}</span><br>top3 {top}<br>"
+            "<span class='muted'>{d2f}</span>{warn}</div>".format(
                 cik=q.cik_int(b["cik"]), name=html.escape(b["name"] or "?"),
-                per=html.escape(b["period"]), book=_money0(b["book_value"]),
-                top=top, d2f=d2f_txt))
+                badge=badge, per=html.escape(b["period"]),
+                book=_money0(b["book_value"]), top=top, d2f=d2f_txt,
+                warn=warn_html))
     # SM-P2: at 16 filers the strip swamps the front page. Show the biggest books,
     # collapse the rest behind a native <details> (no JS).
     TOP_N = 6
@@ -457,8 +469,15 @@ def _tracked_books_strip(books):
             "<div class='strip'>{}</div></details>".format(len(rest), "".join(rest))
             if rest else "")
     return ("<h2>Tracked books (reported 13F) &middot; "
-            "<a href='/portfolios'>open</a></h2><div class='strip'>{}</div>{}".format(
-                "".join(head), more))
+            "<a href='/portfolios'>open</a></h2>"
+            "<p class='muted'>{n} filers, {nd} discretionary. Book {tot} of which "
+            "{td} is discretionary — the remainder is operating companies marking "
+            "balance-sheet stakes, shown but never pooled into a consensus.</p>"
+            "<div class='strip'>{head}</div>{more}".format(
+                n=books.get("n_filers", "?"), nd=books.get("n_discretionary", "?"),
+                tot=_money0(books.get("book_total")),
+                td=_money0(books.get("book_total_discretionary")),
+                head="".join(head), more=more))
 
 
 def _disagreements_section(con, limit=8):
@@ -550,9 +569,18 @@ def view_front(con, p):
         _disagreements_section(con),
         "<h2>Sentinel activity ({} events)</h2>".format(sent["count"]),
         _table(["event_date", "src", "seed", "ticker", "action"], sent["rows"][:15]),
-        "<h2>Principal convergence — {} same-side, {} QoQ disagreements</h2>".format(
-            len(conv["convergences"]), len(conv["qoq_accumulate_distribute_disagreements"])),
-        _table(["ticker", "period", "converge_dir", "long_filers"], conv["convergences"][:12]),
+        "<h2>Principal convergence — {} same-side ({} among discretionary "
+        "managers), {} QoQ disagreements</h2>".format(
+            conv["n_convergences"], conv["n_convergences_discretionary"],
+            len(conv["qoq_accumulate_distribute_disagreements"])),
+        "<p class='muted'>{} of the {} exist only because an operating company "
+        "marking a balance-sheet stake was counted as a principal. Both counts are "
+        "shown; neither is filtered away.</p>".format(
+            conv["n_convergences"] - conv["n_convergences_discretionary"],
+            conv["n_convergences"]),
+        _table(["ticker", "period", "converge_dir", "long_filers",
+                "discretionary_long_filers", "survives_discretionary_only"],
+               conv["convergences"][:12]),
         "<h2>Ownership pressure — flow (top movers)</h2>",
         _table(["ticker", "net_shares", "distinct_buyers", "distinct_sellers", "direction"],
                press["rows"][:15]),
@@ -713,8 +741,8 @@ def view_sentinels(con, p):
     active = p["sort"] or "event_date"            # default: newest event first
     rows = _sorted(rows, active, p["dir"])
     page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
-    cols = [(c, c) for c in ("event_date", "src", "seed", "role", "ticker",
-                             "action", "value", "shares", "cusip")]
+    cols = [(c, c) for c in ("event_date", "src", "seed", "role", "thesis",
+                             "ticker", "action", "value", "shares", "cusip")]
     body = ["<p class='muted'>Registry as-of {}. {} events{}. Click a column header "
             "to sort.</p>".format(
                 html.escape(str(sent["registry_as_of"])), meta["total"],
@@ -797,7 +825,10 @@ def view_ticker(con, p):
                 "owner", "note"],
                t["congress"][:25]),
         "<h2>13F principal positions (direction-netted)</h2>",
-        _table(["cik", "period", "net_value"], t["thirteenf_net"][:25]),
+        # cik alone said nothing about who was holding. On /ticker?symbol=NOK the
+        # single $2.21B principal is Nokia's own strategic holder, NVIDIA.
+        _table(["filer", "cik", "period", "net_value", "thesis", "discretionary"],
+               t["thirteenf_net"][:25]),
         _tension_block(t["tension"], t["congress_holdings"]),
         "<p class='muted'>Price sparkline points {} (direct read-only SELECT).</p>".format(
             len(t["price_sparkline"])),
@@ -1935,8 +1966,9 @@ def _build_trades_csv(con, p, full):
 # shares_type say what the numbers next to them MEAN.
 _SENTINEL_CSV_COLS = ["event_date", "src", "seed", "role", "ticker", "action",
                       "value", "shares", "cusip", "issuer", "value_scale",
-                      "shares_type", "plan_flag", "tx_date", "period", "amt_low",
-                      "amt_high", "lag_days", "owner"]
+                      "shares_type", "thesis", "discretionary", "plan_flag",
+                      "tx_date", "period", "amt_low", "amt_high", "lag_days",
+                      "owner"]
 
 
 def _build_sentinels_csv(con, p, full):
