@@ -302,3 +302,35 @@ One table, one look. **Recommendation column is mine after verification**, not t
 4. **IRM/AMT degraded admission** — in with `SEGMENT-REVENUE-ONLY`, or out until capex separates?
 5. **Non-traded filers** (StratCap) — admissible in principle?
 6. **Supplier bucket placement** — NVDA/AMD/AVGO/MU/SMCI confirmed; TSM excluded pending IFRS.
+
+---
+
+# RATIFIED — Mando, 2026-08-14
+
+**Six adds approved:** MARA, CLSK, DGXX (builders, aggregated) · IRM, AMT, CCOI (hosts, tracked).
+
+| ruling | disposition |
+|---|---|
+| **BTBT / WYFI consolidation** | WYFI stays in the totals; **BTBT tracked on the side**, bucket `sidecar`, never summed |
+| **PLD Prologis** | **OUT** — spends $2.77B but mostly warehouses, not datacenters |
+| **TSM** | **Deferred.** IFRS support is a real build; revisit **2026-11-14** (E15 dated re-check) |
+| adds 1–3 | MARA, CLSK, DGXX → `builder`, aggregated normally |
+| adds 4–6 | IRM, AMT, CCOI → `host`, **tracked but not aggregated** |
+
+**Two new buckets, and why they are not aggregated.** Both exist to keep a real name in the panel
+without letting it corrupt the headline:
+
+- **`host`** — owns or hosts datacenter property, but its capex is **not separable** from a larger
+  consolidated line: IRM's records-management business, AMT's towers, CCOI's telecom network.
+  Their datacenter *revenue* is visible (IRM's segment runs +42.7% H1 YoY, parser-only); their
+  datacenter *capex* is not. Summing consolidated capex into the datacenter total would inflate it
+  with spend that is not datacenter spend.
+- **`sidecar`** — admitted, but its capex is already counted inside another member. BTBT
+  consolidates WhiteFiber, so summing both double-counts the same dollars.
+
+Roster: **30 entities**, of which 22 aggregate (hyperscaler 5, builder 16 incl. WYFI, reit 2) and
+8 are tracked-not-aggregated (host 3, sidecar 1, fpi 2, mirror 1). 99 tests pass.
+
+**One item taken on inference, flagged for correction.** The ruling said "6 adds" and named five.
+The sixth INCLUDE in the table above was **CCOI**, rated *weak* at recon, and it is admitted here to
+match the stated count. If five was meant, CCOI comes out with a one-line change.

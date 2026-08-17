@@ -15,7 +15,14 @@ from . import config
 
 UNIVERSE_CSV = os.path.join(os.path.dirname(__file__), "data", "universe.csv")
 
-BUCKETS = ("hyperscaler", "builder", "reit", "fpi", "mirror")
+# `host` and `sidecar` are admitted but NOT aggregated (see divergence.BUCKET_ORDER):
+#   host    — owns/hosts datacenter property, but its capex is not separable from a
+#             larger consolidated line (IRM records management, AMT towers, CCOI
+#             telecom). Summing their consolidated capex into the datacenter total
+#             would inflate it with spend that is not datacenter spend.
+#   sidecar — admitted, but its capex is already counted inside another member.
+#             BTBT consolidates WYFI, so summing both double-counts the same dollars.
+BUCKETS = ("hyperscaler", "builder", "reit", "fpi", "mirror", "host", "sidecar")
 
 TIER_CORE = "CORE"
 TIER_THIN = "THIN"

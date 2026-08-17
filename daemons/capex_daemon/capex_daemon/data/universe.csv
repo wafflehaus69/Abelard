@@ -22,3 +22,10 @@ cik,ticker_display,bucket,tier_override,notes
 1513845,NBIS,fpi,,20-F only. Zero XBRL on any 6-K. Multi-currency RUB and USD on one CIK.
 1577552,BABA,fpi,,Capex tagged with company extension baba_ prefix. Absent from companyfacts entirely.
 1640147,SNOW,mirror,,Ruled MIRROR on measured capex-to-revenue of 0.58 to 4.32 percent.
+1507605,MARA,builder,,Ratified CD-R2 2026-08-14. Owns and builds 19 sites approx 1.9GW. HPC via Exaion.
+827876,CLSK,builder,,Ratified CD-R2 2026-08-14. Owns own facilities converting power to datacenter use. Uses ProductiveAssets concept.
+1854368,DGXX,builder,,Ratified CD-R2 2026-08-14. Renamed from Digihost. Converts powered sites to AI datacenters.
+1020569,IRM,host,,Ratified CD-R2 2026-08-14. Owns and hosts. Datacenter segment revenue is parser only. Capex unseparable so not aggregated.
+1053507,AMT,host,,Ratified CD-R2 2026-08-14. Owns datacenter property via CoreSite. Capex dominated by towers so not aggregated.
+1158324,CCOI,host,,Ratified CD-R2 2026-08-14 as the sixth add. Owns datacenters inside a telecom capex line so not aggregated.
+1710350,BTBT,sidecar,,Ratified CD-R2 2026-08-14. Consolidates WYFI which is already in the panel. Tracked on the side never summed.
