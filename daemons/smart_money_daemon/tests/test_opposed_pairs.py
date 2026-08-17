@@ -23,7 +23,7 @@ def _hold(con, cik, period, cusip, ticker, shares, value, pc="long"):
         "cusip, ticker, issuer, put_call, value, shares, ingested_at_unix) "
         "VALUES(?,?,?,?,?,?,?,?,?,?,0)",
         (cik, "acc-" + cik + period + cusip + pc, period, period, cusip, ticker,
-         ticker + " Inc", pc, value, shares))
+         (ticker or cusip) + " Inc", pc, value, shares))
 
 
 def test_opposed_pairs_finds_disagreement(tmp_path, monkeypatch):
@@ -111,7 +111,7 @@ def test_options_are_a_distinct_instrument(tmp_path, monkeypatch):
     monkeypatch.setattr(q.dbmod, "find_artifact", lambda *a, **k: regp)
     ro = q.connect_ro(path)
     rows = q.q_opposed_pairs(ro)["rows"]
-    assert [(r["ticker"], r["instrument"]) for r in rows] == [("AAA", "OP")]
+    assert [(r["ticker"], r["instrument"]) for r in rows] == [("AAA", "PUT")]
     # same thesis on both sides -> not cross-thesis
     assert rows[0]["cross_thesis"] is False
     ro.close()
@@ -129,3 +129,106 @@ def test_scan_and_queries_read_the_same_registry():
         dbmod.find_artifact("registry.json", "analysis")), (
             "scan and queries must read ONE registry; a fork silently halves the "
             "event path")
+
+
+def test_flat_hold_is_not_reported_as_an_exit(tmp_path, monkeypatch):
+    """THE regression. _manager_flow's exit branch tested a (TICKER, instrument) key
+    against a dict keyed (cusip, put_call) -- tuple shapes that can never be equal, so
+    the test was always True and any position whose shares did not move was reported as
+    a full exit at its prior value. Live, that manufactured 119 of 328 exits, including
+    'NVIDIA exited INTC $7.93B' against an unchanged 214,776,632 shares."""
+    path = str(tmp_path / "flat.db")
+    con = dbmod.connect(path)
+    # Alpha holds AAA perfectly flat across both periods.
+    _hold(con, "111", "2025-12-31", "CA", "AAA", 1000, 5000)
+    _hold(con, "111", "2026-03-31", "CA", "AAA", 1000, 5000)
+    # Beta genuinely trims it, so the ticker is live on the board either way.
+    _hold(con, "222", "2025-12-31", "CA", "AAA", 900, 9000)
+    _hold(con, "222", "2026-03-31", "CA", "AAA", 400, 4000)
+    con.commit()
+    con.close()
+    regp = _reg(tmp_path, [("111", "Alpha Capital", "ai_tmt"),
+                           ("222", "Beta Partners", "macro")])
+    monkeypatch.setattr(q.dbmod, "find_artifact", lambda *a, **k: regp)
+    ro = q.connect_ro(path)
+    res = q.q_opposed_pairs(ro)
+    names = [x["filer"] for r in res["rows"] for x in r["distributing"]]
+    assert "Alpha Capital" not in names, (
+        "a flat hold is not a distribution: {}".format(res["rows"]))
+    actions = [x["action"] for r in res["rows"] for x in r["distributing"]]
+    assert "exited" not in actions, actions
+    # a flat hold expresses no direction at all, so there is no disagreement here
+    assert res["count"] == 0, res["rows"]
+    ro.close()
+
+
+def test_genuine_exit_is_still_reported(tmp_path, monkeypatch):
+    """Guard the other side of the fix: tightening the exit test must not suppress
+    real exits."""
+    path = str(tmp_path / "exit.db")
+    con = dbmod.connect(path)
+    _hold(con, "111", "2025-12-31", "CB", "BBB", 50, 500)     # gone next period
+    _hold(con, "111", "2025-12-31", "CA", "AAA", 10, 100)
+    _hold(con, "111", "2026-03-31", "CA", "AAA", 10, 100)
+    _hold(con, "222", "2025-12-31", "CA", "AAA", 10, 100)
+    _hold(con, "222", "2026-03-31", "CB", "BBB", 70, 700)     # opens it
+    con.commit()
+    con.close()
+    regp = _reg(tmp_path, [("111", "Alpha Capital", "ai_tmt"),
+                           ("222", "Beta Partners", "macro")])
+    monkeypatch.setattr(q.dbmod, "find_artifact", lambda *a, **k: regp)
+    ro = q.connect_ro(path)
+    by = {(r["ticker"], r["instrument"]): r
+          for r in q.q_opposed_pairs(ro)["rows"]}
+    b = by[("BBB", "SH")]
+    assert [x["action"] for x in b["distributing"]] == ["exited"]
+    assert "Alpha Capital" in b["dis_names"]
+    ro.close()
+
+
+def test_call_to_put_roll_is_not_recorded_as_accumulation(tmp_path, monkeypatch):
+    """Puts and calls shared one 'OP' bucket, so the dict assignment silently dropped
+    one leg. A filer rolling a call into a put had the call's disappearance suppressed
+    and the new put logged as 'new -> accumulating' -- the bearish flip at the centre of
+    the chip-put thesis read as a bullish one."""
+    path = str(tmp_path / "roll.db")
+    con = dbmod.connect(path)
+    # Alpha rolls AAA call -> AAA put between the two periods.
+    _hold(con, "111", "2025-12-31", "CA", "AAA", 0, 746_760_060, pc="call")
+    _hold(con, "111", "2026-03-31", "CA", "AAA", 0, 159_106_302, pc="put")
+    # Beta holds a shrinking put so the PUT key has two sides.
+    _hold(con, "222", "2025-12-31", "CA", "AAA", 0, 900, pc="put")
+    _hold(con, "222", "2026-03-31", "CA", "AAA", 0, 400, pc="put")
+    con.commit()
+    con.close()
+    regp = _reg(tmp_path, [("111", "Alpha Capital", "ai_tmt"),
+                           ("222", "Beta Partners", "macro")])
+    monkeypatch.setattr(q.dbmod, "find_artifact", lambda *a, **k: regp)
+    ro = q.connect_ro(path)
+    _p, flows, _e = q._manager_flow(ro, "111", "ai_tmt", "Alpha Capital")
+    assert ("AAA", "CALL") in flows, "the abandoned call leg must be visible: %r" % (flows,)
+    assert flows[("AAA", "CALL")][0] == q._DIR_DIS, flows[("AAA", "CALL")]
+    assert flows[("AAA", "CALL")][2] == "exited", flows[("AAA", "CALL")]
+    assert ("AAA", "PUT") in flows and flows[("AAA", "PUT")][2] == "new"
+    ro.close()
+
+
+def test_unmapped_tickers_are_counted_not_silently_dropped(tmp_path, monkeypatch):
+    """Rows with no mapped ticker cannot be compared across filers, but dropping them
+    in silence removed real reported value from the board -- live, 521 rows and $58.4B,
+    including a $494M ASML put that belonged to the chip-put complex."""
+    path = str(tmp_path / "unmapped.db")
+    con = dbmod.connect(path)
+    _hold(con, "111", "2025-12-31", "CA", "AAA", 100, 1000)
+    _hold(con, "111", "2026-03-31", "CA", "AAA", 200, 2000)
+    _hold(con, "111", "2025-12-31", "CZ", None, 0, 494_122_503, pc="put")
+    _hold(con, "111", "2026-03-31", "CZ", None, 0, 494_122_503, pc="put")
+    con.commit()
+    con.close()
+    regp = _reg(tmp_path, [("111", "Alpha Capital", "ai_tmt")])
+    monkeypatch.setattr(q.dbmod, "find_artifact", lambda *a, **k: regp)
+    ro = q.connect_ro(path)
+    res = q.q_opposed_pairs(ro)
+    assert res["excluded_rows"] == 2, res
+    assert res["excluded_value"] == 2 * 494_122_503, res
+    ro.close()

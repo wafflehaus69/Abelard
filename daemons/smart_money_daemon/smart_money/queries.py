@@ -1256,12 +1256,18 @@ def q_surface_tension(con, ticker, window=180, anchor=None):
     acc = dis = 0
     per_seen = None
     for cik, _name in _tracked_filers():
-        period, flows = _manager_flow(con, cik, None, None)
+        period, flows, _excl = _manager_flow(con, cik, None, None)
         if not period:
             continue
         per_seen = max(per_seen or period, period)
         # _manager_flow values are (direction, value, badge) tuples, not bare strings.
-        f = flows.get((tk, "SH")) or flows.get((tk, "OP"))
+        # One direction per filer, shares first. CALL and PUT replaced the old single
+        # "OP" bucket; the explicit order keeps this deterministic, where the old
+        # lookup silently depended on which option leg was written last.
+        # NOTE: accumulating a PUT counts here as "accumulating", which is
+        # directionally backwards. Pre-existing, unchanged by this fix, flagged.
+        f = (flows.get((tk, "SH")) or flows.get((tk, "CALL"))
+             or flows.get((tk, "PUT")))
         d = f[0] if f else None
         if d == _DIR_ACC:
             acc += 1
@@ -1539,25 +1545,56 @@ _DIR_ACC = "accumulating"
 _DIR_DIS = "distributing"
 
 
+def _flow_key(h):
+    """(TICKER, SH|CALL|PUT) for a holding row.
+
+    Puts and calls are SEPARATE instruments. They were previously collapsed into
+    one "OP" bucket, and because flows is a plain dict the second leg silently
+    overwrote the first — so a filer rolling a call into a put on the same ticker
+    had the call's disappearance suppressed and the new put recorded as
+    'new -> accumulating'. That inverted the direction on exactly the positions
+    this map exists to surface.
+    """
+    pc = h["put_call"] or "long"
+    return ((h["ticker"] or "").upper(), "SH" if pc == "long" else pc.upper())
+
+
 def _manager_flow(con, cik, thesis, name):
-    """{(ticker, instrument): direction} for one filer's NEWEST period vs its prior.
+    """{(ticker, instrument): (direction, value, kind)} for one filer's NEWEST period
+    vs its prior, plus a count of rows that could not be keyed.
+
     Direction is QoQ FLOW, not position sign: new/added -> accumulating, trimmed/exited
     -> distributing. Longs are judged on SHARES (price-independent); options on notional
-    value. Returns (period, flows) or (None, {}) when the filer has under two periods —
-    a single-filing filer cannot express a direction and is never guessed at."""
+    value. Returns (period, flows, excluded) or (None, {}, ...) when the filer has under
+    two periods — a single-filing filer cannot express a direction and is never guessed at.
+
+    A position held FLAT yields no flow, which is correct: no change is no direction.
+    It must not reach the exit branch. The membership test there is against keys built
+    by _flow_key, because the previous test compared a (ticker, instrument) key against
+    a dict keyed (cusip, put_call) — tuple shapes that can never be equal, so it was
+    always True and every flat hold was reported as a full exit at its prior value.
+
+    Rows with no mapped ticker cannot be compared across filers and are skipped, but
+    they are COUNTED and returned rather than silently dropped: for one filer that
+    quietly removed a $494M put from the board.
+    """
     periods = _filer_periods(con, cik)
     if len(periods) < 2:
-        return None, {}
+        return None, {}, {"count": 0, "value": 0.0}
     scale, _basis = _filer_unit_scale(con, cik, periods)
     cur = _scaled_holdings(con, cik, periods[0], scale)
     prior = _scaled_holdings(con, cik, periods[1], scale)
     flows = {}
+    n_drop = 0
+    v_drop = 0.0
+    cur_keys = {_flow_key(h) for h in cur.values() if _flow_key(h)[0]}
     for k, h in cur.items():
-        pv = prior.get(k)
-        inst = "OP" if h["put_call"] != "long" else "SH"
-        key = ((h["ticker"] or "").upper(), inst)
+        key = _flow_key(h)
         if not key[0]:
+            n_drop += 1
+            v_drop += h["value"] or 0
             continue
+        pv = prior.get(k)                            # same (cusip, put_call) space
         if pv is None:
             flows[key] = (_DIR_ACC, h["value"], "new")
         else:
@@ -1569,12 +1606,17 @@ def _manager_flow(con, cik, thesis, name):
                 flows[key] = (_DIR_ACC, h["value"], "added")
             elif cm < pm:
                 flows[key] = (_DIR_DIS, h["value"], "trimmed")
-    for k, h in prior.items():                      # exited entirely
-        inst = "OP" if h["put_call"] != "long" else "SH"
-        key = ((h["ticker"] or "").upper(), inst)
-        if key[0] and key not in cur and key not in flows:
+            # cm == pm: held flat. Deliberately writes nothing.
+    for k, h in prior.items():                       # exited entirely
+        key = _flow_key(h)
+        if not key[0]:
+            n_drop += 1
+            v_drop += h["value"] or 0
+            continue
+        if key not in cur_keys and key not in flows:
             flows[key] = (_DIR_DIS, h["value"], "exited")
-    return periods[0], flows
+    # count spans BOTH compared periods, so a line unmapped in each is counted twice
+    return periods[0], flows, {"count": n_drop, "value": v_drop}
 
 
 def q_opposed_pairs(con, min_side=1):
@@ -1593,8 +1635,12 @@ def q_opposed_pairs(con, min_side=1):
     attached: this ranks BY DISAGREEMENT BREADTH, never by who is judged right."""
     thesis = _filer_thesis()
     flows = {}
+    excl_n = 0
+    excl_v = 0.0
     for cik, name in _tracked_filers():
-        per, fl = _manager_flow(con, cik, thesis.get(cik), name)
+        per, fl, excl = _manager_flow(con, cik, thesis.get(cik), name)
+        excl_n += excl["count"]
+        excl_v += excl["value"]
         if fl:
             flows[(cik, name, per)] = fl
     agg = defaultdict(lambda: {"acc": [], "dis": []})
@@ -1626,6 +1672,10 @@ def q_opposed_pairs(con, min_side=1):
                              -r["n_managers"], -(r["acc_value"] + r["dis_value"])))
     return {"as_of": _as_of(), "count": len(rows), "rows": rows,
             "filers_compared": len(flows),
+            # holding rows with no mapped ticker cannot be compared across filers.
+            # Reported rather than dropped in silence — this is real reported value
+            # that the board does not see.
+            "excluded_rows": excl_n, "excluded_value": excl_v,
             "note": "QoQ flow direction per filer's newest period; 13F is long-only US "
                     "listed and 45d stale; ranked by disagreement breadth, no verdict"}
 
