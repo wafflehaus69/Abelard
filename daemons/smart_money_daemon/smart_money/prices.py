@@ -142,6 +142,29 @@ def _add_span(con, ticker, start, end, fetched_at):
     )
 
 
+def purge_future_spans(con, today=None, apply=False):
+    """Drop cached spans whose end lies in the future.
+
+    Repair for the bug fixed in eod(): a span recorded from a requested rather than
+    a received end date makes _covered() answer True forever, so the ticker silently
+    freezes at whatever it last held. Deleting the span row destroys no price data —
+    the prices PK is INSERT OR REPLACE — it only forces the next call to refetch.
+
+    Returns (rows, tickers): the offending spans, and the distinct tickers they
+    cover. Writes nothing unless apply=True.
+    """
+    today = today or dt.date.today().isoformat()
+    bad = con.execute(
+        "SELECT ticker, start_date, end_date FROM price_spans WHERE end_date > ? "
+        "ORDER BY ticker", (today,)).fetchall()
+    tickers = sorted({r[0] for r in bad})
+    if apply and tickers:
+        con.executemany("DELETE FROM price_spans WHERE ticker=? AND end_date > ?",
+                        [(t, today) for t in tickers])
+        con.commit()
+    return bad, tickers
+
+
 def eod(con, ticker: str, start: str, end: str):
     """Daily rows for ISO span [start, end] inclusive. Cache-first.
 
@@ -191,7 +214,20 @@ def eod(con, ticker: str, start: str, end: str):
         con.executemany(
             "INSERT OR REPLACE INTO prices VALUES (?,?,?,?,?,?,?,?)", rows
         )
-        _add_span(con, ticker, start, end, fetched_at)
+        # Record the span actually RECEIVED, never the one requested. Never record
+        # the request as if it were the response. A caller asking for a future end
+        # (grade_case asks for entry + 200 days) otherwise writes a span reaching
+        # into next year, after which _covered() returns True for every later
+        # request and this function serves stale cache silently and indefinitely.
+        # That froze 343 tickers, SPY among them, while the nightly scan went on
+        # incrementing price_ok against zero new rows.
+        #
+        # No rows means no coverage, so no span is written and the next call
+        # refetches. That costs a request; claiming coverage we do not have costs
+        # correctness.
+        if rows:
+            _add_span(con, ticker, start, min(end, max(r[1] for r in rows)),
+                      fetched_at)
         con.commit()
     return con.execute(
         "SELECT date, close, adj_close, asof_unix FROM prices "
