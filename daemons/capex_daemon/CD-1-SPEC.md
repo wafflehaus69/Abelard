@@ -1,8 +1,26 @@
 # ORDER CD-1 — CAPEX DAEMON BUILD SPEC
 
-**Status: DRAFT — awaiting ratification by Abelard and Mando. No code written against this yet.**
+**Status: RATIFIED by Mando 2026-08-13** (ORDER CD-1-BUILD Phase 0.4). Governing for the build.
 Drafted by ClaudeCode 2026-08-13 from `recon/CD-R1-RECON.md` (recon 2026-08-07, re-checked
-2026-08-13), rulings R1–R6 incl. amendments R2a/R4a, and `doctrine/ENGINEERING.md` E1–E19.
+2026-08-13), rulings R1–R6 incl. amendments R2a/R4a, and `doctrine/ENGINEERING.md` E1–E20.
+
+Rulings resolved at ratification:
+
+- **(a) FORK resolved — MSFT $194.06B untagged commitment table DEFERRED.** The forward-commitment
+  series publishes a **per-issuer coverage status**; MSFT is `UNCOVERED-UNTAGGED`, a member of the
+  undetermined-basis family alongside `UNANCHORED`. An HTML-table leg is a **phase-3 candidate,
+  gated on one quarter of live materiality**. No HTML-scraping surface opens in v1.
+- **(b) Calendar-offset tolerance remains OPEN** pending an observed distribution (E8).
+- **(c) ANNUAL-DEGRADED holds at NBIS + BABA. No v1 expansion** — BIDU/VNET/GDS/TSM/BTDR are out.
+- **(d) Aggregate cadence = quarterly, aligned to the panel.**
+- **(e) Threshold split confirmed as drafted.**
+- **(f) No phase classification in v1 — confirmed.**
+
+**UNRESOLVED — tier ladder (Phase 0.3).** Two ratified rulings conflict, and the resolution is
+Mando's rather than the spec's. R1 as ruled graduates THIN→CORE at **4** consecutive derivable
+quarters; CORE=13 was ratified against a **≥12** threshold. Both cannot hold. §3 records the
+conflict and the affected names rather than silently picking a side (E3).
+**No code keys on the CORE / DEGRADED-SHORT boundary until this is ruled.**
 
 Every constant below is either **measured** (evidence cited) or marked **OPEN** and left unset.
 Per E8, no threshold ships without an observed distribution behind it.
@@ -43,14 +61,71 @@ measured coverage, re-evaluated every scan.
 | Tier | Definition | Members at ratification |
 |---|---|---|
 | **CORE** | ≥12 consecutive derivable quarters, current | MSFT, GOOGL, AMZN, META, ORCL, DLR, EQIX, RIOT, CORZ, WULF, CIFR, HUT, APLD (13) |
-| **DEGRADED-SHORT** | 4–11 consecutive derivable quarters | CRWV, IREN, GLXY, WYFI (4) |
+| **DEGRADED-SHORT** | 4–11 consecutive derivable quarters — **CONTESTED, see below** | CRWV, IREN, GLXY, WYFI (4) |
 | **THIN** | <4 consecutive derivable quarters | FRMI, KEEL, SPCX (3) |
-| **ANNUAL-DEGRADED** | FPI; no structured quarterly capex exists | NBIS, BABA (+BIDU, VNET, GDS, TSM, BTDR optional) |
-| **MIRROR** | demand/supply sensor; revenue or backlog is the read, not own capex | SNOW + 25 names |
+| **ANNUAL-DEGRADED** | FPI; no structured quarterly capex exists | NBIS, BABA (2) — ruling (c), no v1 expansion |
+| **MIRROR** | demand/supply sensor; revenue or backlog is the read, not own capex | SNOW (1) ruled; **+25 sweep names UNRATIFIED, see below** |
 
-**R1 — graduation is automatic.** THIN → DEGRADED-SHORT → CORE on reaching 4 and 12 consecutive
-derivable quarters. No per-name ruling. A tier **downgrade** is a loud event: it means coverage
-regressed and must appear in the coverage report, never silently.
+### 3.1 RESOLVED — the tier ladder (ruling R-B6-2, Mando 2026-08-13)
+
+**Graduation stands at 4 consecutive derivable quarters, automatic and logged.**
+CORE membership = the ruled 13 + graduates. The 12-quarter zero-gap window measured during the
+roster audit **justified the initial roster; it was evidence, never a membership bar.**
+
+A 4-quarter graduate carries short TTM history and its panel rows say so — `SHORT-HISTORY` is a
+disclosure, not a disqualification (E14: composition travels with the number).
+
+Consequence: **CRWV (9), IREN (7), GLXY (7), WYFI (7) are CORE.** `DEGRADED-SHORT` is deleted; it was
+ClaudeCode drift that bridged two rulings instead of surfacing their conflict. The historical record
+of that conflict is retained below because the drift, not just its resolution, is the lesson.
+
+<details>
+<summary>Superseded — the conflict as recorded at Phase 0.3</summary>
+
+### Superseded: the tier ladder conflict
+
+Two ratified rulings conflict. Recorded, not reconciled (E3).
+
+- **R1 as ruled** (2026-08-08): "THIN→CORE at **4** consecutive derivable quarters, automatic, no
+  ruling needed per name." Under this, ≥4 quarters ⇒ CORE, and **CORE = 17**.
+- **CORE=13 as ratified** (2026-08-07) was accepted against a **≥12** consecutive-quarter threshold,
+  which leaves CRWV (9), IREN (7), GLXY (7), WYFI (7) below the line.
+
+The spec's three-step ladder (THIN → DEGRADED-SHORT → CORE at 4 and 12) was **drafted by ClaudeCode
+to bridge the two and was never ruled.** That is drift, and worse, it silently papered over a
+conflict between two of Mando's own rulings instead of surfacing it. It is surfaced here.
+
+**Provenance of the four contested names** — all are ruled *into the universe*; only their tier is
+unruled. CRWV: original Mando seed ("Hyperscalers and Neoclouds for sure, all of them"). IREN, GLXY:
+named in ORDER CD-R1 Task 1's mandatory check list. WYFI: sweep candidate, verified by orchestrator
+review, not rejected at roster ratification.
+
+**Awaiting Mando.** Either (i) R1 stands as ruled — CORE = 17, DEGRADED-SHORT is deleted; or
+(ii) the ladder is ratified as three-step and R1's graduation clause is amended to "THIN →
+DEGRADED-SHORT at 4, DEGRADED-SHORT → CORE at 12."
+
+**The 25 MIRROR names** originate from the CD-R1 sweep and appear in no ruling. Flagged, not kept
+and not dropped, per the order's instruction. SNOW alone is ruled MIRROR on measured evidence.
+
+</details>
+
+### 3.2 CORZ is anchored — correction (ruling R-B6-3)
+
+CD-R1 recorded "CORZ has no PP&E anchor concept at all" and the spec carried CORZ→UNANCHORED into
+§8 and B7's acceptance criterion. **That is wrong.** B3 resolved CORZ's anchor to
+`PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetBeforeAccumulatedDepreciationAndAmortization`,
+7 facts from 2022-12-31 — the same combined concept META uses.
+
+The original claim died of a **too-narrow search**: CD-R1 looked for
+`PropertyPlantAndEquipmentGross` and concluded absence from its absence. E15 discharging against our
+own artifact rather than an external source — the system working as designed.
+
+B7's acceptance criterion amends to **CORZ→anchored**. B8's UNANCHORED gate demo re-targets to
+whichever issuer genuinely produces that state; the demo requires a real subject, not a scripted one.
+
+**R1 — graduation is automatic**, at whatever boundaries §3.1 resolves to. No per-name ruling.
+A tier **downgrade** is a loud event: it means coverage regressed and must appear in the coverage
+report, never silently.
 
 THIN and ANNUAL-DEGRADED are distinct by construction: THIN is a maturation queue with a known
 schedule (SPCX graduates on its Q3 10-Q, ~Nov 2026); ANNUAL-DEGRADED is a permanent structural
@@ -197,8 +272,15 @@ Contracted-but-unspent obligations lead reported capex and are largely structure
 - `ContractualObligation` — META $349.31B, undimensioned.
 - MSFT's equivalents are **Leg B only**: $329.1B not-yet-commenced datacenter leases (dimensioned)
   and a **$194.06B** purchase-commitment table that is **not tagged at all** — prose/HTML, no
-  `ix:nonFraction`, no R-file. That one figure is the sole v1 exception to "no HTML scraping";
-  **OPEN: include as a table-parse target, or record as a declared gap?**
+  `ix:nonFraction`, no R-file. **Ruled (a): DEFERRED.** No HTML-table leg in v1.
+
+**Per-issuer coverage status is a published column of the forward-commitment series**, not a
+footnote. Values: `COVERED` (structured, in Leg A or B) · `UNCOVERED-UNTAGGED` (disclosed in the
+filing, no XBRL representation — MSFT's $194.06B) · `ABSENT` (not disclosed). `UNCOVERED-UNTAGGED`
+joins `UNANCHORED` and `undetermined` in the undetermined-basis family: the series still publishes,
+carrying its own admission that a known figure is missing. An HTML-table leg is a **phase-3
+candidate gated on one quarter of live materiality** — i.e. on whether MSFT's absence measurably
+distorts the aggregate, judged against real data rather than in advance.
 - `NotYetCommenced` concepts: **absent across all six probe issuers.** Not available as a uniform
   series.
 
@@ -306,14 +388,55 @@ Every acceptance figure above is a value measured in CD-R1 — the recon doubles
 
 ---
 
-## 12. Open questions for ratification
+## 11.5 Rulings of 2026-08-14 (Mando)
 
-1. **Phase-classification thresholds** — deliberately unset. CD-1 produces the distribution; the
-   thresholds are a later ruling. Confirm this split.
-2. **MSFT's $194.06B untagged commitment table** (§7.3) — parse the HTML table, or record as a
-   declared gap? It is the single largest forward number with no XBRL representation, and admitting
-   it opens an HTML-scraping surface the rest of the spec avoids.
-3. **Calendar-offset tolerance** (§7.2) — unset pending the offset distribution.
-4. **ANNUAL-DEGRADED breadth** — BIDU/VNET/GDS/TSM/BTDR in, or NBIS+BABA only?
-5. **Aggregate cadence** — publish on filing arrival (event-driven, E-doctrine preference) or on a
-   fixed quarterly close? Filing waves are ragged; ORCL and APLD never align.
+**Universe — CORE 13 → 17, ratified.** IREN, GLXY, WYFI and CRWV are CORE, each carrying
+`SHORT-HISTORY`. This is the R-B6-2 graduation applied to its four standing candidates; the tier
+function already computes it, so no code change follows.
+
+**Standing admission rule.** Verbatim intent: *"anyone building datacenters or owning/hosting the
+property belongs — track the whole spending curve."* Admission turns on **building or owning/hosting
+datacenter property**, not on sector, SIC or self-description. This is now the governing test for
+every future roster question and is what CD-R2 enumerates against.
+
+**Supplier leg — ruled in, as a separate bucket.** Chip producers (NVDA, AMD, AVGO, MU, SMCI, TSM)
+enter as their own bucket with **cross-check semantics**: their datacenter revenue is a read on
+*someone else's* spending. They are **never blended into the spending aggregate** — a supplier's
+revenue and a builder's capex are the same dollar counted at opposite ends, and summing them would
+double-count the buildout. Build is CD-3-class, post-ratification.
+
+**RIOT capex mapping.** `PaymentsToAcquirePropertyPlantAndEquipment` is RIOT's capex line.
+`PaymentsToAcquireMachineryAndEquipment` is its **equipment-deposits** line and is excluded from
+capex — carried separately as a forward indicator (C3). See E23 for the general rule this produced.
+
+**FRMI — generic-total precedence, branch (b′).** Where one concept is a generic total
+(`ProceedsFromIssuanceOfDebt`) and the other a named component of it
+(`ProceedsFromConvertibleDebt`), the **generic total takes precedence** and the component is not
+added — summing them double-counts the component. This resolves the containment case that R-B6-1
+branch (c) correctly refused rather than guessed.
+
+> **Implementation status: recorded, not yet coded.** `issuance.py` still emits
+> `UNRESOLVED-MULTILINE` for FRMI. Branch (b′) needs a generic-vs-component concept relation before
+> it can fire mechanically, which is a CD-2-class change. Flagged here so spec and disk do not
+> silently diverge (E3).
+
+**UNANCHORED publishes its cause.** The status is not one state but three, and the distinction is
+published rather than collapsed: *concepts disagree near the frontier* (EQIX), *anchor series went
+stale* (CORZ, AMZN, GOOGL), *partial window coverage* (GLXY, IREN, WYFI). A reader must be able to
+tell "we cannot tell" from "the issuer stopped reporting".
+
+---
+
+## 12. Ratification record
+
+| # | Question | Ruling (Mando, 2026-08-13) |
+|---|---|---|
+| 1 | Phase-classification thresholds | **CONFIRMED unset.** CD-1 produces the distribution; thresholds ruled later against the B8 histogram and nothing else (E8). |
+| 2 | MSFT $194.06B untagged table | **DEFERRED.** Coverage status `UNCOVERED-UNTAGGED`; HTML-table leg is a phase-3 candidate gated on one quarter of live materiality. |
+| 3 | Calendar-offset tolerance | **OPEN**, pending observed distribution (E8). |
+| 4 | ANNUAL-DEGRADED breadth | **NBIS + BABA only.** No v1 expansion. |
+| 5 | Aggregate cadence | **Quarterly, aligned to the panel.** |
+| 6 | No phase classification in v1 | **CONFIRMED.** |
+
+**Still open and blocking a specific build step:** the §3.1 tier-ladder conflict. It blocks nothing
+in B1–B7 except the CORE/DEGRADED-SHORT boundary itself, which no module may key on until ruled.

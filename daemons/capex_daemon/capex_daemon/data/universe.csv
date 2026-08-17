@@ -1,0 +1,24 @@
+cik,ticker_display,bucket,tier_override,notes
+789019,MSFT,hyperscaler,,June FY end. Finance-lease additions material and quarterly-tagged.
+1652044,GOOGL,hyperscaler,,
+1018724,AMZN,hyperscaler,,Tag migration 2017 PaymentsToAcquirePropertyPlantAndEquipment to PaymentsToAcquireProductiveAssets.
+1326801,META,hyperscaler,,Anchor concept bundles finance-lease ROU. Louisiana VIE dimensioned.
+1341439,ORCL,hyperscaler,,Off-calendar Nov Feb May grid. Anchor tagged annually only.
+1297996,DLR,reit,,Capex concept is PaymentsToDevelopRealEstateAssets. No PropertyPlantAndEquipment concepts at all.
+1101239,EQIX,reit,,Double-tags capex under two concepts. Never sum across them.
+1167419,RIOT,builder,,
+1839341,CORZ,builder,,No PP and E anchor concept. Expect UNANCHORED.
+1083301,WULF,builder,,Seven debt-tag variants across eras.
+1819989,CIFR,builder,,Renamed from Cipher Mining 2026-02-23.
+1964789,HUT,builder,,Capex concept is PaymentsToAcquireMachineryAndEquipment.
+1144879,APLD,builder,,May FY end. formerNames carries an entry equal to current name.
+1769628,CRWV,builder,,Tier contested per CD-1-SPEC 3.1. Flagship neocloud.
+1878848,IREN,builder,,Tier contested per CD-1-SPEC 3.1. June FY end. 10-Q capex tagged year-to-date.
+1859392,GLXY,builder,,Tier contested per CD-1-SPEC 3.1. Helios segment inside a broker-dealer SIC.
+2042022,WYFI,builder,,Tier contested per CD-1-SPEC 3.1. Listed 2025-08.
+2071778,FRMI,builder,,REIT-classified AI campus developer. Contested proxy in progress.
+1812477,KEEL,builder,,Renamed from Bitfarms 2026-03-31. Miner to HPC conversion.
+1181412,SPCX,builder,,Single 10-Q. Six-month YTD only. Graduates on the Q3 10-Q.
+1513845,NBIS,fpi,,20-F only. Zero XBRL on any 6-K. Multi-currency RUB and USD on one CIK.
+1577552,BABA,fpi,,Capex tagged with company extension baba_ prefix. Absent from companyfacts entirely.
+1640147,SNOW,mirror,,Ruled MIRROR on measured capex-to-revenue of 0.58 to 4.32 percent.
