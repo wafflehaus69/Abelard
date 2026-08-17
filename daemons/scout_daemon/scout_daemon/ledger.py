@@ -159,6 +159,12 @@ _COLUMNS: dict[str, str] = {
     "verdicts_seen": "INTEGER",
     "flip_count": "INTEGER",
     "effective_verdict": "TEXT",
+    # --- admission provenance (invariant 2) --------------------------------
+    # `admission_applied_unix` is stamped ONLY by admissions.apply(), i.e. only
+    # when the Mando-owned file moved this row. Its presence is the audit trail
+    # that a human decision, not the daemon, set the status.
+    "proposed_unix": "INTEGER",
+    "admission_applied_unix": "INTEGER",
 }
 
 # Columns that must NOT be overwritten when an item is re-seen. Resetting
@@ -377,6 +383,10 @@ def _row_values(
         "verdicts_seen": None,
         "flip_count": None,
         "effective_verdict": None,
+        # Admission provenance is never set by ingest -- a scan must not be able
+        # to stamp a row as though a human had ruled on it.
+        "proposed_unix": None,
+        "admission_applied_unix": None,
     }
 
 
