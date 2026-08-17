@@ -320,3 +320,31 @@ depth-2, 56 depth-1. Nothing before 2026-08-11 exists — the four earlier
 `.bak-*` files predate the current ledger generation and were deliberately not
 backfilled, so any derived state for a row is only as old as its first recorded
 verdict, and a depth-1 row has had no opportunity to debounce at all.
+
+## E23 — Concept identity is not semantic identity
+Ruled by Mando 2026-08-14; drafted by ClaudeCode from the originating incident
+rather than by Abelard — reword to the ledger's voice if wanted. Extends [E7]
+and [E21], which fixed *which* tag to read and *how many*; this one is about
+what the tag turns out to mean. Numbered E23 rather than E22 per the [E18]
+ledger protocol: E22 was pushed by another workstream first, and a pushed ID is
+never renumbered.
+Incident: CD-1 B8. `us-gaap:PaymentsToAcquireMachineryAndEquipment` resolves as
+the current capex concept for two universe members and means opposite things in
+each. RIOT's 2026Q1 cash flow presents it as "Deposits on equipment"
+($16,184,000) — cash advanced for equipment not yet delivered or capitalized —
+alongside a separate "Purchases of property and equipment, including
+construction in progress" line at $115,465,000 under a different concept. HUT
+tags the identical concept to its "Purchases of property and equipment" line at
+$616,182,000 and carries no `PaymentsToAcquirePropertyPlantAndEquipment` at all.
+Summing RIOT's deposits into capex double-counts when that equipment
+capitalizes; reading HUT's as deposits understates its capex ~30x.
+Rule: recency resolves which tag is CURRENT; only presentation linkage resolves
+what the tag MEANS. Every load-bearing concept is verified once against the
+filing's own line label per issuer-era, the verified line-mapping recorded in
+the tag map with provenance, and re-verified only on era change. A concept name
+is a pointer, not a definition — the definition lives in the statement the
+issuer actually rendered.
+Corollary: this is invisible to every purely numerical check. Both RIOT figures
+are plausible, internally consistent, correctly scaled, and reconcile against
+their own YTD totals. Cross-issuer agreement on a concept name is not evidence
+that two issuers mean the same thing by it.
