@@ -388,6 +388,45 @@ Every acceptance figure above is a value measured in CD-R1 — the recon doubles
 
 ---
 
+## 11.5 Rulings of 2026-08-14 (Mando)
+
+**Universe — CORE 13 → 17, ratified.** IREN, GLXY, WYFI and CRWV are CORE, each carrying
+`SHORT-HISTORY`. This is the R-B6-2 graduation applied to its four standing candidates; the tier
+function already computes it, so no code change follows.
+
+**Standing admission rule.** Verbatim intent: *"anyone building datacenters or owning/hosting the
+property belongs — track the whole spending curve."* Admission turns on **building or owning/hosting
+datacenter property**, not on sector, SIC or self-description. This is now the governing test for
+every future roster question and is what CD-R2 enumerates against.
+
+**Supplier leg — ruled in, as a separate bucket.** Chip producers (NVDA, AMD, AVGO, MU, SMCI, TSM)
+enter as their own bucket with **cross-check semantics**: their datacenter revenue is a read on
+*someone else's* spending. They are **never blended into the spending aggregate** — a supplier's
+revenue and a builder's capex are the same dollar counted at opposite ends, and summing them would
+double-count the buildout. Build is CD-3-class, post-ratification.
+
+**RIOT capex mapping.** `PaymentsToAcquirePropertyPlantAndEquipment` is RIOT's capex line.
+`PaymentsToAcquireMachineryAndEquipment` is its **equipment-deposits** line and is excluded from
+capex — carried separately as a forward indicator (C3). See E23 for the general rule this produced.
+
+**FRMI — generic-total precedence, branch (b′).** Where one concept is a generic total
+(`ProceedsFromIssuanceOfDebt`) and the other a named component of it
+(`ProceedsFromConvertibleDebt`), the **generic total takes precedence** and the component is not
+added — summing them double-counts the component. This resolves the containment case that R-B6-1
+branch (c) correctly refused rather than guessed.
+
+> **Implementation status: recorded, not yet coded.** `issuance.py` still emits
+> `UNRESOLVED-MULTILINE` for FRMI. Branch (b′) needs a generic-vs-component concept relation before
+> it can fire mechanically, which is a CD-2-class change. Flagged here so spec and disk do not
+> silently diverge (E3).
+
+**UNANCHORED publishes its cause.** The status is not one state but three, and the distinction is
+published rather than collapsed: *concepts disagree near the frontier* (EQIX), *anchor series went
+stale* (CORZ, AMZN, GOOGL), *partial window coverage* (GLXY, IREN, WYFI). A reader must be able to
+tell "we cannot tell" from "the issuer stopped reporting".
+
+---
+
 ## 12. Ratification record
 
 | # | Question | Ruling (Mando, 2026-08-13) |
