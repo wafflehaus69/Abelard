@@ -6,7 +6,7 @@ from capex_daemon import config, universe
 
 def test_roster_loads_and_is_cik_keyed():
     roster = universe.load()
-    assert len(roster) == 23
+    assert len(roster) == 30          # 23 original + 7 ratified CD-R2 2026-08-14
     assert all(len(cik) == 10 and cik.isdigit() for cik in roster)
     # CIK is the key; ticker is a display attribute (E10).
     assert roster["0000789019"].ticker_display == "MSFT"
@@ -95,3 +95,40 @@ def test_anchor_band_matches_the_measured_ruling():
     for measured in (0.98, 1.01, 0.91, 0.73):   # MSFT META ORCL EQIX at recon
         assert lo <= measured <= hi
     assert not (lo <= 23.3 <= hi)               # the AMZN stale-resolution miss
+
+
+# --- CD-R2 ratification, 2026-08-14 --------------------------------------
+
+def test_ratified_adds_are_present_with_their_buckets():
+    by = {e.ticker_display: e.bucket for e in universe.load().values()}
+    assert by["MARA"] == "builder"
+    assert by["CLSK"] == "builder"
+    assert by["DGXX"] == "builder"
+    assert by["IRM"] == "host"
+    assert by["AMT"] == "host"
+    assert by["CCOI"] == "host"
+
+
+def test_prologis_and_tsm_are_not_admitted():
+    """PLD ruled out (warehouses, not datacenters); TSM deferred (IFRS)."""
+    tickers = {e.ticker_display for e in universe.load().values()}
+    assert "PLD" not in tickers
+    assert "TSM" not in tickers
+
+
+def test_btbt_is_sidecar_so_it_never_double_counts_wyfi():
+    """BTBT consolidates WhiteFiber. WYFI stays in the totals; BTBT is tracked
+    on the side and excluded from every aggregate."""
+    from capex_daemon import divergence
+    roster = universe.load()
+    by = {e.ticker_display: e.bucket for e in roster.values()}
+    assert by["BTBT"] == "sidecar"
+    assert by["WYFI"] == "builder"
+    assert "sidecar" not in divergence.BUCKET_ORDER
+
+
+def test_host_bucket_is_tracked_but_not_aggregated():
+    """Their capex is real but not separable from a larger consolidated line."""
+    from capex_daemon import divergence
+    assert "host" in universe.BUCKETS
+    assert "host" not in divergence.BUCKET_ORDER
