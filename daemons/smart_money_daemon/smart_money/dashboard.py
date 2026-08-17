@@ -266,6 +266,39 @@ def _sortable_table(params, cols, rows, qs_fn, active, direction, hot=None,
     return "".join(out)
 
 
+def _csv_bytes(cols, rows, omit=()):
+    """Render rows to CSV under an explicit completeness contract.
+
+    Every DictWriter here used extrasaction="ignore", which drops any row key
+    absent from the column list without a word. Measured against production that
+    was silently losing, among others, `value_flag` from /trades.csv — the
+    parse-time Form 4 corruption tag, on 293 tagged rows. The row survived the
+    export and the mark that says "this number is known-suspect" did not, which is
+    a mark-never-drop violation by construction: a field can be added to a query
+    and vanish from every export with no error anywhere.
+
+    A field is now either EXPORTED (in cols) or DELIBERATELY OMITTED (in omit,
+    with a stated reason at the call site). Anything else raises, so the next
+    field added to a query row cannot disappear quietly — it fails on the first
+    test run instead.
+    """
+    import csv
+    import io
+    allowed = set(cols) | set(omit)
+    for r in rows:
+        extra = set(r) - allowed
+        if extra:
+            raise ValueError(
+                "CSV contract violation: {} present on a row but neither exported "
+                "nor listed in omit".format(sorted(extra)))
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow(r)
+    return buf.getvalue()
+
+
 def _stamped(name):
     """Datestamp a download filename so repeated pulls do not overwrite each
     other and it stays obvious when each was taken.
@@ -399,9 +432,20 @@ def _tracked_books_strip(books):
     cards = []
     ordered = sorted(books["filers"], key=lambda b: -(b.get("book_value") or 0))
     for b in ordered:
+        # The two largest cards here are Alphabet and NVIDIA — operating companies
+        # marking balance-sheet stakes, not managers expressing a view — and they
+        # rendered indistinguishably from a hedge fund's book.
+        badge = ("" if b.get("discretionary", True) else
+                 " <span class='badge smid' title='operating company marking a "
+                 "balance-sheet stake, not a manager expressing a view'>"
+                 "balance sheet</span>")
+        warn = b.get("magnitude_warning")
+        warn_html = ("<br><span class='reported'>{}</span>".format(
+            html.escape(warn)) if warn else "")
         if not b["period"]:
-            cards.append("<div class='book'><b>{}</b><br><span class='muted'>no "
-                         "filings</span></div>".format(html.escape(b["name"] or "?")))
+            cards.append("<div class='book'><b>{}</b>{}<br><span class='muted'>no "
+                         "filings</span>{}</div>".format(
+                             html.escape(b["name"] or "?"), badge, warn_html))
             continue
         top = ", ".join("{} {}%".format(
             html.escape(t["ticker"]), "?" if t["pct"] is None else t["pct"])
@@ -410,12 +454,13 @@ def _tracked_books_strip(books):
         d2f_txt = ("filing window passed" if d2f is not None and d2f < 0 else
                    "{}d to next filing".format(d2f) if d2f is not None else "-")
         cards.append(
-            "<div class='book'><a href='/portfolios?filer={cik}'><b>{name}</b></a><br>"
-            "<span class='muted'>{per} &middot; {book}</span><br>top3 {top}<br>"
-            "<span class='muted'>{d2f}</span></div>".format(
+            "<div class='book'><a href='/portfolios?filer={cik}'><b>{name}</b></a>{badge}"
+            "<br><span class='muted'>{per} &middot; {book}</span><br>top3 {top}<br>"
+            "<span class='muted'>{d2f}</span>{warn}</div>".format(
                 cik=q.cik_int(b["cik"]), name=html.escape(b["name"] or "?"),
-                per=html.escape(b["period"]), book=_money0(b["book_value"]),
-                top=top, d2f=d2f_txt))
+                badge=badge, per=html.escape(b["period"]),
+                book=_money0(b["book_value"]), top=top, d2f=d2f_txt,
+                warn=warn_html))
     # SM-P2: at 16 filers the strip swamps the front page. Show the biggest books,
     # collapse the rest behind a native <details> (no JS).
     TOP_N = 6
@@ -424,8 +469,15 @@ def _tracked_books_strip(books):
             "<div class='strip'>{}</div></details>".format(len(rest), "".join(rest))
             if rest else "")
     return ("<h2>Tracked books (reported 13F) &middot; "
-            "<a href='/portfolios'>open</a></h2><div class='strip'>{}</div>{}".format(
-                "".join(head), more))
+            "<a href='/portfolios'>open</a></h2>"
+            "<p class='muted'>{n} filers, {nd} discretionary. Book {tot} of which "
+            "{td} is discretionary — the remainder is operating companies marking "
+            "balance-sheet stakes, shown but never pooled into a consensus.</p>"
+            "<div class='strip'>{head}</div>{more}".format(
+                n=books.get("n_filers", "?"), nd=books.get("n_discretionary", "?"),
+                tot=_money0(books.get("book_total")),
+                td=_money0(books.get("book_total_discretionary")),
+                head="".join(head), more=more))
 
 
 def _disagreements_section(con, limit=8):
@@ -487,23 +539,21 @@ def view_disagreements(con, p):
     return _page("Cross-manager disagreements", "".join(body), p)
 
 
-_DIS_CSV_COLS = ["ticker", "instrument", "n_accumulating", "n_distributing",
-                 "acc_names", "dis_names", "acc_value", "dis_value", "cross_thesis"]
+_DIS_CSV_COLS = ["ticker", "instrument", "n_managers", "n_accumulating",
+                 "n_distributing", "acc_names", "dis_names", "acc_value",
+                 "dis_value", "cross_thesis"]
+# The per-filer breakdowns are lists of dicts. acc_names/dis_names already carry
+# the same content in a form a CSV cell can hold, so these are duplicates rather
+# than losses — stated here so the omission is a decision, not an accident.
+_DIS_CSV_OMIT = ["accumulating", "distributing"]
 
 
 def _build_disagreements_csv(con, p, full):
-    import csv
-    import io
     res = q.q_opposed_pairs(con)
     rows = _sorted(res["rows"], p["sort"] or "n_managers", p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_DIS_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(_DIS_CSV_COLS, rows, _DIS_CSV_OMIT)
 
 
 def view_front(con, p):
@@ -519,9 +569,18 @@ def view_front(con, p):
         _disagreements_section(con),
         "<h2>Sentinel activity ({} events)</h2>".format(sent["count"]),
         _table(["event_date", "src", "seed", "ticker", "action"], sent["rows"][:15]),
-        "<h2>Principal convergence — {} same-side, {} QoQ disagreements</h2>".format(
-            len(conv["convergences"]), len(conv["qoq_accumulate_distribute_disagreements"])),
-        _table(["ticker", "period", "converge_dir", "long_filers"], conv["convergences"][:12]),
+        "<h2>Principal convergence — {} same-side ({} among discretionary "
+        "managers), {} QoQ disagreements</h2>".format(
+            conv["n_convergences"], conv["n_convergences_discretionary"],
+            len(conv["qoq_accumulate_distribute_disagreements"])),
+        "<p class='muted'>{} of the {} exist only because an operating company "
+        "marking a balance-sheet stake was counted as a principal. Both counts are "
+        "shown; neither is filtered away.</p>".format(
+            conv["n_convergences"] - conv["n_convergences_discretionary"],
+            conv["n_convergences"]),
+        _table(["ticker", "period", "converge_dir", "long_filers",
+                "discretionary_long_filers", "survives_discretionary_only"],
+               conv["convergences"][:12]),
         "<h2>Ownership pressure — flow (top movers)</h2>",
         _table(["ticker", "net_shares", "distinct_buyers", "distinct_sellers", "direction"],
                press["rows"][:15]),
@@ -682,8 +741,9 @@ def view_sentinels(con, p):
     active = p["sort"] or "event_date"            # default: newest event first
     rows = _sorted(rows, active, p["dir"])
     page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
-    cols = [(c, c) for c in ("event_date", "src", "seed", "role", "ticker",
-                             "action", "value")]
+    cols = [(c, c) for c in ("event_date", "src", "seed", "role", "thesis",
+                             "ticker", "instrument_class", "action", "value",
+                             "shares", "cusip")]
     body = ["<p class='muted'>Registry as-of {}. {} events{}. Click a column header "
             "to sort.</p>".format(
                 html.escape(str(sent["registry_as_of"])), meta["total"],
@@ -766,7 +826,10 @@ def view_ticker(con, p):
                 "owner", "note"],
                t["congress"][:25]),
         "<h2>13F principal positions (direction-netted)</h2>",
-        _table(["cik", "period", "net_value"], t["thirteenf_net"][:25]),
+        # cik alone said nothing about who was holding. On /ticker?symbol=NOK the
+        # single $2.21B principal is Nokia's own strategic holder, NVIDIA.
+        _table(["filer", "cik", "period", "net_value", "thesis", "discretionary"],
+               t["thirteenf_net"][:25]),
         _tension_block(t["tension"], t["congress_holdings"]),
         "<p class='muted'>Price sparkline points {} (direct read-only SELECT).</p>".format(
             len(t["price_sparkline"])),
@@ -1175,8 +1238,12 @@ def view_portfolios(con, p):
     return _page("Reported portfolio", "".join(body), p)
 
 
+# `unmapped` marks a holding whose CUSIP never resolved to a ticker — the exact
+# thing that makes a row look like an unidentifiable symbol. It existed on the row
+# and was being dropped at export.
 _PORT_CSV_COLS = ["cusip", "ticker", "issuer", "instrument", "value", "shares",
-                  "pct_of_book", "badge", "prior_value", "reported_period", "filed_date"]
+                  "pct_of_book", "badge", "prior_value", "reported_period",
+                  "filed_date", "unmapped"]
 
 
 def _build_portfolio_csv(con, p, full):
@@ -1188,12 +1255,7 @@ def _build_portfolio_csv(con, p, full):
     rows = _sorted(res["rows"], p["sort"] or "value", p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_PORT_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(_PORT_CSV_COLS, rows)
 
 
 _CONGRESS_CAVEAT = (
@@ -1376,7 +1438,8 @@ def view_insiders(con, p):
 
 
 _INSIDER_CSV_COLS = ["ticker", "asset_name", "instrument", "owner", "midpoint",
-                     "value_lo", "value_hi", "pct_of_book", "income_type"]
+                     "value_lo", "value_hi", "pct_of_book", "income_type",
+                     "asset_type"]
 
 
 def _build_insiders_csv(con, p, full):
@@ -1387,12 +1450,7 @@ def _build_insiders_csv(con, p, full):
     rows = _sorted(res["rows"], p["sort"] or "midpoint", p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_INSIDER_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(_INSIDER_CSV_COLS, rows)
 
 
 def view_oge(con, p):
@@ -1459,7 +1517,8 @@ def view_oge(con, p):
 
 
 _OGE_CSV_COLS = ["line_no", "description", "ticker", "owner", "eif", "midpoint",
-                 "value_lo", "value_hi", "income_type", "use_restriction"]
+                 "value_lo", "value_hi", "income_type", "use_restriction",
+                 "filed_date", "report_type"]
 
 
 def _build_oge_csv(con, p, full):
@@ -1470,12 +1529,7 @@ def _build_oge_csv(con, p, full):
     rows = _sorted(res["rows"], p["sort"] or "midpoint", p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_OGE_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(_OGE_CSV_COLS, rows)
 
 
 _TIER_HELP = {
@@ -1592,12 +1646,7 @@ def _build_member_csv(con, p, full):
     rows = _sorted(res["rows"], p["sort"] or "estimate_lo", p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_FUSION_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(_FUSION_CSV_COLS, rows)
 
 
 def view_congress_gaps(con, p):
@@ -1818,19 +1867,19 @@ def _build_committees_csv(con, p, full):
                                               else "filers_we_hold"), p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(cols, rows)
 
 
+# asset_types is the verbatim source distribution, which test_breadth_yoy asserts
+# is reported unclassified; confidence_why is the reason behind `confidence`; dem
+# and rep are the party split; the *_low_conf counts say how much of new/exited
+# rests on sub-bar prior-year capture. All were on the row and none reached the file.
 _YOY_CSV_COLS = ["ticker", "instrument", "holders_both_prior", "holders_both_year",
                  "delta_comparable", "new_members", "exited_members", "delta_total",
                  "holders_prior", "holders_year", "first_seen_year", "new_to_corpus",
                  "identity_discontinuity", "symbol_twins", "floor_exposure",
-                 "confidence"]
+                 "confidence", "confidence_why", "asset_types", "dem", "rep",
+                 "new_low_conf", "exited_low_conf"]
 
 
 def _build_breadth_yoy_csv(con, p, full):
@@ -1841,12 +1890,7 @@ def _build_breadth_yoy_csv(con, p, full):
     rows = _sorted(res["rows"], p["sort"] or "delta_comparable", p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_YOY_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(_YOY_CSV_COLS, rows)
 
 
 _GAP_CSV_COLS = ["member", "chamber", "party", "state", "match_kind", "years",
@@ -1861,12 +1905,7 @@ def _build_congress_gaps_csv(con, p, full):
     rows = _sorted(res["rows"], p["sort"] or "rows", p["dir"])
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_GAP_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(_GAP_CSV_COLS, rows)
 
 
 def _build_congress_csv(con, p, full):
@@ -1886,23 +1925,24 @@ def _build_congress_csv(con, p, full):
                 "midpoint_exposure", "yoy_change", "first_year"]
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-    w.writeheader()
-    for r in rows:
-        w.writerow(r)
-    return buf.getvalue()
+    return _csv_bytes(cols, rows)
 
 
 # RENAMED: pct_since_trade -> market_return_since_trade, and exec_price /
 # insider_return added. The old name did not say whose return it was and was read as the
 # insider's when it is the stock's. This is a deliberate CSV schema change - a consumer
 # parsing by name is fine, one parsing by position is not.
+# value_flag is the parse-time Form 4 corruption tag (price_vs_close,
+# price_over_max, value_denominated, value_over_max) on 293 of 321,991 rows. It was
+# being dropped, so a known-suspect value exported looking clean — while the weaker
+# derived value_quality DID export and is easy to mistake for it. The mark leaves
+# with the data now.
 _CSV_COLS = ["person", "ticker", "side", "trade_date", "date_is_reported",
              "reported_date", "lag_days", "shares", "exec_price", "implied_price",
              "value", "plan_10b5_1", "entry_close", "latest_close",
              "market_return_since_trade", "insider_return", "return_rankable",
-             "return_basis_warning", "price_vs_close_pct", "value_quality",
+             "return_basis_warning", "price_vs_close_pct", "value_flag",
+             "value_quality", "security_class", "security_title",
              "issuer_class", "cofiler_count", "cofiling_suspected", "smid_band",
              "provenance"]
 
@@ -1916,17 +1956,20 @@ def _build_trades_csv(con, p, full):
                              anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
                              scope=p["scope"], per_page=p["per_page"], page=p["page"],
                              full=full, sort=p["sort"], direction=p["dir"])
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for row in res["rows"]:
-        w.writerow(row)
-    return buf.getvalue()
+    return _csv_bytes(_CSV_COLS, res["rows"])
 
 
+# shares and plan_flag were on the row dicts and silently dropped by
+# extrasaction="ignore" — the loader had them, the export did not, which is what
+# made 13F positions look like they carried no share count at all. cusip and
+# issuer are the durable identity: without them a mis-resolved ticker reads as an
+# unidentifiable symbol even though the filing named the issuer. value_scale and
+# shares_type say what the numbers next to them MEAN.
 _SENTINEL_CSV_COLS = ["event_date", "src", "seed", "role", "ticker", "action",
-                      "value", "tx_date", "period", "amt_low", "amt_high",
-                      "lag_days", "owner"]
+                      "value", "shares", "cusip", "issuer", "value_scale",
+                      "shares_type", "instrument_class", "issuer_id", "thesis",
+                      "discretionary", "plan_flag", "tx_date", "period",
+                      "amt_low", "amt_high", "lag_days", "owner"]
 
 
 def _build_sentinels_csv(con, p, full):
@@ -1938,12 +1981,7 @@ def _build_sentinels_csv(con, p, full):
     rows = _sorted(rows, p["sort"] or "event_date", p["dir"])   # match the view's sort
     if not full:
         rows, _ = _page_slice(rows, p["per_page"], p["page"])
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=_SENTINEL_CSV_COLS, extrasaction="ignore")
-    w.writeheader()
-    for row in rows:
-        w.writerow(row)
-    return buf.getvalue()
+    return _csv_bytes(_SENTINEL_CSV_COLS, rows)
 
 
 _CLUSTER_BUY_COLS = ["ticker", "issuer_cik", "n_buyers", "n_buys", "window_start",
@@ -1969,15 +2007,13 @@ def _build_clusters_csv(con, p, full, which):
         cols, pg = _CLUSTER_BUY_COLS, p["page"]
     if not full:
         rows, _ = _page_slice(rows, p["per_page"], pg)
-    buf = io.StringIO()
-    w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
-    w.writeheader()
+    flat = []
     for row in rows:
         r = dict(row)
         if isinstance(r.get("calendar_months"), list):
             r["calendar_months"] = " ".join(r["calendar_months"])
-        w.writerow(r)
-    return buf.getvalue()
+        flat.append(r)
+    return _csv_bytes(cols, flat)
 
 
 def _build_flows_csv(con, p, full):

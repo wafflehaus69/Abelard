@@ -10,6 +10,9 @@ requires-python = ">=3.12"
 # Matches consensus/pyproject.toml and abelard_queue/pyproject.toml.
 dependencies = [
     "python-dotenv>=1.0",
+    # Mando-owned config/admissions.yaml, matching the overlay.yaml discipline
+    # used by smart_money and news_watch.
+    "pyyaml>=6.0",
     "anthropic>=0.40,<2.0",
 ]
 

@@ -271,13 +271,22 @@ def write_ranking(conn, result: RankResult, *, now_unix: int) -> int:
     written = 0
     everything = [r for rows in result.ranked.values() for r in rows] + result.unranked
     for row in everything:
+        # An UNRANKED row records its reason but must NOT claim a segment.
+        # Writing `rank_segment='GREEN'` on a row with `rank_position=NULL`
+        # made the obvious consumer query --
+        #   WHERE rank_segment='GREEN' ORDER BY rank_position
+        # -- return the unranked rows FIRST, because SQLite sorts NULL low.
+        # The ranked list is `rank_position IS NOT NULL`; the segment column
+        # answers "where does this sit in the order", and an unranked row has
+        # no place in any order.
+        segment = row.segment if row.position is not None else None
         conn.execute(
             "UPDATE opportunities SET rank_segment=?, rank_position=?,"
             " rank_sort_key=?, rank_expected_usd=?, rank_unranked_reason=?,"
             " rank_algorithm_version=?, rank_computed_unix=?,"
             " verdicts_seen=?, flip_count=?, effective_verdict=?"
             " WHERE opportunity_id=?",
-            (row.segment, row.position, row.sort_key, row.expected_usd,
+            (segment, row.position, row.sort_key, row.expected_usd,
              row.unranked_reason, RANK_ALGORITHM_VERSION, now_unix,
              row.verdicts_seen, row.flip_count, row.effective_verdict,
              row.opportunity_id),

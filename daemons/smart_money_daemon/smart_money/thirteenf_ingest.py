@@ -14,6 +14,7 @@ import time
 import requests
 
 from . import db as dbmod
+from . import filing_scale
 from . import thirteenf
 from .efd_ingest import load_env
 
@@ -78,21 +79,51 @@ def list_13f_filings(cik, contact, limit=8):
 
 def _holding_rows(holdings):
     """parse_holdings aggregates per cusip into long/call/put buckets; emit one
-    durable row per non-zero bucket."""
+    durable row per non-zero bucket.
+
+    shares_type belongs only to the long bucket — option buckets carry shares=0 by
+    construction, so typing them SH would assert something the filing never said.
+    title_of_class travels with every bucket; it is the filer's own class label."""
     for cusip, h in holdings.items():
+        title = h.get("title_of_class")
         if h["value"] or h["shares"]:
-            yield cusip, h["issuer"], "long", h["value"], h["shares"]
+            yield (cusip, h["issuer"], "long", h["value"], h["shares"],
+                   h.get("shares_type"), title)
         if h["call_val"]:
-            yield cusip, h["issuer"], "call", h["call_val"], 0
+            yield cusip, h["issuer"], "call", h["call_val"], 0, None, title
         if h["put_val"]:
-            yield cusip, h["issuer"], "put", h["put_val"], 0
+            yield cusip, h["issuer"], "put", h["put_val"], 0, None, title
 
 
-def map_cusips(con, cusips, contact):
+def pick_listing(data):
+    """Choose the US composite listing from an OpenFIGI response.
+
+    OpenFIGI returns every listing worldwide, unordered — Insmed's CUSIP returns
+    109 records with a Frankfurt line first and exactly one exchCode='US'. Form 13F
+    covers section 13(f) securities, which are US-exchange-traded, so a non-US
+    result is definitionally wrong rather than merely unlucky.
+
+    Returns (record_or_None, how). 'openfigi_foreign' still yields a ticker so the
+    row is never blank, but names itself as suspect so a repair pass can find it.
+    """
+    if not data:
+        return None, "openfigi_miss"
+    us = [d for d in data if (d.get("exchCode") or "").upper() == "US"]
+    if us:
+        # Several US records can share a CUSIP (Equity vs Corp for a convertible).
+        # Equity is the one a 13F equity line means; Corp is how Bloomberg bond
+        # descriptors such as "GOOGL 6.25 05/15/29 A" won the ticker field.
+        eq = [d for d in us if (d.get("marketSector") or "") == "Equity"]
+        return (eq or us)[0], "openfigi_us"
+    return data[0], "openfigi_foreign"
+
+
+def map_cusips(con, cusips, contact, report=None):
     """CUSIP -> ticker via OpenFIGI, cached in cusip_ticker. Returns
     {cusip: ticker_or_None}. Method + failure surfaced by the caller."""
     have = {r[0]: r[1] for r in con.execute("SELECT cusip, ticker FROM cusip_ticker")}
     todo = sorted({c for c in cusips if c and c not in have})
+    failed = 0
     for i in range(0, len(todo), FIGI_BATCH):
         batch = todo[i:i + FIGI_BATCH]
         jobs = [{"idType": "ID_CUSIP", "idValue": c} for c in batch]
@@ -104,19 +135,34 @@ def map_cusips(con, cusips, contact):
                               timeout=30)
         except requests.RequestException:
             r = None
-        results = r.json() if (r is not None and r.status_code == 200) else \
-            [{} for _ in batch]
-        for cusip, res in zip(batch, results):
-            tk = None
+        if r is None or r.status_code != 200:
+            # Write NOTHING. The old code stored a NULL-ticker row here, which made
+            # a transient network failure permanently indistinguishable from "this
+            # instrument has no mapping" — and map_cusips only queries CUSIPs it has
+            # never seen, so those rows were never retried. Leaving the cusip absent
+            # means the next run picks it up by itself.
+            failed += len(batch)
+            continue
+        for cusip, res in zip(batch, r.json()):
             data = res.get("data") if isinstance(res, dict) else None
-            if data:
-                tk = data[0].get("ticker")
+            rec, how = pick_listing(data)
+            tk = rec.get("ticker") if rec else None
             con.execute(
-                "INSERT OR REPLACE INTO cusip_ticker VALUES (?,?,?,?,?)",
-                (cusip, tk, (data[0].get("name") if data else None),
-                 "openfigi", int(time.time())))
+                "INSERT OR REPLACE INTO cusip_ticker(cusip, ticker, name, "
+                "mapped_via, mapped_at_unix, exch_code, market_sector, "
+                "security_type, ticker_raw) VALUES (?,?,?,?,?,?,?,?,?)",
+                (cusip, tk, (rec.get("name") if rec else None), how,
+                 int(time.time()),
+                 rec.get("exchCode") if rec else None,
+                 rec.get("marketSector") if rec else None,
+                 rec.get("securityType") if rec else None,
+                 data[0].get("ticker") if data else None))
             have[cusip] = tk
         con.commit()
+    if failed and report is not None:
+        # Not a miss. Loud, and retried on the next run.
+        report.setdefault("openfigi_unreachable", 0)
+        report["openfigi_unreachable"] += failed
     return {c: have.get(c) for c in cusips}
 
 
@@ -134,19 +180,41 @@ def ingest_filer(con, cik, contact, quarters, report):
             continue
         holdings = thirteenf.fetch_info_table(cik, f["accession"], contact)
         rows = list(_holding_rows(holdings))
-        for cusip, issuer, pc, val, sh in rows:
+        for cusip, issuer, pc, val, sh, stype, title in rows:
             all_cusips.add(cusip)
-            pending.append((cik, f, cusip, issuer, pc, val, sh))
+            pending.append((cik, f, cusip, issuer, pc, val, sh, stype, title))
+        f["cover"] = thirteenf.fetch_cover(cik, f["accession"], contact)
         stat["new"] += 1
-    cmap = map_cusips(con, all_cusips, contact) if all_cusips else {}
-    for cik_, f, cusip, issuer, pc, val, sh in pending:
+    cmap = map_cusips(con, all_cusips, contact, report) if all_cusips else {}
+    for cik_, f, cusip, issuer, pc, val, sh, stype, title in pending:
         con.execute(
             "INSERT OR REPLACE INTO thirteenf_holdings("
             "cik, accession, period, filed_date, cusip, ticker, issuer, put_call,"
-            "value, shares, ingested_at_unix) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "value, shares, ingested_at_unix, shares_type, title_of_class)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(int(cik_)), f["accession"], f["period"], f["filed"], cusip,
-             cmap.get(cusip), issuer, pc, val, sh, int(time.time())))
+             cmap.get(cusip), issuer, pc, val, sh, int(time.time()), stype, title))
         stat["holding_rows"] += 1
+    # Resolve the VALUE unit per filing and stamp it, so no reader re-derives it.
+    # Runs after the rows land because the anchor reads them back.
+    for f in filings:
+        if f["accession"] in seen:
+            continue
+        r = filing_scale.resolve(con, cik, f["accession"], f["period"])
+        r["filed_date"] = f["filed"]
+        cover = f.get("cover") or {}
+        if r["value_scale"]:
+            filing_scale.apply_to_filing(con, cik, f["accession"], r["value_scale"])
+        filing_scale.record_meta(con, r, cover.get("entry_total"),
+                                 cover.get("value_total"))
+        stat.setdefault("scale", {})[f["accession"]] = r["scale_basis"]
+        # The cover page declares its own row count; a mismatch means we parsed a
+        # partial table, which would also poison the price anchor above.
+        if cover.get("entry_total") and cover["entry_total"] != r["parsed_rows"]:
+            report.setdefault("control_total_mismatch", []).append({
+                "cik": str(int(cik)), "accession": f["accession"],
+                "declared_rows": cover["entry_total"],
+                "parsed_rows": r["parsed_rows"]})
     for f in filings:
         if f["accession"] not in seen:
             con.execute("INSERT OR IGNORE INTO thirteenf_filings_seen VALUES (?,?,?)",

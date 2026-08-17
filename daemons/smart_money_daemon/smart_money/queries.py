@@ -916,14 +916,36 @@ def q_sentinel_log(con, window=180, anchor=None, entries=None):
                              "action": side, "amt_low": lo, "amt_high": hi,
                              "lag_days": lag, "owner": owner})
         elif role == "manager_13f":
-            for per, filed, tk, pc, val, sh in con.execute(
-                "SELECT period, filed_date, ticker, put_call, value, shares FROM "
+            # value_usd, not value: 13F VALUE units differ per FILING and the filing
+            # never states them. This page read raw and rendered a thousands filer
+            # 1000x low, in the same column as every dollar filer. cusip and issuer
+            # travel too — they are the durable identity, and dropping them is what
+            # turned resolvable CUSIPs into "unidentified symbols" for the reader.
+            for per, filed, tk, pc, val, sh, cu, iss, vs, st, icl, iid in con.execute(
+                "SELECT period, filed_date, ticker, put_call, value_usd, shares, "
+                "cusip, issuer, value_scale, shares_type, instrument_class, "
+                "issuer_id FROM "
                 "thirteenf_holdings WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) "
                 "AND filed_date>=? ORDER BY filed_date DESC, period DESC",
                 (e.get("cik"), start)):
                 rows.append({"seed": name, "role": role, "src": "13f",
                              "event_date": filed, "period": per, "ticker": tk,
-                             "action": pc, "value": val, "shares": sh})
+                             "action": pc, "value": val, "shares": sh,
+                             "cusip": cu, "issuer": iss,
+                             # role is manager_13f for all 19, so Alphabet's $94B
+                             # balance-sheet line and a hedge fund's position were
+                             # typographically identical rows. thesis is what
+                             # separates them.
+                             "thesis": e.get("thesis"),
+                             "discretionary": is_discretionary(e.get("thesis")),
+                             # NULL scale means unresolved, not "dollars" — say so
+                             # rather than let the number read as trustworthy.
+                             "value_scale": vs if vs is not None else "unresolved",
+                             # PRN: `shares` is dollars of par, not a share count.
+                             "shares_type": st,
+                             # A convertible note, a warrant and common stock all
+                             # rendered identically as a long equity position.
+                             "instrument_class": icl, "issuer_id": iid})
         else:  # trump_network / thiel_network -> form4
             for txd, filed, tk, code, val, plan, r_role in con.execute(
                 "SELECT tx_date, filed_date, ticker, code, value, plan_flag, role "
@@ -981,14 +1003,56 @@ def q_principal_convergence(con, period=None):
         r["short_filers_put_heavy"] = r.pop("short_filers")
     acc = convergence_accounting(con)
     intra = [r for r in acc["opposed"] if not period or r["period"] == period]
+
+    # A convergence counting a corporate filer as a principal is a different claim
+    # from one counting only managers: "two principals converged on ARM" is really
+    # one manager plus Google's balance sheet. Recount without them and report BOTH
+    # — never silently pick one. 122 of 788 (15%) do not survive.
+    th = {}
+    for k, v in _filer_thesis().items():
+        try:
+            th[str(int(k))] = v
+        except (TypeError, ValueError):
+            th[str(k)] = v
+
+    def _disc(cik_csv):
+        out = []
+        for c in (cik_csv or "").split(","):
+            c = c.strip()
+            if not c or c == "-":
+                continue
+            try:
+                key = str(int(c))
+            except ValueError:
+                key = c
+            if is_discretionary(th.get(key)):
+                out.append(c)
+        return out
+
+    survivors = 0
+    for r in convergences:
+        dl, ds = _disc(r.get("long_ciks")), _disc(r.get("short_ciks"))
+        r["discretionary_long_filers"] = len(dl)
+        r["discretionary_short_filers"] = len(ds)
+        r["survives_discretionary_only"] = len(dl) >= 2 or len(ds) >= 2
+        if r["survives_discretionary_only"]:
+            survivors += 1
+
+    n_filers = len(_tracked_filers())
     return {"as_of": _as_of(), "period": period,
             "convergences": convergences,
+            "n_convergences": len(convergences),
+            "n_convergences_discretionary": survivors,
             "intra_quarter_disagreements": intra,
             "qoq_accumulate_distribute_disagreements": _qoq_disagreements(con, period),
-            "note": "13F universe = 6 confirmed CIKs. 'put-heavy' = put value > "
-                    "long+call value, NOT a real short. The intra-quarter and QoQ "
+            "note": "13F universe = {} registry CIKs. Convergence counts are given "
+                    "BOTH with every filer and with corporate_strategic filers "
+                    "excluded, because an operating company marking a legacy stake "
+                    "is not a principal expressing a view. 'put-heavy' = put value "
+                    "> long+call value, NOT a real short. The intra-quarter and QoQ "
                     "disagreement notions answer different questions and are never "
-                    "pooled. QoQ pairing is long-only, so options are out of it."}
+                    "pooled. QoQ pairing is long-only, so options are out of "
+                    "it.".format(n_filers)}
 
 
 # ---------------------------------------------------------------- q_cluster_context
@@ -1153,11 +1217,30 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
             "USING(person_id) WHERE UPPER(ct.ticker)=? AND ct.superseded=0 "
             "ORDER BY ct.tx_date DESC", (tk,))])
     net13f = defaultdict(float)
+    # value_usd: this panel prints every filer's dollars in ONE column, so an
+    # unscaled thousands filer does not merely render small — it inverts the
+    # ranking. Duquesne was the larger NTRA holder and displayed as the smaller
+    # by a factor of 786.
     for cik, per, pc, val in con.execute(
-        "SELECT cik, period, put_call, value FROM thirteenf_holdings WHERE UPPER(ticker)=?",
+        "SELECT cik, period, put_call, value_usd FROM thirteenf_holdings "
+        "WHERE UPPER(ticker)=?",
         (tk,)):
         net13f[(cik, per)] += (val or 0) * (-1 if pc == "put" else 1)
-    holdings = [{"cik": c, "period": p, "net_value": v}
+    # Registry CIKs are zero-padded to 10 chars, thirteenf_holdings.cik is not, so
+    # both sides normalise to the integer form — the same convention every CIK join
+    # in this module uses.
+    def _k(c):
+        try:
+            return str(int(c))
+        except (TypeError, ValueError):
+            return str(c)
+    _th = {_k(k): v for k, v in _filer_thesis().items() if k}
+    _names = {_k(k): v for k, v in _tracked_filers() if k}
+    # On /ticker?symbol=NOK a reader saw one 13F principal at $2.21B with nothing
+    # saying it is Nokia's own strategic holder. The name and thesis say so now.
+    holdings = [{"cik": c, "period": p, "net_value": v,
+                 "filer": _names.get(_k(c)), "thesis": _th.get(_k(c)),
+                 "discretionary": is_discretionary(_th.get(_k(c)))}
                 for (c, p), v in sorted(net13f.items(),
                                         key=lambda x: (x[0][1], x[0][0]), reverse=True)]
     sstart = _win(anchor or dt.date.today().isoformat(), sparkline_days)
@@ -1256,12 +1339,18 @@ def q_surface_tension(con, ticker, window=180, anchor=None):
     acc = dis = 0
     per_seen = None
     for cik, _name in _tracked_filers():
-        period, flows = _manager_flow(con, cik, None, None)
+        period, flows, _excl = _manager_flow(con, cik, None, None)
         if not period:
             continue
         per_seen = max(per_seen or period, period)
         # _manager_flow values are (direction, value, badge) tuples, not bare strings.
-        f = flows.get((tk, "SH")) or flows.get((tk, "OP"))
+        # One direction per filer, shares first. CALL and PUT replaced the old single
+        # "OP" bucket; the explicit order keeps this deterministic, where the old
+        # lookup silently depended on which option leg was written last.
+        # NOTE: accumulating a PUT counts here as "accumulating", which is
+        # directionally backwards. Pre-existing, unchanged by this fix, flagged.
+        f = (flows.get((tk, "SH")) or flows.get((tk, "CALL"))
+             or flows.get((tk, "PUT")))
         d = f[0] if f else None
         if d == _DIR_ACC:
             acc += 1
@@ -1325,9 +1414,32 @@ def _tracked_filers():
             if e.get("role") == "manager_13f" and e.get("cik")]
 
 
+# A filer whose 13F is a balance sheet, not a view. Alphabet, Amazon and NVIDIA
+# mark legacy venture and strategic stakes that became reportable when the
+# underlying listed — most of Alphabet's book is one position it is contractually
+# restricted from selling. They are not expressing a market opinion, so pooling
+# them into a consensus count answers a different question than the one asked.
+#
+# Measured: they are 52.8% of the Q2 tracked book, the two largest cards on the
+# front page, and 122 of 788 convergences (15%) exist ONLY because one of them was
+# counted as a principal — "two principals converged on ARM" where the reality is
+# one manager plus Google's balance sheet.
+#
+# Doctrine is mark-never-drop, so nothing is filtered away silently: counts are
+# reported BOTH ways and every row carries its thesis.
+CORPORATE_THESES = frozenset(("corporate_strategic",))
+
+
+def is_discretionary(thesis):
+    """True when the filer is trading a book rather than marking a balance sheet."""
+    return thesis not in CORPORATE_THESES
+
+
 def _filer_thesis():
     """{cik: thesis} for tracked 13F filers. A GROUPING LABEL for the shelf
-    ({ai_tmt, biotech, macro, activist, value, contrarian}), never a performance claim."""
+    ({ai_tmt, biotech, macro, activist, value, contrarian, corporate_strategic}),
+    never a performance claim. corporate_strategic is NOT a style — it marks a
+    filer that is not expressing a view at all; see CORPORATE_THESES."""
     entries, _ = _load_registry()
     return {e.get("cik"): e.get("thesis") for e in entries
             if e.get("role") == "manager_13f" and e.get("cik")}
@@ -1539,25 +1651,56 @@ _DIR_ACC = "accumulating"
 _DIR_DIS = "distributing"
 
 
+def _flow_key(h):
+    """(TICKER, SH|CALL|PUT) for a holding row.
+
+    Puts and calls are SEPARATE instruments. They were previously collapsed into
+    one "OP" bucket, and because flows is a plain dict the second leg silently
+    overwrote the first — so a filer rolling a call into a put on the same ticker
+    had the call's disappearance suppressed and the new put recorded as
+    'new -> accumulating'. That inverted the direction on exactly the positions
+    this map exists to surface.
+    """
+    pc = h["put_call"] or "long"
+    return ((h["ticker"] or "").upper(), "SH" if pc == "long" else pc.upper())
+
+
 def _manager_flow(con, cik, thesis, name):
-    """{(ticker, instrument): direction} for one filer's NEWEST period vs its prior.
+    """{(ticker, instrument): (direction, value, kind)} for one filer's NEWEST period
+    vs its prior, plus a count of rows that could not be keyed.
+
     Direction is QoQ FLOW, not position sign: new/added -> accumulating, trimmed/exited
     -> distributing. Longs are judged on SHARES (price-independent); options on notional
-    value. Returns (period, flows) or (None, {}) when the filer has under two periods —
-    a single-filing filer cannot express a direction and is never guessed at."""
+    value. Returns (period, flows, excluded) or (None, {}, ...) when the filer has under
+    two periods — a single-filing filer cannot express a direction and is never guessed at.
+
+    A position held FLAT yields no flow, which is correct: no change is no direction.
+    It must not reach the exit branch. The membership test there is against keys built
+    by _flow_key, because the previous test compared a (ticker, instrument) key against
+    a dict keyed (cusip, put_call) — tuple shapes that can never be equal, so it was
+    always True and every flat hold was reported as a full exit at its prior value.
+
+    Rows with no mapped ticker cannot be compared across filers and are skipped, but
+    they are COUNTED and returned rather than silently dropped: for one filer that
+    quietly removed a $494M put from the board.
+    """
     periods = _filer_periods(con, cik)
     if len(periods) < 2:
-        return None, {}
+        return None, {}, {"count": 0, "value": 0.0}
     scale, _basis = _filer_unit_scale(con, cik, periods)
     cur = _scaled_holdings(con, cik, periods[0], scale)
     prior = _scaled_holdings(con, cik, periods[1], scale)
     flows = {}
+    n_drop = 0
+    v_drop = 0.0
+    cur_keys = {_flow_key(h) for h in cur.values() if _flow_key(h)[0]}
     for k, h in cur.items():
-        pv = prior.get(k)
-        inst = "OP" if h["put_call"] != "long" else "SH"
-        key = ((h["ticker"] or "").upper(), inst)
+        key = _flow_key(h)
         if not key[0]:
+            n_drop += 1
+            v_drop += h["value"] or 0
             continue
+        pv = prior.get(k)                            # same (cusip, put_call) space
         if pv is None:
             flows[key] = (_DIR_ACC, h["value"], "new")
         else:
@@ -1569,12 +1712,17 @@ def _manager_flow(con, cik, thesis, name):
                 flows[key] = (_DIR_ACC, h["value"], "added")
             elif cm < pm:
                 flows[key] = (_DIR_DIS, h["value"], "trimmed")
-    for k, h in prior.items():                      # exited entirely
-        inst = "OP" if h["put_call"] != "long" else "SH"
-        key = ((h["ticker"] or "").upper(), inst)
-        if key[0] and key not in cur and key not in flows:
+            # cm == pm: held flat. Deliberately writes nothing.
+    for k, h in prior.items():                       # exited entirely
+        key = _flow_key(h)
+        if not key[0]:
+            n_drop += 1
+            v_drop += h["value"] or 0
+            continue
+        if key not in cur_keys and key not in flows:
             flows[key] = (_DIR_DIS, h["value"], "exited")
-    return periods[0], flows
+    # count spans BOTH compared periods, so a line unmapped in each is counted twice
+    return periods[0], flows, {"count": n_drop, "value": v_drop}
 
 
 def q_opposed_pairs(con, min_side=1):
@@ -1593,8 +1741,12 @@ def q_opposed_pairs(con, min_side=1):
     attached: this ranks BY DISAGREEMENT BREADTH, never by who is judged right."""
     thesis = _filer_thesis()
     flows = {}
+    excl_n = 0
+    excl_v = 0.0
     for cik, name in _tracked_filers():
-        per, fl = _manager_flow(con, cik, thesis.get(cik), name)
+        per, fl, excl = _manager_flow(con, cik, thesis.get(cik), name)
+        excl_n += excl["count"]
+        excl_v += excl["value"]
         if fl:
             flows[(cik, name, per)] = fl
     agg = defaultdict(lambda: {"acc": [], "dis": []})
@@ -1626,23 +1778,40 @@ def q_opposed_pairs(con, min_side=1):
                              -r["n_managers"], -(r["acc_value"] + r["dis_value"])))
     return {"as_of": _as_of(), "count": len(rows), "rows": rows,
             "filers_compared": len(flows),
+            # holding rows with no mapped ticker cannot be compared across filers.
+            # Reported rather than dropped in silence — this is real reported value
+            # that the board does not see.
+            "excluded_rows": excl_n, "excluded_value": excl_v,
             "note": "QoQ flow direction per filer's newest period; 13F is long-only US "
                     "listed and 45d stale; ranked by disagreement breadth, no verdict"}
 
 
 def q_tracked_books(con, anchor=None):
     """SM-P1 front-page strip: per tracked filer, the latest reported period + book
-    value + top-3 long weights + days until the next 13F filing window."""
+    value + top-3 long weights + days until the next 13F filing window.
+
+    Every card carries its thesis and whether it is discretionary. The two largest
+    cards on this strip are Alphabet and NVIDIA — operating companies marking
+    balance-sheet stakes — and they rendered indistinguishably from a hedge fund's
+    book. Also surfaces the unit-scale warning, which this query resolved and then
+    discarded: a filer whose book is implausible for a 13F filer said so on
+    /portfolios and said nothing here."""
     anchor = anchor or dt.date.today().isoformat()
+    thesis = _filer_thesis()
     out = []
     for cik, name in _tracked_filers():
+        th = thesis.get(cik)
         periods = _filer_periods(con, cik)
         if not periods:
-            out.append({"cik": cik, "name": name, "period": None, "book_value": 0,
-                        "top3": [], "days_to_filing": None})
+            out.append({"cik": cik, "name": name, "period": None, "book_value": None,
+                        "top3": [], "days_to_filing": None, "thesis": th,
+                        "discretionary": is_discretionary(th),
+                        # None, not 0: this filer has no book on record, which is a
+                        # different statement from "a book worth nothing".
+                        "magnitude_warning": "no 13F holdings ingested for this filer"})
             continue
-        cur = _scaled_holdings(con, cik, periods[0],
-                               _filer_unit_scale(con, cik, periods)[0])
+        scale, basis = _filer_unit_scale(con, cik, periods)
+        cur = _scaled_holdings(con, cik, periods[0], scale)
         book = sum(h["value"] for h in cur.values()) or 0
         longs = sorted((h for h in cur.values() if h["put_call"] == "long"),
                        key=lambda h: -(h["value"] or 0))
@@ -1650,8 +1819,15 @@ def q_tracked_books(con, anchor=None):
                  "pct": round(100.0 * (h["value"] or 0) / book, 1) if book else None}
                 for h in longs[:3]]
         out.append({"cik": cik, "name": name, "period": periods[0], "book_value": book,
-                    "top3": top3, "days_to_filing": _days_to_next_13f(periods[0], anchor)})
-    return {"as_of": _as_of(), "filers": out}
+                    "top3": top3, "days_to_filing": _days_to_next_13f(periods[0], anchor),
+                    "thesis": th, "discretionary": is_discretionary(th),
+                    "magnitude_warning": _magnitude_warning(book, basis)})
+    disc = [f for f in out if f["discretionary"]]
+    return {"as_of": _as_of(), "filers": out,
+            # Distribution-first: both totals, never a silently chosen one.
+            "book_total": sum(f["book_value"] or 0 for f in out),
+            "book_total_discretionary": sum(f["book_value"] or 0 for f in disc),
+            "n_filers": len(out), "n_discretionary": len(disc)}
 
 
 # ---------------------------------------------------------------- q_congress_breadth (SM-C1)

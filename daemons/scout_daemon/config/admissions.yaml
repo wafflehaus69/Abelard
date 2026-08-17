@@ -1,0 +1,34 @@
+# Admissions -- MANDO-OWNED. The daemon reads this file and never writes it.
+#
+# This file is the ONLY thing that can move an opportunity to `admitted`.
+# scout_daemon has no code path that opens it for writing, and a test asserts
+# so. Discovery, classification, risk scoring, ranking and surfacing all happen
+# without it; none of them can clear an item to act on.
+#
+# HOW TO USE
+#   1. scout-daemon rank          -- order the queue
+#   2. scout-daemon proposals     -- see what is waiting, with pasteable keys
+#   3. edit this file             -- paste a key under admitted: or dismissed:
+#   4. scout-daemon admissions    -- apply it, and read the report
+#
+# KEYS. Paste the short key `proposals` prints (12 hex chars, e.g. 6d4d98d82ada).
+# The full 64-char opportunity_id also works, as does `source:native_id` where
+# that is short enough to be readable -- but not every source has a usable
+# native id (zindi's run to 124 characters), so the short key is the one to use.
+#
+# RULES THE LOADER ENFORCES
+#   * A key in BOTH lists is refused, not guessed. You get told.
+#   * A key matching no ledger row is reported, never silently ignored --
+#     otherwise an admission you believe you made would simply not exist.
+#   * An explicit key always beats a category_rule.
+#   * An ambiguous key prefix is refused rather than resolved to a guess.
+
+admitted: []
+# - 6d4d98d82ada        # example: paste a short key here to clear it
+
+dismissed: []
+# - f84086ba224a        # example: judged not worth pursuing
+
+category_rules: {}
+# bug_bounty: dismiss   # standing ruling over a whole category
+# grant: admit

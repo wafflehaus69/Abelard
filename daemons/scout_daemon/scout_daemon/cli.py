@@ -239,6 +239,142 @@ def _cmd_rank(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_proposals(args: argparse.Namespace) -> int:
+    """What is awaiting Mando's decision, with both spellings of each key.
+
+    This is the read side of the admission contract: it prints the exact
+    strings that can be pasted into config/admissions.yaml, so admitting
+    something never requires opening the database.
+    """
+    from . import admissions as adm
+    from . import ledger as ledger_mod
+
+    conn = state.connect()
+    ledger_mod.apply_schema(conn)
+    rows = conn.execute(
+        "SELECT opportunity_id, source, source_native_id, title, payout_usd_low,"
+        " rank_position, status, category FROM opportunities"
+        " WHERE status IN (?,?) AND rank_position IS NOT NULL"
+        " ORDER BY rank_position LIMIT ?",
+        (adm.STATUS_DISCOVERED, adm.STATUS_PROPOSED, args.limit),
+    ).fetchall()
+    if not rows:
+        print("nothing ranked and awaiting a decision -- run `scout-daemon rank` first")
+        return 0
+    print(f"{len(rows)} awaiting decision (paste a key into config/admissions.yaml):\n")
+    for r in rows:
+        pay = f"${r['payout_usd_low']:,.0f}" if r["payout_usd_low"] is not None else "-"
+        print(f"  #{r['rank_position']:<4}{pay:>13}  [{r['status']}]  {r['source']}")
+        print(f"        {(r['title'] or '')[:70]}")
+        # Short id first: it is the only spelling guaranteed pasteable for
+        # every source (zindi/yeswehack native ids run to 124 chars).
+        print(f"        key: {adm.short_id(r['opportunity_id'])}")
+    print("\nadmission is a human edit to that file; this daemon cannot write it.")
+    conn.close()
+    return 0
+
+
+def _cmd_show(args: argparse.Namespace) -> int:
+    """Full record for one key, in either spelling."""
+    from . import ledger as ledger_mod
+
+    conn = state.connect()
+    ledger_mod.apply_schema(conn)
+    # Accepts every spelling `proposals` prints, INCLUDING the 12-char short
+    # key. Without the prefix match the two verbs disagree -- `proposals` hands
+    # you a key that `show` rejects, which makes the contract unusable.
+    rows = conn.execute(
+        "SELECT * FROM opportunities WHERE opportunity_id=?"
+        " OR (source || ':' || source_native_id)=?"
+        " OR (LENGTH(?) >= 8 AND opportunity_id LIKE ? || '%')",
+        (args.key, args.key, args.key, args.key),
+    ).fetchall()
+    if len(rows) > 1:
+        print(f"{args.key!r} is ambiguous -- matches {len(rows)} rows; use a longer key")
+        return 1
+    row = rows[0] if rows else None
+    if row is None:
+        print(f"no row matches {args.key!r} -- try `scout-daemon proposals` for valid keys")
+        return 1
+    for k in row.keys():
+        v = row[k]
+        if v is None or v == "":
+            continue
+        if k == "raw_json":
+            v = f"<{len(str(v))} chars>"
+        print(f"  {k:<28}{str(v)[:100]}")
+    conn.close()
+    return 0
+
+
+def _cmd_admissions(args: argparse.Namespace) -> int:
+    """Apply the Mando-owned file. The only path to admitted/dismissed."""
+    import time
+
+    from . import admissions as adm
+    from . import ledger as ledger_mod
+
+    conn = state.connect()
+    ledger_mod.apply_schema(conn)
+    loaded = adm.load()
+    if not loaded.present:
+        print(f"no admissions file at {loaded.path}")
+        print("create it with this template -- the daemon will not write it for you:\n")
+        print(adm.TEMPLATE)
+        return 0
+
+    out = adm.apply(conn, loaded, now_unix=int(time.time()))
+    print(f"admissions file: {loaded.path}")
+    print(f"  admitted  : {out.admitted}")
+    print(f"  dismissed : {out.dismissed}")
+    print(f"  by category rule: {out.by_category}")
+    # Unmatched keys are printed loudly: an admission Mando believes he made
+    # that matched nothing is the failure this report exists to prevent.
+    if out.unknown_keys:
+        print(f"\n  !! {len(out.unknown_keys)} key(s) matched NO ledger row:")
+        for k in out.unknown_keys:
+            print(f"       {k}")
+    if out.conflicts:
+        print(f"\n  !! {len(out.conflicts)} conflict(s) -- refused, not guessed:")
+        for k in out.conflicts:
+            print(f"       {k}")
+    counts = dict(conn.execute("SELECT status, COUNT(*) FROM opportunities GROUP BY status"))
+    print(f"\n  ledger status: {counts}")
+    conn.close()
+    return 0
+
+
+def _cmd_surface(args: argparse.Namespace) -> int:
+    """Enqueue novel-category alerts to Abelard. Never dispatches."""
+    import time
+
+    from . import ledger as ledger_mod
+    from . import surface as surface_mod
+
+    conn = state.connect()
+    ledger_mod.apply_schema(conn)
+    out = surface_mod.run(conn, now_unix=int(time.time()), dry_run=args.dry_run)
+    verb = "would enqueue" if args.dry_run else "enqueued"
+    print(f"novel categories {verb}: {len(out.novel_categories)}")
+    for c in out.novel_categories:
+        print(f"    {c}")
+    if not args.dry_run:
+        print(f"  newly enqueued : {out.enqueued}")
+        print(f"  already queued : {out.already_queued}")
+        print(f"  marked proposed: {out.proposed}")
+    print(f"  RED rows never queued as work: {out.skipped_red}")
+    for e in out.errors:
+        print(f"  !! {e}")
+
+    pending = surface_mod.high_payout_cut_pending(conn)
+    print(f"\nYELLOW high-payout rule: {pending['note']}")
+    if pending["n"]:
+        print(f"  distribution over {pending['n']} YELLOW rows with a payout: "
+              f"p50=${pending['p50']:,.0f} p90=${pending['p90']:,.0f} max=${pending['max']:,.0f}")
+    conn.close()
+    return 0
+
+
 def _cmd_health(args: argparse.Namespace) -> int:
     conn = state.connect()
     rows = conn.execute(
@@ -280,6 +416,22 @@ def main(argv: list[str] | None = None) -> int:
     rank = sub.add_parser("rank", help="order the queue within segments (no fetch, no LLM)")
     rank.add_argument("--limit", type=int, default=20)
     rank.set_defaults(func=_cmd_rank)
+
+    props = sub.add_parser("proposals", help="what awaits a human decision, with pasteable keys")
+    props.add_argument("--limit", type=int, default=25)
+    props.set_defaults(func=_cmd_proposals)
+
+    show = sub.add_parser("show", help="full record for one key (id or source:native_id)")
+    show.add_argument("key")
+    show.set_defaults(func=_cmd_show)
+
+    adms = sub.add_parser("admissions", help="apply the Mando-owned admissions file")
+    adms.set_defaults(func=_cmd_admissions)
+
+    surf = sub.add_parser("surface", help="enqueue novel-category alerts to Abelard")
+    surf.add_argument("--dry-run", action="store_true",
+                      help="report what would be enqueued; touches no queue")
+    surf.set_defaults(func=_cmd_surface)
 
     view = sub.add_parser("ledger", help="read the ledger (RED set included)")
     view.add_argument("--class", dest="klass", help="GREEN | YELLOW | RED")

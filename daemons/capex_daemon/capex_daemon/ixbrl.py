@@ -127,6 +127,21 @@ def _parse_contexts(root):
             member = (m.text or "").strip()
             if axis:
                 dims[_split_qname(axis)[1]] = _split_qname(member)[1]
+        # Typed dimensions carry their member as element CONTENT, not as a QName
+        # attribute. The SEC filing-fee taxonomy discriminates offering tranches
+        # this way — ffd:OfferingAxis -> <dei:lineNo>1</dei:lineNo> — so a parser
+        # reading only explicitMember collapses every tranche of a multi-tranche
+        # note offering into one indistinguishable context.
+        for m in ctx.iter("{%s}typedMember" % XBRLDI):
+            axis = m.get("dimension") or ""
+            if not axis:
+                continue
+            value = ""
+            for child in m:
+                value = (child.text or "").strip()
+                if value:
+                    break
+            dims[_split_qname(axis)[1]] = value or "?"
         out[cid] = (start, end, dims)
     return out
 
