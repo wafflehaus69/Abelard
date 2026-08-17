@@ -87,19 +87,46 @@ def build_issuer_view(entity, indexed):
             window = [r.period_end for r in rows[-config.ANCHOR_WINDOW_QUARTERS:]]
             vals = [merged[e] for e in window if e in merged]
             if not vals:
-                statuses.append(STATUS_ISSUANCE_NO_OVERLAP)
+                # An explicitly tagged zero is a FACT, not an absence. Microsoft
+                # tags 0 debt proceeds for the fiscal year covering this window;
+                # excluding it would quietly shrink the bucket denominator and
+                # overstate the hyperscaler ratio. Only a genuine absence of
+                # observation gets NO-WINDOW-OVERLAP (R-CD2-2, E16).
+                if _explicit_zero_over(indexed, issuance_res.contributing, rows):
+                    ttm_issuance = 0.0
+                else:
+                    statuses.append(STATUS_ISSUANCE_NO_OVERLAP)
             else:
                 ttm_issuance = sum(vals)
                 if ttm_issuance < 0:
                     statuses.append(STATUS_ISSUANCE_NET_NEGATIVE)
                     ttm_issuance = None
 
-    ratio = (ttm_issuance / ttm_capex) if (ttm_issuance and ttm_capex) else None
+    # `ttm_issuance == 0` is a real 0%, not a missing value — see _explicit_zero_over.
+    ratio = (ttm_issuance / ttm_capex) if (ttm_issuance is not None and ttm_capex) else None
     if not statuses:
         statuses.append(STATUS_OK)
     return IssuerView(entity.cik, entity.ticker_display, entity.bucket, ttm_capex,
                       ttm_issuance, ratio, statuses, n,
                       commitments.forward_commitments(entity.cik, indexed))
+
+
+def _explicit_zero_over(indexed, concepts, capex_rows, unit="USD"):
+    """True when a contributing concept tags an explicit 0 spanning the window.
+
+    Distinguishes "the issuer said none" from "we have no observation" — the
+    difference between a real 0% and an exclusion.
+    """
+    if len(capex_rows) < config.ANCHOR_WINDOW_QUARTERS:
+        return False
+    start = capex_rows[-config.ANCHOR_WINDOW_QUARTERS].period_start
+    end = capex_rows[-1].period_end
+    for c in concepts:
+        for f in indexed.get(c, []):
+            if (f.unit == unit and f.value == 0 and f.period_start
+                    and f.period_start <= start and f.period_end >= end):
+                return True
+    return False
 
 
 def concentration(values, top=2):
