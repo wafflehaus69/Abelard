@@ -251,8 +251,25 @@ CREATE TABLE IF NOT EXISTS thirteenf_holdings(
   -- scale; `value` stays raw for audit. VIRTUAL so it costs no storage and needs
   -- no backfill of its own.
   value_usd INTEGER GENERATED ALWAYS AS (value * COALESCE(value_scale, 1)) VIRTUAL,
+  -- What the line actually IS: common / option_call / option_put /
+  -- convertible_note / convertible_preferred / warrant / unit / unresolved.
+  -- The table previously had no instrument vocabulary at all beyond put_call, so
+  -- 264 convertible rows worth $17.2bn counted as equity conviction, and a filer
+  -- holding $899k of CORZ common beside $42.0m of CORZW warrants read as one
+  -- equity stake. Derived by smart_money.instrument from stored evidence only —
+  -- never from a ticker suffix, which is wrong in both directions.
+  instrument_class TEXT,
+  -- CUSIP characters 1-6 are the ISSUER; 7-8 the issue. So GOOGL 02079K305, GOOG
+  -- 02079K107 and both GOOGL convertible series share 02079K, and Alphabet's real
+  -- $4.49bn exposure across 4 ticker strings finally has a join key. Generated, so
+  -- it is always correct and needs no backfill.
+  issuer_id TEXT GENERATED ALWAYS AS (substr(cusip, 1, 6)) VIRTUAL,
   PRIMARY KEY(cik, accession, cusip, put_call)
 );
+-- NB: the index on issuer_id is created in _migrate, NOT here. This DDL runs via
+-- executescript on EVERY connect, including against a pre-existing table where
+-- CREATE TABLE IF NOT EXISTS is a no-op and the column does not exist yet — so an
+-- index declared here fails with "no such column" before the migration can add it.
 CREATE INDEX IF NOT EXISTS idx_13fh_cik ON thirteenf_holdings(cik, period);
 CREATE INDEX IF NOT EXISTS idx_13fh_ticker ON thirteenf_holdings(ticker);
 CREATE INDEX IF NOT EXISTS idx_13fh_cusip ON thirteenf_holdings(cusip);
@@ -625,6 +642,21 @@ def _migrate(con):
         con.execute(
             "ALTER TABLE thirteenf_holdings ADD COLUMN value_usd INTEGER "
             "GENERATED ALWAYS AS (value * COALESCE(value_scale, 1)) VIRTUAL")
+        con.commit()
+    if hcols and "instrument_class" not in hcols:
+        # NULL means "not yet classified", never "common" — an unclassified row
+        # must not read as an ordinary equity position.
+        con.execute("ALTER TABLE thirteenf_holdings ADD COLUMN instrument_class TEXT")
+        con.execute("ALTER TABLE thirteenf_holdings ADD COLUMN issuer_id TEXT "
+                    "GENERATED ALWAYS AS (substr(cusip, 1, 6)) VIRTUAL")
+        con.commit()
+    # Generated columns are invisible to PRAGMA table_info, so ask table_xinfo.
+    # Created here rather than in the DDL because the DDL runs before this on a
+    # pre-existing table, where the column does not exist yet.
+    xcols = {r[1] for r in con.execute("PRAGMA table_xinfo(thirteenf_holdings)")}
+    if "issuer_id" in xcols:
+        con.execute("CREATE INDEX IF NOT EXISTS idx_13fh_issuer ON "
+                    "thirteenf_holdings(issuer_id)")
         con.commit()
     ccols = {r[1] for r in con.execute("PRAGMA table_info(cusip_ticker)")}
     if ccols and "exch_code" not in ccols:

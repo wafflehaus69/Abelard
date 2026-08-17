@@ -921,9 +921,10 @@ def q_sentinel_log(con, window=180, anchor=None, entries=None):
             # 1000x low, in the same column as every dollar filer. cusip and issuer
             # travel too — they are the durable identity, and dropping them is what
             # turned resolvable CUSIPs into "unidentified symbols" for the reader.
-            for per, filed, tk, pc, val, sh, cu, iss, vs, st in con.execute(
+            for per, filed, tk, pc, val, sh, cu, iss, vs, st, icl, iid in con.execute(
                 "SELECT period, filed_date, ticker, put_call, value_usd, shares, "
-                "cusip, issuer, value_scale, shares_type FROM "
+                "cusip, issuer, value_scale, shares_type, instrument_class, "
+                "issuer_id FROM "
                 "thirteenf_holdings WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) "
                 "AND filed_date>=? ORDER BY filed_date DESC, period DESC",
                 (e.get("cik"), start)):
@@ -941,7 +942,10 @@ def q_sentinel_log(con, window=180, anchor=None, entries=None):
                              # rather than let the number read as trustworthy.
                              "value_scale": vs if vs is not None else "unresolved",
                              # PRN: `shares` is dollars of par, not a share count.
-                             "shares_type": st})
+                             "shares_type": st,
+                             # A convertible note, a warrant and common stock all
+                             # rendered identically as a long equity position.
+                             "instrument_class": icl, "issuer_id": iid})
         else:  # trump_network / thiel_network -> form4
             for txd, filed, tk, code, val, plan, r_role in con.execute(
                 "SELECT tx_date, filed_date, ticker, code, value, plan_flag, role "

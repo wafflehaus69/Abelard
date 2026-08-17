@@ -147,11 +147,15 @@ def apply(con, got):
         # it is not re-queried forever and a reviewer has the evidence.
         if tk != prev:
             flagged.append((cusip, prev, tk, how))
+        # A US pick that simply AGREES with what is stored is confirmation, not a
+        # failure to find a US listing — tagging it openfigi_checked_no_us would
+        # misreport 1,200-odd correct mappings and re-target them forever.
+        via = "openfigi_us" if (how == "openfigi_us" and tk == prev) \
+            else "openfigi_checked_no_us"
         con.execute(
             "UPDATE cusip_ticker SET mapped_via=?, mapped_at_unix=?, exch_code=?, "
             "market_sector=?, security_type=?, ticker_raw=? WHERE cusip=?",
-            ("openfigi_checked_no_us", int(time.time()), exch, sector, sectype,
-             raw, cusip))
+            (via, int(time.time()), exch, sector, sectype, raw, cusip))
     con.commit()
     return cache, holdings, flagged
 
