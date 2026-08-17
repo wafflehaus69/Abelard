@@ -67,15 +67,21 @@ def calendar_align(period_end):
     return "{}Q{}".format(e.year, q), (e - true_end).days
 
 
-def discrete_quarters(facts_with_concept, unit="USD", source_leg="companyfacts"):
+def discrete_quarters(facts_with_concept, unit="USD", source_leg="companyfacts",
+                      allow_decreasing=False, dropped=None):
     """Derive discrete quarters from a resolved series.
 
     ``facts_with_concept`` is [(ApiFact, resolved_concept)] as produced by
     ``tagmap.series_facts``. Native three-month facts pass through; cumulative
     periods are differenced within a fiscal-year cohort (facts sharing a start).
+
+    Pass a list as ``dropped`` to collect non-monotonic cumulative events that
+    were refused; ``allow_decreasing=True`` disables the guard for callers that
+    genuinely expect a decreasing cumulative (there are none today).
     """
     rows = {}
     cohorts = {}
+    dropped = dropped if dropped is not None else []
     for f, concept in facts_with_concept:
         if not f.period_start or f.value is None:
             continue
@@ -91,6 +97,16 @@ def discrete_quarters(facts_with_concept, unit="USD", source_leg="companyfacts")
         for i in range(1, len(items)):
             (e0, d0, v0, _), (e1, d1, v1, concept) = items[i - 1], items[i]
             if not _in(d1 - d0, config.QUARTER_DAYS) or e1 in rows:
+                continue
+            # A year-to-date cumulative cannot decrease. When it does, the issuer
+            # re-tagged the item mid-year and backfilled the later period with a
+            # different (often zero) value — WULF's ProceedsFromConvertibleDebt
+            # reads $975,329,000 at 9M and $0 at FY, and differencing turns that
+            # into a phantom -$975M quarter that then propagates into every
+            # aggregate downstream. The derived quarter is not trustworthy, so it
+            # is withheld and counted, never published as a negative (E1).
+            if v1 < v0 and not allow_decreasing:
+                dropped.append((concept, e0, e1, v0, v1))
                 continue
             rows[e1] = Row(e0, e1, v1 - v0, unit, "api-absolute", concept,
                            DERIVATION_YTD_DIFF, source_leg)

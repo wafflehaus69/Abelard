@@ -50,6 +50,44 @@ COUNTERPARTY_CONCEPTS = frozenset({
     "ProceedsFromRelatedPartyDebt",
 })
 
+# --- presentation-semantics gate (R-CD2-1) -------------------------------
+# A concept whose VERIFIED line-mapping reads net-of-repayments is not a gross
+# inflow and can never enter a gross-issuance sum, at any issuer, permanently.
+# Concept name alone cannot decide this — only the filed line label can (E23) —
+# so entries here are recorded per concept with the filing language that put
+# them there.
+#
+# Note the distinction that WULF forced: "net of issuance costs" is still a
+# gross inflow (it nets fees, not repayments) and does NOT disqualify. Only
+# net-of-REPAYMENT presentation does.
+NET_PRESENTATION_CONCEPTS = {
+    "ProceedsFromRepaymentsOfShortTermDebtMaturingInThreeMonthsOrLess":
+        "line nets proceeds against repayments by construction",
+    "ProceedsFromRepaymentsOfCommercialPaper":
+        "line nets issuance against repayment by construction",
+    "ProceedsFromRepaymentsOfLinesOfCredit":
+        "line nets draws against repayments by construction",
+    "ProceedsFromRepaymentsOfDebt":
+        "line nets issuance against repayment by construction",
+}
+
+# Generic totals that CONTAIN named components. Where both appear, the total
+# takes precedence and the component is annotative, never added (branch b′,
+# ruling R-CD2-4). Summing a total with its own component double-counts it.
+GENERIC_TOTALS = {
+    "ProceedsFromIssuanceOfDebt": (
+        "ProceedsFromConvertibleDebt",
+        "ProceedsFromIssuanceOfSecuredDebt",
+        "ProceedsFromIssuanceOfLongTermDebt",
+        "ProceedsFromNotesPayable",
+        "ProceedsFromShortTermDebt",
+    ),
+}
+
+
+def is_net_presentation(concept):
+    return concept in NET_PRESENTATION_CONCEPTS
+
 
 class PairVerdict:
     __slots__ = ("a", "b", "branch", "shared_periods", "detail")
@@ -165,8 +203,23 @@ def resolve_total(indexed, resolution, unit_filter=("USD",)):
         return IssuanceResolution(STATUS_OK, (), (), (), "no debt concept present")
     series_map = build_series_map(indexed, concepts, unit_filter)
     excluded = sorted(c for c in series_map if c in COUNTERPARTY_CONCEPTS)
-    for c in excluded:
-        series_map.pop(c)
+    # Net-presentation concepts are ineligible for a gross sum, everywhere (R-CD2-1).
+    excluded += sorted(c for c in series_map if is_net_presentation(c))
+    # Branch b': a generic total supersedes its own named components — but only
+    # over periods they actually SHARE. A stale total must not suppress a live
+    # component: WULF's ProceedsFromIssuanceOfDebt ends in 2024 while
+    # ProceedsFromShortTermDebt carries the current $92,750,000, and a global
+    # exclusion silently deleted the only live figure it had.
+    for total, components in GENERIC_TOTALS.items():
+        if total not in series_map:
+            continue
+        total_periods = set(series_map[total])
+        for c in components:
+            if c in series_map and (total_periods & set(series_map[c])):
+                excluded.append(c)
+    for c in set(excluded):
+        series_map.pop(c, None)
+    excluded = sorted(set(excluded))
     live = sorted(series_map)
     if not live:
         return IssuanceResolution(STATUS_OK, (), tuple(excluded), (),
