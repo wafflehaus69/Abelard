@@ -591,11 +591,20 @@ def sync_manager_registry(path=None, anchor=None):
     The full scorecard run regenerates the whole registry, but expanding the tracked 13F
     shelf (ORDER SM-P2) must not require re-running congressional scoring — and must not
     silently drop the other legs. Idempotent: run it twice, same file."""
-    path = path or dbmod.artifact_path("registry.json", "analysis")
+    # READ through find_artifact, WRITE through artifact_path. They resolve
+    # differently: artifact_path is state-home only, find_artifact falls back to the
+    # committed repo copy. This function used to read through the WRITE path, so the
+    # first run against a fresh state home found no file, `kept` came out empty, and
+    # it silently wrote away the 12 congress, 2 trump_network and 1 thiel_network
+    # entries its own docstring promises to leave untouched. Every reader resolves
+    # through find_artifact, so all of them then followed the truncated file and
+    # congressional sentinels became structurally unreachable.
+    out_path = path or dbmod.artifact_path("registry.json", "analysis")
+    src_path = path or dbmod.find_artifact("registry.json", "analysis")
     anchor = anchor or dt.date.today().isoformat()
     data = {"as_of": anchor, "entries": []}
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as fh:
+    if src_path and os.path.exists(src_path):
+        with open(src_path, encoding="utf-8") as fh:
             data = json.load(fh)
     kept = [e for e in data.get("entries", []) if e.get("role") != "manager_13f"]
     for m in MANAGER_13F_SEEDS:
@@ -604,9 +613,45 @@ def sync_manager_registry(path=None, anchor=None):
             "status": "active", "role": "manager_13f", "type": "manager_13f",
             "thesis": m.get("thesis"), "scores": None, "as_of": anchor})
     data["entries"] = kept
-    with open(path, "w", encoding="utf-8") as fh:
+    with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
-    return path, sum(1 for e in kept if e.get("role") == "manager_13f")
+    return out_path, sum(1 for e in kept if e.get("role") == "manager_13f")
+
+
+def restore_registry_legs(apply=False, state_path=None, repo_path=None):
+    """Re-add non-manager_13f entries that the sync bug above wrote away.
+
+    One-time repair. Reads the committed repo copy, finds entries whose role leg is
+    missing from the live state-home registry, and merges them back. Existing entries
+    are never overwritten and manager_13f is never touched — the state-home shelf of
+    19 is current and the repo copy's 6 are stale.
+
+    Returns (missing, roles): the entries that would be re-added and their role
+    counts. Writes nothing unless apply=True.
+    """
+    state_path = state_path or dbmod.artifact_path("registry.json", "analysis")
+    repo_path = repo_path or os.path.join("analysis", "registry.json")
+    if not os.path.exists(repo_path):
+        raise FileNotFoundError("no repo registry to restore from: " + repo_path)
+    with open(repo_path, encoding="utf-8") as fh:
+        repo = json.load(fh)
+    live = {"as_of": None, "entries": []}
+    if os.path.exists(state_path):
+        with open(state_path, encoding="utf-8") as fh:
+            live = json.load(fh)
+    have = {(e.get("role"), e.get("person_id"), e.get("cik"))
+            for e in live.get("entries", [])}
+    missing = [e for e in repo.get("entries", [])
+               if e.get("role") != "manager_13f"
+               and (e.get("role"), e.get("person_id"), e.get("cik")) not in have]
+    roles = {}
+    for e in missing:
+        roles[e.get("role")] = roles.get(e.get("role"), 0) + 1
+    if apply and missing:
+        live["entries"] = list(live.get("entries", [])) + missing
+        with open(state_path, "w", encoding="utf-8") as fh:
+            json.dump(live, fh, indent=2)
+    return missing, roles
 
 
 def _write_registry(active, validation, by_name, anchor, path):
