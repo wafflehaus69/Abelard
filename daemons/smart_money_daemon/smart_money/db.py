@@ -275,12 +275,29 @@ CREATE TABLE IF NOT EXISTS thirteenf_filing_meta(
   PRIMARY KEY(cik, accession)
 );
 -- CUSIP -> ticker cache (OpenFIGI). Unmapped stays NULL ticker; never dropped.
+-- OpenFIGI returns EVERY listing of an instrument worldwide, unordered. Taking
+-- data[0] blindly is why 457669307 (Insmed) stored as IM8N, a Frankfurt line, and
+-- 88023U101 (Somnigroup) as TPD: both had a non-US record first. 13F covers
+-- section 13(f) securities, which are US-exchange-traded, so a non-US pick is
+-- definitionally a resolver error and must be visible as one.
 CREATE TABLE IF NOT EXISTS cusip_ticker(
   cusip TEXT PRIMARY KEY,
   ticker TEXT,
   name TEXT,
+  -- how the row was decided, and therefore whether it is worth re-resolving:
+  --   openfigi_us       picked a US composite listing        (trusted)
+  --   openfigi_foreign  no US listing offered, took data[0]  (suspect, retry)
+  --   openfigi_miss     the API answered with no data        (real miss)
+  --   openfigi_error    the call failed                      (NOT a miss, retry)
+  -- The old code wrote a bare 'openfigi' with a NULL ticker for BOTH of the last
+  -- two, so a transient network failure was durably indistinguishable from
+  -- "no such instrument" and was never retried.
   mapped_via TEXT,
-  mapped_at_unix INTEGER NOT NULL
+  mapped_at_unix INTEGER NOT NULL,
+  exch_code TEXT,        -- the chosen record's exchCode; US = composite
+  market_sector TEXT,    -- Equity / Corp / Muni ... Corp is how bond descriptors won
+  security_type TEXT,    -- Common Stock / Warrant / Preference / ...
+  ticker_raw TEXT        -- what data[0] would have given, kept for audit
 );
 CREATE TABLE IF NOT EXISTS thirteenf_filings_seen(
   cik TEXT NOT NULL,
@@ -608,6 +625,11 @@ def _migrate(con):
         con.execute(
             "ALTER TABLE thirteenf_holdings ADD COLUMN value_usd INTEGER "
             "GENERATED ALWAYS AS (value * COALESCE(value_scale, 1)) VIRTUAL")
+        con.commit()
+    ccols = {r[1] for r in con.execute("PRAGMA table_info(cusip_ticker)")}
+    if ccols and "exch_code" not in ccols:
+        for c in ("exch_code", "market_sector", "security_type", "ticker_raw"):
+            con.execute("ALTER TABLE cusip_ticker ADD COLUMN {} TEXT".format(c))
         con.commit()
     _migrate_coverage(con)
     ocols = {r[1] for r in con.execute("PRAGMA table_info(options_chain_snapshots)")}
