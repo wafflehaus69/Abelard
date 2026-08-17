@@ -144,3 +144,93 @@ verified mapping — absence of a mapping is not absence of the concept (E23).
 3. **Three builders above 100%** (CORZ 289%, CIFR 103%, CRWV 86% approaching) — is that the
    thesis signal or a series artifact? It wants eyes before it feeds any classifier.
 4. **FRMI branch (b′)** remains recorded-not-coded from CD-1.
+
+---
+
+# ADDENDUM — ORDER CD-2-CLOSE Phase A (2026-08-14)
+
+95 tests pass. Committed on `cd-2-build`; nothing merged.
+
+## A1 — WULF: the ruling's premise was wrong, and the real cause is worse
+
+R-CD2-1 assumed a **net-of-repayments concept** was polluting the sum. It is not.
+
+`[CURL-VERIFIED]` WULF's `ProceedsFromConvertibleDebt` carries exactly two facts for 2025:
+
+| period | value | form |
+|---|---|---|
+| 2025-01-01..2025-09-30 | **975,329,000** | 10-Q |
+| 2025-01-01..2025-12-31 | **0** | 10-K |
+
+**A year-to-date cumulative that decreases.** The issuer re-tagged the convertible raise between
+the 10-Q and the 10-K and backfilled the annual figure with zero. Differencing then produced
+Q4 = 0 − 975,329,000 = **−975,329,000**, which is the entire −$0.88B.
+
+Its presentation is also checked and is clean: the current-era financing section reads *"Proceeds
+from issuance of short-term debt, net of issuance costs paid of $7,250"* — net of **fees**, not of
+repayments, and therefore still a gross inflow. **The presentation gate would not have caught this.**
+
+**Two gates were built, not one:**
+
+1. **Monotonicity gate** (`normalize.discrete_quarters`) — a decreasing cumulative never yields a
+   derived quarter. It is refused and collected in `dropped`, never published as a negative. This
+   generalizes past debt: *any* YTD-differenced series is exposed to mid-year re-tagging.
+2. **Presentation-semantics gate** (`issuance.NET_PRESENTATION_CONCEPTS`) — as ordered, permanent
+   and issuer-agnostic, with the fee-vs-repayment distinction recorded so it is not over-applied.
+
+**WULF post-exclusion: TTM issuance $92,750,000 / capex $2.23B = 4%.** Sane; it publishes.
+`ISSUANCE-NET-NEGATIVE` no longer fires anywhere.
+
+## A2 — the three builders above 100%
+
+Windows confirmed aligned (numerator drawn from the same four capex quarter-ends), every
+contributing concept re-checked against the presentation gate, each ratio hand-recomputed.
+
+| name | window | capex | issuance | ratio | verdict |
+|---|---|---|---|---|---|
+| **CORZ** | 2025-09..2026-06 | 1,477,985,000 | `DebtNetOfIssuanceCosts` 03:$995M + 06:$3,280M = **4,275,250,000** | **289%** | **VERIFIED-SIGNAL** |
+| **CIFR** | 2025-09..2026-06 | 1,233,937,000 | `ConvertibleDebt` 09:**1,270,282,000** | **103%** | **VERIFIED-SIGNAL, single-event** |
+| **CRWV** | 2025-06..2026-03 | 16,597,000,000 | `IssuanceOfLongTermDebt` across **all four** quarters = 14,334,000,000 | **86%** | **VERIFIED-SIGNAL, sustained** |
+
+None is an artifact. But they are three different shapes and should not be read as one phenomenon:
+CORZ borrowed 2.9× its capex across two quarters; CIFR's ratio is one convertible raise in a single
+quarter; **CRWV is the only one borrowing in every quarter of the window**, which makes it the only
+sustained run-rate of the three.
+
+## A3 — MSFT tagged zero admitted
+
+An explicitly tagged 0 is a fact, not an absence. `_explicit_zero_over` distinguishes them, and
+MSFT now enters the denominator at a real **0%**, annotated with finance-lease additions of $24.6B
+TTM — it funds deployment from operating cash flow and leases, not bonds.
+
+**Effect on the published headline: hyperscaler credit-to-capex falls 57% → 45%**, now computed
+over all five members with **zero exclusions**. The prior figure was a partial denominator.
+
+`ISSUANCE-NO-WINDOW-OVERLAP` survives for genuine absence-of-observation only, and currently fires
+on nobody.
+
+## A4 — FRMI branch (b′) coded
+
+Generic-total precedence implemented. FRMI resolves to `ProceedsFromIssuanceOfDebt`, with
+`ProceedsFromConvertibleDebt` excluded as its named component.
+
+**Scoping bug caught in the same pass:** the first implementation excluded components *globally*,
+which suppressed WULF's live `ProceedsFromShortTermDebt` ($92,750,000) in favour of a total whose
+series ends in 2024. Branch (b′) now applies **only over periods the two actually share** — a stale
+total must never silence a live component.
+
+## Current published state
+
+| bucket | credit / capex | contributors | excluded |
+|---|---|---|---|
+| hyperscaler | **45%** | 5 | none |
+| builder | **73%** | 9 | none |
+| reit | **84%** | 2 | none |
+
+Every bucket now computes over its full membership. No withheld ratios remain in the panel.
+
+## Not done in this phase
+
+**A5 (E10 common-share preference)** is not implemented. `cd-r2` measured the problem — the ticker
+map returns `CLSKW`, `SLNHP`, `PLDGP`, `GPUS-PD` — but the fix belongs with the display layer and
+was not reached before the context budget for this phase ran out. Flagged rather than half-built.
