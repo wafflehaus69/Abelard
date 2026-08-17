@@ -1,0 +1,217 @@
+theme_id: ai_capex_financing
+display_name: AI Capex Financing — SPV & Private-Credit Structure
+status: active
+created_at: 2026-08-14
+
+brief: |
+  Tracks HOW the AI datacenter buildout is FINANCED, at the one layer that is
+  structurally invisible to filings-based sensors: named special-purpose
+  vehicles, private-credit consortia, residual value guarantees, compute- and
+  GPU-backed lending, and datacenter securitization.
+
+  This theme exists because of a measured blind spot, not a hunch. The Capex
+  Daemon's CD-R1 recon established that Meta's Hyperion datacenter JV is
+  disclosed in its 10-K as an unconsolidated VIE with $46.03B of maximum loss
+  exposure — but the word "Hyperion" appears ZERO times in any Meta 10-K, 10-Q
+  or 8-K, and "Beignet" (the SPV counterparty) zero times. Beignet Investor LLC
+  has no CIK and files nothing at all: 144A-for-life, no registration, no
+  periodic reporting. The structures are on file; THE NAMES ARE NOT. Trade press
+  is the only place a name attaches to a structure, and a name is what lets a
+  human connect a filing footnote to a deal.
+
+  Scope is deliberately REDUCED (ruled 2026-08-13). This is not a general AI
+  capex theme — ai_capex_cycle owns the demand story, the guidance changes and
+  the supply chain. This theme owns the STRUCTURE layer only: who lent, through
+  what vehicle, against what collateral, and off whose balance sheet. Where the
+  two overlap on a story, multi-tag is correct.
+
+  Material signals: a datacenter SPV or JV named for the first time; a
+  private-credit consortium disclosed as lender to a compute build; residual
+  value guarantees on datacenter assets; GPUs or compute contracts pledged as
+  loan collateral; datacenter ABS or CMBS issuance; an off-balance-sheet
+  structure identified at a named hyperscaler. What matters is the STRUCTURE
+  being named, not the size of the number.
+
+  Deliberately NOT a signal: equity raises of any kind. A neocloud IPO, a Series
+  D, a SPAC or a secondary is capital formation, not structure financing, and it
+  belongs to ai_capex_cycle or capital_markets. The financing wall below is
+  inherited verbatim from ai_capex_cycle for exactly this reason — the two
+  themes sit on opposite sides of the same wall, and neither wants equity noise.
+
+keywords:
+  # Case-sensitivity is AUTOMATIC for 2+ consecutive uppercase, so SPV, JV, ABS,
+  # GPU, RVG, CMBS and VIE tag case-sensitively as acronyms. Multi-word terms are
+  # word-boundary anchored, so PLURALS AND HYPHENATED FORMS ARE LISTED
+  # EXPLICITLY ("data center SPV" does NOT match "data center SPVs").
+  primary:
+    # --- named vehicle structures ---
+    - "data center SPV"
+    - "data center SPVs"
+    - "datacenter SPV"
+    - "datacenter SPVs"
+    - "data center joint venture"
+    - "datacenter joint venture"
+    - "data center JV"
+    - "datacenter JV"
+    # --- private credit into compute ---
+    - "private credit data center"
+    - "private credit datacenter"
+    - "data center financing"
+    - "datacenter financing"
+    - "data center debt"
+    - "datacenter debt"
+    - "compute financing"
+    # --- collateralized against the machines themselves ---
+    - "GPU-backed"
+    - "GPU backed loan"
+    - "GPU-backed loan"
+    - "GPU-backed loans"
+    - "chip-backed loan"
+    - "chip-backed loans"
+    - "compute-backed"
+    - "GPU collateral"
+    - "GPUs as collateral"
+    # --- securitization ---
+    - "data center ABS"
+    - "datacenter ABS"
+    - "data center securitization"
+    - "datacenter securitization"
+    - "data center CMBS"
+    # --- the guarantee layer CD-R1 found tagged but unnamed ---
+    - "residual value guarantee"
+    - "residual value guarantees"
+  secondary:
+    # The deal-name pattern class. These are the Hyperion/Beignet-class proper
+    # nouns — the entire point of the theme is that these names exist ONLY in
+    # trade press. Expect this list to be appended to as new deals are named;
+    # that appending IS the sensor working.
+    - "Hyperion"
+    - "Beignet"
+    - "Project Beignet"
+    # Lender-side co-occurrence. Blue Owl is the named Hyperion counterparty;
+    # the others are the private-credit houses most likely to appear beside a
+    # datacenter build. Bare firm names are secondary, never primary — they
+    # co-occur with a primary term or they do not tag.
+    - "Blue Owl"
+    - "Apollo Global"
+    - "Ares Management"
+    - "Blackstone Credit"
+    - "PIMCO"
+    - "Sixth Street"
+    # Off-balance-sheet framing.
+    - "off-balance-sheet"
+    - "off balance sheet"
+    - "unconsolidated joint venture"
+    - "variable interest entity"
+    - "VIE"
+    - "special purpose vehicle"
+    - "special purpose entity"
+    # Structure-financing verbs that are meaningless alone but sharp beside a
+    # primary term.
+    - "sale-leaseback"
+    - "lease financing"
+    - "construction loan"
+    - "construction loans"
+    - "mezzanine debt"
+  exclusions:
+    # ---- Financing wall, INHERITED VERBATIM from ai_capex_cycle ----
+    # ai_capex_cycle added these on 2026-06-24 to keep capacity-FINANCING out of
+    # a capex-DEMAND theme. This theme is the other side of that wall and keeps
+    # the SAME list, for the opposite reason: equity raises are capital
+    # formation, not structure financing. A neocloud IPO is not an SPV.
+    # Exclusions override inclusions in _tag_for_theme (checked first, returns
+    # None). IPO/SPAC are all-caps = case-sensitive acronyms.
+    - "IPO"
+    - "SPAC"
+    - "going public"
+    - "listing"
+    - "public listing"
+    - "funding round"
+    - "secondary offering"
+    - "capital raise"
+    - "equity raise"
+    - "Series A"
+    - "Series B"
+    - "Series C"
+    # ---- Equity price-action, per house pattern ----
+    - "stocks rise"
+    - "stocks fall"
+    - "shares jump"
+    - "shares plunge"
+    - "price target"
+    - "rallies"
+    - "tumbles"
+    - "hits record"
+    - "all-time high"
+    - "all-time low"
+    # ---- Same-word, wrong-domain ----
+    # "Hyperion" is a common proper noun (Hyperion Solar, the moon, the novel,
+    # Hyperion Motors) and is a SECONDARY term precisely so it needs a primary
+    # co-occurrence. These kill the highest-volume collisions outright.
+    - "Hyperion Motors"
+    - "Hyperion Solar"
+
+tracked_entities:
+  # Reference metadata for ticker/entity extraction — does NOT gate tagging.
+  tickers:
+    - META
+    - MSFT
+    - ORCL
+    - CRWV
+    - OWL
+    - APO
+    - ARES
+    - BX
+  companies:
+    # Borrower side — the hyperscalers and neoclouds whose structures these are.
+    - Meta Platforms
+    - Microsoft
+    - Oracle
+    - CoreWeave
+    # Lender side — private-credit houses.
+    - Blue Owl Capital
+    - Apollo Global Management
+    - Ares Management
+    - Blackstone
+    - PIMCO
+    - Sixth Street Partners
+    # Named vehicles observed to date. This list grows as the sensor works.
+    - Beignet Investor LLC
+    # Private builders that finance through structures rather than filings, and
+    # are therefore invisible to the Capex Daemon entirely.
+    - Crusoe Energy
+    - Vantage Data Centers
+    - Aligned Data Centers
+    - Switch
+    - QTS Realty
+    - Stack Infrastructure
+
+synthesis:
+  cadence_hours: 6
+  min_headlines_to_synthesize: 3
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # No measured baseline yet — this theme has never run. The value is set
+  # deliberately LOW because the expected volume is low: these are rare,
+  # discrete structure events, not a daily news flow. A spike here is more
+  # informative than a spike almost anywhere else in the corpus, because it
+  # means several structures got named at once. Retune on observed volume after
+  # the first few cycles rather than guessing harder now (E8).
+  velocity_baseline_headlines_per_day: 1.5
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds:
+  # NO DEDICATED FEED, by ruling. This theme rides global tagging over the
+  # existing corpus. That is the right call for a low-volume structure sensor:
+  # a dedicated query would mostly return the equity-raise noise the financing
+  # wall above exists to exclude.
+  []
+
+telegram_channels: []
