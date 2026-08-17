@@ -60,7 +60,9 @@ def test_query_and_csv_carry_the_tag_per_row(tmp_path):
     assert page.count("class='restrict'") == 2, "one visible tag per row"
     csv_text = dash._build_oge_csv(ro, p, full=True)
     lines = csv_text.splitlines()
-    assert lines[0].endswith("use_restriction")
+    # presence, not position — the export gained filed_date/report_type after this
+    # column, and what matters is that the restriction tag is exported at all
+    assert "use_restriction" in lines[0].split(",")
     assert all(RESTRICTION in ln for ln in lines[1:]), "tag must leave with the data"
     ro.close()
 
