@@ -56,6 +56,34 @@ def fetch_info_table(cik, accession, contact):
     return parse_holdings(raw)
 
 
+def parse_cover(raw_xml):
+    """{entry_total, value_total} from a 13F primary_doc.xml cover page.
+
+    tableValueTotal is the filer's OWN declared total for the whole information
+    table. Nothing checked it before, so a partial parse looked identical to a
+    complete one. It does NOT state the unit — no field in Form 13F does — but it
+    gives an independent control total per filing.
+    """
+    raw = re.sub(r'xmlns="[^"]+"', "", raw_xml, count=1)
+    out = {"entry_total": None, "value_total": None}
+    for tag, key in (("tableEntryTotal", "entry_total"),
+                     ("tableValueTotal", "value_total")):
+        m = re.search(r"<[^>]*{}>\s*([0-9,]+)\s*<".format(tag), raw)
+        if m:
+            out[key] = int(m.group(1).replace(",", ""))
+    return out
+
+
+def fetch_cover(cik, accession, contact):
+    acc_nodash = accession.replace("-", "")
+    url = ARCH.format(cik=int(cik), acc_nodash=acc_nodash, doc="primary_doc.xml")
+    time.sleep(PACE)
+    r = requests.get(url, headers=_ua(contact), timeout=30)
+    if r.status_code != 200:
+        return {"entry_total": None, "value_total": None}
+    return parse_cover(r.text)
+
+
 def parse_holdings(raw_xml):
     """cusip -> {issuer, value, shares, putCall}. Aggregates rows per cusip
     keeping separate put/call/long buckets folded into net fields."""
@@ -76,11 +104,16 @@ def parse_holdings(raw_xml):
         pc = g("putCall")
         val = int(g("value") or 0)
         sh = int(g("sshPrnamt") or 0)
+        stype = g("sshPrnamtType") or None
+        title = g("titleOfClass") or None
         h = holdings.setdefault(
             cusip,
             {"issuer": g("nameOfIssuer"), "value": 0, "shares": 0,
-             "call_val": 0, "put_val": 0},
+             "call_val": 0, "put_val": 0,
+             "shares_type": None, "title_of_class": None},
         )
+        if h["title_of_class"] is None:
+            h["title_of_class"] = title
         if pc == "Put":
             h["put_val"] += val
         elif pc == "Call":
@@ -88,6 +121,15 @@ def parse_holdings(raw_xml):
         else:
             h["value"] += val
             h["shares"] += sh
+            # sshPrnamtType is SH or PRN. PRN means `shares` carries DOLLARS OF PAR,
+            # not a share count — true of the convertible notes, whose par would
+            # otherwise be summed into real share counts. If one cusip somehow
+            # reports both, say MIXED rather than picking a winner: the summed
+            # `shares` really is meaningless in that case and must not read as clean.
+            if h["shares_type"] is None:
+                h["shares_type"] = stype
+            elif stype and stype != h["shares_type"]:
+                h["shares_type"] = "MIXED"
     for h in holdings.values():
         h["net_opt"] = h["call_val"] - h["put_val"]
     return holdings

@@ -14,6 +14,7 @@ import time
 import requests
 
 from . import db as dbmod
+from . import filing_scale
 from . import thirteenf
 from .efd_ingest import load_env
 
@@ -78,14 +79,20 @@ def list_13f_filings(cik, contact, limit=8):
 
 def _holding_rows(holdings):
     """parse_holdings aggregates per cusip into long/call/put buckets; emit one
-    durable row per non-zero bucket."""
+    durable row per non-zero bucket.
+
+    shares_type belongs only to the long bucket — option buckets carry shares=0 by
+    construction, so typing them SH would assert something the filing never said.
+    title_of_class travels with every bucket; it is the filer's own class label."""
     for cusip, h in holdings.items():
+        title = h.get("title_of_class")
         if h["value"] or h["shares"]:
-            yield cusip, h["issuer"], "long", h["value"], h["shares"]
+            yield (cusip, h["issuer"], "long", h["value"], h["shares"],
+                   h.get("shares_type"), title)
         if h["call_val"]:
-            yield cusip, h["issuer"], "call", h["call_val"], 0
+            yield cusip, h["issuer"], "call", h["call_val"], 0, None, title
         if h["put_val"]:
-            yield cusip, h["issuer"], "put", h["put_val"], 0
+            yield cusip, h["issuer"], "put", h["put_val"], 0, None, title
 
 
 def map_cusips(con, cusips, contact):
@@ -134,19 +141,41 @@ def ingest_filer(con, cik, contact, quarters, report):
             continue
         holdings = thirteenf.fetch_info_table(cik, f["accession"], contact)
         rows = list(_holding_rows(holdings))
-        for cusip, issuer, pc, val, sh in rows:
+        for cusip, issuer, pc, val, sh, stype, title in rows:
             all_cusips.add(cusip)
-            pending.append((cik, f, cusip, issuer, pc, val, sh))
+            pending.append((cik, f, cusip, issuer, pc, val, sh, stype, title))
+        f["cover"] = thirteenf.fetch_cover(cik, f["accession"], contact)
         stat["new"] += 1
     cmap = map_cusips(con, all_cusips, contact) if all_cusips else {}
-    for cik_, f, cusip, issuer, pc, val, sh in pending:
+    for cik_, f, cusip, issuer, pc, val, sh, stype, title in pending:
         con.execute(
             "INSERT OR REPLACE INTO thirteenf_holdings("
             "cik, accession, period, filed_date, cusip, ticker, issuer, put_call,"
-            "value, shares, ingested_at_unix) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "value, shares, ingested_at_unix, shares_type, title_of_class)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (str(int(cik_)), f["accession"], f["period"], f["filed"], cusip,
-             cmap.get(cusip), issuer, pc, val, sh, int(time.time())))
+             cmap.get(cusip), issuer, pc, val, sh, int(time.time()), stype, title))
         stat["holding_rows"] += 1
+    # Resolve the VALUE unit per filing and stamp it, so no reader re-derives it.
+    # Runs after the rows land because the anchor reads them back.
+    for f in filings:
+        if f["accession"] in seen:
+            continue
+        r = filing_scale.resolve(con, cik, f["accession"], f["period"])
+        r["filed_date"] = f["filed"]
+        cover = f.get("cover") or {}
+        if r["value_scale"]:
+            filing_scale.apply_to_filing(con, cik, f["accession"], r["value_scale"])
+        filing_scale.record_meta(con, r, cover.get("entry_total"),
+                                 cover.get("value_total"))
+        stat.setdefault("scale", {})[f["accession"]] = r["scale_basis"]
+        # The cover page declares its own row count; a mismatch means we parsed a
+        # partial table, which would also poison the price anchor above.
+        if cover.get("entry_total") and cover["entry_total"] != r["parsed_rows"]:
+            report.setdefault("control_total_mismatch", []).append({
+                "cik": str(int(cik)), "accession": f["accession"],
+                "declared_rows": cover["entry_total"],
+                "parsed_rows": r["parsed_rows"]})
     for f in filings:
         if f["accession"] not in seen:
             con.execute("INSERT OR IGNORE INTO thirteenf_filings_seen VALUES (?,?,?)",

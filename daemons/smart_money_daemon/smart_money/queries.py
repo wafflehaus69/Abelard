@@ -916,14 +916,26 @@ def q_sentinel_log(con, window=180, anchor=None, entries=None):
                              "action": side, "amt_low": lo, "amt_high": hi,
                              "lag_days": lag, "owner": owner})
         elif role == "manager_13f":
-            for per, filed, tk, pc, val, sh in con.execute(
-                "SELECT period, filed_date, ticker, put_call, value, shares FROM "
+            # value_usd, not value: 13F VALUE units differ per FILING and the filing
+            # never states them. This page read raw and rendered a thousands filer
+            # 1000x low, in the same column as every dollar filer. cusip and issuer
+            # travel too — they are the durable identity, and dropping them is what
+            # turned resolvable CUSIPs into "unidentified symbols" for the reader.
+            for per, filed, tk, pc, val, sh, cu, iss, vs, st in con.execute(
+                "SELECT period, filed_date, ticker, put_call, value_usd, shares, "
+                "cusip, issuer, value_scale, shares_type FROM "
                 "thirteenf_holdings WHERE CAST(cik AS INTEGER)=CAST(? AS INTEGER) "
                 "AND filed_date>=? ORDER BY filed_date DESC, period DESC",
                 (e.get("cik"), start)):
                 rows.append({"seed": name, "role": role, "src": "13f",
                              "event_date": filed, "period": per, "ticker": tk,
-                             "action": pc, "value": val, "shares": sh})
+                             "action": pc, "value": val, "shares": sh,
+                             "cusip": cu, "issuer": iss,
+                             # NULL scale means unresolved, not "dollars" — say so
+                             # rather than let the number read as trustworthy.
+                             "value_scale": vs if vs is not None else "unresolved",
+                             # PRN: `shares` is dollars of par, not a share count.
+                             "shares_type": st})
         else:  # trump_network / thiel_network -> form4
             for txd, filed, tk, code, val, plan, r_role in con.execute(
                 "SELECT tx_date, filed_date, ticker, code, value, plan_flag, role "
@@ -1153,8 +1165,13 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
             "USING(person_id) WHERE UPPER(ct.ticker)=? AND ct.superseded=0 "
             "ORDER BY ct.tx_date DESC", (tk,))])
     net13f = defaultdict(float)
+    # value_usd: this panel prints every filer's dollars in ONE column, so an
+    # unscaled thousands filer does not merely render small — it inverts the
+    # ranking. Duquesne was the larger NTRA holder and displayed as the smaller
+    # by a factor of 786.
     for cik, per, pc, val in con.execute(
-        "SELECT cik, period, put_call, value FROM thirteenf_holdings WHERE UPPER(ticker)=?",
+        "SELECT cik, period, put_call, value_usd FROM thirteenf_holdings "
+        "WHERE UPPER(ticker)=?",
         (tk,)):
         net13f[(cik, per)] += (val or 0) * (-1 if pc == "put" else 1)
     holdings = [{"cik": c, "period": p, "net_value": v}

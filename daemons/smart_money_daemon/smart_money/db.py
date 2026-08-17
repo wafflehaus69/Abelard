@@ -229,11 +229,51 @@ CREATE TABLE IF NOT EXISTS thirteenf_holdings(
   value INTEGER,
   shares INTEGER,
   ingested_at_unix INTEGER NOT NULL,
+  -- Form 13F states no unit for VALUE. Since the 2023 amendments whole dollars are
+  -- mandated, but filers still report in thousands and the filing says so nowhere:
+  -- not on the cover page, not in the info table. Duquesne reports Natera as
+  -- value=864923 against 3,186,306 shares, an implied $0.27 on a ~$271 stock.
+  -- The scale is therefore RESOLVED at ingest and stored, so no reader has to
+  -- re-derive it. Ten read sites existed and three remembered to; that divergence
+  -- is the whole reason this column exists.
+  -- PER FILING, never per filer: Duquesne filed thousands at 2022-09-30, whole
+  -- dollars at 2022-12-31 (its first post-amendment filing), then reverted. A
+  -- per-filer scale would silently mis-scale a whole quarter on backfill.
+  value_scale INTEGER,
+  -- <sshPrnamtType>: SH or PRN. PRN means `shares` holds DOLLARS OF PAR, not a
+  -- share count -- true of 19 convertible-note rows whose par sums to ~1.42bn and
+  -- would otherwise be added to real share counts.
+  shares_type TEXT,
+  -- <titleOfClass>: the filer's own class label, e.g. COM, CAP STK CL A, NOTE
+  -- 1.500%, *W EXP, PFD. The only stated instrument discriminator in the filing.
+  title_of_class TEXT,
+  -- Correct-by-construction dollars. Readers select this and cannot forget to
+  -- scale; `value` stays raw for audit. VIRTUAL so it costs no storage and needs
+  -- no backfill of its own.
+  value_usd INTEGER GENERATED ALWAYS AS (value * COALESCE(value_scale, 1)) VIRTUAL,
   PRIMARY KEY(cik, accession, cusip, put_call)
 );
 CREATE INDEX IF NOT EXISTS idx_13fh_cik ON thirteenf_holdings(cik, period);
 CREATE INDEX IF NOT EXISTS idx_13fh_ticker ON thirteenf_holdings(ticker);
 CREATE INDEX IF NOT EXISTS idx_13fh_cusip ON thirteenf_holdings(cusip);
+-- One row per 13F filing: the cover page's own declared totals, plus the resolved
+-- value scale and how it was decided. tableValueTotal is a filer-declared control
+-- total for the whole info table -- an independent check that our parse is complete,
+-- which nothing verified before.
+CREATE TABLE IF NOT EXISTS thirteenf_filing_meta(
+  cik TEXT NOT NULL,
+  accession TEXT NOT NULL,
+  period TEXT,
+  filed_date TEXT,
+  entry_total INTEGER,          -- cover page <tableEntryTotal>
+  value_total INTEGER,          -- cover page <tableValueTotal>, raw units
+  parsed_rows INTEGER,          -- what we actually ingested
+  parsed_value INTEGER,         -- sum of parsed raw values
+  value_scale INTEGER,          -- 1 or 1000
+  scale_basis TEXT,             -- price_anchored | control_total | undetermined
+  resolved_at_unix INTEGER,
+  PRIMARY KEY(cik, accession)
+);
 -- CUSIP -> ticker cache (OpenFIGI). Unmapped stays NULL ticker; never dropped.
 CREATE TABLE IF NOT EXISTS cusip_ticker(
   cusip TEXT PRIMARY KEY,
@@ -554,6 +594,20 @@ def _migrate(con):
         con.execute("ALTER TABLE congress_trades ADD COLUMN clerk_line_id TEXT")
         con.execute("CREATE INDEX IF NOT EXISTS idx_trades_fstatus ON "
                     "congress_trades(filing_status)")
+        con.commit()
+    hcols = {r[1] for r in con.execute("PRAGMA table_info(thirteenf_holdings)")}
+    if hcols and "value_scale" not in hcols:
+        # See the schema comment: the filing states no unit for VALUE, so the scale
+        # is resolved once at ingest instead of re-derived by every reader.
+        # NULL means "not yet resolved", never "scale 1" — value_usd COALESCEs to 1
+        # so an unresolved row reads as raw, which is the pre-existing behaviour and
+        # is visibly wrong for a thousands filer rather than silently plausible.
+        con.execute("ALTER TABLE thirteenf_holdings ADD COLUMN value_scale INTEGER")
+        con.execute("ALTER TABLE thirteenf_holdings ADD COLUMN shares_type TEXT")
+        con.execute("ALTER TABLE thirteenf_holdings ADD COLUMN title_of_class TEXT")
+        con.execute(
+            "ALTER TABLE thirteenf_holdings ADD COLUMN value_usd INTEGER "
+            "GENERATED ALWAYS AS (value * COALESCE(value_scale, 1)) VIRTUAL")
         con.commit()
     _migrate_coverage(con)
     ocols = {r[1] for r in con.execute("PRAGMA table_info(options_chain_snapshots)")}

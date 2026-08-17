@@ -683,7 +683,7 @@ def view_sentinels(con, p):
     rows = _sorted(rows, active, p["dir"])
     page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
     cols = [(c, c) for c in ("event_date", "src", "seed", "role", "ticker",
-                             "action", "value")]
+                             "action", "value", "shares", "cusip")]
     body = ["<p class='muted'>Registry as-of {}. {} events{}. Click a column header "
             "to sort.</p>".format(
                 html.escape(str(sent["registry_as_of"])), meta["total"],
@@ -1924,9 +1924,16 @@ def _build_trades_csv(con, p, full):
     return buf.getvalue()
 
 
+# shares and plan_flag were on the row dicts and silently dropped by
+# extrasaction="ignore" — the loader had them, the export did not, which is what
+# made 13F positions look like they carried no share count at all. cusip and
+# issuer are the durable identity: without them a mis-resolved ticker reads as an
+# unidentifiable symbol even though the filing named the issuer. value_scale and
+# shares_type say what the numbers next to them MEAN.
 _SENTINEL_CSV_COLS = ["event_date", "src", "seed", "role", "ticker", "action",
-                      "value", "tx_date", "period", "amt_low", "amt_high",
-                      "lag_days", "owner"]
+                      "value", "shares", "cusip", "issuer", "value_scale",
+                      "shares_type", "plan_flag", "tx_date", "period", "amt_low",
+                      "amt_high", "lag_days", "owner"]
 
 
 def _build_sentinels_csv(con, p, full):
