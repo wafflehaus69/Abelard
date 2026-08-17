@@ -188,6 +188,57 @@ def _cmd_ledger(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rank(args: argparse.Namespace) -> int:
+    """Order the queue. Reads stored columns; makes no LLM call and no fetch."""
+    import time
+
+    from . import ledger as ledger_mod
+    from . import rank as rank_mod
+
+    conn = state.connect()
+    ledger_mod.apply_schema(conn)
+    result = rank_mod.rank_ledger(conn, now_unix=int(time.time()))
+
+    print(f"\nranking  algorithm={rank_mod.RANK_ALGORITHM_VERSION}")
+    print("key: payout_usd_low DESC (conservative bound of the parsed range)")
+    # Invariant 3: the output states the staleness of its own inputs rather
+    # than presenting an order as though it were computed just now.
+    if result.newest_input_unix:
+        age_h = (int(time.time()) - result.oldest_input_unix) / 3600.0
+        print(f"contention/award inputs observed {age_h:.1f}h ago at the oldest")
+    else:
+        print("no award-rate inputs present -- expected_usd uncomputable on every row")
+
+    for segment in (rank_mod.SEGMENT_GREEN, rank_mod.SEGMENT_GREEN_PROMOTED):
+        rows = result.ranked.get(segment, [])
+        # Printed as separate blocks, never one list. GREEN_PROMOTED reached
+        # GREEN through the risk gate, not the rubric; interleaving would erase
+        # that in the one place a reader would act on it.
+        print(f"\n=== {segment} -- {len(rows)} ranked ===")
+        if not rows:
+            print("  (none)")
+        for row in rows[: args.limit]:
+            exp = f"{row.expected_usd:>10,.0f}" if row.expected_usd is not None else "         -"
+            print(
+                f"  {row.position:>3}. ${row.payout_usd_low:>11,.0f}{exp}  "
+                f"{row.source:<16}{row.title[:40]:<42}"
+                f"seen={row.verdicts_seen} flips={row.flip_count}"
+            )
+        if len(rows) > args.limit:
+            print(f"  ... {len(rows) - args.limit} more")
+
+    print(f"\n=== UNRANKED -- {len(result.unranked)} rows, each with a reason ===")
+    by_reason: dict[str, int] = {}
+    for row in result.unranked:
+        by_reason[row.unranked_reason or "?"] = by_reason.get(row.unranked_reason or "?", 0) + 1
+    for reason, n in sorted(by_reason.items(), key=lambda kv: -kv[1]):
+        print(f"  {n:>4}  {reason}")
+    print("\n  (unranked rows are REPORTED, never dropped and never sorted to the")
+    print("   bottom as if their value had been measured and found lowest)")
+    conn.close()
+    return 0
+
+
 def _cmd_health(args: argparse.Namespace) -> int:
     conn = state.connect()
     rows = conn.execute(
@@ -225,6 +276,10 @@ def main(argv: list[str] | None = None) -> int:
 
     health = sub.add_parser("health", help="show per-source health and watermarks")
     health.set_defaults(func=_cmd_health)
+
+    rank = sub.add_parser("rank", help="order the queue within segments (no fetch, no LLM)")
+    rank.add_argument("--limit", type=int, default=20)
+    rank.set_defaults(func=_cmd_rank)
 
     view = sub.add_parser("ledger", help="read the ledger (RED set included)")
     view.add_argument("--class", dest="klass", help="GREEN | YELLOW | RED")

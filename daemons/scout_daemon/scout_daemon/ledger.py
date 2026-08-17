@@ -142,6 +142,23 @@ _COLUMNS: dict[str, str] = {
     "resolved_via": "TEXT NOT NULL",
     "tos_flags": "TEXT",
     "raw_json": "TEXT",
+    # --- SC-R2 interim ranking (derived; rewritten every rank run) ----------
+    # Nullable with no default on purpose: a row that has never been ranked
+    # reads as NULL rather than as position 0 or "unranked", which would be a
+    # claim the ledger has not earned.
+    "rank_segment": "TEXT",
+    "rank_position": "INTEGER",
+    "rank_sort_key": "REAL",
+    "rank_expected_usd": "REAL",
+    "rank_unranked_reason": "TEXT",
+    "rank_algorithm_version": "TEXT",
+    "rank_computed_unix": "INTEGER",
+    # --- E22 flip history, denormalised onto the row for the CLI cut --------
+    # Source of truth stays `opportunity_verdicts`; these are a projection so
+    # churn is visible beside the rank rather than requiring a join.
+    "verdicts_seen": "INTEGER",
+    "flip_count": "INTEGER",
+    "effective_verdict": "TEXT",
 }
 
 # Columns that must NOT be overwritten when an item is re-seen. Resetting
@@ -202,17 +219,39 @@ class Classification:
     promoted_unix: int | None = None
 
 
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    """Additive migration for ledgers created before a column existed.
+
+    `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table, so adding a
+    name to `_COLUMNS` alone would leave live databases without it and fail at
+    the next insert. ADD COLUMN only -- nothing here drops, renames, or
+    rewrites, so an older ledger gains columns and loses nothing.
+    """
+    have = {r[1] for r in conn.execute("PRAGMA table_info(opportunities)")}
+    if not have:
+        return  # table not created yet; the CREATE above will carry every column
+    for name, ddl in _COLUMNS.items():
+        if name in have:
+            continue
+        # NOT NULL cannot be added to a populated table without a default;
+        # every column added this way is deliberately nullable.
+        safe = ddl.replace(" NOT NULL", "")
+        conn.execute(f"ALTER TABLE opportunities ADD COLUMN {name} {safe}")
+    conn.commit()
+
+
 def apply_schema(conn: sqlite3.Connection) -> None:
     columns = ",\n    ".join(f"{name} {ddl}" for name, ddl in _COLUMNS.items())
     conn.executescript(
         f"CREATE TABLE IF NOT EXISTS opportunities (\n    {columns}\n);"
     )
     conn.executescript(_AUX_SCHEMA)
-    # Append-only verdict history (doctrine E21). Lives in its own module
+    # Append-only verdict history (doctrine E22). Lives in its own module
     # because it is the ONE table here that must never be updated in place.
     from . import verdicts as _verdicts
 
     conn.executescript(_verdicts.VERDICT_SCHEMA)
+    _add_missing_columns(conn)
     conn.execute(
         "INSERT INTO schema_meta(key, value) VALUES('ledger_schema_version', ?) "
         "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -319,6 +358,25 @@ def _row_values(
         "resolved_via": item.resolved_via,
         "tos_flags": json.dumps(item.tos_flags),
         "raw_json": json.dumps(item.raw, default=str)[:20000],
+        # Derived columns, written by `rank.write_ranking`. Ingest sets them
+        # back to None ON PURPOSE: a scan changes the data the ranking was
+        # derived from, so the previous rank is stale the moment it lands, and
+        # a stale rank is worse than no rank because it still reads as
+        # authoritative. `scan` clears; `rank` recomputes.
+        #
+        # Listed EXPLICITLY rather than defaulted via `.get()` at insert time,
+        # so forgetting a genuinely new column still raises KeyError instead of
+        # silently writing NULL (E1: fail loud).
+        "rank_segment": None,
+        "rank_position": None,
+        "rank_sort_key": None,
+        "rank_expected_usd": None,
+        "rank_unranked_reason": None,
+        "rank_algorithm_version": None,
+        "rank_computed_unix": None,
+        "verdicts_seen": None,
+        "flip_count": None,
+        "effective_verdict": None,
     }
 
 
