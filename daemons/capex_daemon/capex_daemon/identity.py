@@ -60,6 +60,31 @@ def normalize_name(name):
     return " ".join(parts)
 
 
+def preferred_display_ticker(tickers):
+    """Pick the common-share line out of a CIK's listed tickers.
+
+    Warrants, preferreds and secondary lines are DERIVED from the common symbol
+    and are therefore longer than it — usually a suffix of it. Measured across
+    the universe: CLSK/CLSKW, SLNH/SLNHP, PLD/PLDGP, GPUS/GPUS-PD are all
+    prefix pairs; GDS/GDHLF is not, and there the shorter symbol is still the
+    common ADR. So: prefer a ticker that every other ticker starts with, else
+    the shortest, tie-broken alphabetically for determinism.
+
+    Order-independent by construction — the bug this replaces was reading the
+    same source two ways and getting CLSK one time and CLSKW the next.
+    """
+    cands = [t for t in (tickers or ()) if t]
+    if not cands:
+        return None
+    if len(cands) == 1:
+        return cands[0]
+    for t in sorted(cands, key=lambda x: (len(x), x)):
+        others = [o for o in cands if o != t]
+        if others and all(o.startswith(t) for o in others):
+            return t
+    return sorted(cands, key=lambda x: (len(x), x))[0]
+
+
 class Snapshot:
     """One scan's view of an entity's registry state."""
 
@@ -80,7 +105,22 @@ class Snapshot:
 
     @property
     def ticker_display(self):
-        return self.tickers[0] if self.tickers else None
+        """The COMMON-share ticker, never a preferred or warrant line (R-CD2-6).
+
+        A CIK routinely lists several securities. Taking the first is
+        order-dependent and wrong the moment the source reorders: the same map
+        read two ways gave CLSK and CLSKW for CleanSpark. Resolution is by
+        structure instead — see `preferred_display_ticker`.
+
+        Returns None for a non-traded filer; callers display CIK + name.
+        """
+        return preferred_display_ticker(self.tickers)
+
+    @property
+    def display_label(self):
+        """What a human should see. Falls back to CIK + name when untraded."""
+        t = self.ticker_display
+        return t if t else "CIK {} ({})".format(self.cik, self.name or "unnamed")
 
     def __repr__(self):
         return "Snapshot(cik={} name={!r})".format(self.cik, self.name)
