@@ -45,6 +45,18 @@ EXCLUDED = [
     ("Two Sigma", "quant/multistrat, structurally illegible"),
     ("DE Shaw", "quant/multistrat, structurally illegible"),
     ("Balyasny", "quant/multistrat, structurally illegible"),
+    # Re-vetted 2026-08-17 against Q2 filings. The original "structurally
+    # illegible" call holds and is if anything understated — Citadel files 13,575
+    # positions, more than double the whole 27-filer corpus. A 0.25% floor makes
+    # them ingestible but not informative: 52-58 lines survive it, of which only
+    # 8-12 are novel, and the survivors are ETFs and duplicate option legs
+    # (SPY/QQQ/IVV/IWM), i.e. hedges and beta rather than conviction.
+    ("Point72", "3,923 positions, 6.7% top-5 — pod shop; Cohen's own decisions are "
+                "not visible in the filing. Same class as Citadel/Millennium"),
+    ("Bridgewater Associates", "997 positions is legible but the CONTENT is not: "
+                               "25.5% of book is SPY+IVV, i.e. macro beta via ETFs, "
+                               "not stock selection. Dalio also ceded control in 2022, "
+                               "so a principal label would misattribute"),
 ]
 
 _PERIOD_HINT = re.compile(r"13F-(HR|NT)(/A)?", re.I)

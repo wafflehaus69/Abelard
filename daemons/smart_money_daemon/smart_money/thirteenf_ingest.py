@@ -60,8 +60,9 @@ CONFIRMED = {
     "0001061768": "Baupost Group",
     "0001112520": "Akre Capital Management",
     "0001599814": "Kopernik Global Investors",
-    "0001056823": "Horizon Kinetics Asset Management",
+    "0001056823": "Horizon Kinetics Asset Management (Stahl)",
     "0001325447": "First Eagle Investment Management",
+    "0001791786": "Elliott Investment Management (Singer)",
 }
 OPENFIGI = "https://api.openfigi.com/v3/mapping"
 FIGI_BATCH = 10       # jobs per request (keyless limit)

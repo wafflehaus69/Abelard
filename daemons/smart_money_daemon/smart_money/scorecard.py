@@ -721,24 +721,30 @@ def _write_registry(active, validation, by_name, anchor, path):
 # `thesis` groups the shelf on /portfolios (ORDER SM-P2). Vocabulary is fixed:
 # {ai_tmt, biotech, macro, activist, value, contrarian}. It is a GROUPING LABEL for
 # legibility, not a performance claim.
+# Display names carry the PRINCIPAL in parentheses where one is documented — the
+# person is what a reader recognises, not the LP name. Left unlabelled where the
+# founder has stepped back and no single decision-maker is recorded in-repo
+# (Lone Pine, Baker Bros, Akre, First Eagle); an invented attribution would read
+# as fact forever, so those await a ruling rather than a guess.
 MANAGER_13F_SEEDS = [
-    {"name": "Duquesne Family Office LLC", "cik": "0001536411", "thesis": "macro"},
-    {"name": "Thiel Macro LLC", "cik": "0001562087", "thesis": "macro"},
-    {"name": "Founders Fund VII Management, LLC", "cik": "0001846021", "thesis": "ai_tmt"},
-    {"name": "Founders Fund Growth II Management, LP", "cik": "0002106825", "thesis": "ai_tmt"},
-    {"name": "Affinity Partners GP LP", "cik": "0002059583", "thesis": "macro"},
+    {"name": "Duquesne Family Office LLC (Druckenmiller)", "cik": "0001536411",
+     "thesis": "macro"},
+    {"name": "Thiel Macro LLC (Thiel)", "cik": "0001562087", "thesis": "macro"},
+    {"name": "Founders Fund VII Management, LLC (Thiel)", "cik": "0001846021", "thesis": "ai_tmt"},
+    {"name": "Founders Fund Growth II Management, LP (Thiel)", "cik": "0002106825", "thesis": "ai_tmt"},
+    {"name": "Affinity Partners GP LP (Kushner)", "cik": "0002059583", "thesis": "macro"},
     {"name": "Situational Awareness LP (Aschenbrenner)", "cik": "0002045724", "thesis": "ai_tmt"},
     # --- ORDER SM-P2 expansion (see scans/SM_P2_FILER_RESOLUTION.md) ---
-    {"name": "Coatue Management", "cik": "0001135730", "thesis": "ai_tmt"},
-    {"name": "Whale Rock Capital Management", "cik": "0001387322", "thesis": "ai_tmt"},
-    {"name": "Light Street Capital Management", "cik": "0001569049", "thesis": "ai_tmt"},
+    {"name": "Coatue Management (Laffont)", "cik": "0001135730", "thesis": "ai_tmt"},
+    {"name": "Whale Rock Capital Management (Sacerdote)", "cik": "0001387322", "thesis": "ai_tmt"},
+    {"name": "Light Street Capital Management (Kacher)", "cik": "0001569049", "thesis": "ai_tmt"},
     {"name": "Lone Pine Capital", "cik": "0001061165", "thesis": "ai_tmt"},
-    {"name": "Appaloosa LP", "cik": "0001656456", "thesis": "value"},
+    {"name": "Appaloosa LP (Tepper)", "cik": "0001656456", "thesis": "value"},
     {"name": "Baker Bros Advisors", "cik": "0001263508", "thesis": "biotech"},
-    {"name": "Pershing Square Capital Management", "cik": "0001336528", "thesis": "activist"},
-    {"name": "Soros Fund Management", "cik": "0001029160", "thesis": "macro"},
-    {"name": "Third Point LLC", "cik": "0001040273", "thesis": "activist"},
-    {"name": "Scion Asset Management", "cik": "0001649339", "thesis": "contrarian"},
+    {"name": "Pershing Square Capital Management (Ackman)", "cik": "0001336528", "thesis": "activist"},
+    {"name": "Soros Fund Management (Soros)", "cik": "0001029160", "thesis": "macro"},
+    {"name": "Third Point LLC (Loeb)", "cik": "0001040273", "thesis": "activist"},
+    {"name": "Scion Asset Management (Burry)", "cik": "0001649339", "thesis": "contrarian"},
     # Mag7 operating companies with real 13F books. `corporate_strategic` extends the
     # SM-P2 vocabulary deliberately: these are balance-sheet stakes in adjacent
     # industries, not a manager expressing a view, and must not be read as either.
@@ -747,23 +753,30 @@ MANAGER_13F_SEEDS = [
     {"name": "NVIDIA Corp", "cik": "0001045810", "thesis": "corporate_strategic"},
     # --- SM scouting expansion (Mando roster, 2026-08-17) ---
     # Six kept unfiltered: small, high-density books where every line is a decision.
-    {"name": "TCI Fund Management Ltd", "cik": "0001647251", "thesis": "activist"},
-    {"name": "Himalaya Capital Management LLC", "cik": "0001709323", "thesis": "value"},
-    {"name": "Berkshire Hathaway Inc", "cik": "0001067983", "thesis": "value"},
-    {"name": "Baupost Group LLC", "cik": "0001061768", "thesis": "contrarian"},
+    {"name": "TCI Fund Management Ltd (Hohn)", "cik": "0001647251", "thesis": "activist"},
+    {"name": "Himalaya Capital Management LLC (Li Lu)", "cik": "0001709323",
+     "thesis": "value"},
+    {"name": "Berkshire Hathaway Inc (Buffett)", "cik": "0001067983", "thesis": "value"},
+    {"name": "Baupost Group LLC (Klarman)", "cik": "0001061768", "thesis": "contrarian"},
     {"name": "Akre Capital Management LLC", "cik": "0001112520", "thesis": "value"},
+    # 29 positions, 56.7% in the top five, 13 novel — an activist/hard-asset book
+    # where every line is a decision. Top holding is Triple Flag Precious Metals
+    # at 17.6%, which lands squarely in the royalties category the shelf was
+    # missing. The only one of the seven scouted names that survived vetting.
+    {"name": "Elliott Investment Management L.P. (Singer)", "cik": "0001791786",
+     "thesis": "activist"},
     # `hard_assets` EXTENDS the vocabulary, like corporate_strategic did. These two
     # own the royalties / gold / uranium / energy-land category the shelf otherwise
     # cannot see at all: Horizon Kinetics' largest position is Texas Pacific Land
     # (48.6% of its book) and Kopernik's is Range Resources. Tagging them `value`
     # would file them next to Berkshire and lose exactly the distinction that
     # justified adding them.
-    {"name": "Kopernik Global Investors, LLC", "cik": "0001599814",
+    {"name": "Kopernik Global Investors, LLC (Iben)", "cik": "0001599814",
      "thesis": "hard_assets"},
     # Two kept with a position floor: long-tailed books whose signal is in the top
     # slice. position_floor_pct marks — never deletes — positions under the cut, so
     # the tail stays auditable and each filer's book total stays whole.
-    {"name": "Horizon Kinetics Asset Management LLC", "cik": "0001056823",
+    {"name": "Horizon Kinetics Asset Management LLC (Stahl)", "cik": "0001056823",
      "thesis": "hard_assets", "position_floor_pct": 0.25},
     {"name": "First Eagle Investment Management, LLC", "cik": "0001325447",
      "thesis": "value", "position_floor_pct": 0.25},
