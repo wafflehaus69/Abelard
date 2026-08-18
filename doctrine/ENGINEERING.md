@@ -349,6 +349,25 @@ are plausible, internally consistent, correctly scaled, and reconcile against
 their own YTD totals. Cross-issuer agreement on a concept name is not evidence
 that two issuers mean the same thing by it.
 
+**Second citation (ClaudeCode, 2026-08-14) — the financing-statement face.**
+Same lesson, cash-flow statement rather than investing section. CD-2 needed to
+know whether a debt concept in an issuance sum was a GROSS inflow. Concept names
+do not say: `ProceedsFromShortTermDebt` sounds gross and WULF presents it as
+"Proceeds from issuance of short-term debt, **net of issuance costs** paid of
+$7,250" — net of FEES, still gross of repayments, therefore still eligible.
+Whereas `ProceedsFromRepaymentsOf*` concepts net issuance against repayment by
+construction and are never eligible, at any issuer. The distinction is invisible
+in the concept name and legible only in the rendered line, so the gate that
+decides eligibility (`issuance.NET_PRESENTATION_CONCEPTS`) is keyed on verified
+line-mappings and records the filing language that put each entry there.
+Corollary — presentation verification answers "what does this measure", and
+NOT "is this value trustworthy". WULF's actual defect was a different thing
+entirely: a year-to-date cumulative that DECREASED ($975,329,000 at 9M, $0 at
+FY) because the issuer re-tagged mid-year, which differencing turned into a
+phantom -$975M quarter. Presentation was clean throughout. Two independent
+gates were needed, and assuming one lesson covered both would have shipped the
+bug (see [E21] corollaries).
+
 ## E24 — Never sum a parent and its consolidated subsidiary
 Ruled by Mando 2026-08-14; drafted by ClaudeCode from the originating incident
 rather than by Abelard — reword to the ledger's voice if wanted. Numbered E24
