@@ -348,3 +348,32 @@ Corollary: this is invisible to every purely numerical check. Both RIOT figures
 are plausible, internally consistent, correctly scaled, and reconcile against
 their own YTD totals. Cross-issuer agreement on a concept name is not evidence
 that two issuers mean the same thing by it.
+
+## E24 — Never sum a parent and its consolidated subsidiary
+Ruled by Mando 2026-08-14; drafted by ClaudeCode from the originating incident
+rather than by Abelard — reword to the ledger's voice if wanted. Numbered E24
+rather than the E23 the order named: E23 was already pushed for a different
+lesson, and a pushed ID is never renumbered ([E18] ledger protocol).
+Incident: CD-R2 roster recon. Bit Digital (BTBT) was surfaced as a strong
+addition on $483M TTM capex — the largest in the miner-pivot cohort. It holds
+majority ownership of WhiteFiber (WYFI) and CONSOLIDATES it, and WYFI was
+already a ratified panel member. The $483M therefore CONTAINS WYFI's spend.
+Admitting both would have counted the same dollars twice in the headline
+aggregate, and nothing in the numbers themselves says so: both figures are real,
+correctly tagged, internally consistent, and reconcile against their own filings.
+Rule: consolidation is containment. An aggregate admits **exactly one entity per
+consolidation tree**. Before adding any entity to a population that gets summed,
+establish whether it consolidates, or is consolidated by, an entity already in
+that population — the ownership question is part of admission, not a later
+tidy-up.
+Corollary — admit the name, exclude it from the sum. A parent that is genuinely
+interesting is not thrown away: it is tracked in a bucket the aggregate does not
+read (CD used `sidecar`), so the entity stays visible and the total stays honest.
+The same shape covers an entity whose figure is real but not separable from a
+larger consolidated line — CD's `host` bucket for IRM, AMT and CCOI, whose
+datacenter capex cannot be split out of records-management, tower and telecom
+spend respectively.
+Corollary — this is invisible to every numerical check. Reconciliation,
+magnitude bounds and anchor gates all pass on both entities independently. Only
+the ownership relation exposes it, and that relation lives in the filing text,
+not in the facts.
