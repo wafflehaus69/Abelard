@@ -171,6 +171,13 @@ The only route to figures Leg A structurally cannot return, and the freshness pa
   `R#.htm` fragments when a rendered table is wanted.
 - Must parse: `contextRef` → period (`instant` / `startDate`+`endDate`) **and dimensions**
   (`xbrldi:explicitMember`, axis + member), `unitRef`, and **`scale` / `decimals`**.
+
+  **The XBRL dimension model has TWO member types — explicit and typed — and a parser that
+  handles only one silently collapses tranches.** `xbrldi:explicitMember` carries its member as a
+  QName attribute; `xbrldi:typedMember` carries it as element CONTENT. The SEC filing-fee taxonomy
+  discriminates offering tranches with a typed dimension (`ffd:OfferingAxis` →
+  `<dei:lineNo>1</dei:lineNo>`), so an explicit-only parser reduces a six-tranche note offering to
+  one indistinguishable context — no error, just a wrong count.
 - **`scale` is a G1 hazard unique to this leg** (E5): MSFT's $329.1B not-yet-commenced lease figure
   carries `scale="9"`. Ignoring it is wrong by nine orders of magnitude.
 - **Nested-fact trap, measured:** that same figure is wrapped in **two nested `ix:nonFraction`

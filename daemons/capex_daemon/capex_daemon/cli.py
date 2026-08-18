@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 
-from . import ixbrl, storage, universe
+from . import ixbrl, scan as scanmod, storage, universe
 
 
 def cmd_roster(args):
@@ -53,6 +53,19 @@ def cmd_parse(args):
     return 0
 
 
+def cmd_scan(args):
+    """Nightly scan. Freshness-driven and idempotent; a no-op most nights."""
+    con = storage.connect(args.db)
+    result = scanmod.run(con=con, render=not args.no_render, outdir=args.outdir)
+    if args.json:
+        print(scanmod.to_json(result))
+    else:
+        print(scanmod.format_summary(result))
+    # Exit 0 on a clean run OR a clean no-op; non-zero only when something broke,
+    # so the nightly slot can alert on exit status alone.
+    return 1 if result.get("errors") else 0
+
+
 def cmd_initdb(args):
     con = storage.connect(args.db)
     tables = [r[0] for r in con.execute(
@@ -78,6 +91,14 @@ def main(argv=None):
     p.add_argument("--dimensioned-only", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_parse)
+
+
+    p = sub.add_parser("scan", help="nightly freshness-driven scan; no-op when nothing new")
+    p.add_argument("--db", default=None)
+    p.add_argument("--outdir", default=None, help="chart output dir; defaults to the state home")
+    p.add_argument("--no-render", action="store_true", help="skip chart regeneration")
+    p.add_argument("--json", action="store_true", help="emit the full result object")
+    p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("initdb", help="create the state schema")
     p.add_argument("--db", default=None)
