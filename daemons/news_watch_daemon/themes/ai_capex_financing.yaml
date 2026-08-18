@@ -81,38 +81,32 @@ keywords:
     - "residual value guarantee"
     - "residual value guarantees"
   secondary:
-    # The deal-name pattern class. These are the Hyperion/Beignet-class proper
-    # nouns — the entire point of the theme is that these names exist ONLY in
-    # trade press. Expect this list to be appended to as new deals are named;
-    # that appending IS the sensor working.
-    - "Hyperion"
+    # CORRECTED 2026-08-18 after the first dry-run. The matcher (_tag_for_theme)
+    # returns "secondary" on a BARE secondary hit — there is NO co-occurrence
+    # requirement with a primary term. An earlier draft of this file asserted
+    # otherwise and was wrong; the dry-run gate caught it before any write.
+    #
+    # Measured on the 31,859-headline corpus, the bare terms scored 2/9:
+    #   "Blue Owl"       -> Cleveland Cavaliers minority stake
+    #   "Apollo Global"  -> a routine analyst report
+    #   "sale-leaseback" -> Cracker Barrel biscuit divestiture
+    #   "Hyperion"       -> Hyperion Asset Management, a Taiwan equity fund
+    # so every bare lender name and generic structure verb is removed. Only
+    # terms that are SELF-SUFFICIENTLY on-topic survive here.
+    #
+    # Cost of the fix, stated plainly: this drops one true positive,
+    # "Blue Owl Unveils Infrastructure Venture Catering to Data Centers".
+    # Seven false positives removed for one true one is the right trade for a
+    # low-volume sensor whose whole value is that a hit means something.
+    # The lender names remain under tracked_entities, which does NOT gate tagging.
     - "Beignet"
     - "Project Beignet"
-    # Lender-side co-occurrence. Blue Owl is the named Hyperion counterparty;
-    # the others are the private-credit houses most likely to appear beside a
-    # datacenter build. Bare firm names are secondary, never primary — they
-    # co-occur with a primary term or they do not tag.
-    - "Blue Owl"
-    - "Apollo Global"
-    - "Ares Management"
-    - "Blackstone Credit"
-    - "PIMCO"
-    - "Sixth Street"
-    # Off-balance-sheet framing.
-    - "off-balance-sheet"
-    - "off balance sheet"
-    - "unconsolidated joint venture"
-    - "variable interest entity"
-    - "VIE"
-    - "special purpose vehicle"
-    - "special purpose entity"
-    # Structure-financing verbs that are meaningless alone but sharp beside a
-    # primary term.
-    - "sale-leaseback"
-    - "lease financing"
-    - "construction loan"
-    - "construction loans"
-    - "mezzanine debt"
+    - "Hyperion data center"
+    - "Hyperion data centre"
+    - "Hyperion campus"
+    - "GPU financing"
+    - "compute-backed loan"
+    - "compute-backed loans"
   exclusions:
     # ---- Financing wall, INHERITED VERBATIM from ai_capex_cycle ----
     # ai_capex_cycle added these on 2026-06-24 to keep capacity-FINANCING out of
@@ -145,11 +139,14 @@ keywords:
     - "all-time high"
     - "all-time low"
     # ---- Same-word, wrong-domain ----
-    # "Hyperion" is a common proper noun (Hyperion Solar, the moon, the novel,
-    # Hyperion Motors) and is a SECONDARY term precisely so it needs a primary
-    # co-occurrence. These kill the highest-volume collisions outright.
+    # "Hyperion" is a common proper noun (Hyperion Solar, Hyperion Motors,
+    # Hyperion Asset Management, the moon, the novel). Bare "Hyperion" was
+    # REMOVED from secondary on 2026-08-18 because it tagged a Taiwan equity
+    # fund; only the compounded forms remain. These exclusions stay as a second
+    # line of defence.
     - "Hyperion Motors"
     - "Hyperion Solar"
+    - "Hyperion Asset Management"
 
 tracked_entities:
   # Reference metadata for ticker/entity extraction — does NOT gate tagging.
