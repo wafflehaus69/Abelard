@@ -994,7 +994,10 @@ def q_principal_convergence(con, period=None):
     13F reports no real shorts). (2) QoQ accumulate-vs-distribute disagreement — a
     NEW cross-manager pairing on join_d. Universe = the 6 confirmed 13F CIKs."""
     from .phase4_joins import join_a_multi_principal, convergence_accounting
-    convergences = join_a_multi_principal(con)
+    # Pass the per-filer floor so this path counts the same positions
+    # _manager_flow does. Without it a long-tailed filer's whole sub-floor tail
+    # became convergences and the count read 1,818 instead of 1,115.
+    convergences = join_a_multi_principal(con, floors=_filer_floor())
     if period:
         convergences = [r for r in convergences if r["period"] == period]
     for r in convergences:  # rename in the human-facing layer

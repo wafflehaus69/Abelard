@@ -136,3 +136,60 @@ def test_the_floor_reaches_the_front_page_strip(tmp_path, monkeypatch):
     assert d["position_floor_pct"] is None
     assert d["positions"] == d["positions_in_signal"] == 1
     ro.close()
+
+
+def test_convergence_respects_the_floor_like_manager_flow_does(tmp_path, monkeypatch):
+    """THE regression. join_a_multi_principal ignored the per-filer floor that
+    _manager_flow applies, so the two paths disagreed about what counts as a
+    position. On the live 28-filer shelf that inflated convergences from 1,115 to
+    1,818 — 703 of the 1,030 apparent new ones were sub-floor tail artefacts, and
+    the headline read +131% when the honest delta is +41.5%."""
+    from smart_money.phase4_joins import join_a_multi_principal
+    path = str(tmp_path / "cv.db")
+    con = dbmod.connect(path)
+    # Tail Fund and a second filer BOTH hold a sub-floor name; without the floor
+    # that is a 2-filer convergence, with it there is none.
+    _tail(con, "111", "2026-06-30")                       # 9 names at ~1.1%
+    _hold(con, "222", "2026-06-30", "cBIG", "BIG", 500_000_000)
+    _hold(con, "222", "2026-06-30", "c00", "T00", 400_000_000)   # >5% for 222
+    con.commit()
+    con.close()
+    monkeypatch.setattr(q.dbmod, "find_artifact",
+                        lambda *a, **k: _reg(tmp_path, FILERS))
+    ro = q.connect_ro(path)
+    unfloored = {r["ticker"] for r in join_a_multi_principal(ro)}
+    floored = {r["ticker"] for r in join_a_multi_principal(ro, floors=q._filer_floor())}
+    assert "T00" in unfloored, "without the floor the sub-floor tail converges"
+    assert "T00" not in floored, (
+        "T00 is 1.1% of Tail Fund's book, under its 5% floor, so it must express "
+        "no view: %r" % (sorted(floored),))
+    assert "BIG" in floored, "the above-floor name still converges"
+    ro.close()
+
+
+def test_convergence_uses_value_usd_not_raw_value(tmp_path, monkeypatch):
+    """A thousands filer's raw value is 1000x small. The net SIGN is invariant so
+    the classification was never wrong, but the column a reader sees must be the
+    scaled one."""
+    from smart_money.phase4_joins import join_a_multi_principal
+    path = str(tmp_path / "sc.db")
+    con = dbmod.connect(path)
+    con.execute(
+        "INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip,"
+        " ticker, issuer, put_call, value, shares, ingested_at_unix, value_scale)"
+        " VALUES ('111','a','2026-06-30','2026-08-14','cX','XXX','X','long',"
+        "1000,10,0,1000)")
+    con.execute(
+        "INSERT INTO thirteenf_holdings(cik, accession, period, filed_date, cusip,"
+        " ticker, issuer, put_call, value, shares, ingested_at_unix, value_scale)"
+        " VALUES ('222','b','2026-06-30','2026-08-14','cX','XXX','X','long',"
+        "1000000,10,0,1)")
+    con.commit()
+    con.close()
+    monkeypatch.setattr(q.dbmod, "find_artifact",
+                        lambda *a, **k: _reg(tmp_path, FILERS))
+    ro = q.connect_ro(path)
+    rows = join_a_multi_principal(ro)
+    assert [r["ticker"] for r in rows] == ["XXX"]
+    assert rows[0]["long_filers"] == 2
+    ro.close()

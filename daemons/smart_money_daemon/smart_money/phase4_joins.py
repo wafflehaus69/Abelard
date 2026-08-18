@@ -59,16 +59,48 @@ def _13f_ticker_periods(con):
 
 
 # ---------------------------------------------------------------- (a)
-def join_a_multi_principal(con, bands=None):
+def join_a_multi_principal(con, bands=None, floors=None):
     """Direction-aware: per (ticker, period, filer) compute NET direction
     (long+call value minus put value). Convergence requires 2+ filers on the
     SAME side — a long-vs-short pair is a DISAGREEMENT, not convergence, and is
-    flagged rather than counted as agreement."""
+    flagged rather than counted as agreement.
+
+    `floors` is {cik: position_floor_pct}. This function previously ignored the
+    per-filer floor that _manager_flow applies, so the two code paths disagreed
+    about what counts as a position: a long-tailed filer contributed its ENTIRE
+    sub-floor tail here. Measured on the 28-filer shelf, that inflated the
+    convergence count from 1,115 to 1,818 — 703 of the 1,030 apparent new
+    convergences (68%) were floor-tail artefacts, and the headline delta read
+    +131% when the honest figure is +41.5%.
+
+    Uses value_usd, not value. The net SIGN is invariant to a uniform per-filer
+    scale so the classification was never wrong, but the raw column mixes units
+    across filers and must not be the one a reader sees.
+    """
+    floors = floors or {}
+    fl = {}
+    for cik, pct in floors.items():
+        try:
+            fl[str(int(cik))] = pct
+        except (TypeError, ValueError):
+            fl[str(cik)] = pct
     net = defaultdict(lambda: defaultdict(float))  # (ticker,period) -> cik -> net
-    for tk, per, cik, pc, val in con.execute(
-        "SELECT ticker, period, cik, put_call, value FROM thirteenf_holdings "
-        "WHERE ticker IS NOT NULL"
+    for tk, per, cik, pc, val, pct in con.execute(
+        "SELECT h.ticker, h.period, h.cik, h.put_call, h.value_usd, "
+        "  CASE WHEN b.book > 0 THEN 100.0 * h.value_usd / b.book ELSE NULL END "
+        "FROM thirteenf_holdings h JOIN ("
+        "  SELECT cik, period, SUM(value_usd) AS book FROM thirteenf_holdings "
+        "  GROUP BY cik, period) b "
+        "  ON b.cik = h.cik AND b.period = h.period "
+        "WHERE h.ticker IS NOT NULL"
     ):
+        try:
+            key = str(int(cik))
+        except (TypeError, ValueError):
+            key = str(cik)
+        floor = fl.get(key)
+        if floor and pct is not None and pct < floor:
+            continue                      # marked below floor: expresses no view
         sign = -1 if pc == "put" else 1
         net[(tk.upper(), per)][cik] += (val or 0) * sign
     out = []
@@ -344,7 +376,11 @@ def main(argv=None):
         r[0] for r in con.execute(
             "SELECT DISTINCT ticker FROM thirteenf_holdings WHERE ticker IS NOT NULL")])
 
-    a = join_a_multi_principal(con, bands)
+    # Local import: queries imports this module lazily, so a module-level import
+    # here would be circular. The floor must apply on this path too, or the
+    # markdown report disagrees with the dashboard about the same number.
+    from .queries import _filer_floor
+    a = join_a_multi_principal(con, bands, floors=_filer_floor())
     b = join_b_inst_x_insider(con, args.now)
     c = join_c_inst_x_congress(con)
     d = join_d_new_positions(con, bands)
