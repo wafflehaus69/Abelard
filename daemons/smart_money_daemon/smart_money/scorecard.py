@@ -611,7 +611,9 @@ def sync_manager_registry(path=None, anchor=None):
         kept.append({
             "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
             "status": "active", "role": "manager_13f", "type": "manager_13f",
-            "thesis": m.get("thesis"), "scores": None, "as_of": anchor})
+            "thesis": m.get("thesis"), "scores": None, "as_of": anchor,
+            # None = no floor. A floor MARKS small positions, never drops them.
+            "position_floor_pct": m.get("position_floor_pct")})
     data["entries"] = kept
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2)
@@ -695,7 +697,9 @@ def _write_registry(active, validation, by_name, anchor, path):
         entries.append({
             "person_id": None, "name": m["name"], "cik": m["cik"], "chamber": None,
             "status": "active", "role": "manager_13f", "type": "manager_13f",
-            "thesis": m.get("thesis"), "scores": None, "as_of": anchor})
+            "thesis": m.get("thesis"), "scores": None, "as_of": anchor,
+            # None = no floor. A floor MARKS small positions, never drops them.
+            "position_floor_pct": m.get("position_floor_pct")})
     # Network ownership persons (SM-A1 Phase 1, ratified). EDGAR CIK identity;
     # not scored (ownership surface, not a picking-skill claim). Split by network
     # so the registry role matches the /trades provenance badge.
@@ -741,6 +745,28 @@ MANAGER_13F_SEEDS = [
     {"name": "Alphabet Inc", "cik": "0001652044", "thesis": "corporate_strategic"},
     {"name": "Amazon com Inc", "cik": "0001018724", "thesis": "corporate_strategic"},
     {"name": "NVIDIA Corp", "cik": "0001045810", "thesis": "corporate_strategic"},
+    # --- SM scouting expansion (Mando roster, 2026-08-17) ---
+    # Six kept unfiltered: small, high-density books where every line is a decision.
+    {"name": "TCI Fund Management Ltd", "cik": "0001647251", "thesis": "activist"},
+    {"name": "Himalaya Capital Management LLC", "cik": "0001709323", "thesis": "value"},
+    {"name": "Berkshire Hathaway Inc", "cik": "0001067983", "thesis": "value"},
+    {"name": "Baupost Group LLC", "cik": "0001061768", "thesis": "contrarian"},
+    {"name": "Akre Capital Management LLC", "cik": "0001112520", "thesis": "value"},
+    # `hard_assets` EXTENDS the vocabulary, like corporate_strategic did. These two
+    # own the royalties / gold / uranium / energy-land category the shelf otherwise
+    # cannot see at all: Horizon Kinetics' largest position is Texas Pacific Land
+    # (48.6% of its book) and Kopernik's is Range Resources. Tagging them `value`
+    # would file them next to Berkshire and lose exactly the distinction that
+    # justified adding them.
+    {"name": "Kopernik Global Investors, LLC", "cik": "0001599814",
+     "thesis": "hard_assets"},
+    # Two kept with a position floor: long-tailed books whose signal is in the top
+    # slice. position_floor_pct marks — never deletes — positions under the cut, so
+    # the tail stays auditable and each filer's book total stays whole.
+    {"name": "Horizon Kinetics Asset Management LLC", "cik": "0001056823",
+     "thesis": "hard_assets", "position_floor_pct": 0.25},
+    {"name": "First Eagle Investment Management, LLC", "cik": "0001325447",
+     "thesis": "value", "position_floor_pct": 0.25},
 ]
 TRUMP_NETWORK_SEEDS = [
     {"name": "TRUMP DONALD J", "cik": "0000947033"},

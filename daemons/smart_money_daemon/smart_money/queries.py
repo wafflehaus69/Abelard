@@ -1445,6 +1445,22 @@ def _filer_thesis():
             if e.get("role") == "manager_13f" and e.get("cik")}
 
 
+def _filer_floor():
+    """{cik: position_floor_pct} — the per-filer small-position cut, or {} .
+
+    A floor MARKS positions below it, never deletes them. Two of the scouted
+    filers carry very long tails whose signal is in the top slice: Horizon
+    Kinetics files 351 positions with 48.6% of the book in one name, First Eagle
+    424. Dropping the tail at ingest would be irreversible AND would corrupt the
+    book total that every pct_of_book is measured against — so the rows are
+    stored in full and the floor is applied where signals are counted.
+    """
+    entries, _ = _load_registry()
+    return {e.get("cik"): e.get("position_floor_pct") for e in entries
+            if e.get("role") == "manager_13f" and e.get("cik")
+            and e.get("position_floor_pct")}
+
+
 def _filer_periods(con, cik):
     """Distinct reported periods for a filer, newest first."""
     return [r[0] for r in con.execute(
@@ -1525,13 +1541,24 @@ def _magnitude_warning(book_value, basis):
     return None
 
 
-def _scaled_holdings(con, cik, period, scale):
+def _scaled_holdings(con, cik, period, scale, floor_pct=None):
     """Per-holding dict for a filer/period with `value` scaled to dollars by the
-    filer-level `scale` (from _filer_unit_scale) — the SAME scale for every period."""
+    filer-level `scale` (from _filer_unit_scale) — the SAME scale for every period.
+
+    Every holding is also stamped with `pct_of_book` and `below_floor`. The floor
+    MARKS, never removes: the book total is computed over ALL positions first, so
+    a filtered filer's percentages and book value stay whole and the tail remains
+    auditable. Signal paths skip below_floor rows; display paths can show them.
+    """
     h = _period_holdings(con, cik, period)
     if scale != 1:
         for x in h.values():
             x["value"] = int(round(x["value"] * scale))
+    book = sum((x["value"] or 0) for x in h.values())
+    for x in h.values():
+        pct = (100.0 * (x["value"] or 0) / book) if book else None
+        x["pct_of_book"] = round(pct, 4) if pct is not None else None
+        x["below_floor"] = bool(floor_pct and pct is not None and pct < floor_pct)
     return h
 
 
@@ -1688,11 +1715,18 @@ def _manager_flow(con, cik, thesis, name):
     if len(periods) < 2:
         return None, {}, {"count": 0, "value": 0.0}
     scale, _basis = _filer_unit_scale(con, cik, periods)
-    cur = _scaled_holdings(con, cik, periods[0], scale)
-    prior = _scaled_holdings(con, cik, periods[1], scale)
+    floor = _filer_floor().get(cik)
+    cur = _scaled_holdings(con, cik, periods[0], scale, floor)
+    prior = _scaled_holdings(con, cik, periods[1], scale, floor)
     flows = {}
     n_drop = 0
     v_drop = 0.0
+    # Below-floor positions are stored and displayed but express no direction. A
+    # long-tailed filer would otherwise contribute hundreds of sub-0.25% lines to
+    # convergence and disagreement counts, swamping the filers where every line is
+    # a decision.
+    cur = {k: h for k, h in cur.items() if not h.get("below_floor")}
+    prior = {k: h for k, h in prior.items() if not h.get("below_floor")}
     cur_keys = {_flow_key(h) for h in cur.values() if _flow_key(h)[0]}
     for k, h in cur.items():
         key = _flow_key(h)
@@ -1798,9 +1832,11 @@ def q_tracked_books(con, anchor=None):
     /portfolios and said nothing here."""
     anchor = anchor or dt.date.today().isoformat()
     thesis = _filer_thesis()
+    floors = _filer_floor()
     out = []
     for cik, name in _tracked_filers():
         th = thesis.get(cik)
+        floor = floors.get(cik)
         periods = _filer_periods(con, cik)
         if not periods:
             out.append({"cik": cik, "name": name, "period": None, "book_value": None,
@@ -1811,9 +1847,13 @@ def q_tracked_books(con, anchor=None):
                         "magnitude_warning": "no 13F holdings ingested for this filer"})
             continue
         scale, basis = _filer_unit_scale(con, cik, periods)
-        cur = _scaled_holdings(con, cik, periods[0], scale)
+        cur = _scaled_holdings(con, cik, periods[0], scale, floor)
+        # Book is the WHOLE book — the floor never removes value from the total,
+        # only marks which lines carry signal.
         book = sum(h["value"] for h in cur.values()) or 0
-        longs = sorted((h for h in cur.values() if h["put_call"] == "long"),
+        n_signal = sum(1 for h in cur.values() if not h.get("below_floor"))
+        longs = sorted((h for h in cur.values()
+                        if h["put_call"] == "long" and not h.get("below_floor")),
                        key=lambda h: -(h["value"] or 0))
         top3 = [{"ticker": h["ticker"] or ("cusip:" + h["cusip"]),
                  "pct": round(100.0 * (h["value"] or 0) / book, 1) if book else None}
@@ -1821,6 +1861,8 @@ def q_tracked_books(con, anchor=None):
         out.append({"cik": cik, "name": name, "period": periods[0], "book_value": book,
                     "top3": top3, "days_to_filing": _days_to_next_13f(periods[0], anchor),
                     "thesis": th, "discretionary": is_discretionary(th),
+                    "positions": len(cur), "positions_in_signal": n_signal,
+                    "position_floor_pct": floor,
                     "magnitude_warning": _magnitude_warning(book, basis)})
     disc = [f for f in out if f["discretionary"]]
     return {"as_of": _as_of(), "filers": out,

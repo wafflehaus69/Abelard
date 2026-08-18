@@ -51,6 +51,17 @@ CONFIRMED = {
     "0001652044": "Alphabet Inc",
     "0001018724": "Amazon com Inc",
     "0001045810": "NVIDIA Corp",
+    # --- SM scouting expansion (Mando roster, 2026-08-17) ---
+    # NB Baupost's live filer is 0001061768; the name-search hit 0001054420 stops
+    # in 2002. Greenlight was scouted and REJECTED — no 13F-HR since 2023-12-31.
+    "0001647251": "TCI Fund Management",
+    "0001709323": "Himalaya Capital Management",
+    "0001067983": "Berkshire Hathaway Inc",
+    "0001061768": "Baupost Group",
+    "0001112520": "Akre Capital Management",
+    "0001599814": "Kopernik Global Investors",
+    "0001056823": "Horizon Kinetics Asset Management",
+    "0001325447": "First Eagle Investment Management",
 }
 OPENFIGI = "https://api.openfigi.com/v3/mapping"
 FIGI_BATCH = 10       # jobs per request (keyless limit)
