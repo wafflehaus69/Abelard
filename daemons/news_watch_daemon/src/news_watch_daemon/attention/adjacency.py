@@ -170,19 +170,35 @@ _TIER_A = _TOKENIZER_FRAGMENTS | _SOURCE_NAME_TOKENS
 
 
 # Topics that already have a DEDICATED brief section (their own theme segment),
-# so they must NOT be rehashed as ATTENTION crossings / near-miss terms. Matched
-# as a lowercased SUBSTRING against the final term text — cleanly catches unigram,
-# plural, and phrase variants ("stablecoin" -> "stablecoins"; "prediction market"
-# -> "prediction markets") and drops the promoted term WHOLE (its constituents
-# were already collapsed into it, so nothing leaks). ATTENTION-only: theme tagging
-# in scrape/ is unaffected. Applied before synthesis, so a blocked topic never
-# costs a Pass E call. Editable inline like the token sets above. (Mando 2026-07-30)
-_TOPIC_BLOCKLIST = ("tokenized", "stablecoin", "prediction market")
+# so they must NOT be rehashed as ATTENTION crossings / near-miss terms.
+# ATTENTION-only: theme tagging in scrape/ is unaffected, and the topics keep their
+# own sections. Applied before synthesis, so a blocked topic never costs a Pass E
+# call. Editable inline like the token sets above. (Mando 2026-07-30, +crypto 08-20)
+#
+# SUBSTRING-matched — distinctive stems where any containing word is also the
+# topic. Catches plural and phrase variants for free ("stablecoin" -> "stablecoins",
+# "crypto" -> "cryptocurrency", "prediction market" -> "prediction markets") and
+# drops the promoted term WHOLE (constituents were already collapsed into it).
+_TOPIC_BLOCKLIST = (
+    "tokenized", "stablecoin", "prediction market",
+    "bitcoin", "ethereum", "crypto", "solana", "dogecoin", "altcoin", "memecoin",
+)
+
+# WORD-matched — short asset tickers that are unsafe as substrings: a bare "eth"
+# substring would swallow "netherlands"/"method"/"whether"/"together", silently
+# killing real signal. Matched on whole-word boundaries instead, so "eth" blocks
+# "eth"/"eth price" but never "ethereum" (covered above) or "Netherlands".
+_TOPIC_BLOCKLIST_WORDS = ("btc", "eth", "xrp")
+_TOPIC_WORD_RE = re.compile(
+    r"\b(?:" + "|".join(_TOPIC_BLOCKLIST_WORDS) + r")\b", re.IGNORECASE
+)
 
 
 def _is_topic_blocklisted(text: str) -> bool:
     low = text.lower()
-    return any(phrase in low for phrase in _TOPIC_BLOCKLIST)
+    if any(phrase in low for phrase in _TOPIC_BLOCKLIST):
+        return True
+    return _TOPIC_WORD_RE.search(low) is not None
 
 
 @dataclass(frozen=True)

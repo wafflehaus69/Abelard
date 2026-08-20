@@ -264,6 +264,35 @@ def test_topic_blocklist_suppresses_dedicated_theme_topics():
     assert "prediction" not in terms
 
 
+def test_topic_blocklist_suppresses_crypto_terms():
+    # crypto_markets has its own section (2026-08-20) — its terms must not be
+    # rehashed as crossings. "btc"/"xrp" both crossed live before this.
+    win = (
+        [f"{l} bitcoin {r}" for l, r in zip(
+            ("aa", "bb", "cc", "dd", "ee", "ff"), ("p1", "p2", "p3", "p4", "p5", "p6"))]
+        + [f"{l} btc {r}" for l, r in zip(
+            ("gg", "hh", "ii", "jj", "kk", "ll"), ("q1", "q2", "q3", "q4", "q5", "q6"))]
+        + [f"{l} xrp {r}" for l, r in zip(
+            ("mm", "nn", "oo", "pp", "qq", "rr"), ("r1", "r2", "r3", "r4", "r5", "r6"))]
+    )
+    terms = _terms_by_text(build_attention_list(win, [], _SW))
+    for blocked in ("bitcoin", "btc", "xrp"):
+        assert blocked not in terms, terms
+
+
+def test_short_ticker_blocklist_does_not_eat_ordinary_words():
+    """The whole point of word-matching 'eth': a substring rule would kill
+    'netherlands', 'method', 'whether', 'together' — all legitimate signal."""
+    from news_watch_daemon.attention.adjacency import _is_topic_blocklisted
+    for ok in ("netherlands", "method", "whether", "together", "bethesda", "ethanol"):
+        assert _is_topic_blocklisted(ok) is False, ok
+    # but the bare ticker (alone or in a phrase) is blocked
+    for blocked in ("eth", "eth price", "btc", "xrp rally"):
+        assert _is_topic_blocklisted(blocked) is True, blocked
+    # and the full asset names stay blocked via the substring list
+    assert _is_topic_blocklisted("ethereum") is True
+
+
 def test_topic_blocklist_catches_plural_and_phrase_variants():
     # "stablecoins" (plural) and "prediction markets" (plural phrase) are caught
     # by the same substring entries — no separate list entry needed.

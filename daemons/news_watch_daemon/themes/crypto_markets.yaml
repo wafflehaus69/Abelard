@@ -1,0 +1,165 @@
+theme_id: crypto_markets
+display_name: Cryptocurrency Markets — Price, Flows & Venues
+status: active
+created_at: 2026-08-19
+
+brief: |
+  Tracks CRYPTOCURRENCY AS A MARKET: price action and the forces moving it —
+  spot moves in the major assets, ETF and fund flows, leverage and liquidations,
+  treasury-company accumulation, exchange/venue events, mining economics, and
+  the macro linkages (rates, dollar, risk appetite) that increasingly drive
+  crypto alongside equities.
+
+  SCOPE BOUNDARY — THIS IS THE MARKET, NOT THE PLUMBING. The daemon already has
+  a dedicated tokenized_finance_infrastructure section for stablecoins,
+  tokenization, RWAs, and payment rails. That theme deliberately EXCLUDES price
+  action (its exclusion list strips "Bitcoin price", "crypto rally", "meme coin",
+  "crypto winter", "DeFi yield"), so this theme is its complement — it picks up
+  exactly what tokenized throws away. When writing this segment, lead with MARKET
+  developments; do NOT rehash stablecoin/tokenization infrastructure news that
+  the tokenized section already covers. A story that is genuinely both (a chain
+  hosting a tokenized equity listing) may tag both — multi-tag is correct — but
+  the crypto_markets read should be the market angle, not the plumbing angle.
+
+  The thesis is that crypto has become a macro-correlated risk asset with its own
+  reflexive plumbing: ETF flows and treasury-company balance sheets now transmit
+  traditional-finance capital into a market whose leverage cascades still move
+  faster than equities. Its reaction to rates, Treasury policy, and geopolitical
+  shocks is a live read on aggregate risk appetite — the reason it belongs in a
+  markets brief rather than a technology one.
+
+  Material signals: spot moves and level breaks in BTC/ETH and the major alts;
+  spot-ETF creations/redemptions and fund flows; liquidation cascades, funding
+  rates, and leverage build-up; digital-asset-treasury companies accumulating or
+  selling; exchange outages, licensing wins/exits, and venue failures; mining
+  economics (hashrate, difficulty, halving, energy costs); enforcement and
+  market-structure rulings that move price; and correlation breaks vs equities,
+  gold, and the dollar.
+
+  Prior thesis (updated by synthesis cycles): unset at theme creation.
+
+keywords:
+  # Case-sensitivity is AUTOMATIC for 2+ consecutive uppercase (BTC, ETH, XRP,
+  # ETF) — written BARE, never as literal (?-i:...). So "BTC"/"ETH" match only
+  # the uppercase ticker, not the letters inside other words. Plurals and
+  # hyphenated forms are listed EXPLICITLY (word-boundary matching does not fold
+  # them). Verified against the live corpus 2026-08-19: 19 tags in a 24h window.
+  primary:
+    - "Bitcoin"
+    - "BTC"
+    - "Ethereum"
+    - "Ether"
+    - "ETH"
+    - "Solana"
+    - "XRP"
+    - "Dogecoin"
+    - "cryptocurrency"
+    - "crypto market"
+    - "crypto markets"
+    - "altcoin"
+    - "altcoins"
+    - "memecoin"
+    - "meme coin"
+    - "crypto rally"
+    - "crypto selloff"
+    - "crypto crash"
+    - "crypto winter"
+    - "crypto exchange"
+    - "Binance"
+    - "Coinbase"
+    - "bitcoin ETF"
+    - "ether ETF"
+    - "crypto ETF"
+    - "spot bitcoin ETF"
+    - "bitcoin mining"
+    - "crypto mining"
+    - "halving"
+    - "digital asset treasury"
+  secondary:
+    - "crypto trading"
+    - "crypto investor"
+    - "crypto investors"
+    - "crypto liquidation"
+    - "crypto liquidations"
+    - "crypto fund"
+    - "crypto custody"
+    - "token price"
+    - "DeFi"
+    - "decentralized finance"
+    - "on-chain"
+    - "hash rate"
+    - "hashrate"
+    - "cold wallet"
+    - "self-custody"
+  exclusions:
+    # Deliberately minimal, mirroring capital_markets / prediction_markets:
+    # overlap with tokenized (a chain hosting tokenized equities), capital_markets
+    # (a Coinbase earnings print) and fed_policy_path (a rates-driven crypto move)
+    # is EXPECTED and correct — multi-tag is the intended behavior. The
+    # market-vs-plumbing split is enforced in the BRIEF above (which steers the
+    # summarizer), NOT by aggressive exclusions that would force single-tagging.
+    # Trim on retag evidence only if it balloons on generic chatter.
+    []
+
+tracked_entities:
+  # Reference metadata for ticker/entity extraction — does NOT gate tagging.
+  tickers:
+    - COIN
+    - MSTR
+    - IBIT
+    - MARA
+    - RIOT
+    - HOOD
+  companies:
+    # Venues / exchanges.
+    - Coinbase
+    - Binance
+    - Kraken
+    - Bybit
+    - Robinhood
+    # ETF issuers + treasury-company accumulators.
+    - BlackRock
+    - Fidelity
+    - Grayscale
+    - Strategy
+    # Miners.
+    - Marathon Digital
+    - Riot Platforms
+  countries:
+    - United States
+  commodities: []
+  people:
+    - Michael Saylor
+    - Changpeng Zhao
+    - Brian Armstrong
+
+synthesis:
+  cadence_hours: 4
+  min_headlines_to_synthesize: 5
+  model: claude-sonnet-4-6
+  max_tokens_output: 1000
+
+alerts:
+  # Baseline from the measured corpus (~19 primary tags per 24h window before
+  # the dedicated feed below). Start conservative; retune on observed volume.
+  velocity_baseline_headlines_per_day: 20.0
+  velocity_spike_multiplier: 3.0
+  on_narrative_shift: true
+  on_new_counter_evidence: true
+  alert_channels:
+    - telegram
+    - abelard_queue
+
+rss_feeds:
+  # Dedicated Google News query — verified live 2026-08-19 (HTTP 200, 100
+  # items/24h, keyless). The action-word clause (price OR rally OR selloff OR ETF
+  # OR flows OR liquidation OR outflows) is what keeps this a MARKET feed rather
+  # than a general-crypto firehose, and the negative terms strip retail/affiliate
+  # noise ("how to buy", giveaways, airdrops). Live sample was on-target and
+  # source-diverse: CoinDesk, Investopedia, Decrypt, Yahoo Finance on a $68-70K
+  # break, a $1B short squeeze, and ETF inflows. Placement is organizational only
+  # (global fetch-dedup by feed_id; global tagging).
+  - url: "https://news.google.com/rss/search?q=%28bitcoin%20OR%20ethereum%20OR%20%22crypto%20market%22%20OR%20cryptocurrency%29%20%28price%20OR%20rally%20OR%20selloff%20OR%20ETF%20OR%20flows%20OR%20liquidation%20OR%20outflows%29%20-%22promo%20code%22%20-%22how%20to%20buy%22%20-giveaway%20-airdrop%20when%3A24h&hl=en-US&gl=US&ceid=US:en"
+    feed_id: gn_crypto_markets
+
+telegram_channels: []
