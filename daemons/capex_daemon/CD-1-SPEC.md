@@ -395,6 +395,19 @@ Every acceptance figure above is a value measured in CD-R1 — the recon doubles
 
 ---
 
+## 11.4 Aggregates key on calendar quarter — permanent (ratified 2026-08-18)
+
+**Never sum issuers on raw period-end dates.** Microsoft closes Jun/Sep/Dec/Mar and Oracle
+Feb/May/Aug/Nov, so a bucket sum keyed on raw ends has a near-empty member intersection: the first
+CD-PH1 dead-band measurement produced **one** usable observation for the hyperscaler sum before this
+was fixed, and would have silently calibrated a band on it.
+
+This is the **third appearance of the fiscal-misalignment trap** — first in discrete-quarter
+normalization, then in SEC's own `frame` labels (which shift Jan-FY filers by a month), now in
+aggregation. Calendar-quarter keying is what makes members addable at all.
+
+---
+
 ## 11.5 Rulings of 2026-08-14 (Mando)
 
 **Universe — CORE 13 → 17, ratified.** IREN, GLXY, WYFI and CRWV are CORE, each carrying

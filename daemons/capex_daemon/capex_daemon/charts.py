@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from . import config, divergence  # noqa: E402
+from . import config, divergence, phases  # noqa: E402
 
 BUCKET_COLORS = {"hyperscaler": "#3b6ea5", "builder": "#c2703d", "reit": "#5b8c5a"}
 _GRID = {"color": "#dddddd", "linewidth": 0.6}
@@ -118,11 +118,52 @@ def build_pdf(paths, outpath, title="Capex Daemon — CD-2 thesis layer"):
     return outpath
 
 
-def render_all(views, comp, outdir=None):
+STATE_FILL = {
+    "ACCELERATING": "#1d6f42", "PLATEAU": "#6b6b6b",
+    "DECELERATING": "#a8600f", "CONTRACTING": "#9b1c1c",
+}
+
+
+def chart_hayes_panel(snap, outdir):
+    """P5's brief chart: per-bucket TTM YoY with phase-state shading."""
+    fig, ax = plt.subplots(figsize=(7.8, 4.4))
+    for b, bk in sorted(snap["buckets"].items()):
+        ser = bk.get("yoy_series") or []
+        if len(ser) < 2:
+            continue
+        xs = [p["q"] for p in ser][-16:]
+        ys = [100 * p["yoy"] for p in ser][-16:]
+        ax.plot(range(len(xs)), ys, marker="o", markersize=3,
+                color=BUCKET_COLORS.get(b, "#888"), label="{} ({})".format(b, bk["state"]))
+    ax.axhline(0, color="#9b1c1c", linewidth=1.0, linestyle="--")
+    ax.set_ylabel("TTM YoY capex growth (%)")
+    ax.legend(fontsize=8, frameon=False)
+    ticks = None
+    for b, bk in sorted(snap["buckets"].items()):
+        ser = bk.get("yoy_series") or []
+        if len(ser) >= 2:
+            ticks = [p["q"] for p in ser][-16:]
+            break
+    if ticks:
+        ax.set_xticks(range(len(ticks)))
+        ax.set_xticklabels(ticks, rotation=60, fontsize=7)
+    t = snap["total"]
+    caption = ("Total panel: {} at {:+.1f}% TTM YoY over {} matched members. "
+               "Dashed line is zero growth — below it is CONTRACTING, the only "
+               "level-based state. Bands stamped {}.").format(
+        t["state"], 100 * (t.get("latest_yoy") or 0), t.get("member_count"),
+        snap.get("bands_measured_on"))
+    return _finish(fig, ax, "Capex phase — per-bucket TTM YoY", caption,
+                   os.path.join(outdir, "hayes_panel.png"))
+
+
+def render_all(views, comp, outdir=None, snap=None):
     outdir = outdir or config.artifact_path("", sub="charts")
     os.makedirs(outdir, exist_ok=True)
     paths = [chart_bucket_capex(comp, outdir),
              chart_divergence(views, outdir),
              chart_commitments(views, outdir)]
+    if snap:
+        paths.insert(0, chart_hayes_panel(snap, outdir))
     pdf = build_pdf(paths, os.path.join(outdir, "cd2_thesis_layer.pdf"))
     return paths, pdf

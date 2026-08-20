@@ -27,7 +27,7 @@ import json
 import time
 
 from . import (charts, config, divergence, edgar, facts_api, freshness,
-               identity, storage, universe)
+               identity, phases, snapshot, storage, trend, universe)
 
 WATERMARK_PREFIX = "scan:"
 
@@ -170,11 +170,33 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         if write_watermark(con, c.cik, c.newest_filing, now_unix=started):
             advanced.append(c.ticker)
 
+    # The snapshot is the single published view-model — dashboard, PDF and
+    # alerts all read it and none recomputes (P4).
+    indexed = _indexed_all(roster, http, facts_by_cik)
+    snap = snapshot.build(roster, indexed, now_unix=started)
+    prior = {r[0] for r in con.execute("SELECT event_key FROM phase_events")}
+    first_run = not prior
+    alerts = snapshot.alert_lines(snap, prior_keys=prior)
+    # Record EVERY transition the snapshot knows about — issuer, bucket AND
+    # total-panel. Recording only issuer transitions would leave aggregate ones
+    # permanently absent from phase_events, so they would re-alert on every scan
+    # forever.
+    all_trans = [phases.Transition(x["series_key"], x["quarter"], x["from_state"],
+                                   x["to_state"], x["yoy"], x["delta"])
+                 for x in snap["transitions"]]
+    phases.record_transitions(con, all_trans, now_unix=started)
+    snapshot.save(con, snap)
+    if first_run:
+        # A first run rediscovers the entire history at once. That is a backfill,
+        # not news — it is recorded so later runs are quiet, and reported as a
+        # count rather than blasted into the alert bar.
+        alerts = []
+
     artifacts = False
     if render and views:
-        all_views = _all_views(con, roster, http, facts_by_cik)
+        all_views = [v for v in (_view_of(roster, indexed, c.cik) for c in checks) if v]
         comp = divergence.composition(all_views)
-        charts.render_all(all_views, comp, outdir=outdir)
+        charts.render_all(all_views, comp, outdir=outdir, snap=snap)
         artifacts = True
 
     return {
@@ -185,10 +207,37 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         "watermarks_advanced": advanced,
         "errors": errors,
         "artifacts_written": artifacts,
+        "alerts": alerts,
+        "transitions_recorded": len(all_trans),
+        "first_run_backfill": first_run,
+        "phase_states": {k: v["state"] for k, v in snap["issuers"].items()},
         "summary": "{} of {} issuers had new filings: {}".format(
             len(affected), len(checks), ", ".join(c.ticker for c in affected)),
         "started_unix": started,
     }
+
+
+def _indexed_all(roster, http, facts_by_cik):
+    """Indexed facts for every roster member — the snapshot needs the whole panel."""
+    out = {}
+    for cik in roster:
+        try:
+            doc = (facts_by_cik or {}).get(cik) or edgar.fetch_companyfacts(cik, http)
+            out[cik] = facts_api.index_facts(doc)
+        except Exception:
+            continue
+    return out
+
+
+def _view_of(roster, indexed, cik):
+    e = roster.get(cik)
+    ix = indexed.get(cik)
+    if not e or ix is None:
+        return None
+    try:
+        return divergence.build_issuer_view(e, ix)
+    except Exception:
+        return None
 
 
 def _all_views(con, roster, http, facts_by_cik):
@@ -210,6 +259,14 @@ def _all_views(con, roster, http, facts_by_cik):
 def format_summary(result):
     """One line for the nightly log. Loud on error, quiet on a no-op."""
     base = "[capex-scan] {}: {}".format(result["outcome"], result["summary"])
+    if result.get("first_run_backfill"):
+        base += " | first run: {} transitions backfilled, none alerted".format(
+            result.get("transitions_recorded", 0))
+    elif result.get("alerts"):
+        base += " | TRANSITIONS: {}".format("; ".join(
+            "{} {} {}->{} ({})".format(a["series_key"], a["quarter"], a["from_state"],
+                                       a["to_state"], a["reason"])
+            for a in result["alerts"][:6]))
     if result.get("errors"):
         base += " | ERRORS: {}".format("; ".join("{} {}".format(t, d) for t, d in result["errors"]))
     return base

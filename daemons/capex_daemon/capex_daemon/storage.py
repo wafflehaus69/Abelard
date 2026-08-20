@@ -132,6 +132,32 @@ CREATE TABLE IF NOT EXISTS tier_events(
     PRIMARY KEY (cik, observed_unix)
 );
 
+-- Phase transitions. Keyed on a CONTENT-derived event key (series + quarter +
+-- state pair), never on run time, so the same transition rediscovered by a
+-- later scan does not duplicate (E12).
+CREATE TABLE IF NOT EXISTS phase_events(
+    event_key TEXT PRIMARY KEY,
+    series_key TEXT NOT NULL,
+    quarter TEXT NOT NULL,
+    from_state TEXT,
+    to_state TEXT NOT NULL,
+    yoy REAL,
+    delta REAL,
+    observed_unix INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_phase_events_series ON phase_events(series_key, quarter);
+
+-- Composition events: a member entering or leaving a bucket-sum. Published
+-- BESIDE the trend, never blended into it (P3).
+CREATE TABLE IF NOT EXISTS composition_events(
+    event_key TEXT PRIMARY KEY,
+    bucket TEXT NOT NULL,
+    quarter TEXT NOT NULL,
+    ticker TEXT NOT NULL,
+    change TEXT NOT NULL,
+    observed_unix INTEGER
+);
+
 -- Watermarks advance only on success-with-items (E12).
 CREATE TABLE IF NOT EXISTS watermarks(
     key TEXT PRIMARY KEY,
