@@ -164,3 +164,27 @@ def test_api_key_absence_fails_loud(monkeypatch) -> None:
     with pytest.raises(config.ConfigError):
         config.anthropic_api_key(required=True)
     assert config.anthropic_api_key(required=False) is None
+
+
+# ---------------------------------------------------------------------------
+# Contention staleness: graduated constants (SC-S4)
+# ---------------------------------------------------------------------------
+
+def test_graduated_staleness_thresholds_are_exactly_the_measured_three() -> None:
+    """Three sources graduated across two independent 72h intervals. No others."""
+    assert config.CONTENTION_STALENESS_HOURS == {
+        "superteam_earn": 24, "zindi": 168, "questbook": 336,
+    }
+
+
+def test_unmeasured_sources_report_absence_not_a_default() -> None:
+    """None means UNMEASURED. A defaulted threshold would be indistinguishable
+    from a measured one once it is in the table."""
+    for source in ("opire", "giveth_qf", "yeswehack", "sherlock", "dework"):
+        assert config.contention_staleness_hours(source) is None
+
+
+def test_graduated_sources_return_their_threshold() -> None:
+    assert config.contention_staleness_hours("superteam_earn") == 24
+    assert config.contention_staleness_hours("zindi") == 168
+    assert config.contention_staleness_hours("questbook") == 336
