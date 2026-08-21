@@ -29,7 +29,8 @@ from typing import Any
 
 from .. import config, models
 from ..fetch import get_text
-from .base import AdapterResult, error_result, parse_amount, parse_currency, strip_html
+from .base import (AdapterResult, error_result, parse_amount, parse_currency,
+                   parse_monetary, strip_html)
 
 _NEXT_DATA_RE = re.compile(
     r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.S
@@ -215,7 +216,7 @@ class EfEspAdapter:
                         category_source="structured",
                         counterparty="Ethereum Foundation",
                         payout_raw=strip_html(description, limit=200),
-                        payout_usd_low=parse_amount(description),
+                        payout_usd_low=parse_monetary(description),
                         payout_currency=parse_currency(description, "USD"),
                         payout_kind=models.UNSTATED,
                         payout_basis=models.PROGRAM_POOL,
@@ -272,7 +273,7 @@ class ArbitrumGrantsAdapter:
             title = tail.split(".")[0][:100].strip() if tail else ""
             if not title or len(title) < 6:
                 continue
-            amount = parse_amount(tail)
+            amount = parse_monetary(tail)
             currency = parse_currency(tail, "USD")
             items.append(
                 models.RawItem(
