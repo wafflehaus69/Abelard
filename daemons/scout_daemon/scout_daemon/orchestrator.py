@@ -175,12 +175,48 @@ def _classify_and_persist(
             chunk = ambiguous[start : start + batch_size]
             chunk_items = [c[0] for c in chunk]
             chunk_keys = [c[1] for c in chunk]
-            try:
-                verdicts, chunk_cost = classify.classify_batch(
-                    chunk_items, chunk_keys, logger=log
-                )
-                llm_verdicts.update(verdicts)
-            except Exception as exc:  # noqa: BLE001 -- orchestrator owns failure
+            # RETRY ONCE ON TRANSPORT FAILURE. Measured 2026-08-19..21: 2 of 5
+            # consecutive classify calls failed on first attempt, every one a
+            # truncated stream --
+            #   RemoteProtocolError('peer closed connection without sending
+            #   complete message body (incomplete chunked read)')
+            # -- on a ~12k-output-token generation. Each failure degraded a
+            # whole scan to YELLOW-with-the-failure-as-reason, which is safe but
+            # wastes the fetch and, during measurement work, silently produced
+            # scans with no judgments in them.
+            #
+            # A retry is legitimate here ONLY because the failure is a dropped
+            # transport, not a rejected request: no verdict was returned, so
+            # nothing is being overwritten or double-counted. A
+            # ClassificationError is NOT retried -- that means the model
+            # answered and the answer was unusable, and asking again would just
+            # buy a second unusable answer at full price.
+            #
+            # The existing loud-degrade path stays as the fallback: one retry,
+            # then degrade exactly as before. This narrows a window; it does not
+            # replace the guarantee.
+            exc = None
+            for attempt in (1, 2):
+                try:
+                    verdicts, chunk_cost = classify.classify_batch(
+                        chunk_items, chunk_keys, logger=log
+                    )
+                    llm_verdicts.update(verdicts)
+                    exc = None
+                    break
+                except ClassificationError as unusable:
+                    exc = unusable
+                    break                      # answered badly; retrying buys nothing
+                except Exception as transport:  # noqa: BLE001
+                    exc = transport
+                    if attempt == 1:
+                        cost.transport_retries += 1
+                        log.warning(
+                            "classification transport failure, retrying once: %r",
+                            transport,
+                        )
+                        continue
+            if exc is not None:
                 # Deliberately broad. A transport failure from the API (an
                 # `APITimeoutError` on a long generation, a 529, a dropped
                 # connection) is not a ClassificationError, and on 2026-08-11
@@ -189,8 +225,6 @@ def _classify_and_persist(
                 # degrades to YELLOW-with-the-failure-as-reason and the scan
                 # continues. The degradation direction is always safe --
                 # `resolve()` has no path from a failure to GREEN.
-                if not isinstance(exc, ClassificationError):
-                    log.error("classification transport failure: %r", exc)
                 # Fail-loud, bounded blast radius: this chunk degrades to
                 # YELLOW-with-the-failure-as-reason via resolve(). It does not
                 # take the scan down and it never silently becomes GREEN.
@@ -214,6 +248,7 @@ def _classify_and_persist(
         cache_read_tokens=cost.cache_read_tokens,
         cache_creation_tokens=cost.cache_creation_tokens,
         cost_usd=cost.cost_usd,
+        transport_retries=cost.transport_retries,
         items_classified=cost.items_classified,
     )
     report.cost = cost

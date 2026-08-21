@@ -184,6 +184,7 @@ CREATE TABLE IF NOT EXISTS scan_cost (
     cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd              REAL NOT NULL DEFAULT 0.0,
     items_classified      INTEGER NOT NULL DEFAULT 0,
+    transport_retries     INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (scan_id, recorded_unix)
 );
 
@@ -278,6 +279,7 @@ def record_cost(
     cache_creation_tokens: int,
     cost_usd: float,
     items_classified: int,
+    transport_retries: int = 0,
 ) -> None:
     """Persist cost telemetry.
 
@@ -287,11 +289,12 @@ def record_cost(
     conn.execute(
         "INSERT OR REPLACE INTO scan_cost(scan_id, recorded_unix, model, llm_calls,"
         " input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,"
-        " cost_usd, items_classified) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        " cost_usd, items_classified, transport_retries)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         (
             scan_id, int(time.time()), model, llm_calls, input_tokens,
             output_tokens, cache_read_tokens, cache_creation_tokens,
-            cost_usd, items_classified,
+            cost_usd, items_classified, transport_retries,
         ),
     )
     conn.commit()
