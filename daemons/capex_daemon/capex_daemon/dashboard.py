@@ -22,7 +22,7 @@ import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import config, phases, snapshot, trend
+from . import config, phases, snapshot, svgcharts, trend
 
 PORT = 8788
 
@@ -52,11 +52,15 @@ td.num{text-align:right}
 .note{color:#666;font-size:12px;margin:6px 0 14px;max-width:900px}
 .warn{background:#fff4f4;border-left:3px solid #9b1c1c;padding:8px 12px;margin:10px 0;font-size:13px}
 .spark{font-family:ui-monospace,monospace;letter-spacing:-1px;color:#444}
+.hero{margin:4px 0 14px}
+svg{display:block;max-width:100%;margin:0 0 14px}
+.chartnote{color:#888;font-size:11px;margin:-8px 0 16px}
 [title]{cursor:help;border-bottom:1px dotted #bbb}
 """
 
-VIEWS = [("/", "Hayes panel"), ("/phases", "Phase board"), ("/divergence", "Divergence"),
-         ("/buckets", "Bucket drilldowns"), ("/commitments", "Forward commitments")]
+VIEWS = [("/", "The aggregate"), ("/hayes", "Hayes panel"), ("/phases", "Phase board"),
+         ("/divergence", "Divergence"), ("/buckets", "Bucket drilldowns"),
+         ("/commitments", "Forward commitments")]
 
 
 def _esc(s):
@@ -105,6 +109,23 @@ def _page(title, active, body):
             "<main>{body}</main>").format(t=_esc(title), css=CSS, nav=nav, body=body)
 
 
+def _bucket_num(bk, key, fmt):
+    """A bucket figure, or a withheld marker when the sum is not a sum.
+
+    CD-PH1 caught the REIT bucket publishing +56.7% off ONE member — EQIX
+    wearing a bucket label — and added the membership floor. The floor set the
+    STATE, but the TTM and YoY cells kept printing the number anyway, which is
+    the same defect one column to the right. A figure that is not a bucket
+    figure does not get shown as one.
+    """
+    if bk.get("state") == trend.STATE_INSUFFICIENT_MEMBERSHIP:
+        return ("<span title='withheld: {} of {} members required — this would be "
+                "{} own number wearing a bucket label'>—</span>".format(
+                    bk.get("member_count"), bk.get("min_members"),
+                    _esc(", ".join(bk.get("membership") or []) + "&#39;s")))
+    return fmt(bk.get(key))
+
+
 def _provenance(iss):
     cov = ", ".join(iss.get("coverage") or []) or "OK"
     return ("bucket={} | band={}pp | state entered {} ({} quarters) | "
@@ -113,15 +134,159 @@ def _provenance(iss):
         iss.get("quarters_in_state") or 0, cov, len(iss.get("quarters") or []))
 
 
+def _commitments_chart(snap, title, top=8):
+    """Per-issuer commitment stocks. The sum is refused; the series are not."""
+    ser = {}
+    for tick, iss in (snap.get("issuers") or {}).items():
+        pts = [(p["q"], p["value"]) for p in (iss["commitments"].get("points_cq") or [])]
+        if len(pts) >= 2:
+            ser[tick] = pts
+    ser = dict(sorted(ser.items(), key=lambda kv: -kv[1][-1][1])[:top])
+    return svgcharts.multi_line_chart(
+        ser, title, height=320,
+        note="dashed = gaps in disclosure, not flat quarters")
+
+
+def _commitments_refusal(snap):
+    cp = (snap.get("panel") or {}).get("commitments_panel") or {}
+    if not cp.get("status", "").startswith("REFUSED"):
+        return ""
+    return ("<div class='warn'><b>Panel commitment total: {}.</b> {}. The per-issuer "
+            "series above are unaffected — what fails is <i>adding</i> them, not "
+            "observing them.</div>".format(_esc(cp["status"]), _esc(cp["detail"])))
+
+
+# ---------------- view 0: the aggregate ----------------
+
+def view_aggregate(snap):
+    """One chart, the front page. Everything else is a drilldown from here."""
+    t = snap["total"]
+    panel = snap.get("panel") or {}
+    out = ["<div class='hero'>", svgcharts.composite(snap), "</div>"]
+
+    br = (panel.get("breadth_series") or [])
+    latest_br = br[-1] if br else {}
+    net = latest_br.get("net_direction", 0)
+    cap = ((panel.get("constant") or {}).get("capex") or {})
+    ic = ((panel.get("constant") or {}).get("issuance") or {})
+    out.append(
+        "<p class='note'><b>Reading it.</b> The heavy black line is panel "
+        "trailing-twelve-month capex, drawn on the phase state the classifier assigned it "
+        "(shaded behind). The thin lines are the bucket sums. The two orange lines are the "
+        "<b>jaws</b>: capex and credit issuance for the <i>same</i> names over the "
+        "<i>same</i> window, solid and dashed. Everything is in <b>true dollars on a log "
+        "axis</b> — nothing is rescaled to fit, so a steeper line is genuinely growing "
+        "faster and the jaws open by slope rather than by any factor a reader has to divide "
+        "back out. The strip along the bottom is breadth: how many member names are "
+        "turning, which the dollar-weighted line cannot show.</p>")
+    out.append(
+        "<p class='note'><b>Why these names.</b> Every line here is a <b>level</b>, and a "
+        "level summed over changing membership shows arrivals as growth — the panel's "
+        "matched membership runs 1 to 12 names across its 66 quarters. So each line holds "
+        "its membership <b>constant</b> across the whole window, and the window chosen is "
+        "the longest one whose members still cover {}% of the dollars reported at its end. "
+        "Capex: <b>{}</b> ({}). Credit, and the jaws: <b>{}</b> ({}). "
+        "The YoY charts on the other views are immune to this and use the full matched "
+        "membership.</p>".format(
+            int(100 * trend.COVERAGE_FLOOR),
+            ", ".join(cap.get("members") or []) or "—",
+            "{:.1f}% of reported dollars".format(100 * cap.get("coverage", 0)),
+            ", ".join(ic.get("members") or []) or "—",
+            "{:.1f}%".format(100 * ic.get("coverage", 0))))
+
+    lag = cap.get("lagging") or []
+    if lag:
+        out.append(
+            "<div class='warn'><b>Behind on filing, so absent from the last point:</b> "
+            "{}. These are not contractions — the issuer has not filed the quarter yet. "
+            "{} alone is {} of last-reported capex.</div>".format(
+                ", ".join("{} (last {}, {})".format(
+                    _esc(x["ticker"]), _esc(x["last_quarter"]), _money(x["last_value"]))
+                    for x in sorted(lag, key=lambda z: -z["last_value"])[:6]),
+                _esc(max(lag, key=lambda z: z["last_value"])["ticker"]),
+                _money(max(lag, key=lambda z: z["last_value"])["last_value"])))
+
+    if net <= 0 and t["state"] in (phases.STATE_ACCELERATING, phases.STATE_PLATEAU):
+        out.append("<div class='warn'><b>Breadth disagrees with the level.</b> The panel is "
+                   "{} while breadth runs net {:+d} — the aggregate is being carried by its "
+                   "largest members while the majority of names turn. Both readings are "
+                   "published because neither is the whole answer.</div>".format(
+                       _esc(t["state"]), net))
+
+    out.append("<table><tr><th>Series</th><th>State</th><th class='num'>TTM</th>"
+               "<th class='num'>TTM YoY</th><th class='num'>Members</th>"
+               "<th class='num'>Band</th></tr>")
+    out.append("<tr><td><b>TOTAL PANEL</b></td><td>{}</td><td class='num'>{}</td>"
+               "<td class='num'>{}</td><td class='num' title='{}'>{}</td>"
+               "<td class='num'>{}pp</td></tr>".format(
+                   _pill(t["state"]), _money(t.get("ttm")), _pct(t.get("latest_yoy")),
+                   _esc("matched: " + ", ".join(t.get("membership") or [])),
+                   t.get("member_count"), t.get("band")))
+    for b, bk in sorted(snap["buckets"].items()):
+        out.append("<tr><td>{}</td><td>{}</td><td class='num'>{}</td><td class='num'>{}</td>"
+                   "<td class='num' title='{}'>{}</td><td class='num'>{}pp</td></tr>".format(
+                       _esc(b), _pill(bk["state"]),
+                       _bucket_num(bk, "ttm", _money),
+                       _bucket_num(bk, "latest_yoy", _pct),
+                       _esc("matched: " + ", ".join(bk.get("membership") or [])),
+                       bk.get("member_count"), bk.get("band")))
+    iss = panel.get("issuance_ttm") or []
+    comm = panel.get("commitments") or []
+    if iss:
+        out.append("<tr><td>credit issuance</td><td>—</td><td class='num'>{}</td>"
+                   "<td class='num'>—</td><td class='num' title='{}'>{}</td>"
+                   "<td class='num'>—</td></tr>".format(
+                       _money(iss[-1]["value"]),
+                       _esc("contributing: " + ", ".join(
+                           panel.get("issuance_membership_latest") or [])),
+                       iss[-1]["members"]))
+    if comm:
+        out.append("<tr><td>forward commitments</td><td>—</td><td class='num'>{}</td>"
+                   "<td class='num'>—</td><td class='num' title='{}'>{}</td>"
+                   "<td class='num'>—</td></tr>".format(
+                       _money(comm[-1]["value"]),
+                       _esc("disclosing: " + ", ".join(
+                           panel.get("commitments_membership_latest") or [])),
+                       comm[-1]["members"]))
+    out.append("</table>")
+
+    for b, bk in sorted(snap["buckets"].items()):
+        if bk["state"] == trend.STATE_INSUFFICIENT_MEMBERSHIP:
+            out.append("<div class='warn'><b>{}</b>: matched membership fell to {} member(s), "
+                       "below the {}-member floor — no state published.</div>".format(
+                           _esc(b), bk.get("member_count"), bk.get("min_members")))
+    return _page("The aggregate", "/", "".join(out))
+
+
 # ---------------- view 1: Hayes panel ----------------
 
 def view_hayes(snap):
     out = ["<h2>Hayes panel — capex, credit, forward commitments</h2>",
            "<p class='note'>The falsifier as three co-plotted legs. The claim under test is about "
            "their <b>divergence</b>, so they are shown together and never collapsed into one number. "
-           "Dead-bands stamped {}.</p>".format(_esc(snap.get("bands_measured_on")))]
+           "Dead-bands stamped {}. <b>Unlike the front page, nothing here is rebased</b> — these "
+           "are true dollar magnitudes, one axis each, so the legs can be sized against each "
+           "other rather than only shaped against each other.</p>".format(
+               _esc(snap.get("bands_measured_on")))]
 
     t = snap["total"]
+    panel = snap.get("panel") or {}
+    out.append(svgcharts.level_chart(
+        [(r["q"], r["ttm"], "{} matched members".format(r["members"]))
+         for r in (t.get("ttm_series") or [])],
+        "Leg 1 — panel TTM capex (phase-shaded)", svgcharts.SERIES_COLORS["total"],
+        observations=t.get("observations")))
+    out.append(svgcharts.level_chart(
+        [(r["q"], r["value"], "{} contributing issuers".format(r["members"]))
+         for r in (panel.get("issuance_ttm") or [])],
+        "Leg 2 — panel TTM credit issuance", svgcharts.SERIES_COLORS["issuance"]))
+    out.append(_commitments_chart(snap, "Leg 3 — forward commitment stock "
+                                        "(contracted, unspent), per issuer"))
+    out.append("<p class='chartnote'>Shading on leg 1 only: the classifier runs on the capex "
+               "series. Credit and commitments carry no phase state and are not given the "
+               "appearance of one. Leg 3 is drawn per issuer because the panel sum is "
+               "refused — see below.</p>")
+    out.append(_commitments_refusal(snap))
     out.append("<table><tr><th>Series</th><th>State</th><th class='num'>TTM</th>"
                "<th class='num'>TTM YoY</th><th class='num'>Members</th><th>Breadth</th></tr>")
     out.append("<tr><td><b>TOTAL PANEL</b></td><td>{}</td><td class='num'>{}</td>"
@@ -135,8 +300,9 @@ def view_hayes(snap):
             br.get("CONTRACTING", 0), br.get("net_direction", 0))
         out.append("<tr><td>{}</td><td>{}</td><td class='num'>{}</td><td class='num'>{}</td>"
                    "<td class='num' title='{}'>{}</td><td>{}</td></tr>".format(
-                       _esc(b), _pill(bk["state"]), _money(bk.get("ttm")),
-                       _pct(bk.get("latest_yoy")),
+                       _esc(b), _pill(bk["state"]),
+                       _bucket_num(bk, "ttm", _money),
+                       _bucket_num(bk, "latest_yoy", _pct),
                        _esc("matched membership: " + ", ".join(bk.get("membership") or [])),
                        bk.get("member_count"), breadth))
     out.append("</table>")
@@ -169,7 +335,7 @@ def view_hayes(snap):
                 _money(comm["latest"]),
                 _spark([q["value"] for q in iss["quarters"]])))
     out.append("</table>")
-    return _page("Hayes panel", "/", "".join(out))
+    return _page("Hayes panel", "/hayes", "".join(out))
 
 
 # ---------------- view 2: phase board ----------------
@@ -181,6 +347,18 @@ def view_phases(snap):
            "flip it — read <i>direction</i> beside <i>state</i>. SOFTENING is a flag on the first "
            "out-of-band decline, never a state. CONTRACTING is the only level-based state "
            "(TTM YoY &lt; 0).</p>"]
+
+    rows, quarters = svgcharts.issuer_rows_for_grid(snap)
+    out.append(svgcharts.state_grid(rows, quarters))
+    out.append("<p class='chartnote'>Every classified series, every quarter it classifies. "
+               "A blank cell is INSUFFICIENT-HISTORY, deliberately left uncoloured so that "
+               "absence of a state does not read as a fifth state. Hover any cell for the "
+               "series, quarter and state.</p>")
+
+    out.append(svgcharts.yoy_chart(
+        snap["total"].get("yoy_series"), snap["total"].get("observations"),
+        "TOTAL PANEL — TTM YoY on its phase state", svgcharts.SERIES_COLORS["total"],
+        band=snap["total"].get("band")))
 
     out.append("<table><tr><th>Series</th><th>State</th><th class='num'>Qtrs in state</th>"
                "<th>Entered</th><th class='num'>TTM YoY</th><th class='num'>Δ</th>"
@@ -202,7 +380,8 @@ def view_phases(snap):
                    "<td class='num'>{}</td><td class='num'>{}</td><td>{}</td>"
                    "<td class='num'>{}pp</td></tr>".format(
                        _esc(b), _pill(bk["state"]), last.get("quarters_in_state", "—"),
-                       _esc(last.get("entered") or "—"), _pct(bk.get("latest_yoy")),
+                       _esc(last.get("entered") or "—"),
+                       _bucket_num(bk, "latest_yoy", _pct),
                        "{:+.1f}pp".format(last["delta"]) if last.get("delta") is not None else "—",
                        _esc(last.get("direction") or "—"), bk.get("band")))
     out.append("</table>")
@@ -250,8 +429,19 @@ def view_divergence(snap):
     out = ["<h2>Credit-to-capex divergence</h2>",
            "<p class='note'>TTM issuance over TTM capex. <b>TTM only</b> — measured quarterly "
            "ratios swing 0% to 148% on issuance lumpiness. A withheld ratio shows its coverage "
-           "status and never a zero.</p>",
-           "<table><tr><th>Issuer</th><th>Bucket</th><th class='num'>TTM capex</th>"
+           "status and never a zero.</p>"]
+    ratio = (snap.get("panel") or {}).get("credit_ratio_series") or []
+    out.append(svgcharts.level_chart(
+        [(r["q"], r["ratio"], "{} contributing issuers".format(r["members"]))
+         for r in ratio],
+        "Panel credit-to-capex ratio, TTM over TTM", svgcharts.SERIES_COLORS["issuance"],
+        observations=snap["total"].get("observations"),
+        fmt=lambda v: "{:.0f}%".format(100 * v)))
+    out.append("<p class='chartnote'>Shaded on the panel's <i>capex</i> phase state: the "
+               "question this chart answers is whether credit is doing more of the work as "
+               "the capex phase turns, so the phase belongs behind it. The ratio itself is "
+               "published in the snapshot, not divided here.</p>")
+    out += ["<table><tr><th>Issuer</th><th>Bucket</th><th class='num'>TTM capex</th>"
            "<th class='num'>TTM issuance</th><th class='num'>credit/capex</th>"
            "<th>Coverage</th></tr>"]
     for tick, iss in sorted(snap["issuers"].items(),
@@ -277,10 +467,21 @@ def view_buckets(snap):
     for b, bk in sorted(snap["buckets"].items()):
         br = bk.get("breadth") or {}
         out.append("<h2>{} &nbsp; {}</h2>".format(_esc(b), _pill(bk["state"])))
+        out.append(svgcharts.yoy_chart(
+            bk.get("yoy_series"), bk.get("observations"),
+            "{} — bucket-sum TTM YoY, matched membership".format(b),
+            svgcharts.SERIES_COLORS.get(b, "#555"), height=210, band=bk.get("band")))
+        out.append(svgcharts.level_chart(
+            [(r["q"], r["ttm"], "{} matched members".format(r["members"]))
+             for r in (bk.get("ttm_series") or [])],
+            "{} — bucket-sum TTM level".format(b),
+            svgcharts.SERIES_COLORS.get(b, "#555"), height=190,
+            observations=bk.get("observations")))
         out.append("<p class='note'>TTM <b>{}</b> · YoY <b>{}</b> · members {} · "
                    "top-2 concentration <b>{}</b> · band {}pp<br>Breadth: ACC {} · PLAT {} · "
                    "DEC {} · CONTR {} · net {:+d}</p>".format(
-                       _money(bk.get("ttm")), _pct(bk.get("latest_yoy")),
+                       _bucket_num(bk, "ttm", _money),
+                       _bucket_num(bk, "latest_yoy", _pct),
                        bk.get("member_count"),
                        "{:.0f}%".format(100 * bk["top2_share"]) if bk.get("top2_share") else "—",
                        bk.get("band"), br.get("ACCELERATING", 0), br.get("PLATEAU", 0),
@@ -314,8 +515,14 @@ def view_commitments(snap):
     out = ["<h2>Forward commitment stock</h2>",
            "<p class='note'>Contracted but unspent. Leads reported capex. Issuers that disclose "
            "a figure without XBRL-tagging it publish <b>UNCOVERED-UNTAGGED</b> rather than a "
-           "zero.</p>",
-           "<table><tr><th>Issuer</th><th>Bucket</th><th>Status</th>"
+           "zero.</p>"]
+    out.append(_commitments_chart(snap, "Forward commitment stock, per issuer", top=10))
+    out.append("<p class='chartnote'>A <b>stock</b>, not a flow, and disclosed on the "
+               "issuer's own schedule rather than every quarter — so these are plotted "
+               "separately and never summed. A dashed segment spans quarters with no "
+               "disclosure; it is not a flat stretch.</p>")
+    out.append(_commitments_refusal(snap))
+    out += ["<table><tr><th>Issuer</th><th>Bucket</th><th>Status</th>"
            "<th class='num'>Latest</th><th>Concept</th><th>Detail</th></tr>"]
     rows = sorted(snap["issuers"].items(),
                   key=lambda kv: -((kv[1]["commitments"] or {}).get("latest") or -1))
@@ -331,8 +538,9 @@ def view_commitments(snap):
     return _page("Forward commitments", "/commitments", "".join(out))
 
 
-ROUTES = {"/": view_hayes, "/phases": view_phases, "/divergence": view_divergence,
-          "/buckets": view_buckets, "/commitments": view_commitments}
+ROUTES = {"/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
+          "/divergence": view_divergence, "/buckets": view_buckets,
+          "/commitments": view_commitments}
 
 
 def render(path, snap):

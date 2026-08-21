@@ -18,7 +18,7 @@ deploys up to $9.15B a quarter through leases, so the two series answer
 different questions and are published together rather than one standing in for
 the other.
 """
-from . import commitments, facts_api, normalize, phases, tagmap
+from . import commitments, divergence, facts_api, normalize, phases, tagmap
 
 WINDOW = 4
 AGGREGATED_BUCKETS = ("hyperscaler", "builder", "reit")
@@ -94,6 +94,163 @@ def issuer_yoy(qmap):
     return out
 
 
+def _commitments_calendar(cik, indexed):
+    """{calendar_quarter: forward commitment stock} for one issuer, else None.
+
+    Only a covered series contributes. UNCOVERED-UNTAGGED issuers are absent
+    from the panel area rather than depressing it with a zero — the same rule
+    the commitments view already publishes per issuer.
+    """
+    cs = commitments.forward_commitments(cik, indexed)
+    if not cs or not cs.points:
+        return None
+    out = {}
+    for p in cs.points:
+        q, _off = normalize.calendar_align(p.period_end)
+        out[q] = p.value               # latest observation wins within a quarter
+    return out or None
+
+
+def matched_ttm_series(members):
+    """({quarter: ttm}, {quarter: [members]}) over a complete contiguous window.
+
+    The level companion to `bucket_trend`, which publishes only YoY. View 0 plots
+    LEVELS, so it needs the same matched-membership discipline applied one rung
+    lower: at each quarter, sum only those members holding a full contiguous
+    four-quarter window ending there. Membership is returned beside the number
+    for the same reason it is everywhere else — a level that moved because a name
+    arrived is not a level that moved.
+    """
+    quarters = sorted({q for m in members.values() for q in m}, key=_cq_sort)
+    ttm, membership = {}, {}
+    for i in range(WINDOW - 1, len(quarters)):
+        win = quarters[i - WINDOW + 1: i + 1]
+        if not _contiguous(win):
+            continue
+        common = sorted(t for t, m in members.items() if all(q in m for q in win))
+        if not common:
+            continue
+        ttm[quarters[i]] = sum(sum(members[t][q] for q in win) for t in common)
+        membership[quarters[i]] = common
+    return ttm, membership
+
+
+MIN_PANEL_QUARTERS = 6
+
+# A plotted level must cover essentially all of the dollars it claims to be
+# about. 0.95 is not a tuned parameter — the live frontier has a sharp knee:
+# reaching back past 2018Q2 drops Amazon and costs 35pp of coverage at once,
+# while stopping short of it buys 1.4pp for fifteen fewer quarters. Any floor
+# between roughly 0.66 and 0.98 selects the same window.
+COVERAGE_FLOOR = 0.95
+
+
+class ConstantPanel:
+    """A member set, a window, the summed level, and what it leaves out."""
+
+    def __init__(self, members, quarters, level, coverage, lagging):
+        self.members = members
+        self.quarters = quarters
+        self.level = level
+        self.coverage = coverage
+        self.lagging = lagging          # [(ticker, last_quarter, last_value)]
+
+    def __bool__(self):
+        return bool(self.members)
+
+    __nonzero__ = __bool__
+
+    def __repr__(self):
+        return "ConstantPanel({} names, {} quarters, {:.1%})".format(
+            len(self.members or []), len(self.quarters or []), self.coverage)
+
+
+def constant_membership_panel(member_maps, min_members=MIN_BUCKET_MEMBERS,
+                              min_quarters=MIN_PANEL_QUARTERS,
+                              coverage_floor=COVERAGE_FLOOR):
+    """Pick the (member set, trailing window) a LEVEL may honestly be drawn over.
+
+    Matched membership makes a *comparison* safe: both sides of a YoY are taken
+    over names present on both sides. It does not make a *level series* safe.
+    Measured on the live panel, total-panel matched membership runs 1 → 12
+    members across 66 quarters, so a plotted level would show a rise that is
+    substantially name arrival. The YoY charts are immune to this; the front
+    page plots levels, so it needs its own guard.
+
+    The guard: hold membership CONSTANT across the plotted window, and take the
+    LONGEST window whose members still cover `coverage_floor` of the dollars
+    reported at the window's end. Coverage first, history second — the panel
+    exists to measure capex dollars, so a long window that has lost a third of
+    them is the worse chart. Maximising members × quarters instead was tried and
+    selected a 44-quarter window that dropped Amazon and Meta.
+
+    `lagging` names — issuers reporting at some point but not through the window
+    end, i.e. behind on filing — are returned rather than silently dropped, so
+    the chart can say who is missing instead of implying nobody is.
+    """
+    quarters = sorted({q for m in member_maps.values() for q in m}, key=_cq_sort)
+    if not quarters:
+        return ConstantPanel(None, None, None, 0.0, [])
+    end = quarters[-1]
+    at_end = {t: m[end] for t, m in member_maps.items() if end in m}
+    denom = sum(abs(v) for v in at_end.values())
+
+    best = None
+    for i in range(len(quarters)):
+        win = quarters[i:]
+        if len(win) < min_quarters or not _contiguous(win):
+            continue
+        common = sorted(t for t, m in member_maps.items() if all(q in m for q in win))
+        if len(common) < min_members:
+            continue
+        cov = (sum(abs(at_end[t]) for t in common) / denom) if denom else 0.0
+        if cov + 1e-12 < coverage_floor:
+            continue
+        if best is None or len(win) > len(best[1]):        # longest qualifying
+            best = (common, win, cov)
+    if best is None:
+        return ConstantPanel(None, None, None, 0.0, [])
+    common, win, cov = best
+    lagging = sorted((t, max(m, key=_cq_sort), m[max(m, key=_cq_sort)])
+                     for t, m in member_maps.items()
+                     if t not in common and m and end not in m)
+    return ConstantPanel(common, win,
+                         {q: sum(member_maps[t][q] for t in common) for q in win},
+                         cov, lagging)
+
+
+def matched_stock_series(members):
+    """({quarter: stock}, {quarter: [members]}) for INSTANT quantities.
+
+    Forward commitments are a stock, not a flow, so no window is summed — the
+    value at a quarter is the sum over members observed at that quarter.
+    """
+    quarters = sorted({q for m in members.values() for q in m}, key=_cq_sort)
+    stock, membership = {}, {}
+    for q in quarters:
+        common = sorted(t for t, m in members.items() if q in m)
+        if common:
+            stock[q] = sum(members[t][q] for t in common)
+            membership[q] = common
+    return stock, membership
+
+
+def breadth_series(issuer_obs, tickers=None):
+    """{quarter: breadth} — the state census per quarter, not just the latest.
+
+    The breadth strip on View 0 needs history. `phases.breadth` counts a single
+    snapshot of states; this walks each issuer's observation history and takes
+    the census at every quarter any of them classify.
+    """
+    per_q = {}
+    for tick, obs in issuer_obs.items():
+        if tickers is not None and tick not in tickers:
+            continue
+        for o in obs:
+            per_q.setdefault(o.quarter, {})[tick] = o.state
+    return {q: phases.breadth(states) for q, states in per_q.items()}
+
+
 class BucketTrend:
     def __init__(self, bucket, yoy, membership, ttm, composition_events):
         self.bucket = bucket
@@ -153,6 +310,7 @@ def build(roster, indexed_by_cik, include_leases=False):
     """
     issuer_series, issuer_states, issuer_obs = {}, {}, {}
     bucket_members = {}
+    issuance_members, commitment_members = {}, {}
 
     for cik, entity in roster.items():
         indexed = indexed_by_cik.get(cik)
@@ -164,6 +322,12 @@ def build(roster, indexed_by_cik, include_leases=False):
         issuer_series[entity.ticker_display] = qmap
         if entity.bucket in AGGREGATED_BUCKETS:
             bucket_members.setdefault(entity.bucket, {})[entity.ticker_display] = qmap
+            imap = divergence.issuer_issuance_calendar_series(indexed)
+            if imap:
+                issuance_members[entity.ticker_display] = imap
+            cmap = _commitments_calendar(cik, indexed)
+            if cmap:
+                commitment_members[entity.ticker_display] = cmap
 
         yoy = issuer_yoy(qmap)
         band_class = "issuer:{}".format(entity.bucket)
@@ -208,6 +372,43 @@ def build(roster, indexed_by_cik, include_leases=False):
                  if t in bucket_members.get(bucket, {})}
         breadth_by_bucket[bucket] = phases.breadth(names)
 
+    # --- View 0 companions: levels, credit, commitments, breadth history ---
+    issuance_ttm, issuance_membership = matched_ttm_series(issuance_members)
+    commitments_stock, commitments_membership = matched_stock_series(commitment_members)
+    panel_breadth = breadth_series(issuer_obs, tickers=set(all_members))
+
+    # Constant-membership panels — the only basis on which a LEVEL is plotted.
+    const_capex = constant_membership_panel(
+        {t: ttm_by_quarter(m) for t, m in all_members.items()})
+    const_issuance = constant_membership_panel(
+        {t: ttm_by_quarter(m) for t, m in issuance_members.items()})
+    const_commitments = constant_membership_panel(commitment_members)
+
+    # THE JAWS must be a matched pair. The capex panel is chosen for capex
+    # coverage and the issuance panel for issuance coverage, and they do not
+    # land on the same names — 5 against 2, live. Rebasing one onto the other
+    # would draw a gap between DIFFERENT COMPANIES and call it a divergence.
+    # So the jaws are computed over the intersection: same names, same window,
+    # both legs, and the reader is told which names those are.
+    jaws_names = sorted(set(all_members) & set(issuance_members))
+    jaws_capex = jaws_issuance = None
+    if len(jaws_names) >= MIN_BUCKET_MEMBERS:
+        jc = {t: ttm_by_quarter(all_members[t]) for t in jaws_names}
+        ji = {t: ttm_by_quarter(issuance_members[t]) for t in jaws_names}
+        shared = {t: {q: v for q, v in jc[t].items() if q in ji[t]} for t in jaws_names}
+        cp = constant_membership_panel(shared)
+        if cp:
+            jaws_capex = cp
+            jaws_issuance = ConstantPanel(
+                cp.members, cp.quarters,
+                {q: sum(ji[t][q] for t in cp.members) for q in cp.quarters},
+                cp.coverage, [])
+    const_buckets = {}
+    for b, mem in bucket_members.items():
+        cp = constant_membership_panel({t: ttm_by_quarter(m) for t, m in mem.items()})
+        if cp:
+            const_buckets[b] = cp
+
     return {
         "issuer_series": issuer_series,
         "issuer_states": issuer_states,
@@ -219,4 +420,15 @@ def build(roster, indexed_by_cik, include_leases=False):
         "total_obs": total_obs,
         "total_state": total_state,
         "breadth": breadth_by_bucket,
+        "issuance_ttm": issuance_ttm,
+        "issuance_membership": issuance_membership,
+        "commitments_stock": commitments_stock,
+        "commitments_membership": commitments_membership,
+        "panel_breadth_series": panel_breadth,
+        "const_capex": const_capex,
+        "const_issuance": const_issuance,
+        "const_commitments": const_commitments,
+        "const_buckets": const_buckets,
+        "jaws_capex": jaws_capex,
+        "jaws_issuance": jaws_issuance,
     }

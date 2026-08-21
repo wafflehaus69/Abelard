@@ -72,20 +72,29 @@ the second, confirmation on the third.
 
 ## 3. Matched-membership guard — CRWV graduation backtest
 
-CoreWeave carries 9 quarters (2024Q1–2026Q1). Hyperscaler bucket-sum YoY computed with and without
-it:
+*(Corrected 2026-08-21. The first version of this section ran the backtest against the **hyperscaler**
+bucket because it was the longest clean series, and captioned it as such. CRWV is a **builder** — in
+`universe.csv`, in the loader, and at CD-1-SPEC line 337. The guard is the same; the bucket was mine
+to get right. Re-run below where CoreWeave actually sits.)*
+
+CoreWeave carries 9 calendar quarters of capex (2024Q1–2026Q1), which yields TTM from 2024Q4 and
+TTM **YoY** only from 2025Q4. Builder bucket-sum YoY computed with and without it:
 
 | quarter | without CRWV | with CRWV | result |
 |---|---|---|---|
-| 2025Q3 | +72.7% (n=5) | +72.7% (n=5) | **guard held** — CRWV excluded, no prior-year window |
-| 2025Q4 | +72.1% (n=5) | +70.2% (n=6) | legitimately included, both windows complete |
-| 2026Q1 | +78.0% (n=5) | +78.6% (n=6) | legitimately included |
-| 2026Q2 | +83.2% (n=4) | +83.2% (n=4) | **guard held** — CRWV series ends 2026Q1 |
+| 2025Q2 | +347.9% (n=6) | +347.9% (n=6) | **guard held** — no year-ago TTM window |
+| 2025Q3 | +353.3% (n=6) | +353.3% (n=6) | **guard held** — no year-ago TTM window |
+| 2025Q4 | +229.6% (n=7) | **+45.8%** (n=8) | legitimately included, both windows complete |
+| 2026Q1 | +232.4% (n=7) | **+122.1%** (n=8) | legitimately included |
+| 2026Q2 | +269.5% (n=7) | +269.5% (n=7) | **guard held** — CRWV series ends 2026Q1 |
 
-The demonstration is 2025Q3: CRWV **has data** for that quarter and is still excluded, because it
-lacks the year-ago window the comparison needs. When it does enter, the aggregate moves by under
-2pp — its real contribution, not its arrival. A naive sum would have booked CoreWeave's entire
-$16.6B as bucket growth.
+The demonstration is 2025Q2–Q3: CRWV **has quarterly data** for both and is still excluded, because a
+TTM YoY needs a complete window on *each* side and CoreWeave's history does not yet reach back far
+enough. The correct bucket makes the point harder than the hyperscaler version did — on entry the
+bucket sum falls from **+229.6% to +45.8%**, because CoreWeave is large in dollars ($16.60B TTM) and
+growing *slower* than the small builders it joins. That 184pp move is its real contribution. A naive
+sum would instead have booked its entire $16.6B arrival as bucket growth and printed a number in the
+wrong direction.
 
 ## 4. SNOW — the calibration ghost
 
@@ -176,5 +185,8 @@ shim touches only `serve()`. Reversible in minutes if ruled.
    in config: re-run `tools/measure_deadband.py` after two more filed quarters land panel-wide.
 3. **REIT bucket** — will stay `INSUFFICIENT-MEMBERSHIP` until DLR files its 2026Q2. A two-name
    bucket is one late filing away from unusable; worth deciding whether it should carry more names.
-4. **Charts are matplotlib PNGs**, not the interactive per-bucket co-plot with phase shading the
-   order sketches for view (1). The phase chart ships; interactive shading did not.
+4. ~~**Charts are matplotlib PNGs**, not the interactive per-bucket co-plot with phase shading the
+   order sketches for view (1). The phase chart ships; interactive shading did not.~~
+   **Closed by CD-PH2** — `svgcharts.py` renders every view as phase-shaded native SVG with
+   per-point provenance. The matplotlib pipeline in `charts.py` is untouched and still produces the
+   PNG artifacts and `cd2_thesis_layer.pdf`; whether it should now be retired is open (CD-PH2 §7).
