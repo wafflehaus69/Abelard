@@ -396,3 +396,42 @@ Corollary — this is invisible to every numerical check. Reconciliation,
 magnitude bounds and anchor gates all pass on both entities independently. Only
 the ownership relation exposes it, and that relation lives in the filing text,
 not in the facts.
+
+## E25 — A commit on a shared branch has no hold; holding is a worktree
+Ruled by Mando 2026-08-20; drafted by ClaudeCode from the originating incidents
+rather than by Abelard — reword to the ledger's voice if wanted. Closes the gap
+[E18] and [E20] left open: E18 protects the working TREE, E20 protects the FILE
+and the COMMIT, and neither protects a commit that has been made but
+deliberately not pushed.
+
+Incident, twice in one session. (1) `db81871` was committed and held for Mando's
+disk review. Minutes later a concurrent session ran `git push` on the shared
+branch, which publishes every ancestor, and the commit went to `origin/main`
+without its author's involvement. Git records no pusher identity in a plain
+clone, so it was not even attributable afterwards — only inferable from
+timestamps. (2) Later the same session ran `git switch` on the shared checkout
+while another workstream was mid-build on its own branch there. The commits
+survived on the branch and nothing was lost, but the working tree silently
+reverted and the next command failed on an import of a file that had been
+present a minute earlier.
+
+Rule: **"held for review" is not a state a shared branch can express.** Work
+that must not publish yet lives on its own branch in its own `git worktree` —
+never as unpushed commits on `main`, and never on a branch checked out in a tree
+another writer can switch. A commit reachable from a shared branch is
+publishable by anyone who pushes that branch, whether or not they know it is
+there.
+
+This needs no new mechanism: E18 already ruled worktree-per-workstream as
+standing. The gap existed only because the ruling was not practised — measured
+2026-08-16, `git worktree list` returned ONE entry across five active
+workstreams. Adoption closes the push gate as a side effect, because a push of
+`main` cannot carry commits that are not ancestors of `main`.
+
+Corollary — do not describe a commit as held without checking. Publication state
+is verified with `git merge-base --is-ancestor <sha> origin/main`, never assumed
+and never read from a truncated `git log` (per [E18]). A gate that depends on
+every other session choosing not to push is not a gate, and saying "held" when
+the mechanism is absent is worse than documenting that there is none.
+
+Operational detail in `HANDOFF_SHARED_CHECKOUT.md` §4-5.
