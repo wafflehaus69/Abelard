@@ -291,6 +291,46 @@ WIRE_SOURCES: tuple[Source, ...] = (
 
 SOURCES_BY_NAME = {s.name: s for s in WIRE_SOURCES}
 
+# ---------------------------------------------------------------------------
+# Contention staleness: how old a scraped contention count may be before a
+# re-scan is warranted. GRADUATED per pre-registration, not chosen.
+# ---------------------------------------------------------------------------
+# These are the only three sources that publish a contention count AND have now
+# been measured across TWO independent ~72h intervals. The graduation criteria
+# were fixed in writing before the second interval was observed:
+#
+#   source          interval 1 (08-11->08-14)   interval 2 (08-14->08-17)   criterion
+#   superteam_earn  57% moved, median +36.0%    69% moved, median +43.3%    high-mover,
+#                                                                           37-77% band
+#   zindi           32% moved, median  +0.2%    37% moved, median  +0.11%   median < 1%
+#   questbook        1% moved, median  +0.6%     0% moved, median   0.0%    <= ~5% moved
+#
+# All three reproduced their regime and graduated independently. The regimes are
+# genuinely different and a single global threshold would be wrong in two
+# directions at once: superteam's count is materially stale within a day, while
+# zindi moves constantly by amounts too small to reorder anything, and questbook
+# is static.
+#
+# EVERY OTHER SOURCE HAS NO THRESHOLD, AND THAT ABSENCE IS DELIBERATE. They
+# either publish no contention count or have never been measured across two
+# intervals. Absent is recorded as absent rather than defaulted to some middle
+# value, because a defaulted threshold is indistinguishable from a measured one
+# once it is in the table -- which is the failure E8 exists to prevent.
+CONTENTION_STALENESS_HOURS: dict[str, int] = {
+    "superteam_earn": 24,
+    "zindi": 7 * 24,
+    "questbook": 14 * 24,
+}
+
+
+def contention_staleness_hours(source: str) -> int | None:
+    """Threshold for `source`, or None when none has been measured.
+
+    None means UNMEASURED, not "never stale". Callers must handle it as an
+    absence and must not substitute a default.
+    """
+    return CONTENTION_STALENESS_HOURS.get(source)
+
 # Identifies this daemon to every surface it reads. A real contact string is a
 # courtesy that costs nothing and buys goodwill when a source operator notices
 # the traffic.
@@ -357,6 +397,8 @@ __all__ = [
     "Source",
     "WIRE_SOURCES",
     "SOURCES_BY_NAME",
+    "CONTENTION_STALENESS_HOURS",
+    "contention_staleness_hours",
     "fetching_halted",
     "ensure_state_home",
     "anthropic_api_key",

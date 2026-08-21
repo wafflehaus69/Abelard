@@ -47,7 +47,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
-from . import config
+from . import config, payout_check
 
 SEGMENT_GREEN = "GREEN"
 SEGMENT_GREEN_PROMOTED = "GREEN_PROMOTED"
@@ -212,6 +212,20 @@ def build_ranking(rows: list[dict], effective: dict) -> RankResult:
             # worth least" rather than "not measured".
             unranked.append(_with(entry, unranked_reason=UNRANKED_NO_PAYOUT))
             continue
+
+        # Payout integrity. A sort key the listing's own text contradicts is not
+        # a sort key. Flagged rows leave the ORDER, not the ledger -- the
+        # scraped field is untouched and the row stays visible with its reason.
+        if payout_check.is_flagged(
+            text=" ".join(str(r.get(k) or "") for k in ("title", "scope_text", "effort_note")),
+            payout_low=payout,
+            payout_high=r["payout_usd_high"],
+            raw_json=r.get("raw_json"),
+        ):
+            unranked.append(
+                _with(entry, unranked_reason=payout_check.UNRANKED_PAYOUT_UNVERIFIED)
+            )
+            continue
         buckets[segment].append(entry)
 
     ranked: dict[str, list[RankedRow]] = {}
@@ -244,7 +258,7 @@ def _with(row: RankedRow, **changes) -> RankedRow:
 _LOAD_SQL = """
 SELECT opportunity_id, source, title, legitimacy_class, mechanical_class,
        payout_usd_low, payout_usd_high, award_rate, award_rate_observed_unix,
-       contention
+       contention, scope_text, effort_note, raw_json
 FROM opportunities
 ORDER BY opportunity_id
 """

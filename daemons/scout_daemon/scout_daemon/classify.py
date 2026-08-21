@@ -659,6 +659,10 @@ class CostRecord:
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
     items_classified: int = 0
+    # Transport retries spent on this scan. Recorded because a scan that
+    # succeeded on the second attempt is NOT the same event as one that
+    # succeeded on the first, and only telemetry can tell them apart later.
+    transport_retries: int = 0
 
     @property
     def cost_usd(self) -> float:

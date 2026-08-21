@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from scout_daemon.sources import base
 from scout_daemon import state
 from abelard_common.dedupe import compute_dedupe_hash, normalize_text
 from scout_daemon.identity import compute_opportunity_id
@@ -210,3 +211,43 @@ def test_field_fit_matches_the_recon_gate() -> None:
     )
     assert complete.field_fit() is True
     assert RawItem(source="s", native_id="1", title="t").field_fit() is False
+
+
+# ---------------------------------------------------------------------------
+# parse_monetary: prose-safe payout extraction (SC-Q1 commit 2)
+# ---------------------------------------------------------------------------
+
+def test_magnitude_suffixes_multiply() -> None:
+    """The 10^6 error that put a $10 grant program in the ranked queue."""
+    assert base.parse_monetary("offers $10M in ARB over 12 months") == 10_000_000
+    assert base.parse_monetary("up to $250K per grant") == 250_000
+    assert base.parse_monetary("a $1.5B fund") == 1_500_000_000
+
+
+def test_a_currency_anchor_is_required() -> None:
+    """'Trailblazer 2' must not become a $2 payout."""
+    assert base.parse_monetary("Trailblazer 2") is None
+    assert base.parse_monetary("2M ARB") is None, "token quantity is not a USD amount"
+    assert base.parse_monetary("over 12 months") is None
+
+
+def test_plain_dollar_figures_still_parse() -> None:
+    assert base.parse_monetary("$50,000 committed") == 50_000
+    assert base.parse_monetary("pays 1500$") == 1500
+    assert base.parse_monetary("USD 2,000 prize") == 2000
+
+
+def test_first_monetary_figure_wins() -> None:
+    assert base.parse_monetary("$10M total, $500K per grant") == 10_000_000
+
+
+def test_empty_and_absent_return_none() -> None:
+    assert base.parse_monetary(None) is None
+    assert base.parse_monetary("") is None
+
+
+def test_parse_amount_is_left_untouched() -> None:
+    """Its other call sites pass clean amount strings where first-number is
+    correct; requiring an anchor there would return None and break them."""
+    assert base.parse_amount("25,000 USD committed (pool)") == 25_000
+    assert base.parse_amount("$10M in ARB") == 10.0, "unchanged legacy behaviour"
