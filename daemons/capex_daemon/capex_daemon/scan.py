@@ -27,7 +27,7 @@ import json
 import time
 
 from . import (charts, config, divergence, edgar, facts_api, freshness,
-               identity, phases, snapshot, storage, trend, universe)
+               identity, phases, snapshot, storage, universe)
 
 WATERMARK_PREFIX = "scan:"
 
@@ -92,9 +92,11 @@ def check_issuer(con, entity, http=None, submissions_doc=None):
                           read_watermark(con, entity.cik),
                           "submissions fetch failed: {}".format(exc))
 
-    snapshot = identity.from_snapshot_doc(doc) if hasattr(identity, "from_snapshot_doc") \
+    # NOT named `snapshot` — that is the view-model module imported above, and
+    # shadowing it here is a trap for whoever next needs it in this function.
+    ident = identity.from_snapshot_doc(doc) if hasattr(identity, "from_snapshot_doc") \
         else identity.from_submissions(doc)
-    events = identity.record(con, snapshot, entity.bucket)
+    events = identity.record(con, ident, entity.bucket)
 
     filing = freshness.latest_periodic_filing(doc)
     wm = read_watermark(con, entity.cik)
@@ -172,7 +174,7 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
 
     # The snapshot is the single published view-model — dashboard, PDF and
     # alerts all read it and none recomputes (P4).
-    indexed = _indexed_all(roster, http, facts_by_cik)
+    indexed = _indexed_all(roster, http, facts_by_cik, errors=errors)
     snap = snapshot.build(roster, indexed, now_unix=started)
     prior = {r[0] for r in con.execute("SELECT event_key FROM phase_events")}
     first_run = not prior
@@ -217,15 +219,25 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     }
 
 
-def _indexed_all(roster, http, facts_by_cik):
-    """Indexed facts for every roster member — the snapshot needs the whole panel."""
+def _indexed_all(roster, http, facts_by_cik, errors=None):
+    """Indexed facts for every roster member — the snapshot needs the whole panel.
+
+    A fetch that fails must be LOUD. An issuer missing from `indexed` silently
+    drops out of the panel, which moves matched membership and every bucket sum
+    it belongs to — a membership change caused by a 503, indistinguishable on
+    the dashboard from a company that stopped filing. So failures land in the
+    scan's `errors` and the nightly line reports them.
+    """
     out = {}
-    for cik in roster:
+    for cik, entity in sorted(roster.items()):
         try:
             doc = (facts_by_cik or {}).get(cik) or edgar.fetch_companyfacts(cik, http)
             out[cik] = facts_api.index_facts(doc)
-        except Exception:
-            continue
+        except Exception as exc:
+            if errors is not None:
+                errors.append((entity.ticker_display,
+                               "companyfacts unavailable, dropped from the panel "
+                               "for this scan: {}".format(exc)))
     return out
 
 
