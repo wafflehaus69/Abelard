@@ -156,3 +156,50 @@ Read-only reporting layer on top of the corpus. Both surfaces open the DB
   alerts. The sell feed's `elevated` tint (ratio >= 3.0, >=3 sellers/yr) is a
   display cue on a ranked context feed, not a verdict. Nothing here writes to the
   alert path.
+
+---
+
+## 12. Capex Daemon — migration line item (ruled 2026-08-18, NOT yet installed)
+
+The Capex Daemon is schedulable and **deliberately unscheduled**; installing the
+job is Mando's. Recorded here so the Basilic migration carries it as its own
+item rather than as a footnote to Smart Money. Full operating notes live in
+`daemons/capex_daemon/OPERATIONS.md`.
+
+**The job**
+
+```bash
+cd ~/Code/Abelard/daemons/capex_daemon && ./.venv/bin/python -m capex_daemon scan
+```
+
+Build the venv **on Basilic** — never copy one across hosts, same rule as SM.
+
+**Three things the job definition must carry**
+
+1. **`EDGAR_CONTACT` in the job environment.** SEC requires a declared
+   User-Agent contact; `config.edgar_contact()` fails loud rather than sending a
+   blank one. Missing it fails the first request, which is correct behaviour but
+   a confusing first failure if the variable is simply absent.
+2. **A timeout.** A full ingest of 30 issuers is a couple of minutes at the
+   0.15s pacing floor. Past ~15 minutes means EDGAR is degraded and the run
+   should be killed rather than left hanging.
+3. **Alert on exit status alone.** Exit `0` on a clean run *and* on a clean
+   no-op; non-zero **only** when something broke. No log parsing needed.
+
+**Slot.** No ordering dependency on SM — capex reads SEC directly and shares no
+state, so it cannot race the 22:30 scan. Anywhere after 22:30 works; later is
+marginally better since SEC dissemination settles through the evening.
+
+**What a night looks like.** Most nights, nothing:
+
+```
+[capex-scan] no-op: 30 issuers checked, none with a new filing since watermark
+```
+
+That is measured, not aspirational — a second run immediately after a full
+ingest produces exactly this line. Cost is ~30 EDGAR requests on a quiet night,
+~60 on a filing night, and **zero LLM calls**.
+
+**Don't-break note.** Watermarks are per-issuer (`scan:<cik10>`), hold a filing
+date rather than `now()`, only move forward, and do not advance when a refresh
+fails. Hand-editing them silently skips filings.

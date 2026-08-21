@@ -99,3 +99,45 @@ def artifact_path(name, sub="analysis"):
 
 
 DB_PATH_DEFAULT = resolve_db_path()
+
+
+# ---- CD-PH1 dead-bands (RATIFIED Abelard 2026-08-18) --------------------
+# Percentage-point change in TTM YoY below which a move does not alter state.
+# Each value is p25 of |delta TTM YoY| measured over the recent window
+# (period_end >= 2023-01-01) for that series class — measured, never chosen (E8).
+#
+# The spread is the argument for per-bucket bands: builders need a band 10x
+# wider than REITs. One universal band set at builder scale would render REIT
+# direction changes invisible; set at REIT scale, builders would flip state
+# almost every quarter.
+#
+# REIT bucket-sum keeps its own measured 6pp rather than inheriting the 2pp
+# per-issuer value: a two-name sum is genuinely noisier than its members, and a
+# band describes the noise of the series it gates (ratified).
+DEAD_BAND_MEASURED_ON = "2026-08-18"
+DEAD_BAND_WINDOW_FROM = "2023-01-01"
+# RE-MEASUREMENT OBLIGATION: the bucket-sum and total-panel bands rest on n=13-14,
+# which is thin for a percentile. Re-run tools/measure_deadband.py after two more
+# filed quarters land panel-wide, and hold the values for re-ratification.
+DEAD_BAND_RECHECK_AFTER_QUARTERS = 2
+
+DEAD_BANDS = {
+    "issuer:hyperscaler": 6.0,
+    "issuer:builder": 27.0,
+    "issuer:reit": 2.0,
+    "issuer:host": 5.0,
+    # MIRROR classifies but is excluded from alerts and aggregates; it is banded
+    # on its measured per-issuer spread so the calibration ghost is a real read.
+    "issuer:mirror": 16.0,
+    "bucketsum:hyperscaler": 4.0,
+    "bucketsum:builder": 27.0,
+    "bucketsum:reit": 6.0,
+    "total:panel": 5.0,
+}
+
+
+def dead_band_class(scope, bucket):
+    """Series-class key for the band table. scope is 'issuer' or 'bucketsum'."""
+    if scope == "total":
+        return "total:panel"
+    return "{}:{}".format(scope, bucket)

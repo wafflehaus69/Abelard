@@ -55,6 +55,41 @@ class IssuerView:
             self.ticker, self.ttm_capex, self.ratio)
 
 
+def _merged_issuance(indexed, contributing, keyed="period_end"):
+    """Sum the contributing issuance concepts into one discrete-quarter series.
+
+    `keyed="period_end"` is what the ratio window uses — it must line up with
+    capex period-ends exactly. `keyed="calendar"` is what the AGGREGATE uses,
+    for the same reason bucket sums key on calendar quarters (trend.py): issuers
+    close on different months and cannot otherwise be added.
+
+    Extracted so the panel-level credit leg on the front page and the per-issuer
+    ratio come from ONE computation. Two paths would drift.
+    """
+    merged = {}
+    for concept in contributing:
+        rowsd = [f for f in indexed.get(concept, [])
+                 if f.unit == "USD" and f.period_start]
+        pairs = [(f, concept) for f in facts_api.dedupe_latest_filed(rowsd)]
+        for r in normalize.discrete_quarters(pairs):
+            k = r.period_end if keyed == "period_end" else r.calendar_quarter
+            merged[k] = merged.get(k, 0.0) + r.value
+    return merged
+
+
+def issuer_issuance_calendar_series(indexed):
+    """{calendar_quarter: issuance} for one issuer, or None when unusable.
+
+    Returns None on the same refusals the ratio honours — a refused issuer is
+    absent from the panel credit line rather than contributing a zero to it.
+    """
+    debt_res = tagmap.resolve(indexed, tagmap.DEBT)
+    res = issuance.resolve_total(indexed, debt_res)
+    if res.is_refused or not res.contributing:
+        return None
+    return _merged_issuance(indexed, res.contributing, keyed="calendar") or None
+
+
 def build_issuer_view(entity, indexed):
     """Compute one issuer's capex, issuance and ratio with statuses attached."""
     statuses = []
@@ -75,14 +110,7 @@ def build_issuer_view(entity, indexed):
     if issuance_res.is_refused:
         statuses.append(STATUS_ISSUANCE_REFUSED)
     elif issuance_res.contributing:
-        smap = issuance.build_series_map(indexed, issuance_res.contributing)
-        merged = {}
-        for concept in issuance_res.contributing:
-            rowsd = [f for f in indexed.get(concept, [])
-                     if f.unit == "USD" and f.period_start]
-            pairs = [(f, concept) for f in facts_api.dedupe_latest_filed(rowsd)]
-            for r in normalize.discrete_quarters(pairs):
-                merged[r.period_end] = merged.get(r.period_end, 0.0) + r.value
+        merged = _merged_issuance(indexed, issuance_res.contributing)
         if rows:
             window = [r.period_end for r in rows[-config.ANCHOR_WINDOW_QUARTERS:]]
             vals = [merged[e] for e in window if e in merged]

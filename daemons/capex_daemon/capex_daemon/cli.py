@@ -8,7 +8,7 @@ import argparse
 import json
 import sys
 
-from . import ixbrl, scan as scanmod, storage, universe
+from . import dashboard as dashmod, ixbrl, scan as scanmod, storage, universe
 
 
 def cmd_roster(args):
@@ -66,6 +66,12 @@ def cmd_scan(args):
     return 1 if result.get("errors") else 0
 
 
+def cmd_dashboard(args):
+    """Serve the read-only dashboard. Renders the persisted snapshot only."""
+    dashmod.serve(db_path=args.db, port=args.port)
+    return 0
+
+
 def cmd_initdb(args):
     con = storage.connect(args.db)
     tables = [r[0] for r in con.execute(
@@ -99,6 +105,11 @@ def main(argv=None):
     p.add_argument("--no-render", action="store_true", help="skip chart regeneration")
     p.add_argument("--json", action="store_true", help="emit the full result object")
     p.set_defaults(func=cmd_scan)
+
+    p = sub.add_parser("dashboard", help="serve the read-only dashboard on :8788")
+    p.add_argument("--db", default=None)
+    p.add_argument("--port", type=int, default=dashmod.PORT)
+    p.set_defaults(func=cmd_dashboard)
 
     p = sub.add_parser("initdb", help="create the state schema")
     p.add_argument("--db", default=None)
