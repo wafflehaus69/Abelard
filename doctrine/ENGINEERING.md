@@ -682,3 +682,42 @@ Corollary — this entry constrains handling, not capture. Where Mando has ruled
 class admissible, it is admissible; the rule governs how it is carried, labelled,
 bounded and removed. Any daemon holding personal data states in its AGENTS.md which
 classes it holds, from what provenance, for what purpose, and how a person leaves.
+
+## E30 — A predicate that is level-based on entry must be level-based on exit
+Ruled by Mando 2026-08-22; drafted by ClaudeCode from the originating incident.
+
+Incident. The Capex Daemon's phase classifier defines CONTRACTING as its sole
+**level-based** state: it fires the moment TTM year-over-year crosses below zero,
+with no confirmation window, because a series smaller than its year-ago self is
+contracting however the growth rate moved to get there. Entry was implemented
+exactly that way. Exit was not.
+
+The ladder returned "no opinion — hold the prior state" whenever a direction was
+seen but had not yet cleared the N=2 confirmation window. So a series that
+recovered kept the CONTRACTING label until it accumulated two same-direction
+out-of-band moves. Measured on SMCI, whose TTM YoY ran −30.6%, −39.1%, then
+**+32.0%**: the board published **CONTRACTING beside +32.0%**. The state and the
+number printed next to it asserted opposite things, in the same row.
+
+Rule: **where a state is entered by a predicate on the level, it is left the
+moment that predicate is false.** Not after a confirmation window, not after a
+counter-trend run — immediately, because the predicate is the definition. Where
+leaving drops the series into no confirmed direction, it lands on the neutral
+state; that is honest (known not to be contracting, not yet known to be going
+anywhere) in a way that holding the old label is not.
+
+Confirmation windows remain correct for states defined by CHANGE — acceleration
+and deceleration are claims about a trend and should require evidence of one.
+The defect is mixing the two: a level predicate on the way in, a trend predicate
+on the way out. Asymmetric predicates do not merely lag; they publish
+contradictions, and a reader who trusts the label is misled by the number beside
+it and vice versa.
+
+Corollary — the defect hides until the round trip happens. Nothing in the panel
+had contracted *and recovered* in the classifier's lifetime, so the bug was
+invisible to a green suite and to months of live output. When a state machine is
+written, enumerate the round trips, not just the transitions you expect.
+
+Detection is cheap and belongs in tests: for every level-defined state, assert
+the invariant directly against the published series — after the fix, **0 of 965**
+classified observations hold CONTRACTING at a non-negative level.
