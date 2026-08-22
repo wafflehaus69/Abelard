@@ -481,3 +481,31 @@ document, not to adjust the parser. Here the parser was right twice over and the
 first two hypotheses — a parser bug, then a wrong memory of AMD's reported
 figures — were both wrong. The filing was wrong. That possibility belongs in the
 hypothesis set from the start.
+
+## E27 — A ruling not written down did not happen
+Ruled by Mando 2026-08-21; drafted by ClaudeCode. Governs the ledger itself and
+every artifact that carries a ruling.
+
+Incident. `CD-PH1-VERIFY.md` §9 and §10 listed "Flask vs stdlib" and "retire the
+matplotlib pipeline" as **open, awaiting ruling**. Both had already been ruled in
+relay. The verify doc — the governing artifact, the thing a reader consults to
+learn what is settled — carried a false statement about the state of the project,
+and carried it across a merge to `main` and a push to `origin`. A later session
+reading it would have re-raised two closed questions, or worse, waited on them.
+
+This is a leak with a direction: rulings are made in conversation and applied in
+code, and the conversation is not durable. The artifact is. Nothing in the
+workflow forced the two to agree.
+
+Rule: **a ruling is recorded in its governing artifact in the same session it is
+applied** — the spec's rulings section, or the verify doc's open-items list,
+whichever governs. Applying a ruling to code without recording it is an
+incomplete application, not a completed one with paperwork outstanding. Where a
+ruling closes an item listed as open, the item is struck in the same edit that
+implements it, and the entry says what was ruled rather than being deleted, so
+the history of the decision survives.
+
+Corollary — an "Open" section is a claim, and claims get checked. Before
+publishing or merging an artifact that carries one, re-read it against what has
+actually been ruled. An item that is stale in that list is a defect in the
+artifact of exactly the same kind as a wrong number in a table.
