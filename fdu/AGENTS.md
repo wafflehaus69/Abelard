@@ -138,3 +138,36 @@ From Phase 0, 2026-08-21. Dated per [E15]; re-check obligations apply.
   with: content-derived is necessary and **insufficient**; it must also be order-invariant.
   **Not added to the shared ledger unilaterally** — numbering is contended and entries are
   Mando's to ratify.
+
+---
+
+## Q6 evidence — a declared contact address probably would not help
+
+Measured 2026-08-21/22, recorded as evidence rather than as a ruling.
+
+`www.sec.gov` returned **403 to every request**, across:
+
+- three distinct User-Agent strings (descriptive, bare token, browser-shaped)
+- two independent networks (Orban on residential Windows, Basilic on macOS)
+- three different paths including `/robots.txt` and `/developer`
+
+If the block were about *how* traffic is declared, at least one of those should
+have differed. None did. So the working conclusion is that the 403 is **not
+User-Agent-shaped**, and provisioning a contact address to satisfy SEC Fair
+Access would likely not unlock the host.
+
+**Nothing FDU actually reads is affected.** `reports.adviserinfo.sec.gov` serves
+every feed and every per-firm document without a declared address. The only
+thing behind `www.sec.gov` that FDU might want is a separate CSV bulk product
+that *may* carry Schedule A and Item 4 directly — and that is an **unverified
+hypothesis**, inferred from a URL in the IAPD JavaScript bundle, never seen.
+
+The `FDU_CONTACT` hook remains in `config.py`. If an address is ever
+provisioned, setting that variable appends it to the declared UA and nothing
+else changes.
+
+**Scope correction on [R-PA1-2].** As transcribed, that ruling reads "Mando's
+personal address is not to be declared," which is stricter than what was
+actually said. Mando confirmed the executor was right not to send it *without
+asking*. Whether he would choose to declare it himself was never ruled and
+remains open. Recorded so the ledger does not harden a rule nobody made.
