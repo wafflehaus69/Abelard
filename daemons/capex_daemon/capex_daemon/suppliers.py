@@ -19,19 +19,26 @@ API record contains `Revenues` (total) and `NumberOfReportableSegments` (a
 count), and nothing else. The $75.2B Data Center line exists only inside the
 filing. `ixbrl.py` was built for exactly this and this is its second use.
 
-**Coverage is two of five, measured, and the other three are refused by name:**
+**Coverage is three of five. Two are measured, one is RULED, two refuse by name:**
 
-    NVDA   ProductOrServiceAxis          17 quarters, 2022Q2-2026Q2, TTM $229.9B
-    AMD    StatementBusinessSegmentsAxis 17 quarters, 2022Q1-2026Q2, TTM $22.2B
-    AVGO   no datacenter member — InfrastructureSoftware / SemiconductorSolutions
-    MU     no datacenter member — CDBU/CMBU/MCBU/AEBU business-unit codes
-    SMCI   no segment axis at all, in any of 14 instances
+    NVDA   measured  ProductOrServiceAxis           17 quarters, 2022Q2-2026Q2, TTM $229.9B
+    AMD    measured  StatementBusinessSegmentsAxis  17 quarters, 2022Q1-2026Q2, TTM $22.2B
+    MU     MAPPED    CMBU + CDBU, ruled 2026-08-21   7 quarters, 2024Q4-2026Q2, TTM $52.5B
+    AVGO   refused   no datacenter member — InfrastructureSoftware / SemiconductorSolutions
+    SMCI   refused   no segment axis at all, in any of 14 instances
 
-MU is the interesting refusal. Its "Cloud Memory" and "Core Data Center"
-business units plainly bear on the buildout, but deciding that CMBU+CDBU *is*
-datacenter revenue is a semantic judgement no ruling has made. Resolving it here
-would be inventing a mapping and publishing it as a measurement, so the leg
-refuses and names what it saw (E1, E8).
+Micron was the interesting refusal and is now the interesting admission. Its
+Cloud Memory and Core Data Center units plainly bear on the buildout, but
+deciding that CMBU+CDBU *is* datacenter revenue is a semantic judgement — so it
+was made by RULING rather than by this module, and it is carried as one. The leg
+publishes `MAPPED-BUSINESS-UNITS`, never `COVERED`; it names the units summed,
+the units excluded, and the date and author of the ruling; and `/suppliers`
+prints all of that beside the number. A mapped figure must never be able to pass
+as a measured one (E1, E8).
+
+Micron also only exists as a series because of [E26]. CMBU/CDBU appear no earlier
+than the 2025-08-28 instance — before that Micron reported CNBU/MBU/EBU/SBU — and
+the prior periods are recoverable solely because the newer filings restate them.
 """
 from . import ixbrl, normalize, tagmap
 
@@ -52,9 +59,42 @@ DC_MEMBER = "DataCenterMember"
 _DC_MEMBER_NORM = "datacentermember"
 
 STATUS_COVERED = "COVERED"
+STATUS_MAPPED = "MAPPED-BUSINESS-UNITS"
 STATUS_NO_DC_MEMBER = "UNCOVERED-NO-DC-MEMBER"
 STATUS_NO_INSTANCES = "UNCOVERED-NO-INSTANCES"
 STATUS_NOT_A_SUPPLIER = "NOT-A-SUPPLIER"
+
+# --- ruled mappings: a semantic judgement, carried as one ---------------------
+#
+# Some issuers report no datacenter member but do report business units that
+# plainly ARE datacenter demand. Calling those units "datacenter revenue" is a
+# judgement, not a parse, so it is made by ruling and then carried visibly: the
+# leg publishes STATUS_MAPPED rather than COVERED, names the units it summed and
+# the units it excluded, and stamps the date it was ruled. `/suppliers` prints
+# all of it. A mapped figure must never be able to pass as a measured one.
+MAPPED_UNITS = {
+    "0000723125": {                                   # Micron
+        "ticker": "MU",
+        "members": ("CMBUMember", "CDBUMember"),
+        "labels": {"CMBUMember": "Cloud Memory Business Unit",
+                   "CDBUMember": "Core Data Center Business Unit"},
+        "excluded": ("MCBUMember", "AEBUMember", "AllOtherSegmentsMember"),
+        "excluded_labels": {"MCBUMember": "Mobile and Client",
+                            "AEBUMember": "Automotive and Embedded",
+                            "AllOtherSegmentsMember": "All other"},
+        "ruled": "2026-08-21",
+        "ruled_by": "Mando",
+        "rationale": ("Memory sold into cloud and datacenter is the demand being "
+                      "cross-checked, and HBM — the AI-relevant product — sits in "
+                      "exactly those two units. Mobile/client and automotive/"
+                      "embedded are excluded because they are not buildout demand."),
+    },
+}
+
+
+def mapping_for(entity):
+    """The ruled unit mapping for an issuer, or None."""
+    return MAPPED_UNITS.get(str(getattr(entity, "cik", "")).zfill(10))
 
 REVENUE_CONCEPTS = tagmap.CANDIDATES[tagmap.REVENUE]
 
@@ -127,6 +167,60 @@ def dc_facts(batches):
             restatements)
 
 
+class _Synth:
+    """A summed mapped-unit period, shaped like the facts it was built from."""
+    __slots__ = ("concept", "value", "period_start", "period_end", "dims", "scale_basis")
+
+    def __init__(self, concept, value, period_start, period_end, dims):
+        self.concept, self.value = concept, value
+        self.period_start, self.period_end = period_start, period_end
+        self.dims, self.scale_basis = dims, "ixbrl-mapped"
+
+    @property
+    def dim_key(self):
+        return ";".join("{}={}".format(a, m) for a, m in sorted(self.dims.items()))
+
+
+def mapped_facts(batches, spec):
+    """Sum a ruled set of business units into one series, newest filing winning.
+
+    Every mapped member must be present for a period or the period is skipped —
+    a partial sum would understate the line and look like a decline. Skipped
+    periods are returned so the gap is visible rather than inferred.
+    """
+    want = set(spec["members"])
+    picked = {}
+    for key, facts in batches:
+        for f in facts:
+            if f.concept not in REVENUE_CONCEPTS or f.value is None:
+                continue
+            dims = {_local(a): _local(m) for a, m in (f.dims or {}).items()}
+            sub = [a for a in dims if a not in QUALIFIER_AXES]
+            if len(sub) != 1 or dims[sub[0]] not in want:
+                continue
+            pk = (dims[sub[0]], f.period_start, f.period_end)
+            prior = picked.get(pk)
+            if prior is None or (key, -len(dims)) > (prior[3], -prior[4]):
+                picked[pk] = (f, f.concept, sub[0], key, len(dims))
+
+    by_period, axes = {}, set()
+    for (member, ps, pe), (f, concept, axis, _k, _n) in picked.items():
+        by_period.setdefault((ps, pe), {})[member] = (f.value, concept)
+        axes.add(axis)
+
+    out, partial = [], []
+    for (ps, pe), got in by_period.items():
+        missing = want - set(got)
+        if missing:
+            partial.append({"period_start": ps, "period_end": pe,
+                            "missing": sorted(missing)})
+            continue
+        concept = next(iter(got.values()))[1]
+        out.append((_Synth(concept, sum(v for v, _c in got.values()), ps, pe,
+                           {sorted(axes)[0]: "+".join(sorted(want))}), concept))
+    return out, sorted(axes), partial
+
+
 def observed_members(facts):
     """Every member seen on a revenue fact — what a refusal gets to cite."""
     seen = set()
@@ -142,10 +236,12 @@ class SupplierLeg:
     """One supplier's datacenter revenue, or a named reason there is none."""
 
     __slots__ = ("cik", "ticker", "status", "detail", "axes", "concept",
-                 "quarters", "dropped", "instances", "restatements")
+                 "quarters", "dropped", "instances", "restatements", "mapping",
+                 "partial")
 
     def __init__(self, cik, ticker, status, detail="", axes=(), concept=None,
-                 quarters=None, dropped=(), instances=0, restatements=()):
+                 quarters=None, dropped=(), instances=0, restatements=(),
+                 mapping=None, partial=()):
         self.cik = cik
         self.ticker = ticker
         self.status = status
@@ -156,10 +252,22 @@ class SupplierLeg:
         self.dropped = list(dropped)
         self.instances = instances
         self.restatements = list(restatements)
+        self.mapping = mapping
+        self.partial = list(partial)
 
     @property
     def is_covered(self):
-        return self.status == STATUS_COVERED and bool(self.quarters)
+        """Usable for the cross-check — measured OR ruled-mapped.
+
+        Both contribute; only one of them is a measurement, which is why
+        `status` travels with every published figure rather than being
+        collapsed into a boolean here.
+        """
+        return self.status in (STATUS_COVERED, STATUS_MAPPED) and bool(self.quarters)
+
+    @property
+    def is_mapped(self):
+        return self.status == STATUS_MAPPED
 
     def __repr__(self):
         return "SupplierLeg({} {} n={})".format(self.ticker, self.status,
@@ -181,28 +289,47 @@ def build_leg(entity, batches):
                            "no filing instances parsed")
 
     pairs, axes, restatements = dc_facts(batches)
-    if not pairs:
-        members = observed_members(f for _k, batch in batches for f in batch)
-        seg = [m for a, m in members if "Segment" in a] or [m for _a, m in members]
-        return SupplierLeg(
-            entity.cik, entity.ticker_display, STATUS_NO_DC_MEMBER,
-            "no `{}` on any axis across {} instances; members observed: {}".format(
-                DC_MEMBER, len(batches), ", ".join(seg[:6]) or "none"),
-            instances=len(batches))
+    status, mapping, partial = STATUS_COVERED, None, []
 
-    # `dc_facts` has already resolved each (start, end) to its newest filing,
-    # so the cohort differencing below sees each period exactly once.
+    if not pairs:
+        # No datacenter member. A ruled unit mapping may still cover this
+        # issuer — and if it does, the result is labelled as MAPPED, never as
+        # measured, for as long as it is published.
+        spec = mapping_for(entity)
+        if spec:
+            pairs, axes, partial = mapped_facts(batches, spec)
+            status, mapping = STATUS_MAPPED, spec
+        if not pairs:
+            members = observed_members(f for _k, batch in batches for f in batch)
+            seg = [m for a, m in members if "Segment" in a] or [m for _a, m in members]
+            return SupplierLeg(
+                entity.cik, entity.ticker_display, STATUS_NO_DC_MEMBER,
+                "no `{}` on any axis across {} instances; members observed: {}".format(
+                    DC_MEMBER, len(batches), ", ".join(seg[:6]) or "none"),
+                instances=len(batches))
+
+    # Each (start, end) is already resolved to its newest filing, so the cohort
+    # differencing below sees each period exactly once.
     dropped = []
     rows = normalize.discrete_quarters(pairs, source_leg="ixbrl", dropped=dropped)
     quarters = {r.calendar_quarter: r.value for r in rows}
     concept = pairs[-1][1]
-    detail = "resolved `{}` on {}".format(concept, ", ".join(axes))
+    if mapping:
+        detail = "RULED MAPPING {} ({}): {} summed; {} excluded".format(
+            mapping["ruled"], mapping.get("ruled_by", "ruling"),
+            " + ".join(mapping["labels"].get(m, m) for m in mapping["members"]),
+            ", ".join(mapping["excluded_labels"].get(m, m)
+                      for m in mapping["excluded"]))
+        if partial:
+            detail += "; {} period(s) skipped for a missing unit".format(len(partial))
+    else:
+        detail = "resolved `{}` on {}".format(concept, ", ".join(axes))
     if restatements:
         detail += "; {} period(s) superseded by a later filing".format(len(restatements))
-    return SupplierLeg(entity.cik, entity.ticker_display, STATUS_COVERED, detail,
+    return SupplierLeg(entity.cik, entity.ticker_display, status, detail,
                        axes=axes, concept=concept, quarters=quarters,
                        dropped=dropped, instances=len(batches),
-                       restatements=restatements)
+                       restatements=restatements, mapping=mapping, partial=partial)
 
 
 # ---------------- fetching and caching ----------------

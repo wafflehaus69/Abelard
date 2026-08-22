@@ -34,21 +34,33 @@ NVIDIA's own attribution of revenue to that customer class. It appears in **one 
 observation makes it one, and DataCenter = Hyperscale + AICloudsIndustrialEnterprise exactly
 ($37.869B + $37.377B = $75.246B), so the split is clean when it arrives.
 
-## 2. Coverage is two of five, and the other three are refused by name
+## 2. Coverage is three of five — two measured, one RULED, two refused by name
 
 | supplier | datacenter line | result |
 |---|---|---|
 | **NVDA** | `DataCenterMember` on `ProductOrServiceAxis` | **COVERED** — 17 quarters, 2022Q2–2026Q2, TTM $229.9B |
 | **AMD** | `DataCenterMember` on `StatementBusinessSegmentsAxis` | **COVERED** — 17 quarters, 2022Q1–2026Q2, TTM $22.2B |
 | AVGO | none; segments are InfrastructureSoftware / SemiconductorSolutions | UNCOVERED-NO-DC-MEMBER |
-| MU | none; business-unit codes CDBU / CMBU / MCBU / AEBU | UNCOVERED-NO-DC-MEMBER |
+| **MU** | none; ruled mapping `CMBU + CDBU` | **MAPPED-BUSINESS-UNITS** — 7 quarters, 2024Q4–2026Q2, TTM $52.5B |
 | SMCI | no segment axis at all, across 14 instances | UNCOVERED-NO-DC-MEMBER |
 
-**MU is the refusal worth arguing about.** Its Cloud Memory and Core Data Center business units
-plainly bear on the buildout. But deciding that `CMBU+CDBU` *is* datacenter revenue is a semantic
-judgement no ruling has made, and making it here would be inventing a mapping and publishing it as a
-measurement. The leg refuses and cites the members it saw. **If you rule the mapping, MU becomes the
-third covered name and the largest supplier capex spender in the panel joins the cross-check.**
+**MU was the refusal worth arguing about, and it was RULED IN on 2026-08-21 (Mando).** Cloud Memory
+(CMBU) and Core Data Center (CDBU) are summed as datacenter revenue; Mobile-and-Client (MCBU),
+Automotive-and-Embedded (AEBU) and All-Other are excluded. The stated rationale: *memory sold into
+cloud and datacenter is the demand being cross-checked, and HBM — the AI-relevant product — sits in
+exactly those two units.*
+
+The ruling's conditions are implemented, not just honoured in spirit. The leg publishes
+**`MAPPED-BUSINESS-UNITS`, never `COVERED`**; the status travels with the figure into the snapshot
+and every renderer; `/suppliers` prints a dedicated block naming the units summed, the units
+excluded, the ruling's date and author, and the sentence *"this figure is mapped, not measured"*; and
+a period missing either mapped unit is **skipped rather than half-summed**, because a partial sum
+understates the line and reads as a decline. `test_suppliers.py` pins each of those conditions.
+
+Micron also only exists as a series **because of E26**. `CMBU`/`CDBU` appear no earlier than the
+2025-08-28 instance — before that Micron reported CNBU/MBU/EBU/SBU — so every pre-2025 quarter is
+recoverable *solely* because the newer filings restate them. Under the old fewer-dimensions
+preference this leg would have been empty.
 
 AVGO stays in the roster despite being uncovered on this leg: its **$128.1B of unrecorded purchase
 obligations** is the largest forward-commitment figure anywhere in the universe except Meta's.
@@ -157,13 +169,16 @@ A broken instance costs one filing, not the leg, and is reported into the scan's
 
 ## 9. Open
 
-1. **MU's business-unit mapping** — §2. A ruling from you turns the largest supplier capex spender
-   into the third covered name.
+1. ~~**MU's business-unit mapping** — §2.~~ **RULED 2026-08-21: admitted as `MAPPED-BUSINESS-UNITS`
+   (CMBU + CDBU summed; MCBU / AEBU / All-Other excluded), with the mapping disclosed on
+   `/suppliers`.** See §2. The largest supplier capex spender is in the cross-check.
 2. **NVDA's `HyperscaleMember`** — n=1. Worth a standing watch: at n=2 it becomes the most direct
    supplier-side read on the hyperscaler bucket available, and it should probably then replace
    DataCenter as the cross-check numerator.
-3. **Suppliers do not classify.** There is no `issuer:supplier` dead-band, so the five names carry
-   no phase state. Bands must be **measured, not guessed** (ratified doctrine), and that
+3. **Suppliers do not classify — MEASUREMENT PASS ORDERED (CD-3b, 2026-08-21).** There is no
+   `issuer:supplier` dead-band, so the five names carry no phase state, and Mando ruled that the
+   current refusal is correct behaviour until ratified bands exist. Bands must be **measured, not
+   guessed** (ratified doctrine), and that
    measurement is a separate pass — `tools/measure_deadband.py` extends to it directly.
 4. **TSM still excluded** — IFRS-only, structural, unchanged from CD-R2 §2.3.2.
 5. **Fiscal offsets** — four of five suppliers are off-calendar (NVDA Jan, AVGO Nov, MU Sep,

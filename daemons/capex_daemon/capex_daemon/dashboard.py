@@ -55,6 +55,7 @@ td.num{text-align:right}
 .hero{margin:4px 0 14px}
 svg{display:block;max-width:100%;margin:0 0 14px}
 .chartnote{color:#888;font-size:11px;margin:-8px 0 16px}
+.mapped{background:#eef3fb;border-left:3px solid #1f4e9c;padding:9px 12px;margin:10px 0;font-size:13px}
 [title]{cursor:help;border-bottom:1px dotted #bbb}
 """
 
@@ -567,13 +568,16 @@ def view_suppliers(snap):
                "<th class='num'>DC revenue TTM</th><th class='num'>Quarters</th>"
                "<th class='num'>Restated</th><th>Resolved</th></tr>")
     for tick, leg in sorted(legs.items(), key=lambda kv: -((kv[1].get("ttm")) or -1)):
-        cov = leg["status"] == "COVERED"
+        st = leg["status"]
+        # Three states, three colours. A MAPPED figure is usable and is NOT a
+        # measurement, so it must not wear the same green as one.
+        colour = {"COVERED": "#1d6f42", "MAPPED-BUSINESS-UNITS": "#1f4e9c"}.get(st, "#8a6d1a")
         out.append("<tr><td><b>{}</b></td><td>{}</td><td class='num'>{}</td>"
                    "<td class='num'>{}</td><td class='num' title='{}'>{}</td>"
                    "<td class='note' title='{}'>{}</td></tr>".format(
                        _esc(tick),
                        "<span class='pill' style='background:{}'>{}</span>".format(
-                           "#1d6f42" if cov else "#8a6d1a", _esc(leg["status"])),
+                           colour, _esc(st)),
                        _money(leg.get("ttm")), len(leg.get("quarters") or []),
                        _esc("; ".join("{} {:,.0f} -> {:,.0f} (superseded by {})".format(
                            r["period_end"], r["was"], r["now"], r["superseded_by"])
@@ -596,17 +600,38 @@ def view_suppliers(snap):
                            100 * r["ratio"], r["dc_members"], r["capex_members"]))
         out.append("</table>")
 
-    refused = [l for l in legs.values() if l["status"] != "COVERED"]
+    mapped = [l for l in legs.values() if l.get("mapping")]
+    if mapped:
+        out.append("<h2>Ruled mappings — a semantic judgement, disclosed as one</h2>")
+        for l in sorted(mapped, key=lambda x: x["ticker"]):
+            m = l["mapping"]
+            out.append(
+                "<div class='mapped'><b>{}</b> reports no datacenter member. Ruled by <b>{}</b> "
+                "on <b>{}</b>: the units below are treated as datacenter revenue.<br>"
+                "<b>Summed:</b> {}<br><b>Excluded:</b> {}<br>"
+                "<span class='note'>{}</span><br>"
+                "<span class='note'><b>This figure is mapped, not measured.</b> It is published "
+                "as <code>MAPPED-BUSINESS-UNITS</code> everywhere it appears, and it carries "
+                "that label precisely because reasonable people could draw the boundary "
+                "differently.</span></div>".format(
+                    _esc(l["ticker"]), _esc(m.get("ruled_by", "ruling")), _esc(m.get("ruled")),
+                    _esc(" + ".join("{} ({})".format(m["labels"].get(x, x), x)
+                                    for x in m["members"])),
+                    _esc(", ".join("{} ({})".format(m["excluded_labels"].get(x, x), x)
+                                   for x in m["excluded"])),
+                    _esc(m.get("rationale", ""))))
+
+    refused = [l for l in legs.values() if l["status"] not in ("COVERED", "MAPPED-BUSINESS-UNITS")]
     if refused:
         out.append("<h2>Refused, and why</h2>")
         for l in sorted(refused, key=lambda x: x["ticker"]):
             out.append("<div class='warn'><b>{}</b> — {}. {}</div>".format(
                 _esc(l["ticker"]), _esc(l["status"]), _esc(l["detail"])))
-        out.append("<p class='note'>Micron is the instructive one. Its Cloud Memory and Core "
-                   "Data Center business units plainly bear on the buildout, but deciding that "
-                   "<code>CMBU+CDBU</code> <i>is</i> datacenter revenue is a semantic judgement "
-                   "no ruling has made. Making it here would be inventing a mapping and "
-                   "publishing it as a measurement.</p>")
+        out.append("<p class='note'>Each of these reports revenue by segment, but none of "
+                   "those segments is a datacenter line and none has a ruled mapping. They stay "
+                   "in the bucket because their inventory and purchase obligations still bear "
+                   "on the buildout, and because a named refusal is worth more than a silent "
+                   "omission.</p>")
     return _page("Suppliers", "/suppliers", "".join(out))
 
 

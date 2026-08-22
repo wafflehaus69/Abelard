@@ -6,6 +6,20 @@ AMD actually did, not hypotheticals.
 """
 import sqlite3
 
+
+class _F:
+    """A minimal parsed-fact stand-in for the mapped-unit tests."""
+
+    def __init__(self, concept, value, period_start, period_end, dims):
+        self.concept, self.value = concept, value
+        self.period_start, self.period_end = period_start, period_end
+        self.dims, self.scale_basis = dims, "ixbrl"
+
+    @property
+    def dim_key(self):
+        return ";".join("{}={}".format(a, m) for a, m in sorted(self.dims.items()))
+
+
 import pytest
 
 from capex_daemon import dashboard, snapshot, storage, suppliers, trend, universe
@@ -299,3 +313,75 @@ def test_an_uncovered_supplier_publishes_a_status_not_a_zero():
     assert sec["legs"]["MU"]["ttm"] is None
     assert sec["legs"]["MU"]["status"] == suppliers.STATUS_NO_DC_MEMBER
     assert sec["covered"] == []
+
+
+# --- ruling 2026-08-21: MU admitted via a RULED unit mapping ----------------
+
+def test_a_mapped_leg_never_reports_itself_as_measured():
+    """The condition on the ruling: a semantic judgement stays a disclosed one."""
+    assert suppliers.STATUS_MAPPED == "MAPPED-BUSINESS-UNITS"
+    assert suppliers.STATUS_MAPPED != suppliers.STATUS_COVERED
+    leg = suppliers.SupplierLeg("x", "MU", suppliers.STATUS_MAPPED,
+                                quarters={"2026Q1": 1.0})
+    assert leg.is_covered and leg.is_mapped     # usable, and never mistakable
+
+
+def test_the_mapping_carries_its_ruling_date_and_both_unit_lists():
+    spec = suppliers.MAPPED_UNITS["0000723125"]
+    assert spec["ruled"] == "2026-08-21"
+    assert set(spec["members"]) == {"CMBUMember", "CDBUMember"}
+    # Explicitly NOT datacenter demand, and named so a reader can disagree.
+    assert "MCBUMember" in spec["excluded"] and "AEBUMember" in spec["excluded"]
+    assert not set(spec["members"]) & set(spec["excluded"])
+
+
+def test_mapped_units_are_summed_and_unruled_units_are_ignored():
+    def fact(member, value, ps, pe):
+        return _F("Revenues", value, ps, pe,
+                  {"StatementBusinessSegmentsAxis": member})
+    spec = suppliers.MAPPED_UNITS["0000723125"]
+    batch = [("2026-05-28", [
+        fact("CMBUMember", 13.77e9, "2026-02-27", "2026-05-28"),
+        fact("CDBUMember", 11.52e9, "2026-02-27", "2026-05-28"),
+        fact("MCBUMember", 99.0e9, "2026-02-27", "2026-05-28"),      # excluded
+        fact("AEBUMember", 88.0e9, "2026-02-27", "2026-05-28"),      # excluded
+    ])]
+    out, axes, partial = suppliers.mapped_facts(batch, spec)
+    assert len(out) == 1 and not partial
+    assert out[0][0].value == pytest.approx(25.29e9)   # CMBU + CDBU only
+    assert axes == ["StatementBusinessSegmentsAxis"]
+
+
+def test_a_period_missing_one_mapped_unit_is_skipped_not_half_summed():
+    """A partial sum understates the line and reads as a decline."""
+    spec = suppliers.MAPPED_UNITS["0000723125"]
+    batch = [("2026-05-28", [
+        _F("Revenues", 13.77e9, "2026-02-27", "2026-05-28",
+           {"StatementBusinessSegmentsAxis": "CMBUMember"}),
+    ])]
+    out, _axes, partial = suppliers.mapped_facts(batch, spec)
+    assert out == []
+    assert partial and partial[0]["missing"] == ["CDBUMember"]
+
+
+def test_an_issuer_with_no_ruling_gets_no_mapping():
+    class E:
+        cik, ticker_display, bucket = "0001730168", "AVGO", "supplier"
+    assert suppliers.mapping_for(E()) is None
+
+
+def test_the_dashboard_prints_the_mapping_beside_the_number():
+    """'a semantic judgment stays a disclosed semantic judgment' — the ruling."""
+    from capex_daemon import dashboard
+    spec = suppliers.MAPPED_UNITS["0000723125"]
+    snap = {"suppliers": {"legs": {"MU": {
+        "ticker": "MU", "status": suppliers.STATUS_MAPPED, "detail": "d",
+        "ttm": 52.5e9, "quarters": [], "axes": [], "restatements": [],
+        "restatement_count": 0, "mapping": spec, "is_mapped": True}},
+        "crosscheck": {}}}
+    html = dashboard.view_suppliers(snap)
+    assert "MAPPED-BUSINESS-UNITS" in html
+    assert "2026-08-21" in html and "Mando" in html
+    assert "Cloud Memory Business Unit" in html          # what was summed
+    assert "Mobile and Client" in html                   # what was excluded
+    assert "mapped, not measured" in html

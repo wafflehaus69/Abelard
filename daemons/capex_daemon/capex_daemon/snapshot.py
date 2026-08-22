@@ -49,6 +49,12 @@ def _supplier_section(legs, bucket_trends):
             "restatements": leg.restatements[-8:],
             "restatement_count": len(leg.restatements),
             "dropped": len(leg.dropped),
+            # The ruled mapping travels WITH the figure, everywhere it goes. A
+            # mapped number that loses its provenance en route to a renderer is
+            # a measurement it was never entitled to become.
+            "mapping": leg.mapping,
+            "is_mapped": leg.is_mapped,
+            "partial_periods": len(leg.partial),
         }
         if leg.is_covered:
             out["covered"].append(tick)
