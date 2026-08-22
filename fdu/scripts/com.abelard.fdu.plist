@@ -30,6 +30,13 @@
     <string>/bin/zsh</string>
     <string>/Users/wafflehaus/Code/Abelard-fdu/fdu/scripts/run_daily.sh</string>
   </array>
+  <!-- The LIVE plist additionally carries an EnvironmentVariables dict setting
+       FDU_CONTACT to the address declared in the User-Agent for SEC Fair Access.
+       It is NOT in this reference copy on purpose: this repository is PUBLIC, and
+       committing a contact address publishes it to every scraper on the internet.
+       Set it host-side:
+         <key>EnvironmentVariables</key>
+         <dict><key>FDU_CONTACT</key><string>...</string></dict> -->
   <key>RunAtLoad</key>
   <false/>
   <key>StartCalendarInterval</key>

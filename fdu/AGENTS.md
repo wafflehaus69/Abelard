@@ -141,7 +141,7 @@ From Phase 0, 2026-08-21. Dated per [E15]; re-check obligations apply.
 
 ---
 
-## Q6 evidence — a declared contact address probably would not help
+## Q6 — RESOLVED. A declared contact address is exactly what SEC gates on
 
 Measured 2026-08-21/22, recorded as evidence rather than as a ruling.
 
@@ -151,23 +151,71 @@ Measured 2026-08-21/22, recorded as evidence rather than as a ruling.
 - two independent networks (Orban on residential Windows, Basilic on macOS)
 - three different paths including `/robots.txt` and `/developer`
 
-If the block were about *how* traffic is declared, at least one of those should
-have differed. None did. So the working conclusion is that the 403 is **not
-User-Agent-shaped**, and provisioning a contact address to satisfy SEC Fair
-Access would likely not unlock the host.
+**That inference was WRONG and is corrected here rather than edited away.** Every
+one of those User-Agents lacked a contact address. On 2026-08-22 Mando supplied a
+non-personal one, and the identical request returned **HTTP 200 on the first
+try**, on both `/robots.txt` and the Form ADV data page. SEC gates on the
+*presence of a contact address in the User-Agent*, precisely as its Fair Access
+policy says. Three failures across two networks looked like strong evidence of a
+non-UA cause; they were three instances of the same omission.
 
-**Nothing FDU actually reads is affected.** `reports.adviserinfo.sec.gov` serves
-every feed and every per-firm document without a declared address. The only
-thing behind `www.sec.gov` that FDU might want is a separate CSV bulk product
-that *may* carry Schedule A and Item 4 directly — and that is an **unverified
-hypothesis**, inferred from a URL in the IAPD JavaScript bundle, never seen.
+`reports.adviserinfo.sec.gov` still serves every feed and every per-firm document
+without one, so the daily path never depended on this. What the address unlocked
+is the monthly bulk product — see below.
 
-The `FDU_CONTACT` hook remains in `config.py`. If an address is ever
-provisioned, setting that variable appends it to the declared UA and nothing
-else changes.
+`FDU_CONTACT` is set **host-side only**, in the live launchd plist on Basilic.
+It is deliberately absent from this repository, which is **public**: committing a
+contact address publishes it to every scraper on the internet.
 
 **Scope correction on [R-PA1-2].** As transcribed, that ruling reads "Mando's
 personal address is not to be declared," which is stricter than what was
 actually said. Mando confirmed the executor was right not to send it *without
 asking*. Whether he would choose to declare it himself was never ruled and
 remains open. Recorded so the ledger does not harden a rule nobody made.
+
+### What the monthly bulk product actually contains
+
+`www.sec.gov/.../information-about-registered-investment-advisers-exempt-reporting-advisers`
+publishes a **monthly** ZIP per population. Measured on `ia08032026_0.zip`,
+2026-08-22: 5.3 MB download, one CSV, **17,018 SEC-registered firms x 448
+columns** (a separate `-exempt` ZIP carries the ERAs).
+
+Against the daily IAPD XML feed FDU already reads (~20 usable fields), this is a
+far richer flattening of Part 1A — Item 5 broken out to `5A` through `5L(4)`,
+and **48 columns of Item 11 disciplinary detail** where the XML feed carries only
+a Y/N flag.
+
+| field family | daily XML feed | monthly CSV |
+|---|---|---|
+| Item 5 employees / AUM / clients | ~6 fields | ~130 columns |
+| Item 11 disciplinary | 1 flag | 48 columns |
+| **Item 4 successions** | **absent** | **PRESENT** — `Acquired Firm`, `Acquired Firm SEC#`, `Acquired Firm CRD#`, `Total Number of Acquired Firms` |
+| **Schedule A/B ownership** | **absent** | **still absent** |
+
+**So the per-firm document leg is still required, but only for ownership.** The
+succession fields come free in the monthly CSV.
+
+### The succession base rate, and why it deflates the thesis premise
+
+Measured on the same file: **`Acquired Firm` is populated for 16 of 17,018 firms
+(0.09%)**. And several of those are self-successions — `LEGACY WEALTH MANAGEMENT
+INC` succeeding `LEGACY WEALTH MANAGEMENT INC`, `DIAMOND HILL CAPITAL MANAGEMENT,
+LLC` succeeding `DIAMOND HILL CAPITAL MANAGEMENT INC` — which is an entity
+reorganization, not a sale to a third party.
+
+This matters more than the plumbing. Both ORDER PA-1.0 and `recon/PA-1-RECON.md`
+treat Item 4 as the primary succession signal. In a snapshot it is **nearly
+empty**, and Form ADV instruction 4 explains why: a firm that has already
+reported a succession is told **not to report it again**. Item 4 is therefore a
+momentary flag, not a standing state.
+
+The consequence is that succession detection has to come from **longitudinal
+change** — which is what FDU is built to do — and not from reading a field.
+Recorded per [E8]: the base rate is measured now, before any rule is written
+against it.
+
+Not yet checked, and worth checking: the FOIA archive also publishes **ADV-W
+(withdrawal of registration)** files, which are a direct exit signal, and **Part 2
+brochures in bulk**, which `recon/PA-1-RECON.md` §5 reported as not
+bulk-available. Both were listed at 2023-2024 vintage on that page; recency is
+unverified.
