@@ -212,6 +212,7 @@ def _cmd_rank(args: argparse.Namespace) -> int:
     for segment in (
         rank_mod.SEGMENT_GREEN,
         rank_mod.SEGMENT_GREEN_PROMOTED,
+        rank_mod.SEGMENT_POOL,
         rank_mod.SEGMENT_HUMAN_ONLY,
     ):
         rows = result.ranked.get(segment, [])
@@ -224,12 +225,21 @@ def _cmd_rank(args: argparse.Namespace) -> int:
         if segment == rank_mod.SEGMENT_HUMAN_ONLY and rows:
             print("  source says agentAccess=HUMAN_ONLY. Mando-executable only;")
             print("  no agent may take these. Ranked so they stay visible.")
+        if segment == rank_mod.SEGMENT_POOL and rows:
+            print("  these figures are FUNDS, not payments. The number is a")
+            print("  CEILING on what any one recipient could receive, and no")
+            print("  source publishes the per-recipient split. Never compare a")
+            print("  pool to a per-task payout -- they are different quantities.")
         if not rows:
             print("  (none)")
         for row in rows[: args.limit]:
             exp = f"{row.expected_usd:>10,.0f}" if row.expected_usd is not None else "         -"
+            # A pool prints with a leading '<=' so the ceiling is visible in the
+            # figure itself, not only in the banner above it.
+            amount = (f"<=${row.payout_usd_low:>10,.0f}" if row.payout_is_ceiling
+                      else f"  ${row.payout_usd_low:>10,.0f}")
             print(
-                f"  {row.position:>3}. ${row.payout_usd_low:>11,.0f}{exp}  "
+                f"  {row.position:>3}. {amount}{exp}  "
                 f"{row.source:<16}{row.title[:40]:<42}"
                 f"seen={row.verdicts_seen} flips={row.flip_count}"
             )
