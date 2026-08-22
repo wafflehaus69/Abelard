@@ -1,0 +1,83 @@
+{
+  "generated": "2026-08-21",
+  "status": "INVENTORY ONLY - no signal is scored, weighted, or shipped as a feature in Phase 0",
+  "completeness": "NECESSARILY INCOMPLETE. Category-first per scout doctrine: this list supplements a category rule and is never the rule itself.",
+  "categories": ["ownership_change", "capacity_change", "principal_lifecycle", "registration_lifecycle", "market_intermediated", "narrative"],
+  "signals": [
+    {
+      "id": "S1", "category": "ownership_change", "name": "Form ADV Item 4 (Successions)",
+      "mechanism": "Item 4 asks whether the filer is succeeding to the business of a registered adviser. It is the single most direct declared succession event on the form.",
+      "surface": "NOT IN BULK. Measured 0 occurrences across all 23,794 firm records in IA_FIRM_SEC_Feed_08_21_2026. Available only in the per-firm ADV PDF (reports.adviserinfo.sec.gov/reports/ADV/<crd>/PDF/<crd>.pdf).",
+      "cost_if_pursued": "~929 KB and one request per firm; ~22 GB and 23,794 requests for full coverage.",
+      "validation": "Sample N firms known to have transacted (from public M&A press) and confirm Item 4 fires; measure false-negative rate against that set.",
+      "verdict": "REAL BUT NOT BULK-AVAILABLE"
+    },
+    {
+      "id": "S2", "category": "ownership_change", "name": "Schedule A/B direct and indirect owner changes",
+      "mechanism": "Ownership stake changes precede and accompany sale; Schedule A lists direct owners, Schedule B indirect.",
+      "surface": "NOT IN BULK. No Schedule A/B element anywhere in the corpus. Per-firm PDF only (confirmed present in sampled PDF).",
+      "validation": "Same as S1; additionally diff two per-firm PDFs across an interval and confirm the diff is machine-extractable.",
+      "verdict": "REAL BUT NOT BULK-AVAILABLE"
+    },
+    {
+      "id": "S3", "category": "capacity_change", "name": "Employee headcount contraction (Item 5A TtlEmp, Item 5B)",
+      "mechanism": "A shrinking advisory headcount can precede wind-down or sale; Item 5B decomposes advisory-function staff.",
+      "surface": "IN BULK. Item5A@TtlEmp present on 17,132 of 23,794 firms (72.0%). Median 8, p90 63, max 41,879.",
+      "validation": "Requires longitudinal snapshots. Measure the base rate of YoY headcount decline across the whole population BEFORE treating decline as signal - most decline will be noise. Pre-register the decline threshold against the observed distribution [E8].",
+      "verdict": "AVAILABLE, UNVALIDATED",
+      "hazard": "Coverage gap is structural: ERAs (6,661 firms) do not complete the full item set. A missing field must not score as calm [scout risk.py _ABSENCE_REASONS lesson]."
+    },
+    {
+      "id": "S4", "category": "capacity_change", "name": "Regulatory AUM and account-count trajectory (Item 5F)",
+      "mechanism": "Sustained AUM/account decline is a distress or wind-down proxy; sharp rise can indicate an acquisition already completed.",
+      "surface": "IN BULK. Item5F@Q5F2C present on 16,783 firms. Median $439,211,752; p90 $7,084,560,665.",
+      "validation": "Longitudinal. AUM moves with markets - any threshold must be market-adjusted or it will fire on every drawdown. Validate against a market-return control before use.",
+      "verdict": "AVAILABLE, UNVALIDATED",
+      "hazard": "E5 unit-scale: values are raw USD integers. Confirm per-filer, do not assume."
+    },
+    {
+      "id": "S5", "category": "principal_lifecycle", "name": "Principal age proxy from registration-year arithmetic",
+      "mechanism": "Time since first registration proxies career stage; late-career principals are likelier to seek succession.",
+      "surface": "Individual feed carries exam dates (Exm@exmDt) and registration begin dates (CrntRgstn@regBeginDt, PrevRgstn). Firm feed carries no principal-level dates.",
+      "validation": "This is INFERENCE, not fact, and must be encoded as claim-not-fact. It cannot be validated against ground truth because date of birth is not public. Treat as an unfalsifiable prior and weight accordingly - or do not use it.",
+      "verdict": "INFERENCE ONLY - encode as claim, never as fact",
+      "blocked_by": "I-3 (person-level). Also gated on the unresolved firm-facing wall."
+    },
+    {
+      "id": "S6", "category": "registration_lifecycle", "name": "Registration status transitions",
+      "mechanism": "A move out of APPROVED, or an ERA changing scope, marks a lifecycle event that often accompanies a sale or wind-down.",
+      "surface": "IN BULK. Rgstn@FirmType/@St/@Dt. Observed distribution: Registered/APPROVED 16,900; ERA/ACTIVE 6,661; Registered/APPROVED-120 233.",
+      "validation": "Longitudinal diff. APPROVED-120 (233 firms) is a small, well-defined cohort worth a manual read to learn what the state actually means before any rule keys on it.",
+      "verdict": "AVAILABLE, UNVALIDATED"
+    },
+    {
+      "id": "S7", "category": "registration_lifecycle", "name": "Filing-cadence anomaly",
+      "mechanism": "Off-cycle amendments (outside the annual updating amendment window) can indicate a material change such as ownership or control.",
+      "surface": "IN BULK but WEAK. Filing@Dt is the date of the MOST RECENT filing only - the feed is a snapshot, not an event stream. 23,030 of 23,794 firms carry a 2026 filing date; 534 distinct dates observed.",
+      "validation": "Requires FDU to accumulate its own daily snapshots. The publisher retains only an 8-day rolling window (measured), so at most 8 days of history can be bootstrapped.",
+      "verdict": "AVAILABLE ONLY IF FDU SNAPSHOTS FROM DAY ONE",
+      "hazard": "The order treats 'filing-cadence anomalies' as directly observable. It is not - the observable is a single last-filing date per snapshot."
+    },
+    {
+      "id": "S8", "category": "principal_lifecycle", "name": "State succession-plan filing requirements",
+      "mechanism": "Some states require IAs to maintain or file a business-continuity/succession plan; the filing itself would be a surface.",
+      "surface": "NOT ESTABLISHED THIS SESSION. FL's own datamart is reCAPTCHA-gated and was skipped. No state was found publishing succession-plan filings as retrievable data.",
+      "validation": "Desk-read NASAA model rule adoption state by state, then test whether adopting states publish the filings or merely require them to be maintained. The likely answer is 'maintained, not filed' - which would make this signal unobservable rather than merely hard.",
+      "verdict": "UNRESOLVED - premise not established"
+    },
+    {
+      "id": "S9", "category": "market_intermediated", "name": "Practice M&A marketplace public listings",
+      "mechanism": "A firm listed for sale has already declared intent.",
+      "surface": "See T3. Listings on FP Transitions and RIA Match are gated behind account creation.",
+      "validation": "n/a - blocked at access, not at extraction.",
+      "verdict": "BLOCKED BY I-1/I-5 (account creation is not available to FDU)"
+    },
+    {
+      "id": "S10", "category": "narrative", "name": "Form ADV Part 2 brochure succession/continuity language",
+      "mechanism": "Part 2 brochures narrate business continuity and, occasionally, succession arrangements.",
+      "surface": "NOT IN BULK. The manifest carries exactly three files, none of them Part 2. The SPA brochure route (/firm/brochure/) is robots-Disallowed on adviserinfo.sec.gov.",
+      "validation": "n/a in Phase 0 - no NLP work authorized.",
+      "verdict": "NOT BULK-AVAILABLE; primary route robots-Disallowed"
+    }
+  ]
+}

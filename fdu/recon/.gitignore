@@ -1,0 +1,4 @@
+# Raw fetched payloads are reproducible from fetch_log.jsonl and are not committed.
+# Two further reasons: bulk feeds are multi-MB, and the individual feed carries
+# named-person data that I-3 forbids retaining.
+raw/

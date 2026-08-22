@@ -1,0 +1,62 @@
+{
+  "generated": "2026-08-21",
+  "method": "live GET only; governing clause quoted from the served document, not paraphrased",
+  "surfaces": [
+    {
+      "surface": "reports.adviserinfo.sec.gov (IAPD Compilation Reports)",
+      "verdict": "PERMISSIVE",
+      "governing_clause_location": "https://adviserinfo.sec.gov/ -> 'Privacy Policy' section, item 3 (text served in main.f57a50a935184f6c.js)",
+      "quote": "Information presented on www.AdviserInfo.sec.gov is considered public information and may be distributed or copied.",
+      "conditions": ["Do not use the SEC seal, logos or artwork", "IARD is a registered service mark"],
+      "robots": "adviserinfo.sec.gov/robots.txt disallows /firm/brochure/, /IAPD/content/viewform/adv*.aspx, /IAPD/WebLock, /IAPD/Content/Common/crd_iapd_Brochure.aspx, /firm/accountsuprise/. reports.adviserinfo.sec.gov serves no robots.txt (S3 AccessDenied).",
+      "notes": "Site is an SEC property operated by FINRA. FINRA's own ToU is scoped to 'the FINRA.ORG site' and does not by its terms reach this host. Unresolved and worth a ruling."
+    },
+    {
+      "surface": "brokercheck.finra.org + api.brokercheck.finra.org",
+      "verdict": "CONDITIONAL(purpose-limited)",
+      "governing_clause_location": "BrokerCheck Terms of Use, 'Permitted Uses' and 'Investor Protection, Academic, Compliance and Regulatory Uses' (served in brokercheck.finra.org/main.2b8c58f556a565c0.js; presented as click-through on SEARCH)",
+      "quote_default": "the data provided through BrokerCheck shall be used ONLY for your own personal or professional use ... All other uses are strictly prohibited.",
+      "quote_carveout": "the BrokerCheck data may be copied and compiled, including by use of data mining, scraping or harvesting tools (including robots) or similar data gathering or extraction tools, and used solely for investor protection, academic, compliance or regulatory purposes",
+      "carveout_lifts_restrictions": ["(e)", "(f)", "(g)", "(k)"],
+      "applies_to_fdu": false,
+      "reason": "FDU's stated purpose (deal sourcing / recruitability) is not investor protection, academic, compliance or regulatory. The carve-out does not reach it; the default prohibition governs.",
+      "robots": "brokercheck.finra.org/robots.txt is 'User-agent: * / Disallow:' i.e. fully permissive. Robots and ToU disagree; ToU governs."
+    },
+    {
+      "surface": "www.finra.org",
+      "verdict": "HOSTILE",
+      "governing_clause_location": "https://www.finra.org/terms-of-use, 'Permitted Uses' and 'Restrictions' (d),(e)",
+      "quote": "develop or create a database of data using the FINRA Website ... use any process to monitor or copy the FINRA Website in bulk, or use any data mining, scraping or harvesting tools (including robots), or any similar data-gathering or extraction tools",
+      "last_modified": "November 9, 2023"
+    },
+    {
+      "surface": "www.sec.gov",
+      "verdict": "UNSTATED (not readable this session)",
+      "observed": "HTTP 403 'Request Rate Threshold Exceeded' on first and every request, including /robots.txt and /developer.",
+      "served_instruction": "Automated access to our sites must comply with SEC.gov's Privacy and Security Policy. Please visit www.sec.gov/developer for more developer resources and Fair Access guidelines.",
+      "blocker": "SEC Fair Access expects a declared User-Agent carrying a contact address. None was sent; no contact address has been authorized for declaration. See Q6."
+    },
+    {
+      "surface": "real.flofr.gov (Florida OFR 'REAL' datamart)",
+      "verdict": "HOSTILE (bot-detection present)",
+      "observed": "302 -> /datamart/languageChoice.do; served page contains reCAPTCHA.",
+      "action": "Recorded, skipped, reported. No bypass attempted (stop condition)."
+    },
+    {
+      "surface": "www.ssb.texas.gov",
+      "verdict": "PERMISSIVE (robots)",
+      "observed": "Drupal-default robots.txt; no IA registration data API located."
+    },
+    {
+      "surface": "dfpi.ca.gov",
+      "verdict": "CONDITIONAL(rate)",
+      "observed": "robots.txt sets 'Crawl-delay: 600' (10 minutes per request) for User-agent: *.",
+      "notes": "A 600s crawl-delay makes systematic retrieval impractical by design."
+    },
+    {
+      "surface": "www.nasaa.org",
+      "verdict": "PERMISSIVE (robots)",
+      "observed": "'User-agent: * / Disallow:'"
+    }
+  ]
+}
