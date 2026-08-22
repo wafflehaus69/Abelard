@@ -321,6 +321,72 @@ depth-2, 56 depth-1. Nothing before 2026-08-11 exists — the four earlier
 backfilled, so any derived state for a row is only as old as its first recorded
 verdict, and a depth-1 row has had no opportunity to debounce at all.
 
+**Amendment (DRAFTED by ClaudeCode 2026-08-21, NOT YET RATIFIED — SC-E22R).**
+The floor premise above is withdrawn. Part 2's rule survives; the arithmetic
+that justified it does not, and the replacement was chosen by replay rather
+than derived from a parameter.
+
+*There is no scalar floor.* P = 2.55% rested on one 21-minute control. Nine
+further intervals were measured: the flip rate ranges 1.88%–16.98% and is
+**overdispersed** — chi-square 36.8 on 8 df, z = 7.20. No single value fits, so
+retuning the debounce to 10.58% would repeat the original error at a new number.
+Every rate quoted in the entry above should be read as conditional on the
+occasion that produced it.
+
+*The mechanism is per-scan, not per-row.* Elapsed time does not predict the flip
+rate (Spearman −0.03). The **difference in two scans' aggregate veto-on-GREEN
+rate** does: Pearson **+0.887**, Spearman +0.683 over 9 pairs. Two harsh scans
+agree (46.2% vs 46.6% → 1.88% flips); two calm scans agree (38.4% vs 35.8% →
+2.65%); mismatched scans disagree (20.0% vs 34.0% → 16.98%). Per-scan aggregate
+rates ran 20.0%–46.6%, with 4 of 10 scans outside sampling bounds. The judge's
+threshold moves between occasions and boundary rows follow it.
+
+*The rule survives the replay; four candidates were tested over 10 judged scans
+and 5,173 observations.* Anchors: the four known-noise control flips must not
+move the effective state, and RCS — the one confirmed genuine offender — must
+stay vetoed.
+
+    rule                    veto rate  churn/row  noise  RCS        lag v/r
+    (1,2) THIS ONE             12.45%      0.129    4/4  VETOED     1.00 / 2.00
+    majority of trailing 3     10.86%      0.073    3/4  FREED      1.80 / 1.33
+    majority of trailing 5     10.32%      0.055    3/4  FREED      1.16 / 1.27
+    Wilson LB GREEN>=0.5   23.8%-36.4%  0.85-0.94    4/4  unstable   1.00 / 5.00
+
+Both majority rules free RCS. The Wilson bound frees it in 3 of 8
+parameterizations (window 3/5/7/10 x conf 0.90/0.95) — failing the anchor
+*inconsistently*, which is worse than failing it cleanly — and never drops below
+23.8% veto rate or 0.85 churn. **(1,2) is the only candidate holding RCS while
+absorbing all four known-noise flips, and it preserves the ratified asymmetry
+exactly.** Stated two-sided per this entry's own rule: it also carries the
+highest veto rate and ~2x the churn of the disqualified candidates. It is
+re-earned on evidence, not vindicated by its original derivation.
+
+*Recommended, and NOT self-ratified:* keep the per-row rule at (1,2); add a
+**scan-calibration layer** above it that measures each scan's aggregate rate
+against a trailing baseline and down-weights or flags deviant scans. Excluding
+deviant scans dropped overdispersion from z = 7.20 to z = 2.90 — a reduction,
+not a cure, on 5 remaining pairs. That is a ruling for Mando and this amendment
+does not make it.
+
+*Defect found and fixed while replaying (commit `bcd4d44`).* A scan whose
+classify call failed still wrote one verdict row per item carrying
+`classes_disagreed = 0`. That zero means "no veto came back", not "the judge
+cleared it". Three such scans had contributed **1,609 of 6,782 observations
+(23.7%)**, and because recovery needs two consecutive clean scans they pushed
+rows toward GREEN — the expensive direction. **16 of 669 rows carried a wrong
+effective verdict.** `verdicts.judgeless_scans()` now excludes them, detected
+from cost telemetry (`llm_calls = 0 AND items_classified > 0`) because telemetry
+is persisted before any opportunity row and stays trustworthy when the rest of
+the scan did not. The append-only table was not edited; nothing was deleted.
+Any measurement in the entry above taken before 2026-08-21 includes those
+spurious clean votes.
+
+*Provenance, per [E27]:* Mando stated 2026-08-21 that E22 had been adjusted. No
+adjustment was present on disk — the ledger diff since the entry landed was 189
+insertions and zero deletions. This amendment records the SC-E22R findings so
+they exist in writing; it does not invent the adjustment, and the rule above is
+unchanged until Mando rules.
+
 ## E23 — Concept identity is not semantic identity
 Ruled by Mando 2026-08-14; drafted by ClaudeCode from the originating incident
 rather than by Abelard — reword to the ledger's voice if wanted. Extends [E7]
