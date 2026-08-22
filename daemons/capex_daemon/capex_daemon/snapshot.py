@@ -17,6 +17,11 @@ from . import commitments, config, divergence, normalize, phases, trend
 
 SNAPSHOT_KEY = "panel_snapshot"
 
+# How far back from the panel's newest classified quarter a transition may still
+# alert. One quarter of slack, because issuers file weeks apart and a name that
+# transitions on the quarter just before the frontier is still current news.
+ALERT_LOOKBACK_QUARTERS = 1
+
 
 def _obs_json(o):
     return {"quarter": o.quarter, "yoy": o.yoy, "delta": o.delta,
@@ -335,6 +340,24 @@ def load(con):
     return json.loads(row[0]) if row else None
 
 
+def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):
+    """The oldest quarter a transition may alert from.
+
+    Anchored on the newest quarter any classified series reached, so a panel
+    mid-filing-season does not go silent just because one issuer is ahead.
+    """
+    qs = [o["quarter"] for i in (snap.get("issuers") or {}).values()
+          for o in (i.get("observations") or [])]
+    qs += [o["quarter"] for b in (snap.get("buckets") or {}).values()
+           for o in (b.get("observations") or [])]
+    qs += [o["quarter"] for o in ((snap.get("total") or {}).get("observations") or [])]
+    if not qs:
+        return None
+    y, n = trend._cq_sort(max(qs, key=trend._cq_sort))
+    idx = y * 4 + n - lookback
+    return "{}Q{}".format((idx - 1) // 4, (idx - 1) % 4 + 1)
+
+
 def alert_lines(snap, prior_keys=()):
     """P5 alert bar — STATE TRANSITIONS ONLY, per standing rule.
 
@@ -345,11 +368,25 @@ def alert_lines(snap, prior_keys=()):
 
     MIRROR names are excluded from alerts by standing rule; SNOW's CONTRACTING
     read stays visible on the board as the calibration ghost but never alerts.
+
+    **Only transitions at the FRONTIER alert.** An event key is content-derived,
+    so changing the classifier mints new keys for OLD quarters and every one of
+    them looks unseen. Measured: the CONTRACTING-exit fix made a rebuild alert
+    `bucket:builder 2013Q3 CONTRACTING->PLATEAU` — a state change from thirteen
+    years ago, announced as news in 2026. The first-run rule does not catch this
+    because `phase_events` is not empty; only the interpretation changed.
+
+    A transition is news when it happened in the quarter the panel has just
+    reached. Anything earlier is history, however freshly derived — it is still
+    RECORDED, so it cannot alert later, but it is never announced.
     """
     out = []
     prior = set(prior_keys or ())
+    frontier = _frontier_quarter(snap)
     for t in snap.get("transitions", []):
         if t["event_key"] in prior:
+            continue
+        if frontier and trend._cq_sort(t["quarter"]) < trend._cq_sort(frontier):
             continue
         key, to = t["series_key"], t["to_state"]
         issuer = snap["issuers"].get(key)

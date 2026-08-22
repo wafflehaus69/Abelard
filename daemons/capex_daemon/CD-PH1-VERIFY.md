@@ -166,6 +166,33 @@ The generalisable half — *a rule that is level-based on entry must be level-ba
 state machine publishes contradictions* — is offered as a ledger candidate, not filed as one; that
 numbering is Mando's.
 
+## 6c. And a second one the fix itself exposed (fixed 2026-08-22)
+
+Rebuilding Basilic's snapshot after the CONTRACTING-exit fix announced this:
+
+```
+TRANSITIONS: bucket:builder 2013Q3 CONTRACTING->PLATEAU (aggregate transition);
+             bucket:builder 2015Q1 CONTRACTING->PLATEAU; bucket:builder 2015Q2 ...
+```
+
+A state change from **thirteen years ago**, alerted as news. Event keys are
+content-derived (E12), which is what stops the same transition alerting twice —
+but it also means changing the CLASSIFIER mints new keys for OLD quarters, and
+every one of them is legitimately unseen. The first-run backfill rule does not
+catch this: `phase_events` is not empty, and nothing about the data changed. Only
+the interpretation did.
+
+The rule was under-specified rather than wrong. "Alert transitions that have not
+been seen" was standing in for "alert transitions that are NEWS", and those come
+apart the moment history is re-derived. A transition is news when it happened in
+the quarter the panel has just reached; anything earlier is history however
+freshly computed. Historical transitions are still **recorded** — so they cannot
+alert later — and simply never announced.
+
+`ALERT_LOOKBACK_QUARTERS = 1` gives one quarter of slack, because issuers file
+weeks apart and a name transitioning on the quarter just before the frontier is
+still current.
+
 ## 7. Live end-to-end
 
 ```

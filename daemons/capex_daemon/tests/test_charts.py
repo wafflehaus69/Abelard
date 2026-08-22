@@ -308,3 +308,38 @@ def _issuer(tick, bucket, q, obs):
             "commitments": {"status": "OK", "detail": "", "latest": 3.2e10,
                             "concept": "PurchaseObligation", "points": [],
                             "points_cq": [{"q": x, "value": 3.0e10} for x in q[-6:]]}}
+
+
+# --- alerts are for news, not for freshly-derived history -------------------
+
+def test_a_classifier_change_does_not_alert_thirteen_year_old_transitions():
+    """Event keys are content-derived, so changing the classifier mints new keys
+    for OLD quarters and every one looks unseen. Measured live: the
+    CONTRACTING-exit fix made a rebuild announce `bucket:builder 2013Q3
+    CONTRACTING->PLATEAU` as news in 2026."""
+    from capex_daemon import snapshot
+    obs = [{"quarter": q, "state": "PLATEAU"} for q in ("2026Q1", "2026Q2")]
+    snap = {"issuers": {}, "buckets": {"builder": {"observations": obs}},
+            "total": {"observations": obs},
+            "transitions": [
+                {"series_key": "bucket:builder", "quarter": "2013Q3",
+                 "from_state": "CONTRACTING", "to_state": "PLATEAU",
+                 "yoy": .1, "delta": 9.0, "event_key": "old"},
+                {"series_key": "bucket:builder", "quarter": "2026Q2",
+                 "from_state": "PLATEAU", "to_state": "ACCELERATING",
+                 "yoy": .5, "delta": 30.0, "event_key": "now"}]}
+    keys = [a["event_key"] for a in snapshot.alert_lines(snap)]
+    assert keys == ["now"]
+
+
+def test_the_frontier_allows_one_quarter_of_slack():
+    """Issuers file weeks apart; a transition on the quarter just before the
+    frontier is still current news, not history."""
+    from capex_daemon import snapshot
+    obs = [{"quarter": q, "state": "PLATEAU"} for q in ("2026Q1", "2026Q2")]
+    snap = {"issuers": {}, "buckets": {"builder": {"observations": obs}},
+            "total": {"observations": obs},
+            "transitions": [{"series_key": "bucket:builder", "quarter": "2026Q1",
+                             "from_state": "PLATEAU", "to_state": "CONTRACTING",
+                             "yoy": -.1, "delta": -30.0, "event_key": "k"}]}
+    assert len(snapshot.alert_lines(snap)) == 1
