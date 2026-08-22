@@ -118,3 +118,23 @@ unavailable — which costs little, since the bulk product lives on
   rubric judgement from data absence.
 - **Measure before mandate [E8].** No threshold ships without an observed distribution.
   Phase 0 shipped none.
+
+---
+
+## Measured facts worth not re-deriving
+
+From Phase 0, 2026-08-21. Dated per [E15]; re-check obligations apply.
+
+- **ADV PDF size:** mean 1.98 MB, median 1.12 MB, p90 4.14 MB, max observed 48.5 MB.
+  Full corpus **49.4 GB** (95% CI 28.7–70.1) over 23,794 firms. An earlier n=1
+  extrapolation said 22.1 GB and was 2.2x low — the distribution is right-skewed and a
+  single sample is worthless for it.
+- **Real corpus churn: 1.95% per 7 days** (462 firms), against **25.92% by raw byte diff**.
+  Delta-triggered PDF retrieval therefore costs ~66 pulls/day, not 23,794 per pass — 52x.
+- **`<States>` children are emitted in unstable order** between snapshots. Same set,
+  shuffled. **92.5% of raw-byte diff hits are this artifact.** Any change key must be
+  order-normalised and semantically scoped, or the pipeline fires ~5,688 spurious triggers
+  a week. Candidate ENGINEERING.md entry — extends [E12] ("dedup keys are content-derived")
+  with: content-derived is necessary and **insufficient**; it must also be order-invariant.
+  **Not added to the shared ledger unilaterally** — numbering is contended and entries are
+  Mando's to ratify.

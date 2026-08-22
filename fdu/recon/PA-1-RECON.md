@@ -103,9 +103,53 @@ lesson applies directly.
 containing `Item 4`, `Succession`, `Schedule A`, `Schedule B`, `Direct Owners`,
 `Indirect Owners`, and `Disclosure Reporting`. This path is **not** robots-disallowed.
 
-**The cost of that route, stated plainly:** full ownership coverage means 23,794 requests at
-~929 KB each ≈ **22 GB**. That is not a "systematic retrieval" any I-1 rate discipline makes
-comfortable, and it should be treated as a Phase-1 design fork, not an implementation detail.
+**The cost of that route — corrected 2026-08-21 after measurement.** An earlier draft of this
+report extrapolated 22.1 GB from that single sampled firm. **That figure was wrong and is
+retained here as a correction rather than quietly replaced.** A uniform random sample of n=44
+firms (HEAD, Content-Length) gives:
+
+| statistic | value |
+|---|---|
+| mean | 2,076,953 B (1.98 MB) |
+| median | 1,175,299 B (1.12 MB) |
+| min / max | 360,687 B / 19,435,818 B (18.5 MB) |
+| p90 | 4,139,208 B |
+
+**Full-corpus point estimate: 49.4 GB, 95% CI 28.7–70.1 GB.** The n=1 figure understated by
+**2.2×**. The distribution is strongly right-skewed (mean 1.8× median; a separate stratified
+probe found a 48.5 MB filing at the top end), which is exactly why one sample was worthless
+here — [E8] applies to a storage estimate as much as to a classifier threshold.
+
+Request cost for one full pass: 23,794 requests — 6.6 h at 1/s, 20.0 h at 1 per 3 s.
+
+### 2.2.1 Churn — the measurement that decides the design
+
+`[CURL]` Diffed the 08_14 and 08_21 snapshots (7-day interval, 23,731 firms present in both).
+
+| measure | firms | rate |
+|---|---:|---:|
+| raw byte diff | 6,150 | 25.92% |
+| **order-normalised diff** | **462** | **1.95%** |
+| false positives | 5,688 | **92.5% of raw hits were noise** |
+
+**The publisher emits `<States>` notice-filing children in unstable order.** Same set, shuffled
+between snapshots. A naive byte-hash or line-diff change detector therefore reports ~26% of the
+corpus changing every week when the true figure is under 2%. One sampled record differed only
+by an identical line appearing on both sides of the diff.
+
+Normalised, the real 7-day movement is 462 firms — `Filing` 442, `Item5D` 41, `Item5F` 40,
+`Item5B` 39, `Item1` 39, `MainAddr` 38, `Item5A` 34, `Rgstn` 18, `Info` 15, `Item11` 4.
+
+**Consequence, and it reshapes Q7 from a fork into a recommendation:** a delta-triggered design
+needs roughly **66 PDF pulls per day** (~130 MB/day at the measured mean), not 23,794 per pass —
+a **52× reduction**. Full ownership coverage is a one-time backfill problem, not a recurring one.
+
+**Hazard to carry forward:** any change key must be computed over **order-normalised,
+semantically-scoped** content, never raw bytes. At raw-byte granularity this pipeline would
+fire 5,688 spurious triggers a week and cost ~11 GB/week of pointless PDF retrieval. This is
+[E12]'s "dedup keys are content-derived" with a new face — content-derived is necessary and
+insufficient; it must also be **order-invariant**. Flagged as a candidate ENGINEERING.md entry
+for Mando's ratification rather than added unilaterally (numbering is contended right now).
 
 ### 2.3 Refresh cadence and retention — measured, not assumed
 
@@ -332,22 +376,20 @@ further — an unresolved negative, dated, per [E15].
 | I-6 cost telemetry | **HELD.** Below. |
 | I-7 no Scout writes | **HELD.** Nothing outside `fdu/`. Separate worktree, separate branch. |
 
-**Cost telemetry.** 55 logged fetches, **10,136,611 bytes (9.7 MB)**. Per-surface breakdown in
+**Cost telemetry.** 56 logged fetches, **17,390,725 bytes (16.6 MB)**. Per-surface breakdown in
 `cost_telemetry.json`, per-fetch rows in `fetch_log.jsonl`.
 
-| surface | fetches | bytes |
-|---|---:|---:|
-| sec_reports (IAPD bulk) | 9 | 8,728,465 |
-| finra_tos | 6 | 474,326 |
-| iapd_spa | 1 | 348,252 |
-| brokercheck | 3 | 344,656 |
-| market (T3) | 14 | 109,555 |
-| all others | 22 | 131,357 |
+*Disclosure — three things the logged count does not capture:*
 
-*Disclosure:* ~20 further probes (HTTP HEAD and 256-byte ranged existence checks used for the
-retention bisect in §2.3) were issued outside the logging helper and are **not** in the 55.
-Their payload is negligible (<10 KB total) but the count is not zero, and reporting 55 as
-complete would be inaccurate.
+1. **136 further probes** (HTTP HEAD and small ranged existence checks) were issued outside the
+   logging helper: the retention bisect in §2.3, and the ADV size sampling in §2.2. HEAD
+   responses carry no body, so payload is negligible (<60 KB), but the request count is not.
+2. **44 of those were wasted.** Python wrote the CRD sample file with Windows CRLF endings, so
+   a `\r` landed inside each URL and all 44 HEADs returned no `Content-Length`. They were
+   re-issued after stripping. The requests still hit the server and are counted here.
+3. Total requests against `reports.adviserinfo.sec.gov` across the session: **~150**, of which
+   three were multi-MB bulk pulls. Well inside any reasonable rate posture, but stated rather
+   than assumed.
 
 **LLM calls: 0. FDU model spend: $0.00.** The §3 stop-and-report condition was never triggered.
 
@@ -451,11 +493,21 @@ personal address to a federal system is confirmed, and that option is closed.* R
 provisioned project address, or none — accepting that `www.sec.gov` stays unavailable, which
 costs little, since the bulk product is on a different host that works.
 
-**Q7 — Is the 22 GB per-firm PDF route in or out?** Ownership and Item 4 — the order's primary
-succession thesis — exist only there. 23,794 requests at ~929 KB. In scope, out of scope, or
-scoped to a filtered subpopulation (e.g. only firms whose bulk fields moved first)? The third is
-the only version I would build, and it inverts the pipeline: bulk deltas become a *trigger* for
-selective PDF retrieval, not a standalone signal.
+**Q7 — Is the per-firm PDF route in or out?** *Substantially answered by measurement since the
+first draft; restated as a recommendation rather than an open fork.* Ownership and Item 4 — the
+order's primary succession thesis — exist only there.
+
+- **One-time backfill:** 23,794 requests, **49.4 GB** (95% CI 28.7–70.1), 6.6–20 h depending on
+  pacing. Heavy but bounded, and it happens once.
+- **Steady state, delta-triggered:** **~66 PDFs/day, ~130 MB/day.** 52× cheaper than re-pulling.
+- **Feed cost on top:** 7.27 MB/day.
+
+So the honest answer to "would we have a full database" is *yes, and keeping it current is
+cheap* — the 49 GB is a one-off, and the recurring cost is trivial. What remains genuinely open
+is not feasibility but whether it is worth doing given §7's honest null (Q8), and whether the
+one-time 23,794-request backfill is comfortable under I-1's "human-plausible rates" — that is a
+judgement about pacing and posture, not about capacity. My recommendation: pace the backfill
+over days rather than hours, and only after Q8 has an answer.
 
 **Q8 — Given §7, what is FDU's edge thesis?** AdvizorPro sells 750,000 ADV-derived profiles with
 an API into "Recruiter" and "M&A" segments today. Phase 0 found no public signal those vendors
