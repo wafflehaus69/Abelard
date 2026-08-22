@@ -721,3 +721,47 @@ written, enumerate the round trips, not just the transitions you expect.
 Detection is cheap and belongs in tests: for every level-defined state, assert
 the invariant directly against the published series — after the fix, **0 of 965**
 classified observations hold CONTRACTING at a non-negative level.
+
+## E31 — Re-derivation is not news; alerting is frontier-gated
+Ruled by Mando 2026-08-22; drafted by ClaudeCode. Extends [E12], which made
+event keys content-derived, by naming what that alone cannot do.
+
+Incident. Content-derived event keys are what stop the same transition alerting
+twice: the key is the series, the quarter and the state pair, never the wall
+clock of the run that noticed. That works perfectly for re-running the same
+computation over the same data. It fails completely when the COMPUTATION
+changes.
+
+Fixing the CONTRACTING exit ([E30]) altered how history classified. Rebuilding
+the published snapshot then minted new keys for old quarters, and every one was
+legitimately unseen, so the alert bar announced
+`bucket:builder 2013Q3 CONTRACTING->PLATEAU` — a state change from **thirteen
+years ago**, reported as news in 2026. The existing first-run backfill rule did
+not catch it: `phase_events` was not empty, and nothing about the data had
+changed. Only the interpretation had.
+
+The standing rule was under-specified rather than wrong. **"Alert what has not
+been seen" had been standing in for "alert what is NEWS"**, and the two are
+identical only while history never gets re-derived. They came apart the first
+time a classifier changed under an existing database — which is to say, the
+first time the system did the thing it is designed to allow.
+
+Rule: **alerting is gated on the frontier, not on novelty.** A transition is
+announced only when it occurred in the period the corpus has just reached; a
+small lookback is legitimate where sources arrive at different times, and is
+stated as a constant rather than left implicit. Everything older is still
+RECORDED — so it can never alert later — and simply never announced. Recording
+and announcing are separate decisions and must be made separately.
+
+This is not a Capex Daemon rule. It binds anywhere a derived interpretation is
+published over an accumulating corpus, and two live surfaces are already exposed:
+**News Watch retagging** — a theme edit re-tags historical items, and every newly
+matched item is an unseen key on an old article — and **Smart Money repairs**,
+where a parser or supersede-policy fix re-derives past events. Both must gate on
+the corpus frontier before they can safely re-derive at scale.
+
+Corollary — a maintenance affordance can create the hazard it needs protecting
+from. The rebuild path that exposed this was added hours earlier to solve stale
+published state, and its first real use produced the defect. Any operation that
+recomputes history is an alerting event in its own right and should be designed
+alongside the gate, not before it.
