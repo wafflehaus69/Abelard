@@ -1,0 +1,30 @@
+[project]
+name = "fdu-daemon"
+version = "0.1.0"
+description = "Financial Deals Unit: a read-only sensor over public SEC investment-adviser filings. Discovers firm-level signals of practice sale/succession intent. Never contacts anyone, never writes to any external service."
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.31",
+    "pypdf>=4.0",
+]
+
+# NOTE: abelard-common is deliberately NOT declared here. It is a monorepo
+# editable install, not a PyPI package -- a bare requirement would resolve
+# against PyPI and fail. Install it first:
+#     pip install -e ../daemons/common -e .[dev]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+fdu-daemon = "fdu_daemon.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fdu_daemon*"]
