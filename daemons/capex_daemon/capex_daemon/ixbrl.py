@@ -99,8 +99,23 @@ def _sanitize(raw):
 
 
 def _read(source):
+    """Accept a path, raw bytes, or an already-fetched document STRING.
+
+    `edgar.fetch_document` returns text, so a caller wiring the fetcher straight
+    into the parser hands this a `str` of XML. Treating every `str` as a path
+    made that fail as `No such file or directory: '<?xml version="1.0"...'` — a
+    message that names the content it could not find, which is confusing enough
+    that it survived a full test suite and only surfaced on the first live run.
+    A string that opens with an XML declaration or a tag is content, not a path;
+    nothing else could be, since no path starts with `<`.
+    """
     if isinstance(source, (bytes, bytearray)):
         return bytes(source)
+    if isinstance(source, str) and source.lstrip()[:1] == "<":
+        # Encode the STRIPPED text: an XML declaration is only valid at the very
+        # start of the entity, so a stray leading newline from a fetch would
+        # otherwise turn a detected document into a parse error.
+        return source.lstrip().encode("utf-8")
     with open(source, "rb") as fh:
         return fh.read()
 

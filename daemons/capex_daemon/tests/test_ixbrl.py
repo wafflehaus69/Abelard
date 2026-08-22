@@ -119,3 +119,35 @@ def test_undimensioned_fact_has_empty_dim_key():
                    None, "2026-06-30", {}, "c1")
     assert f.dim_key == ""
     assert f.is_dimensioned is False
+
+
+def test_a_fetched_document_string_parses_as_content_not_a_path():
+    """edgar.fetch_document returns TEXT, and the supplier harvest feeds it
+    straight to the parser. Treating every str as a path failed the first live
+    run with `No such file or directory: '<?xml version="1.0"...'` — after a
+    full green suite, because every fixture passed bytes or a real path."""
+    doc = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<xbrl xmlns="http://www.xbrl.org/2003/instance" '
+        'xmlns:xbrli="http://www.xbrl.org/2003/instance" '
+        'xmlns:us-gaap="http://fasb.org/us-gaap/2024">'
+        '<xbrli:context id="c1"><xbrli:entity>'
+        '<xbrli:identifier scheme="s">0000000001</xbrli:identifier></xbrli:entity>'
+        '<xbrli:period><xbrli:startDate>2026-01-01</xbrli:startDate>'
+        '<xbrli:endDate>2026-03-31</xbrli:endDate></xbrli:period></xbrli:context>'
+        '<xbrli:unit id="u"><xbrli:measure>iso4217:USD</xbrli:measure></xbrli:unit>'
+        '<us-gaap:Revenues contextRef="c1" unitRef="u" decimals="-6">7</us-gaap:Revenues>'
+        '</xbrl>')
+    facts = ixbrl.parse_instance(doc)                    # a str, not a path
+    assert [f.concept for f in facts] == ["Revenues"]
+    assert facts[0].value == 7
+    # bytes and a leading-whitespace string must behave identically
+    assert len(ixbrl.parse_instance(doc.encode("utf-8"))) == 1
+    assert len(ixbrl.parse_instance("\n  " + doc)) == 1
+
+
+def test_a_real_path_is_still_read_as_a_path(tmp_path):
+    p = tmp_path / "inst.xml"
+    p.write_text('<?xml version="1.0"?><xbrl xmlns="http://www.xbrl.org/2003/instance"/>',
+                 encoding="utf-8")
+    assert ixbrl.parse_instance(str(p)) == []

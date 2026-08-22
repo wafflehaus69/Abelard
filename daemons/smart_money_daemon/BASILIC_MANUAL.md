@@ -180,9 +180,13 @@ Build the venv **on Basilic** — never copy one across hosts, same rule as SM.
    User-Agent contact; `config.edgar_contact()` fails loud rather than sending a
    blank one. Missing it fails the first request, which is correct behaviour but
    a confusing first failure if the variable is simply absent.
-2. **A timeout.** A full ingest of 30 issuers is a couple of minutes at the
-   0.15s pacing floor. Past ~15 minutes means EDGAR is degraded and the run
-   should be killed rather than left hanging.
+2. **A timeout.** A full ingest is now **35 issuers plus a supplier harvest**
+   (CD-3): five suppliers x up to 14 filing documents each, parsed for the
+   dimension-qualified datacenter line that companyfacts does not carry. First
+   run is a few minutes at the 0.15s pacing floor; steady state is far cheaper
+   because only instances absent from the cache are fetched. Past ~15 minutes
+   means EDGAR is degraded and the run should be killed rather than left
+   hanging.
 3. **Alert on exit status alone.** Exit `0` on a clean run *and* on a clean
    no-op; non-zero **only** when something broke. No log parsing needed.
 
@@ -193,12 +197,36 @@ marginally better since SEC dissemination settles through the evening.
 **What a night looks like.** Most nights, nothing:
 
 ```
-[capex-scan] no-op: 30 issuers checked, none with a new filing since watermark
+[capex-scan] no-op: 35 issuers checked, none with a new filing since watermark
 ```
 
 That is measured, not aspirational — a second run immediately after a full
-ingest produces exactly this line. Cost is ~30 EDGAR requests on a quiet night,
-~60 on a filing night, and **zero LLM calls**.
+ingest produces exactly this line. Cost is ~35 EDGAR requests on a quiet night,
+~70 on a filing night, and **zero LLM calls**.
+
+**Capex venv deps.** `pip install -e ../common -e .` is sufficient: `reportlab`
+is a declared dependency of the capex daemon itself (it renders the nightly
+phase page). **Do not install matplotlib** — the PNG pipeline was retired
+2026-08-21, and until then it was an *undeclared* module-scope import that made
+`python -m capex_daemon scan` fail on a venv built from `pyproject` alone. If a
+future change reintroduces a plotting dependency, it must be declared.
+
+**First run is loud and that is correct.** It backfills the entire phase history
+at once and alerts **none** of it, reporting a count instead:
+
+```
+[capex-scan] updated: 33 of 35 issuers had new filings: ... | first run: 240 transitions backfilled, none alerted
+```
+
+Rediscovering history is not news. Every later run alerts only genuine new
+transitions. Those numbers are measured, from the first live run on 2026-08-21.
+
+**`--rebuild`.** `python -m capex_daemon scan --rebuild` recomputes and
+republishes the snapshot and the PDF even with nothing filed. Needed because the
+snapshot is derived from code as much as from data: after a code change a
+correct database can sit behind a stale published view with no filing due for
+weeks to dislodge it. It does **not** re-ingest and does **not** touch
+watermarks. Not for the nightly slot — this is a hand-run recovery tool.
 
 **Don't-break note.** Watermarks are per-issuer (`scan:<cik10>`), hold a filing
 date rather than `now()`, only move forward, and do not advance when a refresh

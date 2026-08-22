@@ -167,6 +167,48 @@ run 2  [capex-scan] no-op ...                                     | supplier ins
 
 A broken instance costs one filing, not the leg, and is reported into the scan's errors.
 
+## 8b. First live run — four defects a green suite could not see
+
+Run 2026-08-21 against the real database and live EDGAR, on a schema created from scratch. Every
+figure in this document up to here had been verified against cached fixtures and scratch databases;
+the daemon had never actually executed. **195 tests were passing when it was started, and it failed
+four different ways.**
+
+| # | defect | why the suite could not see it |
+|---|---|---|
+| 1 | `edgar.fetch_document` returns **`str`**; `ixbrl.parse_instance` treated every `str` as a **path** | every fixture passed bytes or a real path, so the harvest had never once run against the live fetcher |
+| 2 | the supplier harvest sat **behind the capex freshness gate** | no fixture had watermarks already advanced, which is the only state in which the gate closes |
+| 3 | the no-op path returned **before `snapshot.build`** | no test asserts the published snapshot refreshes when only suppliers move |
+| 4 | the artifact gate tested `views`, so **`--rebuild` left the PDF stale** | `--rebuild` did not exist until defect 3 created the need for it |
+
+Defect 1 failed as `No such file or directory: '<?xml version="1.0"...'` — an error that quotes the
+document it could not find as though it were a filename.
+
+Defects 1 and 2 compounded into something worse than either. The first run advanced all 33 watermarks
+while the harvest was silently failing, after which **no issuer was ever "affected" again and the
+harvest became unreachable**: four of five suppliers were stranded permanently, and no quiet night
+would ever have recovered them. Supplier idempotency comes from the per-instance cache, not from
+watermarks, so the gate was wrong in principle as well as in effect.
+
+Defect 3 exposed a genuine operational gap rather than just a bug. **The snapshot is derived from
+code as much as from data**, so a code change can leave a correct database sitting behind a stale
+published view with no filing due for weeks to dislodge it. `--rebuild` closes it: recompute and
+republish without re-ingesting, watermarks untouched.
+
+**What held.** Idempotency, exactly as claimed — `no-op: 35 issuers checked, none with a new filing
+since watermark`, repeatedly. The first run backfilled **240 transitions and alerted none of them**.
+Every supplier leg rebuilt from the live database to the figure measured against fixtures: NVDA 17
+quarters TTM $229.9B, AMD 17 quarters TTM $22.2B with 5 restatements, MU 7 quarters TTM $52.5B
+`MAPPED-BUSINESS-UNITS`, AVGO and SMCI refused by name.
+
+**Live panel state:** TOTAL PANEL **ACCELERATING**, TTM **$603.3B**, **+84.1%** over 16 matched
+members. Cross-check 50.3% → 50.7% → **53.8%**. All 7 views render, 15 SVGs well-formed from the
+live snapshot, `capex_phase_page.pdf` written.
+
+The lesson generalises past this daemon: a test suite fixes the shapes you thought of, and every one
+of these four was a shape at a boundary the suite never crossed — a fetcher's return type, an
+already-advanced watermark, a code-only change, a flag that did not exist yet.
+
 ## 9. Open
 
 1. ~~**MU's business-unit mapping** — §2.~~ **RULED 2026-08-21: admitted as `MAPPED-BUSINESS-UNITS`

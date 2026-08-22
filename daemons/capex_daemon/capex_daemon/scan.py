@@ -61,15 +61,20 @@ def write_watermark(con, cik, value, now_unix=None):
 
 
 class IssuerScan:
-    __slots__ = ("cik", "ticker", "status", "newest_filing", "watermark", "detail")
+    __slots__ = ("cik", "ticker", "status", "newest_filing", "watermark", "detail",
+                 "submissions_doc")
 
-    def __init__(self, cik, ticker, status, newest_filing, watermark, detail):
+    def __init__(self, cik, ticker, status, newest_filing, watermark, detail,
+                 submissions_doc=None):
         self.cik = cik
         self.ticker = ticker
         self.status = status
         self.newest_filing = newest_filing
         self.watermark = watermark
         self.detail = detail
+        # Kept so the supplier harvest can reuse the document this check already
+        # paid for, instead of asking EDGAR for it a second time.
+        self.submissions_doc = submissions_doc
 
     @property
     def is_affected(self):
@@ -103,16 +108,18 @@ def check_issuer(con, entity, http=None, submissions_doc=None):
     wm = read_watermark(con, entity.cik)
     if filing is None:
         return IssuerScan(entity.cik, entity.ticker_display, "no-periodic", None, wm,
-                          "no 10-K or 10-Q in the submissions index")
+                          "no 10-K or 10-Q in the submissions index",
+                          submissions_doc=doc)
     if wm and filing.filing_date <= wm:
         return IssuerScan(entity.cik, entity.ticker_display, "current",
-                          filing.filing_date, wm, "nothing newer than watermark")
+                          filing.filing_date, wm, "nothing newer than watermark",
+                          submissions_doc=doc)
     detail = "new filing {} {} (period {})".format(
         filing.form, filing.filing_date, filing.report_date)
     if events:
         detail += "; identity events: {}".format(", ".join(e.field for e in events))
     return IssuerScan(entity.cik, entity.ticker_display, "new-filing",
-                      filing.filing_date, wm, detail)
+                      filing.filing_date, wm, detail, submissions_doc=doc)
 
 
 def refresh_issuer(con, entity, http=None, facts_doc=None):
@@ -123,12 +130,18 @@ def refresh_issuer(con, entity, http=None, facts_doc=None):
 
 
 def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=None,
-        submissions_by_cik=None, facts_by_cik=None):
+        submissions_by_cik=None, facts_by_cik=None, rebuild=False):
     """One scan cycle. Returns a summary dict; never raises on a single issuer.
 
     Injection points (`submissions_by_cik`, `facts_by_cik`) exist so the whole
     cycle is testable without network — idempotency is a property worth testing
     deterministically rather than against a live index.
+
+    `rebuild=True` forces the full path even when nothing was filed. The snapshot
+    is derived from code as much as from data, so a code change can leave a
+    correct database behind a stale published view with no filing due for weeks
+    to dislodge it. Watermarks are untouched by this: it recomputes, it does not
+    re-ingest.
     """
     con = con if con is not None else storage.connect()
     roster = roster if roster is not None else universe.load()
@@ -142,14 +155,31 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         if c.status == OUTCOME_ERROR:
             errors.append((c.ticker, c.detail))
 
+    # The supplier harvest is NOT gated on the capex freshness check. Its
+    # idempotency comes from its own per-instance cache, not from watermarks,
+    # and gating it here stranded four of five suppliers permanently: the first
+    # live run advanced every watermark while the harvest was failing, after
+    # which no issuer was ever "affected" again and the harvest was never
+    # reached. It costs nothing on a quiet night — the submissions documents are
+    # reused from the checks above, and instances already cached are not fetched.
+    subs_seen = {c.cik: c.submissions_doc for c in checks if c.submissions_doc}
+    subs_seen.update(submissions_by_cik or {})
+    supplier_legs, harvested = _harvest_suppliers(roster, con, http, subs_seen, errors)
+
     affected = [c for c in checks if c.is_affected]
-    if not affected:
+    # A run is a no-op only when NOTHING changed. Newly harvested supplier
+    # instances are a change, and the published snapshot is what readers see, so
+    # a harvest that lands on an otherwise quiet night still refreshes it. In
+    # steady state this cannot fire — a supplier that files is itself affected —
+    # so the cost of rebuilding is paid only when there is genuinely new data.
+    if not affected and not harvested and not rebuild:
         return {
             "outcome": OUTCOME_NOOP,
             "checked": len(checks),
             "affected": 0,
             "errors": errors,
             "artifacts_written": False,
+            "supplier_instances_harvested": 0,
             "summary": "{} issuers checked, none with a new filing since watermark".format(
                 len(checks)),
             "started_unix": started,
@@ -179,8 +209,6 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     # CD-3 supplier leg. Parser-only, so it is harvested per FILING rather than
     # per fact: only instances absent from the cache are fetched, which keeps a
     # quiet night to one submissions request per supplier.
-    supplier_legs, harvested = _harvest_suppliers(roster, con, http, submissions_by_cik,
-                                                  errors)
     snap = snapshot.build(roster, indexed, now_unix=started,
                           supplier_legs=supplier_legs)
     prior = {r[0] for r in con.execute("SELECT event_key FROM phase_events")}
@@ -206,8 +234,13 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     # retired 2026-08-21: nothing consumed its four PNGs or cd2_thesis_layer.pdf,
     # and it hard-imported an UNDECLARED matplotlib at module scope, so a clean
     # Basilic venv could not import `scan` at all.
+    # Reaching here means SOMETHING changed — a filing, a supplier instance, or
+    # an explicit rebuild — because a true no-op returned above. Gating the
+    # artifact on `views` instead meant --rebuild republished the snapshot but
+    # left the PDF on disk stale, which is the failure mode --rebuild exists to
+    # prevent.
     artifacts = False
-    if render and views:
+    if render:
         outdir = outdir or config.artifact_path("", sub="charts")
         os.makedirs(outdir, exist_ok=True)
         try:
@@ -229,8 +262,12 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         "first_run_backfill": first_run,
         "phase_states": {k: v["state"] for k, v in snap["issuers"].items()},
         "supplier_instances_harvested": harvested,
-        "summary": "{} of {} issuers had new filings: {}".format(
-            len(affected), len(checks), ", ".join(c.ticker for c in affected)),
+        "summary": ("{} of {} issuers had new filings: {}".format(
+            len(affected), len(checks), ", ".join(c.ticker for c in affected))
+            if affected else
+            "no new filings; rebuilt the snapshot{}".format(
+                " for {} newly harvested supplier instance(s)".format(harvested)
+                if harvested else " on request")),
         "started_unix": started,
     }
 

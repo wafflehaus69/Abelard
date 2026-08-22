@@ -56,7 +56,8 @@ def cmd_parse(args):
 def cmd_scan(args):
     """Nightly scan. Freshness-driven and idempotent; a no-op most nights."""
     con = storage.connect(args.db)
-    result = scanmod.run(con=con, render=not args.no_render, outdir=args.outdir)
+    result = scanmod.run(con=con, render=not args.no_render, outdir=args.outdir,
+                         rebuild=getattr(args, "rebuild", False))
     if args.json:
         print(scanmod.to_json(result))
     else:
@@ -104,6 +105,9 @@ def main(argv=None):
     p.add_argument("--outdir", default=None, help="chart output dir; defaults to the state home")
     p.add_argument("--no-render", action="store_true", help="skip chart regeneration")
     p.add_argument("--json", action="store_true", help="emit the full result object")
+    p.add_argument("--rebuild", action="store_true",
+                   help="recompute and republish the snapshot even with nothing filed; "
+                        "does not re-ingest and does not touch watermarks")
     p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("dashboard", help="serve the read-only dashboard on :8788")
