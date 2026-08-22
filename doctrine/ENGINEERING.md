@@ -435,3 +435,49 @@ every other session choosing not to push is not a gate, and saying "held" when
 the mechanism is absent is worse than documenting that there is none.
 
 Operational detail in `HANDOFF_SHARED_CHECKOUT.md` §4-5.
+
+## E26 — Filers file it wrong; the newest filing supersedes
+Ruled by Mando 2026-08-21; drafted by ClaudeCode from the originating incident —
+reword to the ledger's voice if wanted.
+
+Incident. Building the CD-3 supplier leg, AMD's Data Center revenue series read
+$922M for the quarter ending 2024-03-30. AMD reports $2,337M. The parser was
+correct and the raw XBRL was checked by hand: in that 10-Q the segment members
+are **rotated by one**. $2,337M carries `ClientMember`, $1,368M carries
+`GamingMember`, and `DataCenterMember` carries $922M, which is Gaming's figure.
+Three of four members are mislabelled in AMD's own instance document. The 10-Q
+filed a year later restates the same quarter correctly at $2,337M.
+
+The daemon published the wrong number because its de-duplication preferred the
+statement with **fewer dimensions** and had no recency rule at all — a 2.5x
+undercount, on the second-largest name in the bucket, presented as a measurement.
+
+Rule, two parts.
+
+**(a) A restatement supersedes.** Where the same fact is filed more than once,
+the value from the newest filing wins, unconditionally. Every other preference —
+fewer dimensions, cleaner units, closer to the period — is a tiebreak WITHIN one
+filing and never across filings. This mirrors the Form-4/F5 precedent already
+standing elsewhere in the house: the later document is the correction, and a
+correction that loses to a heuristic is not a correction. Supersessions are
+counted and published, never applied silently, so a number that changed under a
+reader is a number they can see changed.
+
+**(b) Member matching normalises spelling and case.** The same issuer spells the
+same member differently by form type: AMD's 10-Q says `DataCenterMember` and its
+10-K says `DatacenterMember`. Exact matching silently dropped every Q4 — Q4 is
+only derivable from the 10-K — which left AMD with a hole a year wide and no TTM
+at all. Match members on a normalised form, and expect the axis to vary too:
+NVDA files the same disclosure on `ProductOrServiceAxis`, AMD on
+`StatementBusinessSegmentsAxis`.
+
+The generalisation is the point. [E7] says the ISSUER migrates its tags over
+time; this says the FILER also simply gets it wrong, and fixes it later. Both
+are answered by the same discipline — resolve by recency, per issuer, and never
+by a fixed preference order.
+
+Corollary. A figure that matches nothing you know is a signal to check the raw
+document, not to adjust the parser. Here the parser was right twice over and the
+first two hypotheses — a parser bug, then a wrong memory of AMD's reported
+figures — were both wrong. The filing was wrong. That possibility belongs in the
+hypothesis set from the start.
