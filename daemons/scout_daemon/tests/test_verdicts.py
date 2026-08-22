@@ -159,3 +159,92 @@ def test_no_admission_path_in_the_verdict_module() -> None:
                 and n.value not in docs]
     assert not [s for s in literals if "admitted" in s]
     assert not [s for s in literals if "status" in s.lower() and "UPDATE" in s]
+
+
+# ---------------------------------------------------------------------------
+# Judgeless scans must not count as clean votes
+# ---------------------------------------------------------------------------
+
+def _cost(conn, scan_id, *, calls, items):
+    ledger.record_cost(
+        conn, scan_id=scan_id, model="m", llm_calls=calls, input_tokens=0,
+        output_tokens=0, cache_read_tokens=0, cache_creation_tokens=0,
+        cost_usd=0.0, items_classified=items,
+    )
+
+
+def _obs(conn, oid, scan_id, t, disagreed):
+    verdicts.record_verdict(
+        conn, opportunity_id=oid, scan_id=scan_id, observed_unix=t,
+        mechanical_class="GREEN", legitimacy_class="GREEN",
+        classes_disagreed=disagreed, class_reason=None,
+    )
+
+
+def test_judgeless_scans_are_identified_from_cost_telemetry(conn) -> None:
+    _cost(conn, "live", calls=1, items=10)
+    _cost(conn, "dead", calls=0, items=10)
+    _cost(conn, "nothing_queued", calls=0, items=0)   # legitimately no work
+    conn.commit()
+    assert verdicts.judgeless_scans(conn) == frozenset({"dead"})
+
+
+def test_a_judgeless_scan_does_not_clear_a_veto(conn) -> None:
+    """The bug: two dead scans wrote classes_disagreed=0 and recovered a row
+    that the judge never actually looked at."""
+    _cost(conn, "s1", calls=1, items=1)
+    _cost(conn, "s2", calls=0, items=1)      # judge never ran
+    _cost(conn, "s3", calls=0, items=1)      # judge never ran
+    _obs(conn, "x", "s1", 100, True)         # real veto
+    _obs(conn, "x", "s2", 200, False)        # spurious clean
+    _obs(conn, "x", "s3", 300, False)        # spurious clean
+    conn.commit()
+    assert verdicts.effective_for(conn, "x").vetoed is True, \
+        "two non-observations must not satisfy the two-clean-scan recovery"
+
+
+def test_forensic_flag_reproduces_the_pre_fix_answer(conn) -> None:
+    """include_judgeless=True is for reproducing history, never for a live read."""
+    _cost(conn, "s1", calls=1, items=1)
+    _cost(conn, "s2", calls=0, items=1)
+    _cost(conn, "s3", calls=0, items=1)
+    _obs(conn, "x", "s1", 100, True)
+    _obs(conn, "x", "s2", 200, False)
+    _obs(conn, "x", "s3", 300, False)
+    conn.commit()
+    assert verdicts.effective_for(conn, "x", include_judgeless=True).vetoed is False
+    assert verdicts.effective_for(conn, "x").vetoed is True
+
+
+def test_scans_seen_counts_only_real_observations(conn) -> None:
+    _cost(conn, "s1", calls=1, items=1)
+    _cost(conn, "s2", calls=0, items=1)
+    _obs(conn, "x", "s1", 100, False)
+    _obs(conn, "x", "s2", 200, False)
+    conn.commit()
+    assert verdicts.effective_for(conn, "x").scans_seen == 1
+
+
+def test_effective_all_excludes_judgeless_too(conn) -> None:
+    _cost(conn, "s1", calls=1, items=1)
+    _cost(conn, "s2", calls=0, items=1)
+    _cost(conn, "s3", calls=0, items=1)
+    for oid in ("a", "b"):
+        _obs(conn, oid, "s1", 100, True)
+        _obs(conn, oid, "s2", 200, False)
+        _obs(conn, oid, "s3", 300, False)
+    conn.commit()
+    eff = verdicts.effective_all(conn)
+    assert all(e.vetoed for e in eff.values())
+    assert all(e.scans_seen == 1 for e in eff.values())
+
+
+def test_a_real_clean_scan_still_recovers(conn) -> None:
+    """The fix must not make recovery impossible -- only unearned recovery."""
+    for i, sid in enumerate(("s1", "s2", "s3")):
+        _cost(conn, sid, calls=1, items=1)
+    _obs(conn, "x", "s1", 100, True)
+    _obs(conn, "x", "s2", 200, False)
+    _obs(conn, "x", "s3", 300, False)
+    conn.commit()
+    assert verdicts.effective_for(conn, "x").vetoed is False
