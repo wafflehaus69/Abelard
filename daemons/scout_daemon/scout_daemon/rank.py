@@ -27,8 +27,8 @@ human in between, this bias stops being acceptable and the key must change.
 minority of rows that can be value-ranked are visible as such. It is not the
 sort key and must not silently become one while coverage is this thin.
 
-SEGMENTS NEVER MERGE (invariant 1). GREEN, GREEN_PROMOTED, HUMAN_ONLY and the
-affiliate lane are ranked and returned separately. GREEN_PROMOTED is displayed
+SEGMENTS NEVER MERGE (invariant 1). GREEN, GREEN_PROMOTED, POOL, HUMAN_ONLY and
+the affiliate lane are ranked and returned separately. GREEN_PROMOTED is displayed
 AFTER GREEN and never interleaved: it reached GREEN through the risk-score gate
 rather than on the rubric, and merging the lists would erase that distinction
 in exactly the surface where it matters.
@@ -68,6 +68,22 @@ whether an opportunity is legitimate at all -- and not this field, which asks th
 different question of who may execute an item already judged legitimate. Applying
 it here would gate 84% of the ledger on a fact no source stated.
 
+A POOL IS NOT A PAYOUT (Mando 2026-08-21). A `program_pool` figure is the size
+of a FUND; a `per_task` figure is what one recipient is paid. Sorting them on one
+key ranks by who advertises the largest fund. SC-R1 predicted this before a line
+was written -- "payout_basis must say so or ranking is meaningless" -- and the
+label shipped while the ranker ignored it. Measured 2026-08-21: 30 of 80 ranked
+rows were pools averaging $108,054 against 50 per-task rows averaging $1,315,
+and pools held 20 of the top 20.
+
+Pools now rank in their own lane, `payout_is_ceiling` is set on them, and the
+CLI prints the figure as `<=$X`. `payout_per_recipient_verified` is False
+everywhere and stays there until a source publishes a split -- the admitted ZNS
+row is the reference case: Superteam's API reports `compensationType: fixed`,
+`rewardAmount: 500` for a listing whose page splits 500 across ten places
+(100/100/100/50/50/20x5, max realizable $100). No field in the payload carries
+that. The honest state is "unknown, bounded above", which is what the flag says.
+
 CHURN IS EXPOSED, NOT EXCLUDED (Mando 2026-08-15). Classification flips at a
 measured ~2.5% per scan, so a row can sit near the GREEN boundary and breathe
 across it. Every current effective-GREEN row ranks; the flip history rides
@@ -88,6 +104,11 @@ SEGMENT_GREEN = "GREEN"
 SEGMENT_GREEN_PROMOTED = "GREEN_PROMOTED"
 SEGMENT_AFFILIATE = "AFFILIATE_PARKED"
 SEGMENT_HUMAN_ONLY = "HUMAN_ONLY"
+SEGMENT_POOL = "POOL"
+
+# The values the ledger already uses to mark a fund rather than a payment.
+PROGRAM_POOL = "program_pool"
+POOL_KIND = "pool"
 
 # Recorded verbatim as the park reason, so the ledger says WHY rather than
 # leaving a lane mysteriously empty. Measured 2026-08-14 across all 130
@@ -111,6 +132,9 @@ class RankedRow:
     sort_key: float | None
     payout_usd_low: float | None
     payout_usd_high: float | None
+    payout_basis: str | None
+    payout_is_ceiling: bool
+    payout_per_recipient_verified: bool
     expected_usd: float | None
     award_rate: float | None
     award_rate_observed_unix: int | None
@@ -137,6 +161,11 @@ class RankResult:
         return sum(len(v) for v in self.ranked.values()) + len(self.unranked)
 
 
+def _is_pool(payout_basis: str | None, payout_kind: str | None) -> bool:
+    """Does this row's figure describe a FUND rather than a payment?"""
+    return payout_basis == PROGRAM_POOL or payout_kind == POOL_KIND
+
+
 def _affiliate_sources() -> frozenset[str]:
     return frozenset(s.name for s in config.WIRE_SOURCES if s.lane == "affiliate")
 
@@ -161,6 +190,8 @@ def classify_segment(
     effective_vetoed: bool,
     affiliate_sources: frozenset[str],
     agent_permitted: str | None = None,
+    payout_basis: str | None = None,
+    payout_kind: str | None = None,
 ) -> str | None:
     """Which ranked segment a row belongs to, or None if it is not rankable.
 
@@ -182,6 +213,26 @@ def classify_segment(
     # Only an explicit "no" gates; `unstated` is absence of data, not a bar.
     if agent_permitted == "no":
         return SEGMENT_HUMAN_ONLY
+
+    # A POOL IS NOT A PAYOUT, AND THE TWO MUST NOT SHARE A SORT KEY.
+    #
+    # SC-R1 predicted this before a line was written: "reward.committed is a
+    # PROGRAM POOL, not a per-task payout. payout_basis must say so or ranking
+    # is meaningless" (config.py:165). The label shipped -- `program_pool` on
+    # 194 rows, `payout_kind='pool'` on 186 -- and then the ranker ignored it.
+    #
+    # Measured 2026-08-21: 30 of 80 ranked rows were pools averaging $108,054,
+    # sorted against 50 per-task rows averaging $1,315. Pools held 20 of the top
+    # 20. The queue was ordered by which listings advertise the largest fund,
+    # not by what anyone could be paid, which is the recon's warning arriving
+    # exactly as written. Third instance of this failure class, and the first to
+    # reach the admission surface.
+    #
+    # Diverted after HUMAN_ONLY, so an ineligible pool is reported as ineligible
+    # first -- eligibility is the stronger fact about a row than its payout
+    # shape.
+    if payout_basis == PROGRAM_POOL or payout_kind == POOL_KIND:
+        return SEGMENT_POOL
     return base
 
 
@@ -204,7 +255,7 @@ def build_ranking(rows: list[dict], effective: dict) -> RankResult:
     affiliates = _affiliate_sources()
     buckets: dict[str, list[RankedRow]] = {
         SEGMENT_GREEN: [], SEGMENT_GREEN_PROMOTED: [],
-        SEGMENT_HUMAN_ONLY: [], SEGMENT_AFFILIATE: [],
+        SEGMENT_HUMAN_ONLY: [], SEGMENT_POOL: [], SEGMENT_AFFILIATE: [],
     }
     unranked: list[RankedRow] = []
     observed: list[int] = []
@@ -220,6 +271,8 @@ def build_ranking(rows: list[dict], effective: dict) -> RankResult:
             effective_vetoed=vetoed,
             affiliate_sources=affiliates,
             agent_permitted=r.get("agent_permitted"),
+            payout_basis=r.get("payout_basis"),
+            payout_kind=r.get("payout_kind"),
         )
         if segment is None:
             continue
@@ -238,6 +291,13 @@ def build_ranking(rows: list[dict], effective: dict) -> RankResult:
             sort_key=payout,
             payout_usd_low=payout,
             payout_usd_high=r["payout_usd_high"],
+            payout_basis=r.get("payout_basis"),
+            # A pool figure is a CEILING on what anyone receives, not a payment.
+            payout_is_ceiling=_is_pool(r.get("payout_basis"), r.get("payout_kind")),
+            # Nothing in any current source publishes a per-recipient breakdown,
+            # so this is False everywhere until one does. Default-false is the
+            # point: it says "unknown", never "verified as the full amount".
+            payout_per_recipient_verified=False,
             expected_usd=expected_usd(payout, award),
             award_rate=award,
             award_rate_observed_unix=r["award_rate_observed_unix"],
@@ -307,7 +367,8 @@ def _with(row: RankedRow, **changes) -> RankedRow:
 _LOAD_SQL = """
 SELECT opportunity_id, source, title, legitimacy_class, mechanical_class,
        payout_usd_low, payout_usd_high, award_rate, award_rate_observed_unix,
-       contention, scope_text, effort_note, raw_json, agent_permitted
+       contention, scope_text, effort_note, raw_json, agent_permitted,
+       payout_basis, payout_kind
 FROM opportunities
 ORDER BY opportunity_id
 """
@@ -381,4 +442,7 @@ __all__ = [
     "classify_segment",
     "build_ranking",
     "SEGMENT_HUMAN_ONLY",
+    "SEGMENT_POOL",
+    "PROGRAM_POOL",
+    "POOL_KIND",
 ]

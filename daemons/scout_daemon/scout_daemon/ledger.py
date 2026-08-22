@@ -163,6 +163,14 @@ _COLUMNS: dict[str, str] = {
     # `admission_applied_unix` is stamped ONLY by admissions.apply(), i.e. only
     # when the Mando-owned file moved this row. Its presence is the audit trail
     # that a human decision, not the daemon, set the status.
+    # Is `payout_usd_low` what ONE recipient receives, or the size of a fund?
+    # Default 0 = unknown, never "verified as the full amount". No current
+    # source publishes a per-recipient breakdown: Superteam's API reports
+    # `compensationType: fixed` and `rewardAmount: 500` for a listing whose page
+    # splits that 500 across ten places, and there is no field carrying the
+    # split. Until a source publishes one, this stays 0 everywhere -- which is
+    # the honest state, not a gap.
+    "payout_per_recipient_verified": "INTEGER NOT NULL DEFAULT 0",
     "proposed_unix": "INTEGER",
     "admission_applied_unix": "INTEGER",
 }
@@ -388,6 +396,7 @@ def _row_values(
         "effective_verdict": None,
         # Admission provenance is never set by ingest -- a scan must not be able
         # to stamp a row as though a human had ruled on it.
+        "payout_per_recipient_verified": 0,
         "proposed_unix": None,
         "admission_applied_unix": None,
     }

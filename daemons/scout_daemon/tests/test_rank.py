@@ -327,3 +327,65 @@ def test_vetoed_human_only_stays_unrankable() -> None:
     res = build_ranking(rows, {"v": FakeEff(vetoed=True)})
     assert res.ranked[SEGMENT_HUMAN_ONLY] == []
     assert res.total_rows == 0
+
+
+# ---------------------------------------------------------------------------
+# A pool is not a payout (SC-Q1 follow-on, 2026-08-21)
+# ---------------------------------------------------------------------------
+
+def test_a_program_pool_never_enters_the_per_task_queue() -> None:
+    rows = [row("task", payout_usd_low=500.0, payout_basis="per_task"),
+            row("pool", payout_usd_low=1_000_000.0, payout_basis="program_pool")]
+    res = build_ranking(rows, {"task": FakeEff(), "pool": FakeEff()})
+    assert [r.opportunity_id for r in res.ranked[SEGMENT_GREEN]] == ["task"]
+    assert [r.opportunity_id for r in res.ranked[rank.SEGMENT_POOL]] == ["pool"]
+
+
+def test_payout_kind_pool_also_diverts() -> None:
+    """Either marker is sufficient; sources set one or the other."""
+    rows = [row("p", payout_usd_low=9_000.0, payout_basis="per_task",
+                payout_kind="pool")]
+    res = build_ranking(rows, {"p": FakeEff()})
+    assert [r.opportunity_id for r in res.ranked[rank.SEGMENT_POOL]] == ["p"]
+
+
+def test_a_million_dollar_pool_cannot_outrank_a_bounty_it_never_shares_a_list_with() -> None:
+    rows = [row("small", payout_usd_low=50.0, payout_basis="per_task"),
+            row("huge", payout_usd_low=1_000_000.0, payout_basis="program_pool")]
+    res = build_ranking(rows, {"small": FakeEff(), "huge": FakeEff()})
+    green = res.ranked[SEGMENT_GREEN]
+    assert len(green) == 1 and green[0].position == 1
+
+
+def test_pool_rows_are_marked_as_ceilings() -> None:
+    rows = [row("pool", payout_usd_low=500.0, payout_basis="program_pool"),
+            row("task", payout_usd_low=500.0, payout_basis="per_task")]
+    res = build_ranking(rows, {"pool": FakeEff(), "task": FakeEff()})
+    assert res.ranked[rank.SEGMENT_POOL][0].payout_is_ceiling is True
+    assert res.ranked[SEGMENT_GREEN][0].payout_is_ceiling is False
+
+
+def test_per_recipient_is_never_claimed_as_verified() -> None:
+    """No current source publishes a split. False is the honest default and
+    must not drift to True without a source that actually says so."""
+    rows = [row("a", payout_basis="per_task"), row("b", payout_basis="program_pool")]
+    res = build_ranking(rows, {"a": FakeEff(), "b": FakeEff()})
+    every = [r for v in res.ranked.values() for r in v] + res.unranked
+    assert all(r.payout_per_recipient_verified is False for r in every)
+
+
+def test_human_only_beats_pool_when_a_row_is_both() -> None:
+    """Eligibility is the stronger fact: an agent cannot execute it at all."""
+    rows = [row("x", payout_basis="program_pool", agent_permitted="no")]
+    res = build_ranking(rows, {"x": FakeEff()})
+    assert [r.opportunity_id for r in res.ranked[rank.SEGMENT_HUMAN_ONLY]] == ["x"]
+
+
+def test_pool_rows_still_reconcile_exactly_once() -> None:
+    rows = ([row(f"t{i}", payout_basis="per_task") for i in range(4)]
+            + [row(f"p{i}", payout_basis="program_pool") for i in range(6)])
+    eff = {r["opportunity_id"]: FakeEff() for r in rows}
+    res = build_ranking(rows, eff)
+    seen = [r.opportunity_id for v in res.ranked.values() for r in v]
+    seen += [r.opportunity_id for r in res.unranked]
+    assert len(seen) == len(set(seen)) == len(rows)
