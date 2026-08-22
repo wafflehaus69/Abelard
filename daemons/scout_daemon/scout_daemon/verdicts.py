@@ -50,6 +50,7 @@ correctness requirement rather than a convenience.
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from dataclasses import dataclass
 
@@ -145,13 +146,27 @@ def record_verdict(
     )
 
 
-def derive(observations: list[tuple[int, bool, bool]]) -> EffectiveVerdict:
+def derive(observations: list[tuple]) -> EffectiveVerdict:
     """Fold verdict history into the effective verdict.
 
-    `observations` is (observed_unix, classes_disagreed, is_persona_veto),
-    OLDEST FIRST. Pure function of the history -- no clock, no config -- so the
-    same history always derives the same answer and the fold is testable
-    without a database.
+    `observations` is (observed_unix, classes_disagreed, is_persona_veto) or
+    (observed_unix, classes_disagreed, is_persona_veto, representative), OLDEST
+    FIRST. A 3-tuple is treated as representative, so callers that predate scan
+    calibration are unchanged. Pure function of the history -- no clock, no
+    config, no database -- so the same history always derives the same answer.
+
+    SCAN CALIBRATION (E22 amendment). A clean verdict from a NON-REPRESENTATIVE
+    scan does not advance the recovery run. The occasion, not the row, is what
+    varies: the flip rate between two scans tracks the difference in their
+    aggregate veto rates (Pearson +0.887) and is unrelated to elapsed time
+    (Spearman -0.03), so a clean reading from an anomalously mild scan is weak
+    evidence that a vetoed row deserves to come back.
+
+    The rule is DELIBERATELY ONE-DIRECTIONAL. A veto from any scan, deviant or
+    not, still takes effect immediately. Only recovery is slowed. That keeps the
+    ratified asymmetry and makes calibration incapable of creating a false GREEN
+    -- the expensive error -- because it can only ever lengthen the path back to
+    GREEN, never shorten it.
     """
     if not observations:
         return EffectiveVerdict(False, False, 0, 0, 0, False)
@@ -162,16 +177,20 @@ def derive(observations: list[tuple[int, bool, bool]]) -> EffectiveVerdict:
     flips = 0
     latest_raw = False
 
-    for _, disagreed, persona in observations:
+    for observation in observations:
+        _, disagreed, persona = observation[0], observation[1], observation[2]
+        representative = observation[3] if len(observation) > 3 else True
         latest_raw = disagreed
         if disagreed and persona:
             persona_locked = True
 
         if disagreed:
+            # A veto counts from ANY scan. Downward stays fast.
             clean_run = 0
             new = True
         else:
-            clean_run += 1
+            if representative:
+                clean_run += 1
             if vetoed is None:
                 # First observation is clean: the row enters at GREEN rather
                 # than serving a recovery period it never earned.
@@ -232,12 +251,64 @@ def judgeless_scans(conn: sqlite3.Connection) -> frozenset[str]:
     return frozenset(r[0] for r in rows)
 
 
+# Deviance threshold for scan calibration, PROVISIONAL (E22 amendment).
+# Measured 2026-08-21 over 10 judged scans: 4 exceed it (z = -4.29, -2.15,
+# +2.62, +2.72) and the remaining 6 sit inside +/-1.7 -- a clean separation, not
+# a cut through the middle of a distribution. Review when the scan count doubles.
+DEVIANCE_Z = 2.0
+
+
+def scan_deviance(conn: sqlite3.Connection) -> dict[str, float]:
+    """Per-scan z of its veto-on-GREEN rate against the pooled rate.
+
+    THE OCCASION IS THE VARIABLE, NOT THE ROW. Measured over 9 consecutive-scan
+    pairs: the flip rate between two scans tracks the DIFFERENCE in their
+    aggregate veto rates (Pearson +0.887) and is unrelated to elapsed time
+    (Spearman -0.03). Two harsh scans agree with each other; a harsh scan and a
+    calm one disagree. The judge's threshold moves between occasions and
+    boundary rows follow it.
+
+    Judgeless scans are excluded from the baseline as well as from the history:
+    a scan the judge never saw has no rate to compare.
+    """
+    excluded = judgeless_scans(conn)
+    rows = [
+        (r[0], r[1], r[2])
+        for r in conn.execute(
+            "SELECT scan_id, COUNT(*), SUM(classes_disagreed)"
+            " FROM opportunity_verdicts WHERE mechanical_class='GREEN'"
+            " GROUP BY scan_id"
+        )
+        if r[0] not in excluded and r[1]
+    ]
+    total_n = sum(n for _, n, _ in rows)
+    total_v = sum(v or 0 for _, _, v in rows)
+    if not rows or total_n == 0 or total_v == 0 or total_v == total_n:
+        return {}
+    p0 = total_v / total_n
+    out: dict[str, float] = {}
+    for scan_id, n, v in rows:
+        se = math.sqrt(p0 * (1 - p0) / n)
+        out[scan_id] = ((v or 0) / n - p0) / se if se else 0.0
+    return out
+
+
+def deviant_scans(
+    conn: sqlite3.Connection, *, z_threshold: float = DEVIANCE_Z
+) -> frozenset[str]:
+    """Scans whose aggregate verdict rate is not representative."""
+    return frozenset(
+        s for s, z in scan_deviance(conn).items() if abs(z) > z_threshold
+    )
+
+
 def _observations(
     conn: sqlite3.Connection,
     *,
     opportunity_id: str | None = None,
     include_judgeless: bool = False,
-) -> dict[str, list[tuple[int, bool, bool]]]:
+    calibrate: bool = True,
+) -> dict[str, list[tuple[int, bool, bool, bool]]]:
     """Verdict history with judgeless scans dropped by default.
 
     `include_judgeless=True` exists only for forensics -- reproducing what a
@@ -245,6 +316,7 @@ def _observations(
     read.
     """
     excluded = frozenset() if include_judgeless else judgeless_scans(conn)
+    deviant = deviant_scans(conn) if calibrate else frozenset()
     sql = (
         "SELECT opportunity_id, observed_unix, classes_disagreed,"
         " is_persona_veto, scan_id FROM opportunity_verdicts"
@@ -255,11 +327,13 @@ def _observations(
         params = (opportunity_id,)
     sql += " ORDER BY observed_unix, scan_id"
 
-    grouped: dict[str, list[tuple[int, bool, bool]]] = {}
+    grouped: dict[str, list[tuple[int, bool, bool, bool]]] = {}
     for row in conn.execute(sql, params):
         if row[4] in excluded:
             continue
-        grouped.setdefault(row[0], []).append((row[1], bool(row[2]), bool(row[3])))
+        grouped.setdefault(row[0], []).append(
+            (row[1], bool(row[2]), bool(row[3]), row[4] not in deviant)
+        )
     return grouped
 
 
@@ -268,18 +342,23 @@ def effective_for(
     opportunity_id: str,
     *,
     include_judgeless: bool = False,
+    calibrate: bool = True,
 ) -> EffectiveVerdict:
     grouped = _observations(
-        conn, opportunity_id=opportunity_id, include_judgeless=include_judgeless
+        conn, opportunity_id=opportunity_id,
+        include_judgeless=include_judgeless, calibrate=calibrate,
     )
     return derive(grouped.get(opportunity_id, []))
 
 
 def effective_all(
-    conn: sqlite3.Connection, *, include_judgeless: bool = False
+    conn: sqlite3.Connection, *, include_judgeless: bool = False,
+    calibrate: bool = True,
 ) -> dict[str, EffectiveVerdict]:
     """Every opportunity's effective verdict, one pass over the history."""
-    grouped = _observations(conn, include_judgeless=include_judgeless)
+    grouped = _observations(
+        conn, include_judgeless=include_judgeless, calibrate=calibrate
+    )
     return {oid: derive(obs) for oid, obs in grouped.items()}
 
 
@@ -291,7 +370,10 @@ __all__ = [
     "apply_schema",
     "record_verdict",
     "derive",
+    "DEVIANCE_Z",
     "judgeless_scans",
+    "scan_deviance",
+    "deviant_scans",
     "effective_for",
     "effective_all",
 ]
