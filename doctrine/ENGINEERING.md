@@ -585,3 +585,38 @@ Corollary — an "Open" section is a claim, and claims get checked. Before
 publishing or merging an artifact that carries one, re-read it against what has
 actually been ruled. An item that is stale in that list is a defect in the
 artifact of exactly the same kind as a wrong number in a table.
+
+## E28 — No outward-facing verb by construction; outward acts are human and individually authorized
+Ruled by Mando 2026-08-21; drafted by ClaudeCode from the originating design
+constraint rather than by Abelard — reword to the ledger's voice if wanted.
+Applies [E11] to egress: E11 ruled that a load-bearing property is enforced by
+construction and never by an override on a capable path; this is that rule for
+outward action. Numbered E28 rather than the E26 first drafted — E26 and E27 were
+pushed by concurrent workstreams while this was in review, and a pushed ID is
+never renumbered ([E18] ledger protocol).
+
+Incident. `scout_daemon` was built as a pure sensor — no write-capable tool bound
+to any source, `surface.py` enqueues and never dispatches, and tests assert the
+absence of every outward verb. The property held easily because scout's domain
+never needed outreach; it was a selection criterion, not a constraint under load.
+The real estate vertical (RW-R1) is the first where the business model itself
+requires contacting counterparties, and nothing in the workflow would have forced
+that question to be asked — the boundary would have been set by whoever wrote the
+first adapter that needed it.
+
+Rule: a daemon has **no outward-facing verb by construction** — no contact, no
+submission, no account creation, no counterparty communication — enforced by the
+absence of the code path and asserted by test, never by policy, prompt, or
+reviewer attention. Every outward act is **human-executed and individually
+authorized**; authorization does not generalize from one act to the next, or from
+one counterparty to the next.
+
+**Drafting and staging are themselves outward-facing verbs for this purpose.** A
+queue of pre-composed messages awaiting one click satisfies the letter of human
+execution and defeats it in substance — the [E25] shape, where a gate depending on
+a human choosing correctly under pressure is not a mechanism at all. The human act
+is composition, not confirmation. A tool that drafts outreach for review sits on
+the far side of this boundary regardless of who presses send.
+
+If the boundary is to move, that is its own ruled decision with its own recon,
+never an amendment made by the engineer who first finds it inconvenient.
