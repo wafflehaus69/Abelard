@@ -1,4 +1,4 @@
-"""Per-scan verdict history and the effective-verdict derivation (doctrine E21).
+"""Per-scan verdict history and the effective-verdict derivation (doctrine E22).
 
 WHY THIS TABLE EXISTS. `opportunities` holds ONE row per opportunity and the
 write path is `UPDATE ... WHERE opportunity_id=?`, so every re-scan overwrites
@@ -200,24 +200,86 @@ def derive(observations: list[tuple[int, bool, bool]]) -> EffectiveVerdict:
     )
 
 
-def effective_for(conn: sqlite3.Connection, opportunity_id: str) -> EffectiveVerdict:
-    rows = conn.execute(
-        "SELECT observed_unix, classes_disagreed, is_persona_veto"
-        " FROM opportunity_verdicts WHERE opportunity_id = ?"
-        " ORDER BY observed_unix, scan_id",
-        (opportunity_id,),
-    ).fetchall()
-    return derive([(r[0], bool(r[1]), bool(r[2])) for r in rows])
+def judgeless_scans(conn: sqlite3.Connection) -> frozenset[str]:
+    """Scans that queued items to the judge and never reached it.
+
+    A transport failure degrades the batch to YELLOW-with-the-reason, which is
+    the safe direction -- but it still writes one verdict row per item carrying
+    `classes_disagreed = 0`. That zero means "no veto came back", NOT "the judge
+    looked and cleared it". Replayed as history those rows are SPURIOUS CLEAN
+    VOTES, and because recovery needs two consecutive clean scans they push rows
+    toward GREEN, which is the expensive direction under scout's cost asymmetry.
+
+    Measured 2026-08-21 before this fix: three such scans had written 1,609 of
+    6,782 observations (23.7%), and 16 of 669 rows carried a different effective
+    verdict because of them.
+
+    Detected from COST TELEMETRY rather than a flag on the verdict row, because
+    telemetry is persisted before any opportunity row and is therefore
+    trustworthy even when the rest of the scan went wrong. `llm_calls = 0` with
+    `items_classified > 0` reads exactly as "there was work for the judge and no
+    call was made".
+    """
+    try:
+        rows = conn.execute(
+            "SELECT scan_id FROM scan_cost"
+            " WHERE llm_calls = 0 AND items_classified > 0"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # No cost telemetry available. Nothing is excludable, and saying so is
+        # honest -- guessing which scans were judgeless would be worse.
+        return frozenset()
+    return frozenset(r[0] for r in rows)
 
 
-def effective_all(conn: sqlite3.Connection) -> dict[str, EffectiveVerdict]:
-    """Every opportunity's effective verdict, one pass over the history."""
+def _observations(
+    conn: sqlite3.Connection,
+    *,
+    opportunity_id: str | None = None,
+    include_judgeless: bool = False,
+) -> dict[str, list[tuple[int, bool, bool]]]:
+    """Verdict history with judgeless scans dropped by default.
+
+    `include_judgeless=True` exists only for forensics -- reproducing what a
+    derived state looked like before this fix. It must not be used for a live
+    read.
+    """
+    excluded = frozenset() if include_judgeless else judgeless_scans(conn)
+    sql = (
+        "SELECT opportunity_id, observed_unix, classes_disagreed,"
+        " is_persona_veto, scan_id FROM opportunity_verdicts"
+    )
+    params: tuple = ()
+    if opportunity_id is not None:
+        sql += " WHERE opportunity_id = ?"
+        params = (opportunity_id,)
+    sql += " ORDER BY observed_unix, scan_id"
+
     grouped: dict[str, list[tuple[int, bool, bool]]] = {}
-    for r in conn.execute(
-        "SELECT opportunity_id, observed_unix, classes_disagreed, is_persona_veto"
-        " FROM opportunity_verdicts ORDER BY observed_unix, scan_id"
-    ):
-        grouped.setdefault(r[0], []).append((r[1], bool(r[2]), bool(r[3])))
+    for row in conn.execute(sql, params):
+        if row[4] in excluded:
+            continue
+        grouped.setdefault(row[0], []).append((row[1], bool(row[2]), bool(row[3])))
+    return grouped
+
+
+def effective_for(
+    conn: sqlite3.Connection,
+    opportunity_id: str,
+    *,
+    include_judgeless: bool = False,
+) -> EffectiveVerdict:
+    grouped = _observations(
+        conn, opportunity_id=opportunity_id, include_judgeless=include_judgeless
+    )
+    return derive(grouped.get(opportunity_id, []))
+
+
+def effective_all(
+    conn: sqlite3.Connection, *, include_judgeless: bool = False
+) -> dict[str, EffectiveVerdict]:
+    """Every opportunity's effective verdict, one pass over the history."""
+    grouped = _observations(conn, include_judgeless=include_judgeless)
     return {oid: derive(obs) for oid, obs in grouped.items()}
 
 
@@ -229,6 +291,7 @@ __all__ = [
     "apply_schema",
     "record_verdict",
     "derive",
+    "judgeless_scans",
     "effective_for",
     "effective_all",
 ]
