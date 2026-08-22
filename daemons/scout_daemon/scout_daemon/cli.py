@@ -209,12 +209,21 @@ def _cmd_rank(args: argparse.Namespace) -> int:
     else:
         print("no award-rate inputs present -- expected_usd uncomputable on every row")
 
-    for segment in (rank_mod.SEGMENT_GREEN, rank_mod.SEGMENT_GREEN_PROMOTED):
+    for segment in (
+        rank_mod.SEGMENT_GREEN,
+        rank_mod.SEGMENT_GREEN_PROMOTED,
+        rank_mod.SEGMENT_HUMAN_ONLY,
+    ):
         rows = result.ranked.get(segment, [])
         # Printed as separate blocks, never one list. GREEN_PROMOTED reached
         # GREEN through the risk gate, not the rubric; interleaving would erase
-        # that in the one place a reader would act on it.
+        # that in the one place a reader would act on it. HUMAN_ONLY is last
+        # and carries its own banner: these are real, ranked, and barred to the
+        # tribe's agents by the source itself.
         print(f"\n=== {segment} -- {len(rows)} ranked ===")
+        if segment == rank_mod.SEGMENT_HUMAN_ONLY and rows:
+            print("  source says agentAccess=HUMAN_ONLY. Mando-executable only;")
+            print("  no agent may take these. Ranked so they stay visible.")
         if not rows:
             print("  (none)")
         for row in rows[: args.limit]:

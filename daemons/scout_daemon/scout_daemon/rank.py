@@ -27,11 +27,46 @@ human in between, this bias stops being acceptable and the key must change.
 minority of rows that can be value-ranked are visible as such. It is not the
 sort key and must not silently become one while coverage is this thin.
 
-SEGMENTS NEVER MERGE (invariant 1). GREEN, GREEN_PROMOTED and the affiliate
-lane are ranked and returned separately. GREEN_PROMOTED is displayed AFTER
-GREEN and never interleaved: it reached GREEN through the risk-score gate
+SEGMENTS NEVER MERGE (invariant 1). GREEN, GREEN_PROMOTED, HUMAN_ONLY and the
+affiliate lane are ranked and returned separately. GREEN_PROMOTED is displayed
+AFTER GREEN and never interleaved: it reached GREEN through the risk-score gate
 rather than on the rubric, and merging the lists would erase that distinction
 in exactly the surface where it matters.
+
+HUMAN_ONLY IS A GATE, NOT A LABEL (2026-08-21). A source that publishes
+`agentAccess: HUMAN_ONLY` has told us the tribe's agents may not execute the
+item. Until now `agent_permitted` was consumed in exactly one place --
+`risk.py` scores an explicit "no" at 45 points, which blocks PROMOTION -- and
+nowhere else. That left the case it does not cover wide open: a row already
+mechanically GREEN, never needing promotion, ranked in SEGMENT_GREEN sorted by
+payout with nothing distinguishing it from work an agent may actually do.
+Measured at the handoff: 23 of 100 ranked rows are flagged human-only by their
+own source. Storing an eligibility fact and ranking as though it were absent is
+the failure the field exists to prevent.
+
+So an item that WOULD have entered GREEN or GREEN_PROMOTED and carries
+`agent_permitted == "no"` is diverted to HUMAN_ONLY. It is still ranked, by the
+same key, because the payout is real and Mando may well do it himself -- the
+ledger records the distinction rather than resolving it. What it is not is
+mixed into the queue an agent reads.
+
+The diversion happens AFTER the base segment is computed, never before. Checking
+first would sweep YELLOW human-only rows -- currently unrankable -- into a
+ranked segment, widening the ranked set under cover of tightening it.
+
+ONLY AN EXPLICIT "no" GATES -- RULED by Mando 2026-08-21: **a silent source does
+not forbid agents, and a GREEN row is the agent-executable class.** `unstated` is
+the value on 560 of 669 rows because only Superteam publishes the field at all,
+so treating absence as a prohibition would empty GREEN and call it safety. That
+is the `_ABSENCE_REASONS` distinction `risk.py` already draws -- a rubric
+judgement is not a data absence, and a risk score computed over fields scores a
+MISSING field as calm rather than as damning.
+
+The question is closed; do not reopen it from the asymmetric-error rule alone.
+That rule ("uncertainty resolves YELLOW, never GREEN") governs CLASSIFICATION --
+whether an opportunity is legitimate at all -- and not this field, which asks the
+different question of who may execute an item already judged legitimate. Applying
+it here would gate 84% of the ledger on a fact no source stated.
 
 CHURN IS EXPOSED, NOT EXCLUDED (Mando 2026-08-15). Classification flips at a
 measured ~2.5% per scan, so a row can sit near the GREEN boundary and breathe
@@ -52,6 +87,7 @@ from . import config, payout_check
 SEGMENT_GREEN = "GREEN"
 SEGMENT_GREEN_PROMOTED = "GREEN_PROMOTED"
 SEGMENT_AFFILIATE = "AFFILIATE_PARKED"
+SEGMENT_HUMAN_ONLY = "HUMAN_ONLY"
 
 # Recorded verbatim as the park reason, so the ledger says WHY rather than
 # leaving a lane mysteriously empty. Measured 2026-08-14 across all 130
@@ -82,6 +118,7 @@ class RankedRow:
     verdicts_seen: int
     flip_count: int
     effective_verdict: str
+    agent_permitted: str | None
     unranked_reason: str | None
 
     def as_dict(self) -> dict:
@@ -123,6 +160,7 @@ def classify_segment(
     mechanical_class: str | None,
     effective_vetoed: bool,
     affiliate_sources: frozenset[str],
+    agent_permitted: str | None = None,
 ) -> str | None:
     """Which ranked segment a row belongs to, or None if it is not rankable.
 
@@ -133,10 +171,18 @@ def classify_segment(
     if legitimacy_class == "RED":
         return None
     if legitimacy_class == "GREEN_PROMOTED":
-        return SEGMENT_GREEN_PROMOTED
-    if mechanical_class == "GREEN" and not effective_vetoed:
-        return SEGMENT_GREEN
-    return None
+        base = SEGMENT_GREEN_PROMOTED
+    elif mechanical_class == "GREEN" and not effective_vetoed:
+        base = SEGMENT_GREEN
+    else:
+        return None
+
+    # The gate. Diverted AFTER the base segment is known, so this can only move
+    # a row OUT of the agent-executable queue and never widen the ranked set.
+    # Only an explicit "no" gates; `unstated` is absence of data, not a bar.
+    if agent_permitted == "no":
+        return SEGMENT_HUMAN_ONLY
+    return base
 
 
 def _sort_key(row: RankedRow) -> tuple:
@@ -157,7 +203,8 @@ def build_ranking(rows: list[dict], effective: dict) -> RankResult:
     """
     affiliates = _affiliate_sources()
     buckets: dict[str, list[RankedRow]] = {
-        SEGMENT_GREEN: [], SEGMENT_GREEN_PROMOTED: [], SEGMENT_AFFILIATE: []
+        SEGMENT_GREEN: [], SEGMENT_GREEN_PROMOTED: [],
+        SEGMENT_HUMAN_ONLY: [], SEGMENT_AFFILIATE: [],
     }
     unranked: list[RankedRow] = []
     observed: list[int] = []
@@ -172,6 +219,7 @@ def build_ranking(rows: list[dict], effective: dict) -> RankResult:
             mechanical_class=r["mechanical_class"],
             effective_vetoed=vetoed,
             affiliate_sources=affiliates,
+            agent_permitted=r.get("agent_permitted"),
         )
         if segment is None:
             continue
@@ -197,6 +245,7 @@ def build_ranking(rows: list[dict], effective: dict) -> RankResult:
             verdicts_seen=eff.scans_seen if eff is not None else 0,
             flip_count=eff.flip_count if eff is not None else 0,
             effective_verdict=eff.state if eff is not None else "GREEN",
+            agent_permitted=r.get("agent_permitted"),
             unranked_reason=None,
         )
 
@@ -258,7 +307,7 @@ def _with(row: RankedRow, **changes) -> RankedRow:
 _LOAD_SQL = """
 SELECT opportunity_id, source, title, legitimacy_class, mechanical_class,
        payout_usd_low, payout_usd_high, award_rate, award_rate_observed_unix,
-       contention, scope_text, effort_note, raw_json
+       contention, scope_text, effort_note, raw_json, agent_permitted
 FROM opportunities
 ORDER BY opportunity_id
 """
@@ -331,4 +380,5 @@ __all__ = [
     "expected_usd",
     "classify_segment",
     "build_ranking",
+    "SEGMENT_HUMAN_ONLY",
 ]

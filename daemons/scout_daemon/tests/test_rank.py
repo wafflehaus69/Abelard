@@ -11,6 +11,7 @@ from scout_daemon.rank import (
     SEGMENT_AFFILIATE,
     SEGMENT_GREEN,
     SEGMENT_GREEN_PROMOTED,
+    SEGMENT_HUMAN_ONLY,
     build_ranking,
     classify_segment,
     expected_usd,
@@ -250,3 +251,79 @@ def test_migration_is_idempotent(conn) -> None:
     ledger.apply_schema(conn)
     after = {r[1] for r in conn.execute("PRAGMA table_info(opportunities)")}
     assert before == after
+
+
+# ---------------------------------------------------------------------------
+# The human-only gate -- agent_permitted must GATE, not merely be stored
+# ---------------------------------------------------------------------------
+
+def test_human_only_row_never_lands_in_the_agent_queue() -> None:
+    """The defect this closes: a mechanically-GREEN human-only row ranked in
+    SEGMENT_GREEN indistinguishable from work an agent may take."""
+    rows = [row("ok"), row("nope", agent_permitted="no")]
+    res = build_ranking(rows, {"ok": FakeEff(), "nope": FakeEff()})
+    assert [r.opportunity_id for r in res.ranked[SEGMENT_GREEN]] == ["ok"]
+    assert [r.opportunity_id for r in res.ranked[SEGMENT_HUMAN_ONLY]] == ["nope"]
+
+
+def test_a_huge_human_only_payout_cannot_reach_green() -> None:
+    """Sorting is by payout, so the gate has to beat the sort key."""
+    rows = [row("small", payout_usd_low=10.0),
+            row("whale", payout_usd_low=5_000_000.0, agent_permitted="no")]
+    res = build_ranking(rows, {"small": FakeEff(), "whale": FakeEff()})
+    assert all(r.opportunity_id != "whale" for r in res.ranked[SEGMENT_GREEN])
+    assert res.ranked[SEGMENT_HUMAN_ONLY][0].opportunity_id == "whale"
+
+
+def test_human_only_promoted_row_diverts_out_of_promoted_too() -> None:
+    rows = [row("p", legitimacy_class="GREEN_PROMOTED", agent_permitted="no")]
+    res = build_ranking(rows, {"p": FakeEff()})
+    assert res.ranked[SEGMENT_GREEN_PROMOTED] == []
+    assert [r.opportunity_id for r in res.ranked[SEGMENT_HUMAN_ONLY]] == ["p"]
+
+
+def test_human_only_rows_are_ranked_not_dropped() -> None:
+    """Invariant 1: gated is not dropped. They keep a position and a sort key."""
+    rows = [row("a", payout_usd_low=10.0, agent_permitted="no"),
+            row("b", payout_usd_low=900.0, agent_permitted="no")]
+    res = build_ranking(rows, {"a": FakeEff(), "b": FakeEff()})
+    seg = res.ranked[SEGMENT_HUMAN_ONLY]
+    assert [r.opportunity_id for r in seg] == ["b", "a"]
+    assert [r.position for r in seg] == [1, 2]
+    assert res.total_rows == 2
+
+
+def test_unstated_is_absence_not_prohibition() -> None:
+    """Ruled by Mando 2026-08-21: a silent source does not forbid agents, and a
+    GREEN row is the agent-executable class. Only an explicit `no` gates.
+    `unstated` is 560 of 669 rows; treating it as a bar would gate 84% of the
+    ledger on a fact no source stated, and call that safety."""
+    rows = [row("u", agent_permitted="unstated"), row("n", agent_permitted=None)]
+    res = build_ranking(rows, {"u": FakeEff(), "n": FakeEff()})
+    assert {r.opportunity_id for r in res.ranked[SEGMENT_GREEN]} == {"u", "n"}
+    assert res.ranked[SEGMENT_HUMAN_ONLY] == []
+
+
+def test_gate_cannot_widen_the_ranked_set() -> None:
+    """A YELLOW human-only row is unrankable and must STAY unrankable -- the
+    diversion runs after the base segment, never before it."""
+    assert classify_segment(
+        source="opire", legitimacy_class="YELLOW", mechanical_class="YELLOW",
+        effective_vetoed=False, affiliate_sources=frozenset(),
+        agent_permitted="no",
+    ) is None
+
+
+def test_red_human_only_stays_red_not_human_only() -> None:
+    assert classify_segment(
+        source="opire", legitimacy_class="RED", mechanical_class="GREEN",
+        effective_vetoed=False, affiliate_sources=frozenset(),
+        agent_permitted="no",
+    ) is None
+
+
+def test_vetoed_human_only_stays_unrankable() -> None:
+    rows = [row("v", agent_permitted="no")]
+    res = build_ranking(rows, {"v": FakeEff(vetoed=True)})
+    assert res.ranked[SEGMENT_HUMAN_ONLY] == []
+    assert res.total_rows == 0
