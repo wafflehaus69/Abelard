@@ -217,30 +217,30 @@ already-advanced watermark, a code-only change, a flag that did not exist yet.
 2. **NVDA's `HyperscaleMember`** — n=1. Worth a standing watch: at n=2 it becomes the most direct
    supplier-side read on the hyperscaler bucket available, and it should probably then replace
    DataCenter as the cross-check numerator.
-3. **Suppliers do not classify — CD-3b MEASURED 2026-08-21, HELD FOR RATIFICATION.**
-   `tools/measure_supplier_deadband.py`, same P1 methodology (|Δ TTM YoY| per series, recent window
-   from 2023-01-01, band = p25) and importing P1's own statistics so the two cannot drift apart.
+3. ~~**Suppliers do not classify.**~~ **RATIFIED 2026-08-22 — TWO bands, because there are two
+   supplier series and CD-3b measured only one of them.**
 
-   | series | n | p25 |
-   |---|---|---|
-   | NVDA | 9 | 8.9pp |
-   | AMD | 5 | 13.5pp |
-   | MU | 0 | — (7 quarters yields 4 TTM and no YoY yet) |
-   | **pool** | **14** | **8.9pp → proposed band 9pp** |
+   | band class | series it bands | who contributes | n | p25 | ratified |
+   |---|---|---|---|---|---|
+   | `issuer:supplier` | the supplier's **own capex** — what the phase board classifies for every other issuer | all five | **52** | 8.0pp | **8pp** |
+   | `dcrev:supplier` | **datacenter revenue** — the cross-check leg, measured by CD-3b | NVDA + AMD | 14 | 8.9pp | **9pp** |
 
-   **Two things to weigh before ratifying.** The pool is **n=14**, thinner than the n=13–14 that
-   already carries a re-measurement obligation for the bucket-sum bands. And the supplier
-   distribution is *far* fatter than any spending series — median |Δ| **20.7pp**, max **106.7pp**,
-   against a 6pp hyperscaler band — so a p25 band of 9pp on this series suppresses only the quietest
-   quarter and lets three-quarters of observed moves through. That may be exactly right, because
-   NVIDIA's datacenter growth genuinely does move 40pp in a quarter, but it is a different
-   signal-to-noise regime from the one p25 was chosen against. Ratify, adjust, or defer.
+   The 9pp that CD-3b proposed was measured on datacenter *revenue*, while
+   `trend.py:333` bands an issuer's *capex*. Applying one to the other would have banded a series
+   with a constant measured on a different series. They land close — 8 against 9 — but that is a
+   coincidence of these two distributions, not a licence. The capex side was measured on 2026-08-22
+   to close the gap, and `config.DEAD_BAND_MEASURED` now carries a date per band, since a
+   re-measurement obligation runs from the date its own band was measured.
 
-   Original entry: measurement pass ordered (CD-3b, 2026-08-21). There is no
-   `issuer:supplier` dead-band, so the five names carry no phase state, and Mando ruled that the
-   current refusal is correct behaviour until ratified bands exist. Bands must be **measured, not
-   guessed** (ratified doctrine), and that
-   measurement is a separate pass — `tools/measure_deadband.py` extends to it directly.
+   **Live supplier states**, on their own capex: AMD ACCELERATING +101.1%, AVGO ACCELERATING +59.9%,
+   MU PLATEAU +89.7%, NVDA **DECELERATING +60.5%**, SMCI PLATEAU +32.0%. NVDA is the instructive one —
+   its growth *rate* is falling hard (−26.2pp) while the level stays strongly positive, which is
+   exactly the distinction the ladder exists to draw. On datacenter revenue: NVDA and AMD both
+   PLATEAU; MU INSUFFICIENT-HISTORY at 7 quarters; AVGO and SMCI have no series to classify.
+
+   Suppliers hold phase state and remain absent from every aggregate — `test_suppliers_classify_but_
+   never_aggregate` pins both halves at once.
+
 4. **TSM still excluded** — IFRS-only, structural, unchanged from CD-R2 §2.3.2.
 5. **Fiscal offsets** — four of five suppliers are off-calendar (NVDA Jan, AVGO Nov, MU Sep,
    SMCI Jun). Calendar-quarter keying absorbs this exactly as it does for ORCL, but the cross-check

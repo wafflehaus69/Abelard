@@ -118,14 +118,33 @@ def direction_of(delta, band):
     return DIR_FLAT
 
 
-def _state_for(direction, run, yoy):
-    """The ladder. CONTRACTING is level-based and pre-empts the rest."""
+def _state_for(direction, run, yoy, prior=None):
+    """The ladder. CONTRACTING is level-based and pre-empts the rest.
+
+    **Level-based cuts both ways.** CONTRACTING is entered the moment TTM YoY
+    crosses below zero, with no N-window, because a series smaller than its
+    year-ago self is contracting however it got there. The exit has to be the
+    same rule read backwards, and originally it was not: the ladder returned
+    None for "direction seen but not yet confirmed — hold prior state", which
+    held CONTRACTING through a positive level until two same-direction
+    out-of-band moves accumulated.
+
+    Measured on SMCI: 2026Q1 published **CONTRACTING beside TTM YoY +32.0%**,
+    the board asserting one thing and the number printed next to it asserting
+    the opposite. A recovering series could carry that label for quarters.
+
+    So a non-negative level releases CONTRACTING immediately. Where no direction
+    is yet confirmed the series lands on PLATEAU, which is the honest reading —
+    known not to be contracting, not yet known to be going anywhere.
+    """
     if yoy is not None and yoy < 0:
         return STATE_CONTRACTING
     if direction == DIR_FLAT:
         return STATE_PLATEAU
     if run >= N_CONFIRM:
         return STATE_ACCELERATING if direction == DIR_UP else STATE_DECELERATING
+    if prior == STATE_CONTRACTING:
+        return STATE_PLATEAU
     return None      # direction seen but not yet confirmed — hold prior state
 
 
@@ -158,7 +177,7 @@ def classify(series, series_class, series_key="?"):
             run = 1
         last_dir = direction
 
-        proposed = _state_for(direction, run, yoy)
+        proposed = _state_for(direction, run, yoy, prior=state)
         if proposed and proposed != state:
             state, entered = proposed, q
         elif state is None:

@@ -13,7 +13,7 @@ reader cannot audit is a figure they have to trust blindly.
 import json
 import time
 
-from . import commitments, divergence, normalize, phases, trend
+from . import commitments, config, divergence, normalize, phases, trend
 
 SNAPSHOT_KEY = "panel_snapshot"
 
@@ -56,6 +56,27 @@ def _supplier_section(legs, bucket_trends):
             "is_mapped": leg.is_mapped,
             "partial_periods": len(leg.partial),
         }
+        # The datacenter-revenue series gets its own phase state, against its
+        # own ratified band (`dcrev:supplier`, CD-3b). It is NOT the same series
+        # as the supplier's own capex, which the phase board classifies against
+        # `issuer:supplier`, so it does not borrow that band.
+        dc_yoy = trend.issuer_yoy(leg.quarters) if leg.quarters else {}
+        dc_obs = []
+        if len(dc_yoy) >= phases.N_CONFIRM + 1:
+            dc_obs = phases.classify(dc_yoy, "dcrev:supplier",
+                                     series_key="dcrev:{}".format(tick))
+        cur = phases.current(dc_obs)
+        out["legs"][tick].update({
+            "dc_state": cur.state if cur else phases.STATE_INSUFFICIENT,
+            "dc_flags": list(cur.flags) if cur else [],
+            "dc_latest_yoy": cur.yoy if cur else None,
+            "dc_latest_delta": cur.delta if cur else None,
+            "dc_band": phases.band_for("dcrev:supplier"),
+            "dc_band_measured_on": config.dead_band_measured_on("dcrev:supplier"),
+            "dc_yoy_series": [{"q": q, "yoy": dc_yoy[q]}
+                              for q in sorted(dc_yoy, key=trend._cq_sort)],
+            "dc_observations": [_obs_json(o) for o in dc_obs],
+        })
         if leg.is_covered:
             out["covered"].append(tick)
             members[tick] = leg.quarters

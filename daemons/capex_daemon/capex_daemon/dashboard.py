@@ -565,20 +565,31 @@ def view_suppliers(snap):
             _esc(cc["warning"])))
 
     out.append("<h2>Legs</h2><table><tr><th>Supplier</th><th>Status</th>"
-               "<th class='num'>DC revenue TTM</th><th class='num'>Quarters</th>"
+               "<th>DC revenue phase</th><th class='num'>DC revenue TTM</th>"
+               "<th class='num'>TTM YoY</th><th class='num'>Quarters</th>"
                "<th class='num'>Restated</th><th>Resolved</th></tr>")
     for tick, leg in sorted(legs.items(), key=lambda kv: -((kv[1].get("ttm")) or -1)):
         st = leg["status"]
         # Three states, three colours. A MAPPED figure is usable and is NOT a
         # measurement, so it must not wear the same green as one.
         colour = {"COVERED": "#1d6f42", "MAPPED-BUSINESS-UNITS": "#1f4e9c"}.get(st, "#8a6d1a")
-        out.append("<tr><td><b>{}</b></td><td>{}</td><td class='num'>{}</td>"
+        dcs = leg.get("dc_state") or phases.STATE_INSUFFICIENT
+        out.append("<tr><td><b>{}</b></td><td>{}</td>"
+                   "<td title='{}'>{}{}</td><td class='num'>{}</td>"
+                   "<td class='num'>{}</td>"
                    "<td class='num'>{}</td><td class='num' title='{}'>{}</td>"
                    "<td class='note' title='{}'>{}</td></tr>".format(
                        _esc(tick),
                        "<span class='pill' style='background:{}'>{}</span>".format(
                            colour, _esc(st)),
-                       _money(leg.get("ttm")), len(leg.get("quarters") or []),
+                       _esc("banded on dcrev:supplier at {}pp, measured {} — NOT the "
+                            "issuer:supplier band, which applies to the supplier's own "
+                            "capex".format(leg.get("dc_band"),
+                                           leg.get("dc_band_measured_on"))),
+                       _pill(dcs), _flags(leg.get("dc_flags")),
+                       _money(leg.get("ttm")),
+                       _pct(leg.get("dc_latest_yoy")),
+                       len(leg.get("quarters") or []),
                        _esc("; ".join("{} {:,.0f} -> {:,.0f} (superseded by {})".format(
                            r["period_end"], r["was"], r["now"], r["superseded_by"])
                            for r in (leg.get("restatements") or [])) or "none"),

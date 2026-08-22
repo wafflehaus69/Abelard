@@ -33,6 +33,7 @@ BAND = 6.0
 def test_bands_are_stamped_and_complete():
     assert config.DEAD_BAND_MEASURED_ON == "2026-08-18"
     for k in ("issuer:hyperscaler", "issuer:builder", "issuer:reit", "issuer:host",
+              "issuer:supplier", "dcrev:supplier",
               "bucketsum:hyperscaler", "bucketsum:builder", "bucketsum:reit", "total:panel"):
         assert config.DEAD_BANDS[k] > 0
 
@@ -228,3 +229,58 @@ def test_a_non_hyperscaler_plateau_does_not_alert():
                 "to_state": phases.STATE_PLATEAU, "yoy": .3, "delta": -30.0,
                 "event_key": "k5"}], {"HUT": {"bucket": "builder"}})
     assert snapshot.alert_lines(s) == []
+
+
+def test_contracting_is_released_the_moment_the_level_recovers():
+    """Level-based has to cut both ways.
+
+    Measured on SMCI: yoy ran -30.6%, -39.1%, then +32.0%, and the board
+    published CONTRACTING against that +32.0% because the ladder held the prior
+    state until two same-direction moves confirmed a new one. A state defined by
+    the level cannot outlive the level.
+    """
+    obs = phases.classify(series(-.306, -.391, .320), CLS)
+    assert obs[-2].state == phases.STATE_CONTRACTING
+    assert obs[-1].yoy > 0
+    assert obs[-1].state != phases.STATE_CONTRACTING
+    assert obs[-1].state == phases.STATE_PLATEAU     # not contracting, not yet directional
+
+
+def test_releasing_contracting_does_not_skip_the_n_window():
+    """Recovery still has to earn ACCELERATING the normal way."""
+    obs = phases.classify(series(-.40, .10, .30, .50), CLS)
+    states = [o.state for o in obs]
+    assert phases.STATE_CONTRACTING in states
+    assert obs[-1].state == phases.STATE_ACCELERATING   # two confirmed up moves
+    # ...and the quarter it recovered was not ACCELERATING yet
+    recovered = [o for o in obs if o.yoy > 0][0]
+    assert recovered.state == phases.STATE_PLATEAU
+
+
+def test_a_negative_level_still_preempts_everything():
+    """The entry rule is unchanged: no N-window, whatever the direction."""
+    assert phases.classify(series(.10, .20, -.05), CLS)[-1].state == \
+        phases.STATE_CONTRACTING
+    rising = phases.classify(series(-.40, -.30, -.20), CLS)
+    assert rising[-1].state == phases.STATE_CONTRACTING and rising[-1].direction == phases.DIR_UP
+
+
+def test_the_two_supplier_bands_are_distinct_series_classes():
+    """CD-3b measured DATACENTER REVENUE (n=14); the phase board classifies a
+    supplier's OWN CAPEX (n=52). Putting one band on the other series would be
+    banding a series with a constant measured on a different one."""
+    assert config.DEAD_BANDS["issuer:supplier"] == 8.0
+    assert config.DEAD_BANDS["dcrev:supplier"] == 9.0
+    # Each carries the date IT was measured, since re-measurement runs from it.
+    assert config.dead_band_measured_on("issuer:supplier") == "2026-08-22"
+    assert config.dead_band_measured_on("dcrev:supplier") == "2026-08-21"
+    # An unruled class still falls back to the original panel stamp.
+    assert config.dead_band_measured_on("issuer:hyperscaler") == config.DEAD_BAND_MEASURED_ON
+
+
+def test_suppliers_classify_but_never_aggregate():
+    """A band lets suppliers hold phase state. It must not put them in a sum —
+    a supplier's revenue and a builder's capex are the same dollar."""
+    from capex_daemon import trend as _t
+    assert phases.band_for("issuer:supplier") is not None
+    assert "supplier" not in _t.AGGREGATED_BUCKETS

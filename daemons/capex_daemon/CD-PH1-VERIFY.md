@@ -140,6 +140,32 @@ would have re-alerted on **every scan, forever**. Now all transitions from the s
 Also added: a first run backfills the whole history (240 transitions) and **alerts none of it**,
 reporting a count instead. Rediscovering history is not news.
 
+## 6b. A classifier defect the supplier band exposed (fixed 2026-08-22)
+
+Giving suppliers a band put SMCI on the phase board for the first time, reading **CONTRACTING beside
+TTM YoY +32.0%** — the board asserting one thing and the number printed next to it asserting the
+opposite.
+
+The ladder is right that CONTRACTING is level-based on ENTRY: it fires the moment TTM YoY crosses
+below zero, with no N-window, because a series smaller than its year-ago self is contracting however
+it got there. The exit was not the same rule read backwards. `_state_for` returned `None` for
+*"direction seen but not yet confirmed — hold prior state"*, so a recovering series kept the
+CONTRACTING label until it accumulated two same-direction out-of-band moves. SMCI ran −30.6%, −39.1%,
+then **+32.0%** and stayed labelled CONTRACTING.
+
+A state defined by a level cannot outlive the level. A non-negative level now releases CONTRACTING
+immediately; where no direction is yet confirmed the series lands on PLATEAU — known not to be
+contracting, not yet known to be going anywhere. The N-window still governs ACCELERATING and
+DECELERATING, and recovery still has to earn ACCELERATING the normal way.
+
+**Blast radius, measured after the fix: 0 of 965 classified observations** hold CONTRACTING at a
+non-negative level, and every live CONTRACTING name is genuinely negative (CCOI −28.0%, CLSK −37.8%,
+MARA −10.1%, SNOW −10.2%, IRM −4.4%). SMCI now reads PLATEAU.
+
+The generalisable half — *a rule that is level-based on entry must be level-based on exit, or the
+state machine publishes contradictions* — is offered as a ledger candidate, not filed as one; that
+numbering is Mando's.
+
 ## 7. Live end-to-end
 
 ```

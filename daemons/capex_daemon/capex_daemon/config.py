@@ -129,10 +129,35 @@ DEAD_BANDS = {
     # MIRROR classifies but is excluded from alerts and aggregates; it is banded
     # on its measured per-issuer spread so the calibration ghost is a real read.
     "issuer:mirror": 16.0,
+    # CD-3, ratified by Mando 2026-08-22. TWO supplier classes, because there
+    # are two supplier series and they are not interchangeable:
+    #
+    #   issuer:supplier  the supplier's OWN capital spending. This is what the
+    #                    phase board classifies for every other issuer, so it is
+    #                    what "suppliers carry phase state" means. All five names
+    #                    contribute — AVGO and SMCI have capex even though they
+    #                    disclose no datacenter revenue — hence n=52.
+    #   dcrev:supplier   DATACENTER REVENUE, the cross-check leg. Only the names
+    #                    that disclose it contribute, hence n=14. Measured by
+    #                    CD-3b; this is the 9pp figure that was ratified.
+    #
+    # Applying the CD-3b number to `issuer:supplier` would have banded a capex
+    # series with a constant measured on a revenue one. They land close (8 vs 9)
+    # but that is a coincidence of these two distributions, not a licence.
+    "issuer:supplier": 8.0,
+    "dcrev:supplier": 9.0,
     "bucketsum:hyperscaler": 4.0,
     "bucketsum:builder": 27.0,
     "bucketsum:reit": 6.0,
     "total:panel": 5.0,
+}
+
+# Per-class measurement dates. The original eight were measured together on
+# 2026-08-18; the supplier classes were measured later, against different
+# series, and a band's re-measurement obligation runs from ITS OWN date.
+DEAD_BAND_MEASURED = {
+    "issuer:supplier": "2026-08-22",
+    "dcrev:supplier": "2026-08-21",
 }
 
 
@@ -141,3 +166,12 @@ def dead_band_class(scope, bucket):
     if scope == "total":
         return "total:panel"
     return "{}:{}".format(scope, bucket)
+
+
+def dead_band_measured_on(band_class):
+    """When THIS band was measured. Falls back to the original panel date.
+
+    A re-measurement obligation runs from the date its own band was measured,
+    not from whenever the first eight happened to be done.
+    """
+    return DEAD_BAND_MEASURED.get(band_class, DEAD_BAND_MEASURED_ON)
