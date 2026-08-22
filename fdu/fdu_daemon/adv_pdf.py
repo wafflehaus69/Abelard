@@ -26,8 +26,17 @@ Two document quirks cost real time to find and both are load-bearing here.
 2. **A large filing contains several runs concatenated** -- a mega-adviser with
    relying advisers. Run starts are detectable for free from raw content-stream
    length (they spike well above the ~212-byte median), verified on documents
-   from 24 to 1,033 pages with the first boundary at page 24 every time. The
-   base Part 1A is always run 0, which is where Item 4 and Schedule A live.
+   from 24 to 1,750 pages with the first boundary at page 24 every time.
+   The base Part 1A is run 0, but the **ownership schedules are at the END**,
+   after every Schedule R block: on a 1,750-page / 60-run filing Section 4 sits
+   in run 1 and Schedule A in run **57**. Read order matters -- see
+   ``run_tail_pages``.
+
+2b. **A 200 can be an absence.** The publisher serves a valid one-page PDF
+   reading "A PDF version of the Form ADV is not available for this firm" for
+   some filers. It parses fine and yields nothing, which would otherwise be
+   recorded as a firm with no owners and no successions. It is detected and
+   recorded as ``unavailable`` [E1].
 
 3. **Item 4's checkbox is not recoverable.** These PDFs carry no AcroForm fields
    and the tick is drawn, not written, so ``extract_text`` yields the blank
@@ -54,7 +63,7 @@ RUN_START_RATIO = 1.4
 
 #: Cap on how many run tails we will lay out as text. The base run and the final
 #: run are always included; the rest are read until the sections we need appear.
-MAX_RUN_TAILS = 8
+MAX_RUN_TAILS = 12
 
 #: Form ADV Schedule A ownership codes, least to most.
 OWNERSHIP_CODE_ORDER = ("NA", "A", "B", "C", "D", "E", "F")
@@ -68,6 +77,12 @@ _SCHED_B_HEAD = "Indirect Owners"
 _NO_INFO = "No Information Filed"
 
 _REQUIRED_MARKERS = ("SECTION 4 Successions", _SCHED_A_HEAD)
+
+#: The publisher serves a valid 200 with a valid one-page PDF that says the
+#: filing is not available. That is an absence wearing a success costume [E1],
+#: and it must be recorded as unavailable rather than silently parsed as an
+#: empty filing.
+_STUB_MARKER = "A PDF version of the Form ADV is not available for this firm"
 
 
 @dataclass
@@ -131,9 +146,19 @@ def _content_sizes(reader: pypdf.PdfReader) -> list[int]:
 
 
 def run_tail_pages(sizes: list[int]) -> list[int]:
-    """Page indices that end a cumulative run, in priority order.
+    """Page indices that end a cumulative run, in READ-PRIORITY order.
 
-    Base run first (it carries Part 1A), then the final page, then the rest.
+    The order matters and was got wrong once. In an umbrella filing the layout
+    is: base Part 1A, then a Schedule R block per relying adviser, and the
+    ownership schedules come at the **end**. Measured on a 1,750-page / 60-run
+    filing: Section 4 sits in run 1, and Schedule A in **run 57**. An order of
+    [first, last, then ascending] read runs 0, 59, 1, 2 ... and never reached
+    it, reporting "Schedule A not located" for the largest advisers in the
+    corpus.
+
+    So: the two base runs first (Items 1-11 and Section 4), then walk back from
+    the END (the ownership schedules). On that filing this finds both inside
+    five page extractions.
     """
     n = len(sizes)
     if n == 0:
@@ -143,18 +168,12 @@ def run_tail_pages(sizes: list[int]) -> list[int]:
         return [n - 1]
     median = usable[len(usable) // 2]
     starts = [i for i, s in enumerate(sizes) if i > 0 and s > median * RUN_START_RATIO]
-    tails = [s - 1 for s in starts if s - 1 >= 0]
-    tails.append(n - 1)
-    seen, ordered = set(), []
-    for idx in tails:
-        if idx not in seen:
-            seen.add(idx)
-            ordered.append(idx)
-    ordered.sort()
-    if len(ordered) <= 2:
-        return ordered
-    # base run, final run, then the middle ones
-    return [ordered[0], ordered[-1]] + ordered[1:-1]
+    tails = sorted({s - 1 for s in starts if s - 1 >= 0} | {n - 1})
+    if len(tails) <= 2:
+        return tails
+    head = tails[:2]
+    rest = [idx for idx in reversed(tails) if idx not in head]
+    return head + rest
 
 
 def _document_text(reader: pypdf.PdfReader) -> tuple[str, int, str | None]:
@@ -260,6 +279,13 @@ def extract_facts(crd: str, payload: bytes) -> AdvFacts:
 
     if not text.strip():
         raise ExtractError(f"CRD {crd}: ADV document parsed to empty text ({facts.doc_pages} pages)")
+
+    if _STUB_MARKER in text:
+        # A 200 carrying a notice that the filing is unavailable. Recorded as an
+        # absence, never parsed as a firm with no owners and no successions.
+        facts.extract_status = "unavailable"
+        facts.extract_note = "publisher served a stub: PDF version not available for this firm"
+        return facts
 
     m = re.search(r"(Annual Amendment|Other-Than-Annual Amendment|Initial Application)", text)
     if m:

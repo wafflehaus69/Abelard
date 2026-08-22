@@ -69,14 +69,18 @@ def test_run_tails_single_run():
 
 
 def test_run_tails_multi_run():
-    """Measured shape: a 68-page filing spikes at pages 24 and 48."""
+    """Measured shape: a 68-page filing spikes at pages 24 and 48.
+
+    Read order is base runs first, then back from the end -- the ownership
+    schedules sit at the end of an umbrella filing, not the start.
+    """
     sizes = [212] * 68
     sizes[24] = 377
     sizes[48] = 377
     tails = run_tail_pages(sizes)
     assert set(tails) == {23, 47, 67}
-    assert tails[0] == 23, "the base Part 1A run must be read first"
-    assert tails[1] == 67, "the final run must be read second"
+    assert tails[:2] == [23, 47], "the two base runs must be read first"
+    assert tails[2] == 67, "then walk back from the end"
 
 
 def test_run_tails_empty():
@@ -94,3 +98,35 @@ def test_run_tails_never_duplicates(n_spikes):
         sizes[24 * i] = 377
     tails = run_tail_pages(sizes)
     assert len(tails) == len(set(tails))
+
+
+# -- read-order regression: ownership schedules live at the END ----------
+
+
+def test_run_tails_read_base_then_walk_back_from_end():
+    """Regression for the mega-filing miss.
+
+    Measured on a 1,750-page / 60-run filing: Section 4 in run 1, Schedule A in
+    run 57. An order of [first, last, then ascending] never reached run 57 and
+    reported "Schedule A not located" for the largest advisers in the corpus.
+    """
+    sizes = [212] * (24 * 60)
+    for i in range(1, 60):
+        sizes[24 * i] = 377
+    tails = run_tail_pages(sizes)
+    assert tails[0] == 23, "base run must be read first"
+    assert tails[1] == 47, "second base run carries Section 4"
+    # then descending from the end, so the ownership schedules are reached fast
+    assert tails[2] > tails[3] > tails[4], "must walk back from the end"
+    assert tails[2] == sizes.__len__() - 1
+    # run 57's tail must be inside the read budget
+    from fdu_daemon.adv_pdf import MAX_RUN_TAILS
+
+    assert (24 * 58 - 1) in tails[:MAX_RUN_TAILS], "Schedule A's run must be reachable"
+
+
+def test_stub_document_recorded_as_unavailable():
+    """A 200 carrying 'PDF not available' is an absence, not an empty filing."""
+    from fdu_daemon.adv_pdf import _STUB_MARKER
+
+    assert "not available for this firm" in _STUB_MARKER

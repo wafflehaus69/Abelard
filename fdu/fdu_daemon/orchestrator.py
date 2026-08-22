@@ -135,9 +135,17 @@ def scan(conn: sqlite3.Connection, fetcher: Fetcher, *, kinds: tuple[str, ...] =
 
 def _pending_enrich(conn: sqlite3.Connection, limit: int, *, backfill: bool) -> list[str]:
     if backfill:
+        # Ascending AUM, and the bias is deliberate. A first cut ordered
+        # largest-first, which front-loaded the mega-advisers: the slowest
+        # documents in the corpus (up to 1,750 pages / 82 MB) and the least
+        # relevant, since a consolidator is an acquirer rather than a
+        # succession target. Small and mid RIAs are both the thesis population
+        # and ~40x cheaper to fetch. Firms with no reported AUM (ERAs) come last.
         sql = (
             "SELECT f.crd FROM firm f LEFT JOIN adv_detail d ON d.crd = f.crd "
-            "WHERE d.crd IS NULL ORDER BY f.aum_total DESC NULLS LAST LIMIT ?"
+            "WHERE d.crd IS NULL "
+            "ORDER BY CASE WHEN f.aum_total IS NULL THEN 1 ELSE 0 END, f.aum_total ASC "
+            "LIMIT ?"
         )
         return [r["crd"] for r in conn.execute(sql, (limit,))]
     sql = (
