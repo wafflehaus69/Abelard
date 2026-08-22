@@ -175,7 +175,26 @@ A broken instance costs one filing, not the leg, and is reported into the scan's
 2. **NVDA's `HyperscaleMember`** — n=1. Worth a standing watch: at n=2 it becomes the most direct
    supplier-side read on the hyperscaler bucket available, and it should probably then replace
    DataCenter as the cross-check numerator.
-3. **Suppliers do not classify — MEASUREMENT PASS ORDERED (CD-3b, 2026-08-21).** There is no
+3. **Suppliers do not classify — CD-3b MEASURED 2026-08-21, HELD FOR RATIFICATION.**
+   `tools/measure_supplier_deadband.py`, same P1 methodology (|Δ TTM YoY| per series, recent window
+   from 2023-01-01, band = p25) and importing P1's own statistics so the two cannot drift apart.
+
+   | series | n | p25 |
+   |---|---|---|
+   | NVDA | 9 | 8.9pp |
+   | AMD | 5 | 13.5pp |
+   | MU | 0 | — (7 quarters yields 4 TTM and no YoY yet) |
+   | **pool** | **14** | **8.9pp → proposed band 9pp** |
+
+   **Two things to weigh before ratifying.** The pool is **n=14**, thinner than the n=13–14 that
+   already carries a re-measurement obligation for the bucket-sum bands. And the supplier
+   distribution is *far* fatter than any spending series — median |Δ| **20.7pp**, max **106.7pp**,
+   against a 6pp hyperscaler band — so a p25 band of 9pp on this series suppresses only the quietest
+   quarter and lets three-quarters of observed moves through. That may be exactly right, because
+   NVIDIA's datacenter growth genuinely does move 40pp in a quarter, but it is a different
+   signal-to-noise regime from the one p25 was chosen against. Ratify, adjust, or defer.
+
+   Original entry: measurement pass ordered (CD-3b, 2026-08-21). There is no
    `issuer:supplier` dead-band, so the five names carry no phase state, and Mando ruled that the
    current refusal is correct behaviour until ratified bands exist. Bands must be **measured, not
    guessed** (ratified doctrine), and that

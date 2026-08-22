@@ -385,3 +385,41 @@ def test_the_dashboard_prints_the_mapping_beside_the_number():
     assert "Cloud Memory Business Unit" in html          # what was summed
     assert "Mobile and Client" in html                   # what was excluded
     assert "mapped, not measured" in html
+
+
+def test_the_cache_stores_observations_not_the_ruled_sum(tmp_path):
+    """A mapped issuer must reload as MAPPED, not as uncovered.
+
+    The first cut cached the SUMMED synthetic row, whose dim_key names no real
+    member — so on reload neither matcher recognised it and Micron came back
+    UNCOVERED-NO-DC-MEMBER. Caching the unit facts and applying the ruling at
+    read time also means re-ruling the mapping costs no refetch.
+    """
+    import sqlite3
+    from capex_daemon import storage
+
+    class E:
+        cik, ticker_display, bucket = "0000723125", "MU", "supplier"
+
+    con = sqlite3.connect(str(tmp_path / "s.db"))
+    con.executescript(storage.SCHEMA)
+    facts = []
+    for i, (ps, pe) in enumerate((("2025-11-28", "2026-02-26"),
+                                  ("2026-02-27", "2026-05-28"))):
+        facts += [_F("Revenues", 7.0e9 + i, ps, pe,
+                     {"StatementBusinessSegmentsAxis": "CMBUMember"}),
+                  _F("Revenues", 5.0e9 + i, ps, pe,
+                     {"StatementBusinessSegmentsAxis": "CDBUMember"})]
+    suppliers.harvest(E(), con, submissions_doc={"filings": {"recent": {
+        "form": ["10-Q"], "reportDate": ["2026-05-28"],
+        "accessionNumber": ["x"], "primaryDocument": ["mu-20260528.htm"]}}},
+        fetch=lambda *a, **k: facts)
+
+    stored = [r[0] for r in con.execute(
+        "SELECT DISTINCT dim_key FROM supplier_dc_facts WHERE cik=?", ("0000723125",))]
+    assert sorted(stored) == ["StatementBusinessSegmentsAxis=CDBUMember",
+                              "StatementBusinessSegmentsAxis=CMBUMember"]
+    assert not any("+" in d for d in stored)      # never a pre-summed synthetic
+
+    leg = suppliers.leg_from_db(E(), con)
+    assert leg.status == suppliers.STATUS_MAPPED and leg.quarters

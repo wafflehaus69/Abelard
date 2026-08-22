@@ -394,11 +394,27 @@ def harvest(entity, con, http=None, limit=INSTANCE_LIMIT, submissions_doc=None,
             continue
         try:
             blob = (fetch or edgar.fetch_document)(entity.cik, accession, docname, http=http)
-            facts = ixbrl.parse_instance(blob)
+            # A test may inject already-parsed facts; anything else is a document.
+            facts = blob if isinstance(blob, list) else ixbrl.parse_instance(blob)
         except Exception as exc:
             failures.append((report_date, str(exc)))
             continue
+        # Cache the OBSERVATIONS, never the conclusion. For a mapped issuer the
+        # individual unit facts are stored and the ruled sum is applied at read
+        # time, so re-ruling the mapping does not require re-fetching a filing —
+        # and a summed synthetic row, which neither matcher recognises on
+        # reload, never reaches the cache.
         pairs, _axes, _rest = dc_facts([(report_date, facts)])
+        spec = mapping_for(entity)
+        if spec:
+            want = set(spec["members"])
+            for f in facts:
+                if f.concept not in REVENUE_CONCEPTS or f.value is None:
+                    continue
+                dims = {_local(a): _local(m) for a, m in (f.dims or {}).items()}
+                sub = [a for a in dims if a not in QUALIFIER_AXES]
+                if len(sub) == 1 and dims[sub[0]] in want:
+                    pairs.append((f, f.concept))
         for f, concept in pairs:
             con.execute(
                 "INSERT OR REPLACE INTO supplier_dc_facts(cik, instance_key, "
