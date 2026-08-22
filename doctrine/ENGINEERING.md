@@ -321,7 +321,8 @@ depth-2, 56 depth-1. Nothing before 2026-08-11 exists — the four earlier
 backfilled, so any derived state for a row is only as old as its first recorded
 verdict, and a depth-1 row has had no opportunity to debounce at all.
 
-**Amendment (DRAFTED by ClaudeCode 2026-08-21, NOT YET RATIFIED — SC-E22R).**
+**Amendment (freeze lifted by Mando 2026-08-21; drafted by ClaudeCode from the
+SC-E22R replay).**
 The floor premise above is withdrawn. Part 2's rule survives; the arithmetic
 that justified it does not, and the replacement was chosen by replay rather
 than derived from a parameter.
@@ -361,12 +362,21 @@ exactly.** Stated two-sided per this entry's own rule: it also carries the
 highest veto rate and ~2x the churn of the disqualified candidates. It is
 re-earned on evidence, not vindicated by its original derivation.
 
-*Recommended, and NOT self-ratified:* keep the per-row rule at (1,2); add a
-**scan-calibration layer** above it that measures each scan's aggregate rate
-against a trailing baseline and down-weights or flags deviant scans. Excluding
-deviant scans dropped overdispersion from z = 7.20 to z = 2.90 — a reduction,
-not a cure, on 5 remaining pairs. That is a ruling for Mando and this amendment
-does not make it.
+*Resolution.* Keep the per-row rule at (1,2); add a **scan-calibration layer**
+above it. Excluding deviant scans dropped overdispersion from z = 7.20 to
+z = 2.90 — a reduction, not a cure, on 5 remaining pairs, so calibration is a
+mitigation and not a fix.
+
+The layer is deliberately one-directional: **a deviant scan does not advance the
+recovery run, but a veto from any scan still takes effect immediately.** That
+keeps the ratified asymmetry and makes the change incapable of creating a false
+GREEN — it can only make recovery slower, never faster. Recovery now requires
+two consecutive clean observations *from representative scans*, which is what
+the original rule meant before we knew occasions differed.
+
+Deviance threshold |z| > 2 against the pooled veto-on-GREEN rate, PROVISIONAL:
+4 of 10 observed scans exceed it (z = −4.29, −2.15, +2.62, +2.72) and the rest
+sit inside ±1.7. Review when the scan count doubles.
 
 *Defect found and fixed while replaying (commit `bcd4d44`).* A scan whose
 classify call failed still wrote one verdict row per item carrying
