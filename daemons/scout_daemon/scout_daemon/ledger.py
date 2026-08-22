@@ -84,6 +84,14 @@ _COLUMNS: dict[str, str] = {
     "payout_basis": "TEXT NOT NULL",
     "payout_confidence": "TEXT NOT NULL",
     "escrow_verified": "INTEGER",
+    # Is `payout_usd_low` what ONE recipient receives, or the size of a fund?
+    # Default 0 = unknown, never "verified as the full amount". No current
+    # source publishes a per-recipient breakdown: Superteam's API reports
+    # `compensationType: fixed` and `rewardAmount: 500` for a listing whose page
+    # splits that 500 across ten places, and there is no field carrying the
+    # split. Until a source publishes one, this stays 0 everywhere -- which is
+    # the honest state, not a gap.
+    "payout_per_recipient_verified": "INTEGER NOT NULL DEFAULT 0",
     # --- asset class and indicative basis (Mando 2026-08-10) -------------
     # The scout sees LISTINGS, never RECEIPTS -- it does not execute work, so
     # it never witnesses a payment. These columns therefore carry an
@@ -163,14 +171,6 @@ _COLUMNS: dict[str, str] = {
     # `admission_applied_unix` is stamped ONLY by admissions.apply(), i.e. only
     # when the Mando-owned file moved this row. Its presence is the audit trail
     # that a human decision, not the daemon, set the status.
-    # Is `payout_usd_low` what ONE recipient receives, or the size of a fund?
-    # Default 0 = unknown, never "verified as the full amount". No current
-    # source publishes a per-recipient breakdown: Superteam's API reports
-    # `compensationType: fixed` and `rewardAmount: 500` for a listing whose page
-    # splits that 500 across ten places, and there is no field carrying the
-    # split. Until a source publishes one, this stays 0 everywhere -- which is
-    # the honest state, not a gap.
-    "payout_per_recipient_verified": "INTEGER NOT NULL DEFAULT 0",
     "proposed_unix": "INTEGER",
     "admission_applied_unix": "INTEGER",
 }
