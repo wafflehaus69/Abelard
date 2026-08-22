@@ -248,3 +248,67 @@ def test_a_real_clean_scan_still_recovers(conn) -> None:
     _obs(conn, "x", "s3", 300, False)
     conn.commit()
     assert verdicts.effective_for(conn, "x").vetoed is False
+
+
+# ---------------------------------------------------------------------------
+# Scan calibration (E22 amendment): the occasion is the variable, not the row
+# ---------------------------------------------------------------------------
+
+def test_a_three_tuple_observation_is_treated_as_representative() -> None:
+    """Backward compatibility: callers predating calibration are unchanged."""
+    assert derive(obs((True, False), (False, False), (False, False))).vetoed is False
+
+
+def test_a_clean_verdict_from_a_deviant_scan_does_not_advance_recovery() -> None:
+    veto = (1, True, False, True)
+    clean_dev = (2, False, False, False)     # non-representative
+    clean_rep = (3, False, False, True)
+    assert derive([veto, clean_dev, clean_dev]).vetoed is True, \
+        "two readings from unrepresentative scans must not clear a veto"
+    assert derive([veto, clean_rep, clean_rep]).vetoed is False
+
+
+def test_a_veto_from_a_deviant_scan_still_takes_effect_immediately() -> None:
+    """One-directional: calibration slows recovery, never the veto."""
+    v = derive([(1, False, False, True), (2, True, False, False)])
+    assert v.vetoed is True
+
+
+def test_calibration_can_only_withhold_recovery_never_grant_it() -> None:
+    """Property: for any history, calibrating cannot turn VETOED into GREEN."""
+    from itertools import product
+    for pattern in product([True, False], repeat=4):
+        for flags in product([True, False], repeat=4):
+            hist_cal = [(i, d, False, r) for i, (d, r) in enumerate(zip(pattern, flags))]
+            hist_raw = [(i, d, False, True) for i, d in enumerate(pattern)]
+            if derive(hist_raw).vetoed:
+                assert derive(hist_cal).vetoed, \
+                    "calibration turned a VETOED history into GREEN"
+
+
+def test_scan_deviance_scores_each_scan_against_the_pooled_rate(conn) -> None:
+    _cost(conn, "calm", calls=1, items=1)
+    _cost(conn, "harsh", calls=1, items=1)
+    for i in range(20):                       # calm scan: 10% vetoed
+        _obs(conn, f"r{i}", "calm", 100, i < 2)
+    for i in range(20):                       # harsh scan: 90% vetoed
+        _obs(conn, f"r{i}", "harsh", 200, i >= 2)
+    conn.commit()
+    z = verdicts.scan_deviance(conn)
+    assert z["calm"] < 0 < z["harsh"]
+    assert verdicts.deviant_scans(conn) == frozenset({"calm", "harsh"})
+
+
+def test_deviance_threshold_is_adjustable_and_provisional() -> None:
+    assert verdicts.DEVIANCE_Z == 2.0
+
+
+def test_judgeless_scans_are_excluded_from_the_deviance_baseline(conn) -> None:
+    """A scan the judge never saw has no rate to compare."""
+    _cost(conn, "live", calls=1, items=1)
+    _cost(conn, "dead", calls=0, items=1)
+    for i in range(10):
+        _obs(conn, f"r{i}", "live", 100, i < 3)
+        _obs(conn, f"r{i}", "dead", 200, False)
+    conn.commit()
+    assert "dead" not in verdicts.scan_deviance(conn)
