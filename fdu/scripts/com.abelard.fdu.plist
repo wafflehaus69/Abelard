@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- FDU daily cadence on Basilic. Mando-authorized deploy 2026-08-22.
+
+     Slot 07:15 local (Basilic = America/New_York, so 11:15 UTC). Chosen from a
+     measured fact rather than a guess: the IAPD compilation feed carried
+     Last-Modified 09:29 UTC, so 11:15 UTC sits comfortably after publication
+     with room for it to run late. It is also clear of the morning briefs at
+     08:00 and of the evening cluster (smart money 22:30, its brief 23:15,
+     capex 23:40).
+
+     A late feed is harmless rather than a failure: scan would re-ingest the
+     previous day's snapshot, detect zero changes, and catch up the next cycle.
+
+     RunAtLoad false: it fires on schedule, never on boot. A boot-time run would
+     make a reboot indistinguishable from a filing day in the logs.
+
+     The script skips enrichment while a backfill is running, so the two never
+     compete for the same surface.
+
+     This file is the REFERENCE COPY kept in the repo. The live plist is
+     host-specific and lives at ~/Library/LaunchAgents/com.abelard.fdu.plist.
+     Only editing the plist needs a reload; a code change just needs git pull. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.fdu</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/wafflehaus/Code/Abelard-fdu/fdu/scripts/run_daily.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>15</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/fdu/logs/launchd.out</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/fdu/logs/launchd.err</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard-fdu/fdu</string>
+</dict>
+</plist>
