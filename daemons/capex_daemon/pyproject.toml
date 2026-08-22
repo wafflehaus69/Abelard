@@ -12,6 +12,9 @@ requires-python = ">=3.12"
 dependencies = [
     "requests>=2.31",
     "python-dotenv>=1.0",
+    # brief.py renders the nightly phase page. Was undeclared alongside
+    # matplotlib until the 2026-08-21 audit; matplotlib is now retired.
+    "reportlab>=4.0",
 ]
 
 [project.optional-dependencies]

@@ -149,7 +149,8 @@ reporting a count instead. Rediscovering history is not news.
 
 Second run is a clean no-op — the classifier did not disturb scan idempotency. Artifacts written:
 `hayes_panel.png`, `bucket_capex_ttm.png`, `divergence_ttm.png`, `forward_commitments.png`,
-`cd2_thesis_layer.pdf` (261KB). Dashboard loads the snapshot **read-only** and renders all five
+`cd2_thesis_layer.pdf` (261KB) — *all five retired 2026-08-21; the nightly artifact is now
+`capex_phase_page.pdf`*. Dashboard loads the snapshot **read-only** and renders all five
 views (Hayes panel 17KB, phase board 18KB, divergence, buckets, commitments).
 
 ## 8. Current panel state
@@ -168,19 +169,21 @@ That divergence is invisible in any single number, which is why R4a requires the
 
 Live contractions: **CLSK −37.8%**, **MARA −10.1%**, **CCOI −28.0%**, **IRM −4.4%**, **SNOW −10.2%**.
 
-## 9. Stack deviation, flagged not resolved (E3)
+## 9. Stack deviation — RULED: stdlib stands permanently (E3)
 
 The order specified *"Flask on :8788, SM dashboard pattern (same stack)"*. Those conflict. SM's
 dashboard is stdlib `ThreadingHTTPServer`, and **Flask appears nowhere in the monorepo** — no
 pyproject declares it, no module imports it. Following the literal word would add a dependency the
-house has never used, so this follows *"same stack"* and the disk.
+house has never used, so this followed *"same stack"* and the disk.
 
-Rendering is kept pure — every view is a function from snapshot to HTML — so swapping in a Flask
-shim touches only `serve()`. Reversible in minutes if ruled.
+**Ruled by Mando 2026-08-21: stdlib stands, permanently.** Not a deviation held pending review — the
+settled stack for this dashboard. The Flask-shim escape hatch described in the original draft of this
+section is withdrawn; rendering stays pure because purity is worth having, not because a swap is
+being kept open.
 
 ## 10. Open
 
-1. **Flask vs stdlib** — §9, yours to rule.
+1. ~~**Flask vs stdlib** — §9, yours to rule.~~ **RULED 2026-08-21: stdlib, permanently.** See §9.
 2. **Band re-measurement** — bucket-sum and total-panel bands rest on n=13–14. Obligation stamped
    in config: re-run `tools/measure_deadband.py` after two more filed quarters land panel-wide.
 3. **REIT bucket** — will stay `INSUFFICIENT-MEMBERSHIP` until DLR files its 2026Q2. A two-name
@@ -188,5 +191,6 @@ shim touches only `serve()`. Reversible in minutes if ruled.
 4. ~~**Charts are matplotlib PNGs**, not the interactive per-bucket co-plot with phase shading the
    order sketches for view (1). The phase chart ships; interactive shading did not.~~
    **Closed by CD-PH2** — `svgcharts.py` renders every view as phase-shaded native SVG with
-   per-point provenance. The matplotlib pipeline in `charts.py` is untouched and still produces the
-   PNG artifacts and `cd2_thesis_layer.pdf`; whether it should now be retired is open (CD-PH2 §7).
+   per-point provenance. **`charts.py` retired 2026-08-21** after a consumer audit found nothing read
+   its artifacts and that it hard-imported an undeclared matplotlib, breaking a clean-venv scan
+   (CD-PH2 §7).

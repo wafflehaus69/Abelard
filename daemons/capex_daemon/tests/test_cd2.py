@@ -1,5 +1,5 @@
 """CD-2 acceptance tests: fee-exhibit ingest, commitments, composition, divergence."""
-from capex_daemon import charts, commitments, divergence, feeexhibit, ixbrl
+from capex_daemon import commitments, divergence, feeexhibit, ixbrl, svgcharts
 
 # A structurally faithful miniature of a real EX-FILING FEES exhibit: typed
 # OfferingAxis dimension, two debt tranches, tranche sum != stated total.
@@ -163,4 +163,4 @@ def test_divergence_rows_emit_none_not_zero_for_withheld_ratios():
 
 def test_bucket_colors_cover_every_published_bucket():
     for b in divergence.BUCKET_ORDER:
-        assert b in charts.BUCKET_COLORS
+        assert b in svgcharts.SERIES_COLORS

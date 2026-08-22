@@ -24,9 +24,10 @@ what makes the run idempotent: a second run the same night finds the same
 newest filing, sees no advance, and does nothing.
 """
 import json
+import os
 import time
 
-from . import (charts, config, divergence, edgar, facts_api, freshness,
+from . import (brief, config, divergence, edgar, facts_api, freshness,
                identity, phases, snapshot, storage, suppliers, universe)
 
 WATERMARK_PREFIX = "scan:"
@@ -200,12 +201,20 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         # count rather than blasted into the alert bar.
         alerts = []
 
+    # The nightly artifact is the PDF phase page, drawn from the same model the
+    # dashboard renders (brief.py). The matplotlib PNG pipeline it replaced was
+    # retired 2026-08-21: nothing consumed its four PNGs or cd2_thesis_layer.pdf,
+    # and it hard-imported an UNDECLARED matplotlib at module scope, so a clean
+    # Basilic venv could not import `scan` at all.
     artifacts = False
     if render and views:
-        all_views = [v for v in (_view_of(roster, indexed, c.cik) for c in checks) if v]
-        comp = divergence.composition(all_views)
-        charts.render_all(all_views, comp, outdir=outdir, snap=snap)
-        artifacts = True
+        outdir = outdir or config.artifact_path("", sub="charts")
+        os.makedirs(outdir, exist_ok=True)
+        try:
+            brief.phase_page(snap, os.path.join(outdir, "capex_phase_page.pdf"))
+            artifacts = True
+        except Exception as exc:
+            errors.append(("brief", "phase page render failed: {}".format(exc)))
 
     return {
         "outcome": OUTCOME_UPDATED,

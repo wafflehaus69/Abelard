@@ -134,9 +134,16 @@ process: 14 SVGs across six views, plus 4 PNGs and `cd2_thesis_layer.pdf`.
 
 Two things follow. First, my statement in `brief.py` that the thesis PDF came from an uncommitted
 script was **wrong** — it is committed, in the file I had overwritten; corrected. Second, the house
-now has two chart stacks. **Whether the matplotlib pipeline should be retired is yours to rule**, and
-it is coupled to the standing Flask-vs-stdlib question (CD-PH1 §9): if the answer there is stdlib,
-retiring matplotlib drops a heavy dependency the SVG path does not need.
+briefly had two chart stacks.
+
+**RULED 2026-08-21: stdlib stands permanently, and matplotlib retires after a consumer audit.** Both
+executed the same day. The audit found **no consumer of any artifact** — nothing outside `charts.py`
+read `hayes_panel.png`, `bucket_capex_ttm.png`, `divergence_ttm.png`, `forward_commitments.png` or
+`cd2_thesis_layer.pdf` — and found a live defect: **matplotlib was never a declared dependency** yet
+`charts.py` imported it at module scope and `scan.py` imported `charts` at module scope, so
+`python -m capex_daemon scan` could not import at all on a clean venv. Verified both ways against a
+venv built from declared dependencies only. `reportlab` was undeclared for the same reason and is now
+declared. The nightly artifact is `capex_phase_page.pdf` from `brief.phase_page`.
 
 ## 8. What shipped
 
