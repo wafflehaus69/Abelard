@@ -21,6 +21,7 @@ from . import facts_api
 CAPEX = "capex"
 DEBT = "debt"
 ANCHOR = "anchor"
+REVENUE = "revenue"
 
 # Candidate sets seeded from CD-R1's live survey. Order is irrelevant by design —
 # resolution is by recency, never by position in this list.
@@ -52,6 +53,23 @@ CANDIDATES = {
         "PropertyPlantAndEquipmentAndFinanceLeaseRightOfUseAssetBeforeAccumulatedDepreciationAndAmortization",
         "RealEstateInvestmentPropertyAtCost",
         "RealEstateGrossAtCarryingValue",
+    ),
+    # SUPPLIER TOTAL revenue — not datacenter revenue, which is dimension-
+    # qualified and therefore invisible to the aggregation API (CD-R2 §2.3.3).
+    # This is the second live reproduction of E7, and the cleanest yet: the two
+    # concepts migrate in OPPOSITE directions across the supplier bucket.
+    #
+    #   NVDA  `Revenues` LIVE (n=119, through 2026-04-26)
+    #         `RevenueFromContractWithCustomerExcludingAssessedTax` dead at 2022-01-30
+    #   AMD / AVGO / MU / SMCI   exactly the reverse — `Revenues` dead at 2017-18
+    #
+    # Any fixed order resolves the wrong concept for one side or the other.
+    # Recency-per-issuer is the only rule that gets both right.
+    REVENUE: (
+        "Revenues",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "SalesRevenueNet",
     ),
 }
 

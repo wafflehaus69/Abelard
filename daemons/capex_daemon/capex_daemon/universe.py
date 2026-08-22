@@ -22,7 +22,12 @@ UNIVERSE_CSV = os.path.join(os.path.dirname(__file__), "data", "universe.csv")
 #             would inflate it with spend that is not datacenter spend.
 #   sidecar — admitted, but its capex is already counted inside another member.
 #             BTBT consolidates WYFI, so summing both double-counts the same dollars.
-BUCKETS = ("hyperscaler", "builder", "reit", "fpi", "mirror", "host", "sidecar")
+# `supplier` is a CROSS-CHECK bucket, not a spending bucket: its members sell
+# the buildout rather than buy it, so their revenue is the same dollar as
+# someone else's capex seen from the other side of the invoice. It is absent
+# from `trend.AGGREGATED_BUCKETS` by design (CD-R2 §2.3) and must stay absent.
+BUCKETS = ("hyperscaler", "builder", "reit", "fpi", "mirror", "host", "sidecar",
+           "supplier")
 
 TIER_CORE = "CORE"
 TIER_THIN = "THIN"

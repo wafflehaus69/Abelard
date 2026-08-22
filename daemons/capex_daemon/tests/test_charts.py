@@ -278,6 +278,20 @@ def _fake_snapshot():
                                 phases.STATE_CONTRACTING: 0, "net_direction": 2}
                                for x in q],
             "commitments_panel": {"status": "OK", "detail": "", "disclosing_issuers": 0}},
+        "suppliers": {
+            "covered": ["NVDA"],
+            "legs": {"NVDA": {"ticker": "NVDA", "status": "COVERED", "detail": "resolved",
+                              "axes": ["ProductOrServiceAxis"], "concept": "Revenues",
+                              "instances": 14, "ttm": 2.3e11, "latest_quarter": q[-1],
+                              "quarters": [{"q": x, "value": 5e10} for x in q],
+                              "ttm_series": [{"q": x, "value": 2e11} for x in q],
+                              "restatements": [], "restatement_count": 0, "dropped": 0}},
+            "combined": {"members": ["NVDA"], "ttm": 2.3e11, "latest_quarter": q[-1],
+                         "ttm_series": [{"q": x, "value": 2e11, "members": 1} for x in q]},
+            "crosscheck": {"against": "hyperscaler", "latest_ratio": 0.45,
+                           "latest_quarter": q[-1], "warning": None,
+                           "series": [{"q": x, "ratio": 0.45, "dc": 2e11, "capex": 4.4e11,
+                                       "dc_members": 1, "capex_members": 5} for x in q]}},
         "transitions": [],
     }
 

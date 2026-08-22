@@ -60,7 +60,7 @@ svg{display:block;max-width:100%;margin:0 0 14px}
 
 VIEWS = [("/", "The aggregate"), ("/hayes", "Hayes panel"), ("/phases", "Phase board"),
          ("/divergence", "Divergence"), ("/buckets", "Bucket drilldowns"),
-         ("/commitments", "Forward commitments")]
+         ("/commitments", "Forward commitments"), ("/suppliers", "Suppliers")]
 
 
 def _esc(s):
@@ -538,9 +538,91 @@ def view_commitments(snap):
     return _page("Forward commitments", "/commitments", "".join(out))
 
 
+# ---------------- view 6: the supplier cross-check ----------------
+
+def view_suppliers(snap):
+    sup = snap.get("suppliers") or {}
+    legs, cc = sup.get("legs") or {}, sup.get("crosscheck") or {}
+    out = ["<h2>Supplier cross-check — the same dollar, from the other side</h2>",
+           "<p class='note'>A hyperscaler's capex and NVIDIA's datacenter revenue are largely "
+           "the <b>same money seen from opposite sides of the invoice</b>. That makes this an "
+           "independent read on the buildout — different filers, different fiscal calendars, "
+           "different incentives — and it makes adding the two a category error. Suppliers are "
+           "<b>never summed into the spending aggregate</b>; they are related to it by a ratio, "
+           "which is a corroboration and not a reconciliation. It is not expected to reach "
+           "100%.</p>",
+           "<p class='note'>This leg is <b>parser-only</b>. Segment revenue is dimension-"
+           "qualified, so the companyfacts API drops it entirely — NVDA's API record carries "
+           "total <code>Revenues</code> and a segment <i>count</i>, and nothing else. Every "
+           "figure below was read out of the filing itself.</p>"]
+
+    series = cc.get("series") or []
+    if series:
+        out.append(charts_ratio_svg(series))
+    if cc.get("warning"):
+        out.append("<div class='warn'><b>Read the last point with care.</b> {}</div>".format(
+            _esc(cc["warning"])))
+
+    out.append("<h2>Legs</h2><table><tr><th>Supplier</th><th>Status</th>"
+               "<th class='num'>DC revenue TTM</th><th class='num'>Quarters</th>"
+               "<th class='num'>Restated</th><th>Resolved</th></tr>")
+    for tick, leg in sorted(legs.items(), key=lambda kv: -((kv[1].get("ttm")) or -1)):
+        cov = leg["status"] == "COVERED"
+        out.append("<tr><td><b>{}</b></td><td>{}</td><td class='num'>{}</td>"
+                   "<td class='num'>{}</td><td class='num' title='{}'>{}</td>"
+                   "<td class='note' title='{}'>{}</td></tr>".format(
+                       _esc(tick),
+                       "<span class='pill' style='background:{}'>{}</span>".format(
+                           "#1d6f42" if cov else "#8a6d1a", _esc(leg["status"])),
+                       _money(leg.get("ttm")), len(leg.get("quarters") or []),
+                       _esc("; ".join("{} {:,.0f} -> {:,.0f} (superseded by {})".format(
+                           r["period_end"], r["was"], r["now"], r["superseded_by"])
+                           for r in (leg.get("restatements") or [])) or "none"),
+                       leg.get("restatement_count") or 0,
+                       _esc(leg.get("detail") or ""),
+                       _esc(", ".join(leg.get("axes") or []) or leg.get("detail", "")[:60])))
+    out.append("</table>")
+
+    if series:
+        out.append("<h2>Cross-check history</h2><table><tr><th>Quarter</th>"
+                   "<th class='num'>Supplier DC revenue TTM</th>"
+                   "<th class='num'>Hyperscaler capex TTM</th><th class='num'>Ratio</th>"
+                   "<th class='num'>DC members</th><th class='num'>Capex members</th></tr>")
+        for r in reversed(series[-16:]):
+            out.append("<tr><td>{}</td><td class='num'>{}</td><td class='num'>{}</td>"
+                       "<td class='num'><b>{:.1f}%</b></td><td class='num'>{}</td>"
+                       "<td class='num'>{}</td></tr>".format(
+                           _esc(r["q"]), _money(r["dc"]), _money(r["capex"]),
+                           100 * r["ratio"], r["dc_members"], r["capex_members"]))
+        out.append("</table>")
+
+    refused = [l for l in legs.values() if l["status"] != "COVERED"]
+    if refused:
+        out.append("<h2>Refused, and why</h2>")
+        for l in sorted(refused, key=lambda x: x["ticker"]):
+            out.append("<div class='warn'><b>{}</b> — {}. {}</div>".format(
+                _esc(l["ticker"]), _esc(l["status"]), _esc(l["detail"])))
+        out.append("<p class='note'>Micron is the instructive one. Its Cloud Memory and Core "
+                   "Data Center business units plainly bear on the buildout, but deciding that "
+                   "<code>CMBU+CDBU</code> <i>is</i> datacenter revenue is a semantic judgement "
+                   "no ruling has made. Making it here would be inventing a mapping and "
+                   "publishing it as a measurement.</p>")
+    return _page("Suppliers", "/suppliers", "".join(out))
+
+
+def charts_ratio_svg(series):
+    """The cross-check ratio over time, on the shared chart primitives."""
+    rows = [(r["q"], r["ratio"], "{} DC / {} capex members".format(
+        r["dc_members"], r["capex_members"])) for r in series]
+    return svgcharts.level_chart(
+        rows, "Supplier datacenter revenue as a share of hyperscaler capex (TTM/TTM)",
+        svgcharts.SERIES_COLORS["issuance"], height=250,
+        fmt=lambda v: "{:.0f}%".format(100 * v))
+
+
 ROUTES = {"/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
           "/divergence": view_divergence, "/buckets": view_buckets,
-          "/commitments": view_commitments}
+          "/commitments": view_commitments, "/suppliers": view_suppliers}
 
 
 def render(path, snap):

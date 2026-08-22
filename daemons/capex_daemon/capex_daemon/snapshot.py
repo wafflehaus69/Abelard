@@ -24,7 +24,74 @@ def _obs_json(o):
             "quarters_in_state": o.quarters_in_state, "entered": o.entered}
 
 
-def build(roster, indexed_by_cik, now_unix=None):
+def _supplier_section(legs, bucket_trends):
+    """CD-3 — the supplier cross-check, published beside the panel, never in it.
+
+    A supplier's datacenter revenue and a hyperscaler's capex are largely the
+    same dollar seen from opposite sides of the invoice, so the two are related
+    by a RATIO and never by a sum. The ratio is not a reconciliation and is not
+    expected to reach 1.0; it is a corroboration, and what carries information
+    is a sharp move in it.
+    """
+    out = {"legs": {}, "covered": [], "combined": {}, "crosscheck": {}}
+    members = {}
+    for tick, leg in sorted((legs or {}).items()):
+        ttm = trend.ttm_by_quarter(leg.quarters) if leg.quarters else {}
+        tq = sorted(ttm, key=trend._cq_sort)
+        out["legs"][tick] = {
+            "ticker": tick, "status": leg.status, "detail": leg.detail,
+            "axes": leg.axes, "concept": leg.concept, "instances": leg.instances,
+            "quarters": [{"q": q, "value": leg.quarters[q]}
+                         for q in sorted(leg.quarters, key=trend._cq_sort)],
+            "ttm_series": [{"q": q, "value": ttm[q]} for q in tq],
+            "ttm": ttm[tq[-1]] if tq else None,
+            "latest_quarter": tq[-1] if tq else None,
+            "restatements": leg.restatements[-8:],
+            "restatement_count": len(leg.restatements),
+            "dropped": len(leg.dropped),
+        }
+        if leg.is_covered:
+            out["covered"].append(tick)
+            members[tick] = leg.quarters
+
+    if len(members) >= 1:
+        ttm, membership = trend.matched_ttm_series(members)
+        qs = sorted(ttm, key=trend._cq_sort)
+        out["combined"] = {
+            "members": sorted(members),
+            "ttm_series": [{"q": q, "value": ttm[q], "members": len(membership[q])}
+                           for q in qs],
+            "ttm": ttm[qs[-1]] if qs else None,
+            "latest_quarter": qs[-1] if qs else None,
+        }
+        hyper = bucket_trends.get("hyperscaler")
+        if hyper and qs:
+            shared = sorted(set(ttm) & set(hyper.ttm), key=trend._cq_sort)
+            series = [{"q": q, "ratio": ttm[q] / hyper.ttm[q], "dc": ttm[q],
+                       "capex": hyper.ttm[q],
+                       "dc_members": len(membership.get(q, [])),
+                       "capex_members": len(hyper.membership.get(q, []))}
+                      for q in shared if hyper.ttm[q]]
+            # A ratio whose DENOMINATOR lost a member is not comparable to the
+            # quarter before it — the jump is arithmetic, not economic. Live:
+            # 2026Q2 reads 52.8% against 44.1%, and Meta simply has not filed.
+            warn = None
+            if len(series) >= 2 and series[-1]["capex_members"] < series[-2]["capex_members"]:
+                warn = ("capex denominator fell from {} to {} members at {} — the "
+                        "move in the ratio is partly a membership change, not a "
+                        "change in spending").format(
+                            series[-2]["capex_members"], series[-1]["capex_members"],
+                            series[-1]["q"])
+            out["crosscheck"] = {
+                "against": "hyperscaler", "series": series,
+                "latest_ratio": series[-1]["ratio"] if series else None,
+                "latest_quarter": series[-1]["q"] if series else None,
+                "warning": warn,
+            }
+    return out
+
+
+def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
     """Assemble the whole published view-model for one scan."""
     now_unix = int(now_unix if now_unix is not None else time.time())
     t = trend.build(roster, indexed_by_cik)
@@ -221,6 +288,7 @@ def build(roster, indexed_by_cik, now_unix=None):
         "buckets": buckets,
         "total": total,
         "panel": panel,
+        "suppliers": _supplier_section(supplier_legs, t["bucket_trends"]),
         "transitions": [{"series_key": x.series_key, "quarter": x.quarter,
                          "from_state": x.from_state, "to_state": x.to_state,
                          "yoy": x.yoy, "delta": x.delta, "event_key": x.event_key}

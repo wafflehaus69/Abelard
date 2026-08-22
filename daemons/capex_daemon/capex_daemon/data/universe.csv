@@ -29,3 +29,8 @@ cik,ticker_display,bucket,tier_override,notes
 1053507,AMT,host,,Ratified CD-R2 2026-08-14. Owns datacenter property via CoreSite. Capex dominated by towers so not aggregated.
 1158324,CCOI,host,,Ratified CD-R2 2026-08-14 as the sixth add. Owns datacenters inside a telecom capex line so not aggregated.
 1710350,BTBT,sidecar,,Ratified CD-R2 2026-08-14. Consolidates WYFI which is already in the panel. Tracked on the side never summed.
+1045810,NVDA,supplier,,"CD-3 supplier leg. DataCenterMember on ProductOrServiceAxis; 17 quarters. Cross-check only, never summed into spending."
+2488,AMD,supplier,,"CD-3 supplier leg. DataCenterMember on StatementBusinessSegmentsAxis; 10-K spells it Datacenter. 5 periods restated by later filings."
+1730168,AVGO,supplier,,"CD-3. UNCOVERED-NO-DC-MEMBER: segments are InfrastructureSoftware / SemiconductorSolutions. Carried for its $128.1B purchase obligations."
+723125,MU,supplier,,"CD-3. UNCOVERED-NO-DC-MEMBER: business-unit codes CDBU/CMBU/MCBU/AEBU. Mapping them to datacenter is a ruling, not a parse."
+1375365,SMCI,supplier,,"CD-3. UNCOVERED-NO-DC-MEMBER: no segment axis at all in any of 14 instances."

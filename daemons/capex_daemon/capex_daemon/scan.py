@@ -27,7 +27,7 @@ import json
 import time
 
 from . import (charts, config, divergence, edgar, facts_api, freshness,
-               identity, phases, snapshot, storage, universe)
+               identity, phases, snapshot, storage, suppliers, universe)
 
 WATERMARK_PREFIX = "scan:"
 
@@ -175,7 +175,13 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     # The snapshot is the single published view-model — dashboard, PDF and
     # alerts all read it and none recomputes (P4).
     indexed = _indexed_all(roster, http, facts_by_cik, errors=errors)
-    snap = snapshot.build(roster, indexed, now_unix=started)
+    # CD-3 supplier leg. Parser-only, so it is harvested per FILING rather than
+    # per fact: only instances absent from the cache are fetched, which keeps a
+    # quiet night to one submissions request per supplier.
+    supplier_legs, harvested = _harvest_suppliers(roster, con, http, submissions_by_cik,
+                                                  errors)
+    snap = snapshot.build(roster, indexed, now_unix=started,
+                          supplier_legs=supplier_legs)
     prior = {r[0] for r in con.execute("SELECT event_key FROM phase_events")}
     first_run = not prior
     alerts = snapshot.alert_lines(snap, prior_keys=prior)
@@ -213,10 +219,34 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         "transitions_recorded": len(all_trans),
         "first_run_backfill": first_run,
         "phase_states": {k: v["state"] for k, v in snap["issuers"].items()},
+        "supplier_instances_harvested": harvested,
         "summary": "{} of {} issuers had new filings: {}".format(
             len(affected), len(checks), ", ".join(c.ticker for c in affected)),
         "started_unix": started,
     }
+
+
+def _harvest_suppliers(roster, con, http, submissions_by_cik, errors):
+    """Refresh and rebuild every supplier leg. Returns ({ticker: leg}, added)."""
+    legs, added = {}, 0
+    for cik, entity in sorted(roster.items()):
+        if entity.bucket != suppliers.SUPPLIER_BUCKET:
+            continue
+        try:
+            n, failures = suppliers.harvest(
+                entity, con, http=http,
+                submissions_doc=(submissions_by_cik or {}).get(cik))
+            added += n
+            for key, detail in failures:
+                errors.append((entity.ticker_display,
+                               "supplier instance {} unusable: {}".format(key, detail)))
+        except Exception as exc:
+            errors.append((entity.ticker_display, "supplier harvest failed: {}".format(exc)))
+        try:
+            legs[entity.ticker_display] = suppliers.leg_from_db(entity, con)
+        except Exception as exc:
+            errors.append((entity.ticker_display, "supplier leg failed: {}".format(exc)))
+    return legs, added
 
 
 def _indexed_all(roster, http, facts_by_cik, errors=None):

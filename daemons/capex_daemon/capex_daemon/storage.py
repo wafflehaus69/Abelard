@@ -158,6 +158,32 @@ CREATE TABLE IF NOT EXISTS composition_events(
     observed_unix INTEGER
 );
 
+-- CD-3 supplier leg. Datacenter revenue is dimension-qualified, so it exists
+-- only inside the filing and must be parsed (E6). Parsed facts are cached per
+-- INSTANCE, not per period, because restatement resolution needs to know which
+-- filing a value came from — AMD's rotated segment members are only correctable
+-- by preferring the newer instance.
+CREATE TABLE IF NOT EXISTS supplier_dc_facts(
+    cik TEXT NOT NULL,
+    instance_key TEXT NOT NULL,          -- filing report date; sorts chronologically
+    period_start TEXT,
+    period_end TEXT NOT NULL,
+    concept TEXT NOT NULL,
+    dim_key TEXT NOT NULL,
+    value REAL,
+    PRIMARY KEY (cik, instance_key, period_start, period_end, dim_key)
+);
+
+-- Every instance examined, including those that yielded nothing, so a supplier
+-- with no datacenter member is not re-fetched every night forever.
+CREATE TABLE IF NOT EXISTS supplier_instances(
+    cik TEXT NOT NULL,
+    instance_key TEXT NOT NULL,
+    dc_facts INTEGER NOT NULL,
+    accession TEXT,
+    PRIMARY KEY (cik, instance_key)
+);
+
 -- Watermarks advance only on success-with-items (E12).
 CREATE TABLE IF NOT EXISTS watermarks(
     key TEXT PRIMARY KEY,

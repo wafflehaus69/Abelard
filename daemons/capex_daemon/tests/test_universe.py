@@ -6,7 +6,9 @@ from capex_daemon import config, universe
 
 def test_roster_loads_and_is_cik_keyed():
     roster = universe.load()
-    assert len(roster) == 30          # 23 original + 7 ratified CD-R2 2026-08-14
+    # 23 original + 7 ratified CD-R2 2026-08-14 + 5 CD-3 suppliers (cross-check
+    # bucket; they sell the buildout rather than buy it and are never summed in).
+    assert len(roster) == 35
     assert all(len(cik) == 10 and cik.isdigit() for cik in roster)
     # CIK is the key; ticker is a display attribute (E10).
     assert roster["0000789019"].ticker_display == "MSFT"
