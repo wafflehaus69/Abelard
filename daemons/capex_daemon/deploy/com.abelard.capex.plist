@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Capex Daemon nightly scan on Basilic. Mando-authorized deploy 2026-08-21.
+
+     Slot 23:40 local (Basilic = America/New_York). Chosen to sit clear of Smart
+     Money's 22:30 scan and 23:15 brief: there is no ordering dependency - capex
+     reads SEC directly and shares no state - but there is no reason to overlap
+     either, and SEC's own dissemination settles through the evening.
+
+     RunAtLoad false: it fires on schedule, never on boot. A boot-time run would
+     make a reboot indistinguishable from a filing night in the logs.
+
+     This file is the REFERENCE COPY kept in the repo. The live plist is
+     host-specific and lives at ~/Library/LaunchAgents/com.abelard.capex.plist.
+     Only editing the plist needs a reload; a code change just needs git pull. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.capex</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/wafflehaus/Code/Abelard/daemons/capex_daemon/scripts/run_scan.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>23</integer>
+    <key>Minute</key>
+    <integer>40</integer>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/daemons/capex_daemon</string>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/capex_daemon/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/capex_daemon/logs/launchd.err.log</string>
+  <!-- A full ingest is a few minutes; steady state is seconds. Past ~15 minutes
+       EDGAR is degraded and the run should die rather than hang into the day. -->
+  <key>ExitTimeOut</key>
+  <integer>900</integer>
+</dict>
+</plist>
