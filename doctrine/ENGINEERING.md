@@ -620,3 +620,65 @@ the far side of this boundary regardless of who presses send.
 
 If the boundary is to move, that is its own ruled decision with its own recon,
 never an amendment made by the engineer who first finds it inconvenient.
+
+## E29 — Personal data is admitted by provenance and purpose, never by default
+Ruled by Mando 2026-08-22; drafted by ClaudeCode. The organism had no rule about
+personal data because no daemon had ever held any — scout's corpus is public
+listings end to end. The real estate vertical breaks that on its first ingest, so
+this entry establishes the rule rather than relaxing one. **Nothing here forbids
+what E28 and R2 already permit; it states the handling that makes the permission
+safe to exercise.**
+
+Incident. RW-B1-a ingested one county's Florida DOR tax roll for characterization:
+435,650 parcels, each carrying `OWN_NAME` and a full mailing address, 100%
+populated. Statewide that is roughly 10 million identifiable people. Three separate
+facts made the absence of a rule visible at once. The §119.071 confidentiality
+exclusion — which removes law-enforcement officers, judges, and domestic-violence
+survivors from the published roll — is **asserted by the Department and not
+detectable downstream**: no flag, no placeholder, no gap, records removed by row.
+Owner ZIP is populated on 28.0% of Dade parcels against 98.7% of Polk, so
+reachability is a per-row fact. And no email or phone field exists anywhere in the
+165-field layout, so any email capture would necessarily come from a purchased
+contact source.
+
+Rule, four parts.
+
+**1. Provenance decides admissibility, and it is recorded per row.** Personal data
+enters only from a source whose provenance is known and recorded on the row that
+carries it. Public-filing provenance — a government body publishing under its own
+statutory regime, with its own exemptions already applied — is admissible.
+Purchased or brokered contact data is not, absent a specific ruling. This is the
+axis R2 cut on 2026-08-21 and it generalises: **provenance is a column, not a
+policy note.**
+
+**2. Capture is bounded by a stated purpose, recorded before ingest.** A personal
+field is ingested because a named use requires it, and the use is written down
+where the schema is. "It was in the file" is not a purpose. The test is whether the
+purpose can be stated in one sentence that a person outside the project would
+recognise as the reason their name is held.
+
+**3. Upstream minimisation is inherited, never assumed.** Where a publisher applies
+statutory exclusions before publication, that is recorded as **the publisher's
+claim with its citation**, and the pipeline does not represent it as verified.
+Where the exclusion is undetectable downstream — as §119.071 is — the artifact says
+so plainly, because a protection nobody can observe is a protection nobody can
+confirm still works. A silent re-check is not available; an honest label is.
+
+**4. Reachability is computed per row, never inherited from the dataset.** A record
+is contactable when its own fields say so, tested at use. A dataset-level claim
+("addresses are populated") that is true of one county and false of another is the
+[E16] failure wearing new clothes, and it overstates reach precisely where the
+population is largest.
+
+Corollary — deletion and retention are designed at schema time, not bolted on.
+A person who asks to be removed must be removable, which means the identifying
+columns are locatable by a durable key ([E10]) and the removal survives the next
+roll re-ingest. A pipeline that re-imports the whole roll every cycle will silently
+resurrect a deleted person unless suppression is held separately from the ingest
+and applied after it. Design the suppression list before the first load, not after
+the first request.
+
+Corollary — this entry constrains handling, not capture. Where Mando has ruled a
+class admissible, it is admissible; the rule governs how it is carried, labelled,
+bounded and removed. Any daemon holding personal data states in its AGENTS.md which
+classes it holds, from what provenance, for what purpose, and how a person leaves.
