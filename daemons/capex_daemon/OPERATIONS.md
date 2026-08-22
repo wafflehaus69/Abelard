@@ -1,6 +1,6 @@
 # Capex Daemon — Operations (CD-OPS1)
 
-**The daemon is schedulable. It is not scheduled.** Installing the cron/launchd entry is Mando's
+**INSTALLED on Basilic 2026-08-22** as launchd `com.abelard.capex`, 23:40 America/New_York (BASILIC_MANUAL 12). What follows described the pre-install state: the daemon is schedulable, and installing the cron/launchd entry was Mando's
 machine and Mando's hands; this document is the hook and nothing more.
 
 Target host ruled 2026-08-14: **BASILIC**.

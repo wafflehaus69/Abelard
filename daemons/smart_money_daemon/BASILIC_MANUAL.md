@@ -159,27 +159,44 @@ Read-only reporting layer on top of the corpus. Both surfaces open the DB
 
 ---
 
-## 12. Capex Daemon — migration line item (ruled 2026-08-18, NOT yet installed)
+## 12. Capex Daemon — INSTALLED 2026-08-22
 
-The Capex Daemon is schedulable and **deliberately unscheduled**; installing the
-job is Mando's. Recorded here so the Basilic migration carries it as its own
-item rather than as a footnote to Smart Money. Full operating notes live in
+Installed by Mando's authorization 2026-08-22. Full operating notes live in
 `daemons/capex_daemon/OPERATIONS.md`.
 
-**The job**
+**The job** — launchd `com.abelard.capex`, **23:40 America/New_York**, via
+`daemons/capex_daemon/scripts/run_scan.sh`. `RunAtLoad` false, so it fires only
+on schedule and a reboot cannot masquerade as a filing night. `ExitTimeOut` 900s
+encodes the fifteen-minute rule below.
 
 ```bash
-cd ~/Code/Abelard/daemons/capex_daemon && ./.venv/bin/python -m capex_daemon scan
+launchctl list | grep capex             # registered? last exit code (col 2)?
+launchctl start com.abelard.capex       # trigger one run by hand
+tail -8 ~/.openclaw/capex_daemon/logs/scan.log
 ```
+
+Plist at `~/Library/LaunchAgents/com.abelard.capex.plist` (host-specific).
+A reference copy is in `daemons/capex_daemon/deploy/`. Only editing the plist
+needs a reload; a code change just needs `git pull`.
+
+**Verified at install**, on Basilic, not inferred from the dev box: 197 tests on
+Python 3.14.6 arm64; first ingest 33 of 35 issuers in **64s** with 240
+transitions backfilled and none alerted; second run a clean no-op; a
+`launchctl start` run completing in **11s** at exit 0 with launchd-level stderr
+empty. Basilic reproduced the dev box's figures to the decimal — panel
+$603.3B TTM +84.1% over 16 matched members, supplier cross-check 53.8%, NVDA
+$229.9B / MU $52.5B mapped / AMD $22.2B — from independent SEC fetches on a
+different OS and Python version.
 
 Build the venv **on Basilic** — never copy one across hosts, same rule as SM.
 
 **Three things the job definition must carry**
 
-1. **`EDGAR_CONTACT` in the job environment.** SEC requires a declared
-   User-Agent contact; `config.edgar_contact()` fails loud rather than sending a
-   blank one. Missing it fails the first request, which is correct behaviour but
-   a confusing first failure if the variable is simply absent.
+1. **`EDGAR_CONTACT`.** SEC requires a declared User-Agent contact;
+   `config.edgar_contact()` fails loud rather than sending a blank one. Supplied
+   from `daemons/capex_daemon/.env` (gitignored, mode 600), so the plist needs no
+   environment block. Missing it fails the first request — correct behaviour, but
+   a confusing first failure if the file is simply absent.
 2. **A timeout.** A full ingest is now **35 issuers plus a supplier harvest**
    (CD-3): five suppliers x up to 14 filing documents each, parsed for the
    dimension-qualified datacenter line that companyfacts does not carry. First
