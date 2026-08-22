@@ -7,20 +7,38 @@
       "verdict": "PERMISSIVE",
       "governing_clause_location": "https://adviserinfo.sec.gov/ -> 'Privacy Policy' section, item 3 (text served in main.f57a50a935184f6c.js)",
       "quote": "Information presented on www.AdviserInfo.sec.gov is considered public information and may be distributed or copied.",
-      "conditions": ["Do not use the SEC seal, logos or artwork", "IARD is a registered service mark"],
+      "conditions": [
+        "Do not use the SEC seal, logos or artwork",
+        "IARD is a registered service mark"
+      ],
       "robots": "adviserinfo.sec.gov/robots.txt disallows /firm/brochure/, /IAPD/content/viewform/adv*.aspx, /IAPD/WebLock, /IAPD/Content/Common/crd_iapd_Brochure.aspx, /firm/accountsuprise/. reports.adviserinfo.sec.gov serves no robots.txt (S3 AccessDenied).",
       "notes": "Site is an SEC property operated by FINRA. FINRA's own ToU is scoped to 'the FINRA.ORG site' and does not by its terms reach this host. Unresolved and worth a ruling."
     },
     {
       "surface": "brokercheck.finra.org + api.brokercheck.finra.org",
-      "verdict": "CONDITIONAL(purpose-limited)",
+      "verdict": "CONDITIONAL(purpose-limited) - OK'd for FDU by ruling R-PA1-1",
       "governing_clause_location": "BrokerCheck Terms of Use, 'Permitted Uses' and 'Investor Protection, Academic, Compliance and Regulatory Uses' (served in brokercheck.finra.org/main.2b8c58f556a565c0.js; presented as click-through on SEARCH)",
       "quote_default": "the data provided through BrokerCheck shall be used ONLY for your own personal or professional use ... All other uses are strictly prohibited.",
       "quote_carveout": "the BrokerCheck data may be copied and compiled, including by use of data mining, scraping or harvesting tools (including robots) or similar data gathering or extraction tools, and used solely for investor protection, academic, compliance or regulatory purposes",
-      "carveout_lifts_restrictions": ["(e)", "(f)", "(g)", "(k)"],
-      "applies_to_fdu": false,
-      "reason": "FDU's stated purpose (deal sourcing / recruitability) is not investor protection, academic, compliance or regulatory. The carve-out does not reach it; the default prohibition governs.",
-      "robots": "brokercheck.finra.org/robots.txt is 'User-agent: * / Disallow:' i.e. fully permissive. Robots and ToU disagree; ToU governs."
+      "carveout_lifts_restrictions": [
+        "(e)",
+        "(f)",
+        "(g)",
+        "(k)"
+      ],
+      "applies_to_fdu": true,
+      "reason": "Superseded by R-PA1-1. Retained for the record: the four-purpose carve-out does not by its terms reach deal sourcing or recruitability.",
+      "robots": "brokercheck.finra.org/robots.txt is 'User-agent: * / Disallow:' i.e. fully permissive. Robots and ToU disagree; ToU governs.",
+      "ruling": {
+        "id": "R-PA1-1",
+        "ruled_by": "Mando",
+        "date": "2026-08-21",
+        "text": "BrokerCheck is OK'd as a source. FDU is not selling this product.",
+        "supersedes": "the Phase 0 executor's blocked-for-purpose reading",
+        "what_it_settles": "The USE dimension. BrokerCheck 'Permitted Uses' allows 'your own personal or professional use'; FDU's use is personal/professional research and is not communicated, sold, leased, loaned, distributed, transferred or sublicensed to any third party.",
+        "what_it_does_not_settle": "The COLLECTION-METHOD dimension. Restriction (e) bars data mining/scraping/harvesting tools (including robots) independently of whether data is sold, and is lifted only by the investor-protection/academic/compliance/regulatory carve-out, which does not list personal or professional research. Automation intensity, not commercial intent, is the live variable.",
+        "engineering_consequence": "Prefer the SEC IAPD IA_INDVL bulk feed for any bulk individual data - it carries substantially the same fields under an explicitly permissive SEC clause - and reserve BrokerCheck for targeted, human-paced lookups. This satisfies the ruling without loading restriction (e)."
+      }
     },
     {
       "surface": "www.finra.org",

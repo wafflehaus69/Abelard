@@ -178,17 +178,37 @@ and served in `brokercheck.finra.org/main.2b8c58f556a565c0.js`. Its default is n
 > or harvesting tools (including robots) or similar data gathering or extraction tools, and
 > used solely for investor protection, academic, compliance or regulatory purposes"
 
-**Verdict: CONDITIONAL, and FDU cannot satisfy the condition.** Deal sourcing and
-recruitability assessment are not investor protection, academic, compliance, or regulatory
-purposes. The carve-out does not reach FDU; the default prohibition governs.
+**Verdict as executed: CONDITIONAL, and the carve-out does not reach deal sourcing or
+recruitability assessment.** Retrieval was halted at FINRA surfaces once the terms were read.
+Total FINRA-side data fetches this session: 3 probes plus the terms documents. No systematic
+retrieval occurred.
 
-Note this is a *better* answer than the order's prior expectation, and a more fragile one:
-the surface is not categorically closed, it is closed **to this purpose**. A future FDU framed
-differently would get a different answer from the same clause. That is a decision for Mando,
-not an engineering workaround.
-
-**Retrieval halted at FINRA surfaces** once the terms were read. Total FINRA-side data
-fetches this session: 3 probes plus the terms documents. No systematic retrieval occurred.
+> ### RULING R-PA1-1 — superseded, 2026-08-21, by Mando
+>
+> > "Override on the clause. We aren't selling this product. BrokerCheck is okay'd as a source."
+>
+> **BrokerCheck is admitted.** Full text and reasoning in `fdu/AGENTS.md`. In brief, because
+> the distinction survives the override and governs Phase 1 design:
+>
+> The clause has **two independent axes**, and the ruling settles one of them cleanly.
+> *Permitted Uses* allows "your own personal or professional use" — FDU's use is
+> personal/professional research, sold and distributed to no one, so the commercial concern
+> animating most of the document does not apply. That is the **use** axis, and it is settled.
+>
+> The **collection-method** axis is separate. Restriction (e) bars "data mining, scraping or
+> harvesting tools (including robots)" *regardless of whether anything is sold*, and is lifted
+> only by the four-purpose carve-out. So automation intensity, not commercial intent, is the
+> live variable: targeted human-paced lookups sit inside Permitted Uses; bulk automated
+> harvesting still loads (e).
+>
+> **This is mostly moot in practice, and that is the useful part.** The SEC `IA_INDVL` bulk
+> feed carries substantially the same individual data — employment history with dates,
+> registrations, exam dates, designations, branch locations, disclosure flags — under an
+> explicitly permissive SEC clause. **Take bulk from the SEC feed; reserve BrokerCheck for
+> targeted lookups.** That honours the ruling, yields better data, and never loads (e).
+>
+> **Still gated independently:** this is a ToS ruling only. Person-level ingestion remains
+> blocked by I-3 and by the pending firm-facing wall artifact. See §10 and Q3.
 
 ### 3.3 The robots/ToU divergence, recorded as data
 
@@ -426,8 +446,10 @@ by its own words to "the FINRA.ORG site," so on a plain reading it does not exte
 PASS and it deserves a ruling rather than my reading.
 
 **Q6 — What contact address, if any, may be declared in the User-Agent for SEC Fair Access?**
-Options: a project address, Mando's, or none — accepting that `www.sec.gov` stays unavailable,
-which costs little, since the bulk product is on a different host that works.
+*Narrowed by ruling R-PA1-2 (Mando, 2026-08-21): the Phase 0 judgment not to send Mando's
+personal address to a federal system is confirmed, and that option is closed.* Remaining: a
+provisioned project address, or none — accepting that `www.sec.gov` stays unavailable, which
+costs little, since the bulk product is on a different host that works.
 
 **Q7 — Is the 22 GB per-firm PDF route in or out?** Ownership and Item 4 — the order's primary
 succession thesis — exist only there. 23,794 requests at ~929 KB. In scope, out of scope, or
