@@ -375,11 +375,26 @@ def extract_facts(crd: str, payload: bytes) -> AdvFacts:
     sec4 = _section(text, "SECTION 4 Successions", "Item 5", "SECTION 5", "SECTION 6")
     if sec4 is not None:
         body = sec4[len("SECTION 4 Successions"):].strip()
-        facts.section4_filed = _NO_INFO not in body[:80]
+        names = [n.strip() for n in _ACQ_NAME_RE.findall(sec4) if n.strip()]
+
+        # A succession is asserted only on POSITIVE evidence. The first rule here
+        # was ``_NO_INFO not in body[:80]``, which reads an EMPTY body as "a
+        # succession was filed" -- and an empty body is common, because the
+        # heading also appears in a contents list where the next marker follows
+        # immediately. That inflated the count from 16 to 27 and resolved
+        # uncertainty toward the positive claim, which is backwards: a false
+        # succession costs a wasted lead, a missed one costs a review.
+        if _NO_INFO in body[:120]:
+            facts.section4_filed = False
+        elif names:
+            facts.section4_filed = True
+        else:
+            facts.section4_filed = None      # undetermined, reported not guessed
+            facts.extract_note = "Section 4 present but empty and no acquired firm parsed"
+
         if facts.section4_filed:
             # Firm-level only: an acquired adviser is a FIRM. No individuals
             # appear in this section, so nothing here engages I-3.
-            names = [n.strip() for n in _ACQ_NAME_RE.findall(sec4) if n.strip()]
             crds = [c.strip() for c in _ACQ_CRD_RE.findall(sec4)]
             secs = [re.sub(r"[ \t]", "", s) for s in _ACQ_SEC_RE.findall(sec4)]
             facts.succession_acquired_names = names

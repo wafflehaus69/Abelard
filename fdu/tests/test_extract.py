@@ -265,3 +265,55 @@ def test_simple_document_still_costs_one_page():
     text, read, note = _document_text(_FakeReader(pages))
     assert read == 1, f"simple document should cost one extraction, cost {read}"
     assert note is None
+
+
+# -- a succession is asserted only on positive evidence ------------------
+
+
+def _facts_from(text):
+    """Drive extract_facts' Section 4 logic over a text fragment."""
+    from fdu_daemon.adv_pdf import _ACQ_NAME_RE, _NO_INFO, _section
+
+    sec4 = _section(text, "SECTION 4 Successions", "Item 5", "SECTION 5", "SECTION 6")
+    if sec4 is None:
+        return None
+    body = sec4[len("SECTION 4 Successions"):].strip()
+    names = [n.strip() for n in _ACQ_NAME_RE.findall(sec4) if n.strip()]
+    if _NO_INFO in body[:120]:
+        return False
+    if names:
+        return True
+    return None
+
+
+def test_empty_section4_is_undetermined_not_filed():
+    """An empty body read as 'succession filed' and inflated 16 to 27.
+
+    The heading also appears in a contents list, where the next marker follows
+    immediately and the slice is empty.
+    """
+    assert _facts_from("SECTION 4 Successions\nItem 5 Information") is None
+
+
+def test_no_information_filed_is_a_confident_negative():
+    assert _facts_from("SECTION 4 Successions\nNo Information Filed\nItem 5 Information") is False
+
+
+def test_named_acquirer_is_a_confident_positive():
+    text = (
+        "SECTION 4 Successions\n"
+        "Complete the following information if you are succeeding to the business.\n"
+        "Name of Acquired Firm \nMARSTONE LLC\n"
+        "Acquired Firm's CRD Number \n164810\n"
+        "Item 5 Information\n"
+    )
+    assert _facts_from(text) is True
+
+
+def test_uncertainty_never_resolves_toward_a_succession():
+    """Asymmetric error: a false succession costs a wasted lead, a missed one
+    costs a review. Uncertainty must land undetermined, never positive."""
+    for ambiguous in ("SECTION 4 Successions\nItem 5",
+                      "SECTION 4 Successions\n   \nSECTION 5",
+                      "SECTION 4 Successions\nSECTION 6"):
+        assert _facts_from(ambiguous) is not True, f"{ambiguous!r} must not assert a succession"
