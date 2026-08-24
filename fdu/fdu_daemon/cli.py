@@ -42,6 +42,19 @@ def cmd_enrich(args) -> int:
     return 0 if not out["failed"] else 1
 
 
+def cmd_monthly(args) -> int:
+    conn = ledger.connect()
+    out = orchestrator.monthly(conn, _fetcher())
+    print(f"monthly {out['run_id']}")
+    print(f"  rows              {out['rows']:,}")
+    print(f"  successions filed {out['successions']:,}")
+    print(f"    self (reorg)    {out['self_successions']:,}")
+    print(f"    THIRD PARTY     {out['third_party']:,}")
+    print(f"  fetched           {out['fetch_calls']} calls, {out['fetch_bytes']:,} bytes")
+    print("  llm calls               0   cost $0.00")
+    return 0
+
+
 def cmd_leads(args) -> int:
     conn = ledger.connect()
     print(leads_mod.render(leads_mod.collect(conn, limit=args.limit)))
@@ -120,6 +133,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--backfill", action="store_true", help="enrich firms never enriched, largest first")
     s.add_argument("--delay", type=float, default=None, help="seconds between fetches")
     s.set_defaults(func=cmd_enrich)
+
+    s = sub.add_parser("monthly", help="pull the SEC monthly bulk CSV (Item 4, richer Part 1A)")
+    s.set_defaults(func=cmd_monthly)
 
     s = sub.add_parser("leads", help="firms with succession-shaped movement (unranked)")
     s.add_argument("--limit", type=int, default=50)

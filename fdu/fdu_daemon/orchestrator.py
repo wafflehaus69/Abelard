@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import adv_pdf, config, ledger, normalize
+from . import adv_pdf, config, ledger, monthly_csv, normalize
 from .errors import FduError, HaltRequested
 from .feed import FirmRecord, feed_generated_on, parse_feed, parse_manifest
 from .fetch import Fetcher
@@ -203,6 +203,68 @@ def enrich(conn: sqlite3.Connection, fetcher: Fetcher, *, limit: int | None = No
         "extracted": ok,
         "failed": failed,
         "errors": errors,
+        "fetch_calls": tel.calls,
+        "fetch_bytes": tel.bytes_down,
+    }
+
+
+def monthly(conn: sqlite3.Connection, fetcher: Fetcher) -> dict:
+    """Pull the SEC monthly bulk CSV and store the fields the daily feed lacks.
+
+    Strictly additive. This does NOT drive change detection -- a month is far
+    too coarse and the daily feed already does that -- it supplies Item 4
+    successions and registration status detail that the XML feed simply does
+    not carry.
+    """
+    if config.halt_requested():
+        raise HaltRequested("halt engaged; monthly refused")
+
+    now_unix = int(time.time())
+    run_id = _run_id("monthly", now_unix)
+    ledger.start_run(conn, run_id, "monthly", now_unix)
+
+    rows = monthly_csv.fetch_monthly(fetcher)
+    payload = []
+    successions = self_successions = 0
+    for r in rows:
+        is_self = r.is_self_succession
+        if r.has_succession:
+            successions += 1
+            if is_self:
+                self_successions += 1
+        payload.append({
+            "crd": r.crd,
+            "observed_unix": now_unix,
+            "acquired_name": r.acquired_name,
+            "acquired_sec_no": r.acquired_sec_no,
+            "acquired_crd": r.acquired_crd,
+            "acquired_count": r.acquired_count,
+            "is_self_succession": None if is_self is None else int(is_self),
+            "latest_filing": r.latest_filing,
+            "sec_status": r.sec_status,
+            "sec_status_date": r.sec_status_date,
+            "relying_advisers": r.relying_advisers,
+            "control_related": r.control_related,
+            "common_control": r.common_control,
+        })
+
+    conn.execute("BEGIN")
+    try:
+        written = ledger.upsert_monthly(conn, payload)
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+    tel = fetcher.telemetry
+    ledger.finish_run(conn, run_id, firms_seen=written, fetch_calls=tel.calls,
+                      fetch_bytes=tel.bytes_down, status="ok")
+    return {
+        "run_id": run_id,
+        "rows": written,
+        "successions": successions,
+        "self_successions": self_successions,
+        "third_party": successions - self_successions,
         "fetch_calls": tel.calls,
         "fetch_bytes": tel.bytes_down,
     }

@@ -106,6 +106,28 @@ _ADV_COLUMNS: dict[str, str] = {
     "extract_note": "TEXT",
 }
 
+#: The monthly CSV view. Kept in its OWN table rather than merged into `firm`
+#: because the two sources have different cadences and different authority: the
+#: daily feed is the change detector, this is a monthly enrichment. Merging them
+#: would make it impossible to say which source a value came from, which is the
+#: mistake E6 is about -- know which layer you are reading.
+_MONTHLY_COLUMNS: dict[str, str] = {
+    "crd": "TEXT PRIMARY KEY",
+    "observed_unix": "INTEGER NOT NULL",
+    "source_file": "TEXT",
+    "acquired_name": "TEXT",
+    "acquired_sec_no": "TEXT",
+    "acquired_crd": "TEXT",
+    "acquired_count": "TEXT",
+    "is_self_succession": "INTEGER",
+    "latest_filing": "TEXT",
+    "sec_status": "TEXT",
+    "sec_status_date": "TEXT",
+    "relying_advisers": "TEXT",
+    "control_related": "TEXT",
+    "common_control": "TEXT",
+}
+
 _RUN_COLUMNS: dict[str, str] = {
     "run_id": "TEXT PRIMARY KEY",
     "started_unix": "INTEGER NOT NULL",
@@ -168,6 +190,7 @@ def apply_schema(conn: sqlite3.Connection) -> None:
             ("firm", _FIRM_COLUMNS),
             ("firm_change", _CHANGE_COLUMNS),
             ("adv_detail", _ADV_COLUMNS),
+            ("monthly", _MONTHLY_COLUMNS),
             ("run", _RUN_COLUMNS),
         ):
             conn.execute(_ddl(table, cols))
@@ -176,6 +199,7 @@ def apply_schema(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_change_field ON firm_change(field, observed_unix)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_firm_changed ON firm(last_changed_unix)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_firm_state ON firm(state, rgstn_status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_monthly_succ ON monthly(is_self_succession)")
         cur = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
         if cur is None:
             conn.execute("INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,))
@@ -283,3 +307,17 @@ def upsert_adv_detail(conn: sqlite3.Connection, detail: dict) -> None:
         f"ON CONFLICT(crd) DO UPDATE SET {updates}",
         [detail[c] for c in cols],
     )
+
+
+def upsert_monthly(conn: sqlite3.Connection, rows: list[dict]) -> int:
+    """Upsert monthly-CSV rows. Returns the count written."""
+    if not rows:
+        return 0
+    cols = [c for c in _MONTHLY_COLUMNS if c in rows[0]]
+    updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "crd")
+    conn.executemany(
+        f"INSERT INTO monthly ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
+        f"ON CONFLICT(crd) DO UPDATE SET {updates}",
+        [[r.get(c) for c in cols] for r in rows],
+    )
+    return len(rows)
