@@ -145,3 +145,33 @@ def test_latest_is_chosen_by_date_not_page_order():
     assert max(listed, key=_file_date).endswith("ia08032026_0.zip")
     # page order would have picked the last element
     assert listed[-1] != max(listed, key=_file_date)
+
+
+def test_registered_and_exempt_split_on_filename_not_path():
+    """The containing directory ends in 'exempt-reporting-advisers'.
+
+    A substring test against the full path matched 'exempt' for every link,
+    emptied the registered list, and left file selection to luck.
+    """
+    from fdu_daemon.monthly_csv import _is_exempt
+
+    base = ("/files/investment/data/other/information-about-registered-"
+            "investment-advisers-exempt-reporting-advisers/")
+    assert _is_exempt(base + "ia08032026-exempt_0.zip") is True
+    assert _is_exempt(base + "ia08032026_0.zip") is False, (
+        "the directory name contains 'exempt'; only the filename decides"
+    )
+
+
+def test_both_populations_selected():
+    from fdu_daemon.monthly_csv import _file_date, _is_exempt
+
+    base = ("/files/investment/data/other/information-about-registered-"
+            "investment-advisers-exempt-reporting-advisers/")
+    paths = [base + "ia07012026.zip", base + "ia07012026-exempt.zip",
+             base + "ia08032026_0.zip", base + "ia08032026-exempt_0.zip"]
+    reg = sorted((p for p in paths if not _is_exempt(p)), key=_file_date)
+    exe = sorted((p for p in paths if _is_exempt(p)), key=_file_date)
+    assert len(reg) == 2 and len(exe) == 2
+    assert reg[-1].endswith("ia08032026_0.zip")
+    assert exe[-1].endswith("ia08032026-exempt_0.zip")

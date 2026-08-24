@@ -60,6 +60,11 @@ _HREF_RE = re.compile(
 _DATE_RE = re.compile(r"/ia(\d{6}|\d{8})(?:-exempt)?(?:_\d+)?\.zip$", re.I)
 
 
+def _is_exempt(path: str) -> bool:
+    """Is this the Exempt Reporting Adviser file? Judged on the filename only."""
+    return "-exempt" in path.rsplit("/", 1)[-1].lower()
+
+
 def _file_date(path: str) -> tuple[int, int, int]:
     m = _DATE_RE.search(path)
     if not m:
@@ -133,8 +138,12 @@ def latest_monthly_urls(fetcher: Fetcher) -> list[str]:
             f"no monthly IA data links found at {MONTHLY_INDEX_URL} "
             f"({len(html)} bytes fetched) -- page layout may have changed"
         )
-    registered = sorted((p for p in paths if "exempt" not in p.lower()), key=_file_date)
-    exempt = sorted((p for p in paths if "exempt" in p.lower()), key=_file_date)
+    # Classify on the FILENAME, never the full path. The containing directory is
+    # ``information-about-registered-investment-advisers-exempt-reporting-advisers``,
+    # so a substring test against the path matches "exempt" for EVERY link --
+    # which emptied the registered list and left selection to luck.
+    registered = sorted((p for p in paths if not _is_exempt(p)), key=_file_date)
+    exempt = sorted((p for p in paths if _is_exempt(p)), key=_file_date)
     picked = [x for x in (registered[-1:] or [None]) + (exempt[-1:] or [None]) if x]
     unparsed = [p for p in picked if _file_date(p) == (0, 0, 0)]
     if unparsed:
