@@ -15,6 +15,11 @@ the supplier series is DATACENTER REVENUE, which is dimension-qualified and
 therefore exists only inside the filing (E6). It is read from the parsed-fact
 cache in SQLite, which the nightly scan already maintains.
 
+This measures `dcrev:supplier` ONLY. The companion class `issuer:supplier` bands
+a supplier's own CAPITAL SPENDING and is measured by `tools/measure_deadband.py`
+with the rest of the per-issuer classes — the two are different series and must
+never be measured here and applied there (CD-3-VERIFY 9.3).
+
 Re-runnable. Run it again when the panel gains filed quarters.
 """
 import argparse
@@ -95,10 +100,10 @@ def main(argv=None):
     print("PROPOSED DEAD-BAND (percentile logic stated; NOT applied)")
     a = sorted(abs(v) for v in pool)
     if not a:
-        print("  issuer:supplier      n=0 — INSUFFICIENT DATA TO PROPOSE")
+        print("  dcrev:supplier       n=0 — INSUFFICIENT DATA TO PROPOSE")
     else:
         print("  {:<20} n={:<4} p25={:>7.1f}pp  ->  proposed band {:>6.1f}pp".format(
-            "issuer:supplier", len(a), pct(a, .25), round(pct(a, .25))))
+            "dcrev:supplier", len(a), pct(a, .25), round(pct(a, .25))))
     for tick, d in sorted(per_issuer.items()):
         b = sorted(abs(v) for v in d)
         print("    {:<8} n={:<4} p25={}".format(
