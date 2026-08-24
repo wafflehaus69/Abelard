@@ -343,3 +343,51 @@ def test_the_frontier_allows_one_quarter_of_slack():
                              "from_state": "PLATEAU", "to_state": "CONTRACTING",
                              "yoy": -.1, "delta": -30.0, "event_key": "k"}]}
     assert len(snapshot.alert_lines(snap)) == 1
+
+
+# --- dashboard binding and snapshot provenance ------------------------------
+
+def test_the_dashboard_defaults_to_loopback():
+    """A read-only dashboard is still a listening socket. Exposure is an
+    explicit act by the launcher, never the default."""
+    assert dashboard.HOST_DEFAULT == "127.0.0.1"
+    assert dashboard.HOST_DEFAULT != "0.0.0.0"
+
+
+def test_a_fresh_snapshot_shows_its_stamp_and_no_warning():
+    import time as _t
+    snap = _fake_snapshot()
+    snap["generated_unix"] = int(_t.time())
+    banner = dashboard._stale_banner(snap)
+    assert "snapshot generated" in banner and "STALE" not in banner
+
+
+def test_a_stale_snapshot_is_SERVED_with_a_banner_not_refused():
+    """Stale panel data is still true as of its stamp. Refusing on age would
+    withhold good history because a cron slot was missed."""
+    import time as _t
+    snap = _fake_snapshot()
+    snap["generated_unix"] = int(_t.time()) - int(3600 * (dashboard.STALE_AFTER_HOURS + 5))
+    stale, age = dashboard._staleness(snap)
+    assert stale and age > dashboard.STALE_AFTER_HOURS
+    banner = dashboard._stale_banner(snap)
+    assert "STALE SNAPSHOT" in banner
+    # ...and the view still renders rather than 503-ing
+    assert dashboard.render("/", snap)
+
+
+def test_every_view_carries_the_provenance_banner():
+    """Injected in render(), so a new view cannot be added without it.
+
+    Both banner forms name the generation time — the fresh one as a stamp, the
+    stale one inside its warning. What must never happen is a view rendering
+    figures with no indication of when they were true.
+    """
+    import time as _t
+    fresh = _fake_snapshot()
+    fresh["generated_unix"] = int(_t.time())
+    stale = _fake_snapshot()          # fixture stamp is deliberately old
+    for path, _name in dashboard.VIEWS:
+        assert "snapshot generated" in dashboard.render(path, fresh)
+        out = dashboard.render(path, stale)
+        assert "STALE SNAPSHOT" in out and "generated" in out

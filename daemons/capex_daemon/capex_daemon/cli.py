@@ -69,7 +69,7 @@ def cmd_scan(args):
 
 def cmd_dashboard(args):
     """Serve the read-only dashboard. Renders the persisted snapshot only."""
-    dashmod.serve(db_path=args.db, port=args.port)
+    dashmod.serve(db_path=args.db, port=args.port, host=args.host)
     return 0
 
 
@@ -113,6 +113,10 @@ def main(argv=None):
     p = sub.add_parser("dashboard", help="serve the read-only dashboard on :8788")
     p.add_argument("--db", default=None)
     p.add_argument("--port", type=int, default=dashmod.PORT)
+    p.add_argument("--host", default=dashmod.HOST_DEFAULT,
+                   help="interface to bind. Defaults to loopback; scripts/run_dash.sh "
+                        "passes the Tailscale address and refuses to start without one. "
+                        "Never bind 0.0.0.0.")
     p.set_defaults(func=cmd_dashboard)
 
     p = sub.add_parser("initdb", help="create the state schema")

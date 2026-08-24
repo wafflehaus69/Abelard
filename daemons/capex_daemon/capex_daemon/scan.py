@@ -27,8 +27,8 @@ import json
 import os
 import time
 
-from . import (brief, config, divergence, edgar, facts_api, freshness,
-               identity, phases, snapshot, storage, suppliers, universe)
+from . import (alerts as alertmod, brief, config, divergence, edgar, facts_api,
+               freshness, identity, phases, snapshot, storage, suppliers, universe)
 
 WATERMARK_PREFIX = "scan:"
 
@@ -130,7 +130,8 @@ def refresh_issuer(con, entity, http=None, facts_doc=None):
 
 
 def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=None,
-        submissions_by_cik=None, facts_by_cik=None, rebuild=False):
+        submissions_by_cik=None, facts_by_cik=None, rebuild=False,
+        queue_path=None):
     """One scan cycle. Returns a summary dict; never raises on a single issuer.
 
     Injection points (`submissions_by_cik`, `facts_by_cik`) exist so the whole
@@ -229,6 +230,17 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         # count rather than blasted into the alert bar.
         alerts = []
 
+    # Durability, not dispatch (E28). Whatever survived the frontier gate is
+    # handed to the shared queue; Abelard decides what becomes a push. An
+    # enqueue failure is an error on the run, never a silent drop — an alert
+    # that vanished between derivation and the queue is the one failure this
+    # whole path exists to prevent.
+    enqueued = duplicates = 0
+    try:
+        enqueued, duplicates = alertmod.enqueue_alerts(alerts, queue_path=queue_path)
+    except Exception as exc:
+        errors.append(("alert-queue", "enqueue failed: {}".format(exc)))
+
     # The nightly artifact is the PDF phase page, drawn from the same model the
     # dashboard renders (brief.py). The matplotlib PNG pipeline it replaced was
     # retired 2026-08-21: nothing consumed its four PNGs or cd2_thesis_layer.pdf,
@@ -258,6 +270,8 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         "errors": errors,
         "artifacts_written": artifacts,
         "alerts": alerts,
+        "alerts_enqueued": enqueued,
+        "alerts_duplicate": duplicates,
         "transitions_recorded": len(all_trans),
         "first_run_backfill": first_run,
         "phase_states": {k: v["state"] for k, v in snap["issuers"].items()},
@@ -351,6 +365,7 @@ def format_summary(result):
         base += " | first run: {} transitions backfilled, none alerted".format(
             result.get("transitions_recorded", 0))
     elif result.get("alerts"):
+        base += " | {} enqueued".format(result.get("alerts_enqueued", 0))
         base += " | TRANSITIONS: {}".format("; ".join(
             "{} {} {}->{} ({})".format(a["series_key"], a["quarter"], a["from_state"],
                                        a["to_state"], a["reason"])

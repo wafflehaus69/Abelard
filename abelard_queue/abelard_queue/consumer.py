@@ -44,6 +44,7 @@ import argparse
 import json
 import logging
 import os
+import time
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -390,6 +391,75 @@ def _resolve_db_path(cli_value: Optional[str]) -> Path:
     return Path(raw).expanduser()
 
 
+DIGEST_DEFAULT_DIR = "~/.openclaw/abelard_queue/digests"
+
+
+def run_digest(queue: "AlertQueue", *, out_dir: str, now_unix: Optional[int] = None,
+               limit: int = 500) -> dict[str, Any]:
+    """Write a dated digest of what the queue is holding. NO outward send.
+
+    The queue guarantees durability, not attention: with no live consumer every
+    component reports success while nobody is paged. Measured 2026-08-22 — 118
+    items pending, the oldest weeks old, three dispatched long before. This is
+    the floor that makes durability legible without a channel: a file on disk
+    that says what is waiting and how long it has waited.
+
+    Deliberately NOT a second triage path. It reads, it groups, it writes; it
+    never decides materiality and never mutates a row. Dispatch stays the one
+    place a verdict is acted on.
+    """
+    now = int(now_unix if now_unix is not None else time.time())
+    pending = queue.items(status="pending", limit=limit)
+    unconfirmed = queue.unconfirmed()
+
+    by_source: dict[str, list[Any]] = {}
+    for it in pending:
+        by_source.setdefault(it.source, []).append(it)
+
+    day = time.strftime("%Y-%m-%d", time.gmtime(now))
+    out_path = Path(os.path.expanduser(out_dir)) / f"digest-{day}.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    lines = [f"# Alert digest — {day}", ""]
+    lines.append(f"{len(pending)} pending, {len(unconfirmed)} unconfirmed. "
+                 "Nothing here has been sent anywhere; this file IS the delivery.")
+    lines.append("")
+    if not pending:
+        lines.append("Queue is empty. Nothing is waiting.")
+    for source in sorted(by_source):
+        items = by_source[source]
+        oldest = min(i.created_at_unix for i in items)
+        age_d = (now - oldest) / 86400.0
+        lines.append(f"## {source} — {len(items)} pending, oldest {age_d:.1f}d")
+        lines.append("")
+        for it in items[:40]:
+            age = (now - it.created_at_unix) / 86400.0
+            title = (it.payload.get("title") or it.payload.get("reason")
+                     or it.payload.get("series_key") or it.topic_key)
+            lines.append(f"- `{it.kind}` **{it.topic_key}** ({age:.1f}d) — {title}")
+        if len(items) > 40:
+            lines.append(f"- …and {len(items) - 40} more, not listed.")
+        lines.append("")
+    if unconfirmed:
+        lines.append("## Unconfirmed — claimed for dispatch, never confirmed")
+        lines.append("")
+        for it in unconfirmed:
+            lines.append(f"- id={it.id} `{it.kind}` {it.topic_key} "
+                         f"attempts={it.dispatch_attempts} "
+                         f"last_error={it.last_dispatch_error!r}")
+        lines.append("")
+
+    out_path.write_text("
+".join(lines) + "
+", encoding="utf-8")
+    return {
+        "digest_path": str(out_path),
+        "pending": len(pending),
+        "unconfirmed": len(unconfirmed),
+        "by_source": {k: len(v) for k, v in sorted(by_source.items())},
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="abelard-queue",
@@ -412,6 +482,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--cooldown-s", type=int, default=DEFAULT_COOLDOWN_S)
 
     sub.add_parser("status", help="counts + unconfirmed items")
+
+    p_digest = sub.add_parser(
+        "digest",
+        help="write a dated digest of pending items to disk. Reads only; "
+             "sends nothing. The floor that makes queue durability legible "
+             "when no channel is wired.",
+    )
+    p_digest.add_argument("--out-dir", default=DIGEST_DEFAULT_DIR)
 
     p_journal = sub.add_parser("journal", help="recent decisions")
     p_journal.add_argument("--limit", type=int, default=50)
@@ -450,6 +528,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                 data = {"triage": triage, "dispatch": dispatch}
                 if (triage["undecided"] or dispatch["failed"]
                         or dispatch["unconfirmed"]):
+                    exit_code = 2
+            elif args.command == "digest":
+                data = run_digest(queue, out_dir=args.out_dir)
+                # Non-zero when something is waiting: a scheduled digest that
+                # exits 0 with a full queue is the silence this exists to break.
+                if data["pending"] or data["unconfirmed"]:
                     exit_code = 2
             elif args.command == "status":
                 data = run_status(queue)

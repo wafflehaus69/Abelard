@@ -19,12 +19,24 @@ and the figure explains where it came from.
 import html
 import json
 import sqlite3
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from . import config, phases, snapshot, svgcharts, trend
 
 PORT = 8788
+
+# Loopback by default. A read-only dashboard is still a listening socket, and
+# the default must be the one that cannot be reached from off-box; exposing it
+# is an explicit act by the launcher (scripts/run_dash.sh), which resolves the
+# Tailscale address and REFUSES to start without one.
+HOST_DEFAULT = "127.0.0.1"
+
+# The scan is nightly, so a snapshot older than this means a nightly was missed.
+# 36h covers one skipped run plus slack, and the banner says the age rather than
+# just "stale" so a reader can tell a late run from a dead one.
+STALE_AFTER_HOURS = 36
 
 STATE_COLORS = {
     phases.STATE_ACCELERATING: "#1d6f42",
@@ -102,12 +114,13 @@ def _spark(vals, width=24):
     return "".join(blocks[min(7, int((x - lo) / rng * 7))] for x in v)
 
 
-def _page(title, active, body):
+def _page(title, active, body, banner=""):
     nav = "".join("<a href='{}' class='{}'>{}</a>".format(
         p, "on" if p == active else "", _esc(n)) for p, n in VIEWS)
     return ("<!doctype html><meta charset='utf-8'><title>Capex — {t}</title>"
             "<style>{css}</style><header><b>Capex Daemon</b> &nbsp; {nav}</header>"
-            "<main>{body}</main>").format(t=_esc(title), css=CSS, nav=nav, body=body)
+            "<main>{banner}{body}</main>").format(
+                t=_esc(title), css=CSS, nav=nav, body=body, banner=banner or "")
 
 
 def _bucket_num(bk, key, fmt):
@@ -662,10 +675,17 @@ ROUTES = {"/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
 
 
 def render(path, snap):
+    """One view, with the snapshot's own provenance banner injected.
+
+    Injected here rather than in each view so a new view cannot be added
+    without it — the stamp is not decoration, it is the difference between a
+    reader trusting a number as current and knowing when it was true.
+    """
     fn = ROUTES.get(path)
     if fn is None:
         return None
-    return fn(snap)
+    html_out = fn(snap)
+    return html_out.replace("<main>", "<main>" + _stale_banner(snap), 1)
 
 
 def _read_only_snapshot(db_path):
@@ -678,7 +698,38 @@ def _read_only_snapshot(db_path):
         con.close()
 
 
-def serve(db_path=None, port=PORT):
+def _staleness(snap, now_unix=None):
+    """(is_stale, age_hours) from the snapshot's own generated_unix.
+
+    Derived from what the snapshot layer already publishes — no new field and no
+    new policy. A MISSING snapshot refuses (503, below); a STALE one is served
+    with a banner, because stale panel data is still true as of its stamp and a
+    reader who can see the stamp is not misled. Refusing on age would withhold
+    good history because a cron slot was missed.
+    """
+    gen = (snap or {}).get("generated_unix")
+    if not gen:
+        return False, None
+    age = (int(now_unix if now_unix is not None else time.time()) - int(gen)) / 3600.0
+    return age > STALE_AFTER_HOURS, age
+
+
+def _stale_banner(snap):
+    stale, age = _staleness(snap)
+    gen = (snap or {}).get("generated_unix")
+    stamp = (time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(int(gen)))
+             if gen else "unknown")
+    if not stale:
+        return "<p class='chartnote'>snapshot generated {}</p>".format(_esc(stamp))
+    return ("<div class='warn'><b>STALE SNAPSHOT — {:.0f}h old</b> (generated {}). "
+            "The nightly scan has not completed since then, so every figure below "
+            "is true as of that stamp and not of now. Served rather than withheld "
+            "because stale history is still history; check "
+            "<code>~/.openclaw/capex_daemon/logs/scan.log</code>.</div>".format(
+                age, _esc(stamp)))
+
+
+def serve(db_path=None, port=PORT, host=HOST_DEFAULT):
     db_path = db_path or config.DB_PATH_DEFAULT
 
     class Handler(BaseHTTPRequestHandler):
@@ -710,6 +761,6 @@ def serve(db_path=None, port=PORT):
         def log_message(self, *a):
             pass
 
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print("[capex-dashboard] http://127.0.0.1:{}  (read-only, db={})".format(port, db_path))
+    srv = ThreadingHTTPServer((host, port), Handler)
+    print("[capex-dashboard] http://{}:{}  (read-only, db={})".format(host, port, db_path))
     srv.serve_forever()

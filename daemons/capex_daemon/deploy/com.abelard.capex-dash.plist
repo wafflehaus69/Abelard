@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Capex read-only dashboard on Basilic. Mando-authorized 2026-08-22 (CD-DASH1
+     P1). Mirrors com.abelard.smart-money-dash: auto-start, restart-on-crash,
+     bound to the Tailscale IP only by run_dash.sh, never a public interface.
+     Port 8788, documented in BASILIC_MANUAL. Reference copy; the live plist is
+     host-specific at ~/Library/LaunchAgents/. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.capex-dash</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/wafflehaus/Code/Abelard/daemons/capex_daemon/scripts/run_dash.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/daemons/capex_daemon</string>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/capex_daemon/logs/dashboard.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/capex_daemon/logs/dashboard.err.log</string>
+</dict>
+</plist>
