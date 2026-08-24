@@ -78,6 +78,15 @@ _NO_INFO = "No Information Filed"
 
 _REQUIRED_MARKERS = ("SECTION 4 Successions", _SCHED_A_HEAD)
 
+#: Presence of an Item 4 heading distinguishes "this form HAS a successions item
+#: and we failed to find it" from "this form variant does not have one".
+#: Exempt Reporting Advisers complete only a subset of Form ADV -- Items 1, 2, 3,
+#: 5, 6, 7, 10, 11 and no Item 4 -- so a succession field is NOT APPLICABLE to
+#: them, not missing. Measured 2026-08-23: 6,644 of 6,663 ERAs in the corpus.
+#: Recording that as an extraction failure buried a structural fact under a 30%
+#: error rate and made a working run look broken.
+_ITEM4_HEADING_RE = re.compile(r"Item\s*4(?![0-9])")
+
 #: The publisher serves a valid 200 with a valid one-page PDF that says the
 #: filing is not available. That is an absence wearing a success costume [E1],
 #: and it must be recorded as unavailable rather than silently parsed as an
@@ -109,6 +118,9 @@ class AdvFacts:
 
     extract_status: str = "ok"
     extract_note: str | None = None
+    #: Set when a section is absent because this form VARIANT lacks it, rather
+    #: than because extraction failed. Absence is data; failure is not.
+    not_applicable: str | None = None
 
     def as_row(self, fetched_unix: int) -> dict:
         return {
@@ -321,16 +333,30 @@ def extract_facts(crd: str, payload: bytes) -> AdvFacts:
         n, _c, _ct, _a = _parse_owner_block(tables["B"])
         facts.indirect_owner_count = n
 
-    notes = []
-    if read_note:
-        notes.append(read_note)
+    # Separate "the form does not have this" from "we did not find it".
+    notes: list[str] = []
+    degraded = False
+
     if facts.direct_owner_count is None:
         notes.append("Schedule A not located")
+        degraded = True
+
     if facts.section4_filed is None:
-        notes.append("Schedule D Section 4 not located")
-    if notes:
+        if _ITEM4_HEADING_RE.search(text) is None:
+            facts.not_applicable = "form variant omits Item 4 (ERA or subset filing)"
+            notes.append(facts.not_applicable)
+        else:
+            notes.append("Schedule D Section 4 not located")
+            degraded = True
+
+    if read_note and degraded:
+        notes.insert(0, read_note)
+
+    if degraded:
         facts.extract_status = "partial"
-        facts.extract_note = "; ".join(notes)
+    elif facts.not_applicable:
+        facts.extract_status = "not_applicable"
+    facts.extract_note = "; ".join(notes) or None
 
     return facts
 

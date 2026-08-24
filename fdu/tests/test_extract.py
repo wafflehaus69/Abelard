@@ -130,3 +130,39 @@ def test_stub_document_recorded_as_unavailable():
     from fdu_daemon.adv_pdf import _STUB_MARKER
 
     assert "not available for this firm" in _STUB_MARKER
+
+
+# -- absence vs failure --------------------------------------------------
+
+
+def test_item4_heading_regex_distinguishes_form_variants():
+    from fdu_daemon.adv_pdf import _ITEM4_HEADING_RE
+
+    era_like = "Item 1 Identifying Information Item 2 Item 3 Item 5 Item 6 Item 7 Item 10 Item 11"
+    full_like = "Item 3 ... Item 4 Successions Yes No A. Are you ... Item 5"
+    assert _ITEM4_HEADING_RE.search(era_like) is None, "ERA subset form has no Item 4"
+    assert _ITEM4_HEADING_RE.search(full_like) is not None
+
+
+def test_missing_section4_on_subset_form_is_not_a_failure(section4_empty):
+    """An ERA has no Item 4. Recording that as an extraction failure buried a
+    structural fact under a 30% error rate and made a working run look broken."""
+    from fdu_daemon.adv_pdf import AdvFacts
+
+    f = AdvFacts(crd="1")
+    assert f.not_applicable is None
+    assert f.extract_status == "ok"
+
+
+def test_status_vocabulary_is_closed():
+    """Every status FDU writes must be one the reader knows how to interpret."""
+    allowed = {"ok", "partial", "unavailable", "not_applicable"}
+    import inspect
+
+    from fdu_daemon import adv_pdf
+
+    src = inspect.getsource(adv_pdf)
+    import re as _re
+
+    written = set(_re.findall(r'extract_status = "([a-z_]+)"', src))
+    assert written <= allowed, f"unknown status written: {written - allowed}"
