@@ -765,3 +765,50 @@ from. The rebuild path that exposed this was added hours earlier to solve stale
 published state, and its first real use produced the defect. Any operation that
 recomputes history is an alerting event in its own right and should be designed
 alongside the gate, not before it.
+
+## E32 — Authored is not activated; verify at the registry, not on disk
+Ruled by Mando 2026-08-22; drafted by ClaudeCode, who judged this a new entry
+rather than a citation under [E3] — see the note at the end for why.
+
+Incident. The News Watch theme `ai_capex_financing` was authored 2026-08-14,
+committed, parsed cleanly, carried `status: active` in its own YAML, and was
+returned by `load_all_themes()`. It had tagged **nothing**, ever. `db retag`
+selects themes by intersecting the directory against the **registry table** in
+the database, and the theme had never been inserted there — `themes load` was
+never run. Every check that looked at disk said the sensor was live. The one
+that looked at the runtime said it did not exist.
+
+It was ordered twice and reported as executed once. Nothing lied: the file was
+present, its status field said active, and the loader loaded it. The artifact
+and the runtime simply disagreed, and only the runtime was authoritative.
+
+Rule: **activation is verified at the registry that gates execution, never
+inferred from the presence or contents of an artifact.** For anything with a
+runtime registration step — a theme table, a launchd or cron registration, a
+plugin manifest, a feature flag, a scheduler entry — "it is on disk and says it
+is enabled" is evidence about the file and no evidence at all about the system.
+The check is the query the executor itself makes: `SELECT ... FROM themes`,
+`launchctl list`, whatever that surface is. If a component can be present and
+inert, presence must never be reported as live.
+
+Corollary — a bulk registration step registers everything, so check what else
+moved. `themes load` takes no per-theme scope, so registering the intended theme
+also activated `crypto_markets`, authored by a concurrent workstream and sitting
+in the same unregistered state. That was the correct end state for it and it
+went live as a side effect of someone else's order, which its owning session had
+no way to know. Where activation is bulk, enumerate the diff and tell whoever
+owns the rest.
+
+**Why an entry and not a citation under [E3].** E3 rules that disk and live
+curls are canonical over briefs and memory — inference loses to the filesystem.
+This incident is the inverse failure and E3 read alone would have endorsed it:
+disk WAS consulted, the file WAS found, and the conclusion was still wrong. The
+refinement is that disk existence is necessary and not sufficient wherever a
+runtime registry mediates execution, and that the registry outranks the file.
+Same family, opposite direction, and a reader applying E3 correctly here still
+gets the wrong answer — which is the test for a new entry rather than a cite.
+
+Corollary — this shape recurs outside News Watch. A plist committed to `deploy/`
+is not a scheduled job until `launchctl load` puts it in `launchctl list`; the
+Capex Daemon carried exactly that gap for four days while its plist sat in the
+repo looking installed. Registry-gated runtimes are the norm, not the exception.
