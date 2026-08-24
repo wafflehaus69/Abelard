@@ -210,24 +210,67 @@ def run_tail_pages(sizes: list[int]) -> list[int]:
     return head + rest
 
 
+#: Pages the forward-scan fallback may read. Section 4 was observed on pages
+#: 5-10 of the documents this fallback exists for, so a small budget suffices.
+MAX_SCAN_PAGES = 32
+
+
 def _document_text(reader: pypdf.PdfReader) -> tuple[str, int, str | None]:
-    """Return (text, pages_laid_out, note)."""
+    """Return (text, pages_laid_out, note).
+
+    Two strategies, because ONE was not enough and the second one is the whole
+    reason this function has a fallback at all.
+
+    The fast path uses content-stream length to guess run boundaries and reads
+    only run tails. That is right for the common document and ~30x cheaper than
+    a full walk. It is also **not reliable**: measured on a 122-page filing, the
+    content-stream heuristic reported boundaries at pages 38/62/96 while the
+    TEXT length showed a run ending between pages 10 and 20, and Section 4 sat
+    on page 5 -- inside a run whose tail the heuristic never nominated. The
+    cumulative-text property was generalised from a handful of documents to the
+    whole corpus, and 446 filings quietly disagreed.
+
+    So when the fast path leaves a required section unfound, fall back to a
+    bounded forward scan from page 0. It costs at most ``MAX_SCAN_PAGES``
+    extractions, runs on roughly 3% of the corpus, and finds sections that live
+    early in a run the boundary detector missed. What is still missing after
+    both passes is REPORTED, never guessed at.
+    """
     n = len(reader.pages)
     if n == 0:
         return "", 0, "document has no pages"
+
+    def still_missing(chunks: list[str]) -> list[str]:
+        return [m for m in _REQUIRED_MARKERS if not any(m in c for c in chunks)]
+
     tails = run_tail_pages(_content_sizes(reader))
     chunks: list[str] = []
     read = 0
     for idx in tails[:MAX_RUN_TAILS]:
         chunks.append(reader.pages[idx].extract_text() or "")
         read += 1
-        if all(any(m in c for c in chunks) for m in _REQUIRED_MARKERS):
+        if not still_missing(chunks):
             break
+
+    missing = still_missing(chunks)
+    scanned = 0
+    if missing:
+        seen = set(tails[:MAX_RUN_TAILS])
+        for idx in range(min(n, MAX_SCAN_PAGES)):
+            if idx in seen:
+                continue
+            chunks.append(reader.pages[idx].extract_text() or "")
+            read += 1
+            scanned += 1
+            if not still_missing(chunks):
+                break
+        missing = still_missing(chunks)
+
     text = "\n".join(chunks)
-    missing = [m for m in _REQUIRED_MARKERS if m not in text]
     note = None
     if missing:
-        note = f"read {read} of {len(tails)} run tails; sections not found: {', '.join(missing)}"
+        note = (f"read {read} pages ({len(tails)} run tails + {scanned} scanned); "
+                f"sections not found: {', '.join(missing)}")
     return text, read, note
 
 

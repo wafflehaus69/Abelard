@@ -204,3 +204,64 @@ def test_self_succession_detected():
     crds = _ACQ_CRD_RE.findall(real)
     assert all(c == "111936" for c in crds) is True
     assert all(c == "999999" for c in crds) is False
+
+
+# -- fallback scan: the cumulative assumption does not hold everywhere ---
+
+
+class _FakePage:
+    def __init__(self, text, csize=212):
+        self._t = text
+        self._c = csize
+
+    def extract_text(self):
+        return self._t
+
+    def get_contents(self):
+        class _C:
+            def __init__(self, n): self._n = n
+            def get_data(self): return b"x" * self._n
+        return _C(self._c)
+
+
+class _FakeReader:
+    def __init__(self, pages):
+        self.pages = pages
+
+
+def test_forward_scan_finds_section_missed_by_run_tails():
+    """Regression for 446 filings.
+
+    Content-stream boundaries nominated tails that did not contain Section 4;
+    the section sat on page 5, inside a run the heuristic never nominated.
+    """
+    from fdu_daemon.adv_pdf import _document_text
+
+    pages = [_FakePage("filler") for _ in range(40)]
+    pages[5] = _FakePage("SECTION 4 Successions No Information Filed")
+    pages[39] = _FakePage("Direct Owners and Executive Officers FULL LEGAL NAME")
+    text, read, note = _document_text(_FakeReader(pages))
+    assert "SECTION 4 Successions" in text, "forward scan must reach an early section"
+    assert "Direct Owners and Executive Officers" in text
+    assert note is None, f"nothing should be reported missing, got: {note}"
+
+
+def test_forward_scan_is_bounded_and_reports_what_it_missed():
+    from fdu_daemon.adv_pdf import MAX_SCAN_PAGES, _document_text
+
+    pages = [_FakePage("filler") for _ in range(200)]
+    pages[150] = _FakePage("SECTION 4 Successions")   # beyond the scan budget
+    text, read, note = _document_text(_FakeReader(pages))
+    assert read <= MAX_SCAN_PAGES + 12 + 1, "scan must stay bounded"
+    assert note is not None and "SECTION 4" in note, "an unfound section must be reported"
+
+
+def test_simple_document_still_costs_one_page():
+    """The fast path must not regress: a single cumulative run reads one page."""
+    from fdu_daemon.adv_pdf import _document_text
+
+    pages = [_FakePage("filler") for _ in range(24)]
+    pages[23] = _FakePage("SECTION 4 Successions ... Direct Owners and Executive Officers")
+    text, read, note = _document_text(_FakeReader(pages))
+    assert read == 1, f"simple document should cost one extraction, cost {read}"
+    assert note is None
