@@ -166,3 +166,41 @@ def test_status_vocabulary_is_closed():
 
     written = set(_re.findall(r'extract_status = "([a-z_]+)"', src))
     assert written <= allowed, f"unknown status written: {written - allowed}"
+
+
+# -- succession parsing: labels, not the instruction preamble ------------
+
+
+def test_succession_fields_parsed_from_labels(section4_filed):
+    """The first cut stored the section's first 400 chars, which is boilerplate.
+
+    Every lead read "Complete the following information if you are succeeding
+    to..." and carried no facts at all.
+    """
+    from fdu_daemon.adv_pdf import _ACQ_CRD_RE, _ACQ_NAME_RE
+
+    real = (
+        "SECTION 4 Successions\n"
+        "Complete the following information if you are succeeding to the business of a\n"
+        "currently registered investment adviser, including a change of your structure.\n"
+        "Name of Acquired Firm \n"
+        "GREYCOURT & CO., INC.\n"
+        "Acquired Firm's SEC File No. (if any) \n"
+        "801 - 60297\n"
+        "Acquired Firm's CRD Number \n"
+        "111936\n"
+        "Item 5 Information About Your Advisory Business\n"
+    )
+    assert _ACQ_NAME_RE.findall(real) == ["GREYCOURT & CO., INC."]
+    assert _ACQ_CRD_RE.findall(real) == ["111936"]
+    assert "Complete the following" not in _ACQ_NAME_RE.findall(real)[0]
+
+
+def test_self_succession_detected():
+    """Acquired CRD equal to the filer's own is a reorganisation, not a sale."""
+    from fdu_daemon.adv_pdf import _ACQ_CRD_RE
+
+    real = "Acquired Firm's CRD Number \n111936\n"
+    crds = _ACQ_CRD_RE.findall(real)
+    assert all(c == "111936" for c in crds) is True
+    assert all(c == "999999" for c in crds) is False

@@ -113,14 +113,49 @@ def test_ledger_stores_no_person_columns():
             )
 
 
+#: Fields whose name matches the person-data tripwire but which carry ENTITY
+#: data, each admitted deliberately and with a reason. The broad regex below is
+#: kept broad on purpose: a new name-shaped field must fail this test and be
+#: argued for here, rather than slip through a loosened pattern.
+_ENTITY_NAME_ALLOWLIST = {
+    # An acquired adviser is a FIRM. Its registered name is public entity data of
+    # exactly the kind already held in firm.legal_name for all 23,804 firms.
+    # Caveat recorded rather than hidden: a sole-proprietor RIA can be registered
+    # under a person's name, so this field can incidentally contain one. It is
+    # still the firm's registered name, not a dossier -- no address, no contact
+    # details, no per-person row, and nothing joinable to an individual.
+    "succession_acquired_names",
+}
+
+
 def test_adv_facts_carries_no_names():
     from fdu_daemon.adv_pdf import AdvFacts
 
     facts = AdvFacts(crd="1")
     row = facts.as_row(0)
     person_terms = re.compile(r"name|email|phone|dob|ssn", re.I)
-    offenders = [k for k in row if person_terms.search(k)]
-    assert not offenders, f"AdvFacts row exposes {offenders}"
+    offenders = [k for k in row if person_terms.search(k) and k not in _ENTITY_NAME_ALLOWLIST]
+    assert not offenders, (
+        f"AdvFacts row exposes {offenders}. If these are entity-level and not "
+        f"per-person, add them to _ENTITY_NAME_ALLOWLIST with a written reason."
+    )
+
+
+def test_entity_name_allowlist_stays_small():
+    """A tripwire with a growing allowlist is not a tripwire."""
+    assert len(_ENTITY_NAME_ALLOWLIST) <= 3, (
+        "the person-data allowlist is growing; re-examine whether FDU has drifted "
+        "into storing people"
+    )
+
+
+def test_owner_names_are_still_forbidden():
+    """The allowlist must not have opened a door for Schedule A owners."""
+    from fdu_daemon.adv_pdf import AdvFacts
+
+    row = AdvFacts(crd="1").as_row(0)
+    for banned in ("owner_names", "direct_owner_names", "control_person_names"):
+        assert banned not in row, f"{banned} is per-person data -- I-3 forbids it"
 
 
 def test_extractor_returns_no_owner_names(sample_schedule_a_text):

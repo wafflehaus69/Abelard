@@ -12,8 +12,11 @@ then the honest output is a list a human reads.
 
 Signals surfaced, all firm-level (I-3):
 
-  ``succession_filed``   Schedule D Section 4 carries content. The most direct
-                         declared signal on the form.
+  ``succession_filed``   Schedule D Section 4 names an acquired firm whose CRD
+                         differs from the filer's. A real change of hands.
+  ``reorganisation``     Section 4 names the filer's OWN CRD. An LLC conversion
+                         or re-domicile -- surfaced, labelled, and sorted last,
+                         because at a glance it is indistinguishable from a sale.
   ``ownership_shifted``  The ownership-code multiset or owner count changed
                          between two extractions.
   ``ownership_recent``   An owner acquired their stake inside the last N months.
@@ -78,14 +81,27 @@ def collect(conn: sqlite3.Connection, *, limit: int = 50) -> list[Lead]:
         return leads[row["crd"]]
 
     # -- declared successions --------------------------------------------
+    #
+    # A self-succession is separated out rather than dropped. Both of the first
+    # filed successions found in the corpus reported the filer's OWN CRD as the
+    # acquired firm -- an LLC conversion or re-domicile, not a purchase. Showing
+    # those as acquisition leads would be worse than showing nothing, because
+    # they look exactly like the real thing at a glance.
     for row in conn.execute(
-        "SELECT f.*, d.succession_detail FROM adv_detail d JOIN firm f ON f.crd = d.crd "
-        "WHERE d.section4_filed = 1"
+        "SELECT f.*, d.succession_detail, d.succession_is_self, d.succession_count "
+        "FROM adv_detail d JOIN firm f ON f.crd = d.crd WHERE d.section4_filed = 1"
     ):
         lead = lead_for(row)
-        lead.signals.append("succession_filed")
-        detail = (row["succession_detail"] or "")[:160]
-        lead.evidence.append(f"Schedule D Section 4 filed: {detail}")
+        is_self = row["succession_is_self"]
+        detail = row["succession_detail"] or "(acquired firm not parsed)"
+        if is_self == 1:
+            lead.signals.append("reorganisation")
+            lead.evidence.append(f"Section 4: succeeded ITSELF ({detail}) - entity reorganisation, not a sale")
+        else:
+            lead.signals.append("succession_filed")
+            n = row["succession_count"] or 1
+            plural = f"{n} firms" if n > 1 else "firm"
+            lead.evidence.append(f"Section 4: acquired {plural} - {detail}")
 
     # -- registration leaving APPROVED ------------------------------------
     for row in conn.execute(
@@ -119,6 +135,7 @@ def collect(conn: sqlite3.Connection, *, limit: int = 50) -> list[Lead]:
         leads.values(),
         key=lambda l: (
             0 if "succession_filed" in l.signals else 1,
+            1 if "reorganisation" in l.signals and len(l.signals) == 1 else 0,
             -len(l.signals),
             -l.max_decline_pct,
             -(l.aum_total or 0),

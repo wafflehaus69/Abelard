@@ -92,6 +92,10 @@ _ADV_COLUMNS: dict[str, str] = {
     # drawn not written), so presence of Section 4 content is the signal.
     "section4_filed": "INTEGER",
     "succession_detail": "TEXT",
+    "succession_count": "INTEGER",
+    "succession_acquired_names": "TEXT",
+    "succession_acquired_crds": "TEXT",
+    "succession_is_self": "INTEGER",
     # Ownership STRUCTURE only -- never names. See module docstring.
     "direct_owner_count": "INTEGER",
     "indirect_owner_count": "INTEGER",

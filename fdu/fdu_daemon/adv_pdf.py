@@ -87,6 +87,15 @@ _REQUIRED_MARKERS = ("SECTION 4 Successions", _SCHED_A_HEAD)
 #: error rate and made a working run look broken.
 _ITEM4_HEADING_RE = re.compile(r"Item\s*4(?![0-9])")
 
+#: Schedule D Section 4 renders each acquired firm as label-then-value on the
+#: following line. A first cut sliced the section and stored its first 400
+#: characters -- which is the INSTRUCTION preamble, so every lead read "Complete
+#: the following information if you are succeeding to..." and carried no facts.
+#: Anchor on the labels, not on the heading.
+_ACQ_NAME_RE = re.compile(r"Name of Acquired Firm[ \t]*\n[ \t]*(\S.*)")
+_ACQ_SEC_RE = re.compile(r"Acquired Firm's SEC File No\.[^\n]*\n[ \t]*(\d{3}[ \t]*-[ \t]*\d+)")
+_ACQ_CRD_RE = re.compile(r"Acquired Firm's CRD Number[ \t]*\n[ \t]*(\d+)")
+
 #: The publisher serves a valid 200 with a valid one-page PDF that says the
 #: filing is not available. That is an absence wearing a success costume [E1],
 #: and it must be recorded as unavailable rather than silently parsed as an
@@ -108,6 +117,15 @@ class AdvFacts:
 
     section4_filed: bool | None = None
     succession_detail: str | None = None
+    succession_count: int | None = None
+    succession_acquired_names: list[str] = field(default_factory=list)
+    succession_acquired_crds: list[str] = field(default_factory=list)
+    #: True when EVERY acquired firm shares this filer's own CRD. That is an
+    #: entity reorganisation -- an LLC conversion, a re-domicile -- and not a
+    #: purchase of somebody else's practice. Measured on the first two filed
+    #: successions in the corpus: both self. Without this the lead list presents
+    #: a re-incorporation as an acquisition target.
+    succession_is_self: bool | None = None
 
     direct_owner_count: int | None = None
     indirect_owner_count: int | None = None
@@ -132,6 +150,10 @@ class AdvFacts:
             "amendment_type": self.amendment_type,
             "section4_filed": None if self.section4_filed is None else int(self.section4_filed),
             "succession_detail": self.succession_detail,
+            "succession_count": self.succession_count,
+            "succession_acquired_names": "; ".join(self.succession_acquired_names) or None,
+            "succession_acquired_crds": ",".join(self.succession_acquired_crds) or None,
+            "succession_is_self": None if self.succession_is_self is None else int(self.succession_is_self),
             "direct_owner_count": self.direct_owner_count,
             "indirect_owner_count": self.indirect_owner_count,
             "ownership_codes": ",".join(self.ownership_codes) or None,
@@ -312,9 +334,28 @@ def extract_facts(crd: str, payload: bytes) -> AdvFacts:
         body = sec4[len("SECTION 4 Successions"):].strip()
         facts.section4_filed = _NO_INFO not in body[:80]
         if facts.section4_filed:
-            # Firm-level only: a predecessor adviser is a FIRM and the date is
-            # an event date. No individuals appear in this section.
-            facts.succession_detail = re.sub(r"\s+", " ", body[:400]).strip() or None
+            # Firm-level only: an acquired adviser is a FIRM. No individuals
+            # appear in this section, so nothing here engages I-3.
+            names = [n.strip() for n in _ACQ_NAME_RE.findall(sec4) if n.strip()]
+            crds = [c.strip() for c in _ACQ_CRD_RE.findall(sec4)]
+            secs = [re.sub(r"[ \t]", "", s) for s in _ACQ_SEC_RE.findall(sec4)]
+            facts.succession_acquired_names = names
+            facts.succession_acquired_crds = crds
+            facts.succession_count = len(names) or None
+            if crds:
+                # Every acquired CRD equal to our own means this filing reports a
+                # reorganisation of the same business -- an LLC conversion or a
+                # re-domicile -- not the purchase of somebody else's practice.
+                facts.succession_is_self = all(c == crd for c in crds)
+            parts = []
+            for i, nm in enumerate(names):
+                bits = [nm]
+                if i < len(crds):
+                    bits.append(f"CRD {crds[i]}")
+                if i < len(secs):
+                    bits.append(secs[i])
+                parts.append(" ".join(bits))
+            facts.succession_detail = "; ".join(parts) or None
 
     # -- Ownership structure ----------------------------------------------
     tables = _owner_tables(text)
