@@ -109,3 +109,39 @@ def test_monthly_row_is_not_person_shaped():
     fields = set(MonthlyRow(crd="1").__dict__)
     person = re.compile(r"(first|last|middle)_?name|email|phone|dob|ssn|individual", re.I)
     assert not [f for f in fields if person.search(f)]
+
+
+# -- URL selection: the historical FOIA archive is NOT the monthly product ---
+
+
+def test_file_date_parses_both_widths():
+    from fdu_daemon.monthly_csv import _file_date
+
+    base = "/files/investment/data/other/information-about-registered-investment-advisers-exempt-reporting-advisers/"
+    assert _file_date(base + "ia08032026_0.zip") == (2026, 8, 3)
+    assert _file_date(base + "ia030226.zip") == (2026, 3, 2)
+    assert _file_date(base + "ia06012026-exempt_0.zip") == (2026, 6, 1)
+    assert _file_date(base + "nonsense.zip") == (0, 0, 0)
+
+
+def test_href_pattern_rejects_the_foia_archive():
+    """A looser pattern matched a 2006 pipe-delimited archive and page order
+    then selected it as 'latest'."""
+    from fdu_daemon.monthly_csv import _HREF_RE
+
+    good = ('href="/files/investment/data/other/information-about-registered-'
+            'investment-advisers-exempt-reporting-advisers/ia08032026_0.zip"')
+    bad = ('href="/files/data/frequently-requested-foia-document-information-about-'
+           'registered-investment-advisers-and-exempt/ia060506.zip"')
+    assert _HREF_RE.findall(good), "current monthly product must match"
+    assert not _HREF_RE.findall(bad), "historical FOIA archive must NOT match"
+
+
+def test_latest_is_chosen_by_date_not_page_order():
+    from fdu_daemon.monthly_csv import _file_date
+
+    base = "/files/investment/data/other/information-about-registered-investment-advisers-exempt-reporting-advisers/"
+    listed = [base + "ia08032026_0.zip", base + "ia030226.zip", base + "ia07012026.zip"]
+    assert max(listed, key=_file_date).endswith("ia08032026_0.zip")
+    # page order would have picked the last element
+    assert listed[-1] != max(listed, key=_file_date)

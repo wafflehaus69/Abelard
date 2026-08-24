@@ -39,14 +39,38 @@ MONTHLY_INDEX_URL = (
     "information-about-registered-investment-advisers-exempt-reporting-advisers"
 )
 
-#: Files are named ia<MMDDYYYY>.zip for registered advisers and
-#: ia<MMDDYYYY>-exempt.zip for ERAs. Both date orderings appear in the wild
-#: (ia08032026 and ia030226), so the pattern stays loose and the page's own
-#: ordering is trusted rather than a date parsed out of the name.
+#: The current monthly product lives under ``investment/data/other/``. A LOOSER
+#: pattern also matched ``frequently-requested-foia-document-information-about-
+#: registered-investment-advisers-and-exempt/``, which is a HISTORICAL archive
+#: going back to 2006 in a different format (pipe-delimited .txt, different
+#: column names). Trusting the page's link order then selected a 2006 file as
+#: "latest". Both mistakes are fixed here: constrain the family, and pick by a
+#: date parsed from the filename rather than by position on the page.
 _HREF_RE = re.compile(
-    r'href="(/files/[^"]*information-about-registered-investment-advisers[^"]*/ia[^"]*\.zip)"',
+    r'href="(/files/investment/data/other/'
+    r'information-about-registered-investment-advisers-exempt-reporting-advisers/'
+    r'ia[^"]*\.zip)"',
     re.I,
 )
+
+#: Filenames carry a date with NO separator and in two observed widths:
+#: ``ia08032026_0.zip`` (MMDDYYYY) and ``ia030226.zip`` (MMDDYY). A trailing
+#: ``_0`` marks a re-upload. Parsed to a sortable tuple; anything unparseable
+#: sorts last rather than being silently treated as recent.
+_DATE_RE = re.compile(r"/ia(\d{6}|\d{8})(?:-exempt)?(?:_\d+)?\.zip$", re.I)
+
+
+def _file_date(path: str) -> tuple[int, int, int]:
+    m = _DATE_RE.search(path)
+    if not m:
+        return (0, 0, 0)
+    digits = m.group(1)
+    if len(digits) == 8:
+        mm, dd, yyyy = int(digits[:2]), int(digits[2:4]), int(digits[4:])
+    else:
+        mm, dd, yy = int(digits[:2]), int(digits[2:4]), int(digits[4:])
+        yyyy = 2000 + yy
+    return (yyyy, mm, dd)
 
 #: Column names we lift. The CSV has 448; carrying all of them would make the
 #: ledger a copy of the file rather than a reading of it. These are the ones the
@@ -109,12 +133,14 @@ def latest_monthly_urls(fetcher: Fetcher) -> list[str]:
             f"no monthly IA data links found at {MONTHLY_INDEX_URL} "
             f"({len(html)} bytes fetched) -- page layout may have changed"
         )
-    # The page lists newest last in the observed rendering; take the final
-    # registered and the final exempt rather than parsing dates out of names,
-    # because two different date orderings appear in the filenames.
-    registered = [p for p in paths if "exempt" not in p.lower()]
-    exempt = [p for p in paths if "exempt" in p.lower()]
+    registered = sorted((p for p in paths if "exempt" not in p.lower()), key=_file_date)
+    exempt = sorted((p for p in paths if "exempt" in p.lower()), key=_file_date)
     picked = [x for x in (registered[-1:] or [None]) + (exempt[-1:] or [None]) if x]
+    unparsed = [p for p in picked if _file_date(p) == (0, 0, 0)]
+    if unparsed:
+        raise FeedParseError(
+            f"cannot date-parse monthly filename(s) {unparsed}; refusing to guess which is latest"
+        )
     return [f"https://www.sec.gov{p}" for p in picked]
 
 
