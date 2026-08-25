@@ -82,42 +82,53 @@ class Candidate:
 
 
 def gather_disappearances(conn: sqlite3.Connection) -> list[Candidate]:
-    """Every observed disappearance, with the firm's last known state attached."""
-    rows = conn.execute(
-        """
-        SELECT t.crd, t.snapshot_from, t.snapshot_to, t.interval_months, t.spans_gap,
-               s.era
-        FROM transition_events t
-        LEFT JOIN snapshot s ON s.snapshot_date = t.snapshot_to
-        WHERE t.event_type = 'disappearance'
-        GROUP BY t.crd
-        """
-    ).fetchall()
+    """Every observed disappearance, with the firm's last known state attached.
+
+    One pass per event type rather than three correlated subqueries per
+    candidate. The first cut did the latter and issued ~55,000 queries against
+    18,508 disappearances, which simply never returned.
+    """
+    eras = {r["snapshot_date"]: r["era"] for r in
+            conn.execute("SELECT snapshot_date, era FROM snapshot")}
+
+    def last_values(event_type: str) -> dict[str, str]:
+        """Most recent new_value per CRD for one event type, in a single scan."""
+        out: dict[str, str] = {}
+        for r in conn.execute(
+            "SELECT crd, new_value FROM transition_events "
+            "WHERE event_type=? ORDER BY snapshot_to", (event_type,)
+        ):
+            if r["new_value"] is not None:
+                out[r["crd"]] = r["new_value"]
+        return out
+
+    names = last_values("rename")
+    aums = last_values("aum_delta")
+    emps = last_values("headcount_delta")
+
+    def _i(v):
+        try:
+            return int(v) if v else None
+        except (ValueError, TypeError):
+            return None
+
     out: list[Candidate] = []
-    for r in rows:
-        last_name = conn.execute(
-            "SELECT new_value FROM transition_events WHERE crd=? AND event_type='rename' "
-            "ORDER BY snapshot_to DESC LIMIT 1", (r["crd"],)
-        ).fetchone()
-        aum = conn.execute(
-            "SELECT new_value FROM transition_events WHERE crd=? AND event_type='aum_delta' "
-            "ORDER BY snapshot_to DESC LIMIT 1", (r["crd"],)
-        ).fetchone()
-        emp = conn.execute(
-            "SELECT new_value FROM transition_events WHERE crd=? AND event_type='headcount_delta' "
-            "ORDER BY snapshot_to DESC LIMIT 1", (r["crd"],)
-        ).fetchone()
-        def _i(x):
-            try:
-                return int(x["new_value"]) if x and x["new_value"] else None
-            except (ValueError, TypeError):
-                return None
+    seen: set[str] = set()
+    for r in conn.execute(
+        "SELECT crd, snapshot_from, snapshot_to, interval_months, spans_gap "
+        "FROM transition_events WHERE event_type='disappearance' ORDER BY snapshot_to"
+    ):
+        crd = r["crd"]
+        if crd in seen:
+            continue
+        seen.add(crd)
         c = Candidate(
-            crd=r["crd"],
-            last_name_seen=last_name["new_value"] if last_name else None,
+            crd=crd,
+            last_name_seen=names.get(crd),
             snapshot_from=r["snapshot_from"], snapshot_to=r["snapshot_to"],
             interval_months=r["interval_months"], spans_gap=bool(r["spans_gap"]),
-            last_aum=_i(aum), last_employees=_i(emp), era=r["era"] or "unknown",
+            last_aum=_i(aums.get(crd)), last_employees=_i(emps.get(crd)),
+            era=eras.get(r["snapshot_to"], "unknown"),
         )
         c.aum_band = _band(c.last_aum)
         out.append(c)
