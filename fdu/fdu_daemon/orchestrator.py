@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import adv_pdf, config, ledger, monthly_csv, normalize
+from . import adv_pdf, archive, config, ledger, monthly_csv, normalize, transitions
 from .errors import FduError, HaltRequested
 from .feed import FirmRecord, feed_generated_on, parse_feed, parse_manifest
 from .fetch import Fetcher
@@ -267,4 +267,81 @@ def monthly(conn: sqlite3.Connection, fetcher: Fetcher) -> dict:
         "third_party": successions - self_successions,
         "fetch_calls": tel.calls,
         "fetch_bytes": tel.bytes_down,
+    }
+
+
+def backfill_archive(conn: sqlite3.Connection, fetcher: Fetcher, *, limit: int | None = None,
+                     delay: float = 1.0, preserve: bool = True) -> dict:
+    """B1 + B2: ingest archive snapshots and diff adjacent pairs into events.
+
+    Registered population only (ERAs OUT, ruling R1). Resumable: snapshots
+    already recorded are skipped, so an interrupted run continues where it
+    stopped. Diffing is chronological and gap-aware -- a pair spanning a missing
+    month is flagged, never counted as a one-month move.
+    """
+    if config.halt_requested():
+        raise HaltRequested("halt engaged; backfill refused")
+
+    now_unix = int(time.time())
+    run_id = _run_id("archive", now_unix)
+    ledger.start_run(conn, run_id, "archive", now_unix)
+
+    files, undatable = archive.census(fetcher)
+    reg = archive.registered_only(files)
+    gaps = set(archive.coverage_gaps(reg))
+    done = ledger.ingested_files(conn)
+    todo = [f for f in reg if f.filename not in done]
+    if limit:
+        todo = todo[:limit]
+
+    prev = None
+    ingested = failed = events_written = 0
+    errors: list[str] = []
+
+    # Re-establish the chronological predecessor if resuming mid-archive.
+    for af in todo:
+        if config.halt_requested():
+            errors.append("halt engaged mid-run; stopped early")
+            break
+        try:
+            payload = archive.fetch_archive_file(fetcher, af, preserve=preserve)
+            snap = archive.parse_snapshot(af, payload)
+        except FduError as exc:
+            failed += 1
+            errors.append(f"{af.filename}: {exc}")
+            prev = None          # a hole: do not diff across a failed parse
+            continue
+
+        conn.execute("BEGIN")
+        try:
+            ledger.record_snapshot(conn, {
+                "snapshot_date": snap.snapshot_date, "source_file": snap.source_file,
+                "era": snap.era, "n_columns": snap.n_columns, "n_rows": snap.n_rows,
+                "skipped_rows": snap.skipped,
+                "absent_fields": ",".join(snap.absent_fields) or None,
+                "ingested_unix": now_unix,
+            })
+            if prev is not None:
+                evs = transitions.diff_snapshots(prev, snap)
+                events_written += ledger.append_transitions(conn, [e.as_row() for e in evs])
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
+
+        prev = snap
+        ingested += 1
+        fetcher.pace(delay)
+
+    tel = fetcher.telemetry
+    ledger.finish_run(conn, run_id, firms_seen=ingested, fetch_calls=tel.calls,
+                      fetch_bytes=tel.bytes_down,
+                      status="ok" if not failed else "partial",
+                      note="; ".join(errors[:5]) or None)
+    return {
+        "run_id": run_id, "archive_files": len(files), "registered": len(reg),
+        "undatable": undatable, "coverage_gaps": len(gaps),
+        "already_ingested": len(done), "attempted": len(todo),
+        "ingested": ingested, "failed": failed, "events": events_written,
+        "errors": errors, "fetch_calls": tel.calls, "fetch_bytes": tel.bytes_down,
     }

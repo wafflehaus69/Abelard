@@ -55,6 +55,51 @@ def cmd_monthly(args) -> int:
     return 0
 
 
+def cmd_archive(args) -> int:
+    conn = ledger.connect()
+    if args.census_only:
+        from . import archive as arch
+        files, undatable = arch.census(_fetcher())
+        reg = arch.registered_only(files)
+        gaps = arch.coverage_gaps(reg)
+        print(f"archive files      {len(files):,}  (registered {len(reg):,}, ERA {len(files)-len(reg):,})")
+        print(f"undatable          {len(undatable)}  {undatable}")
+        print(f"span               {reg[0].snapshot_date} -> {reg[-1].snapshot_date}")
+        print(f"coverage gaps      {len(gaps)} months")
+        print(f"  {', '.join(gaps[:12])}{' ...' if len(gaps) > 12 else ''}")
+        return 0
+    out = orchestrator.backfill_archive(conn, _fetcher(), limit=args.limit, delay=args.delay)
+    print(f"archive {out['run_id']}")
+    print(f"  registered files  {out['registered']:,}   already ingested {out['already_ingested']:,}")
+    print(f"  attempted         {out['attempted']:,}")
+    print(f"  ingested          {out['ingested']:,}")
+    print(f"  failed            {out['failed']:,}")
+    print(f"  transition events {out['events']:,}")
+    print(f"  fetched           {out['fetch_calls']} calls, {out['fetch_bytes']:,} bytes")
+    print("  llm calls               0   cost $0.00")
+    for e in out["errors"][:8]:
+        print(f"  ! {e}")
+    return 0
+
+
+def cmd_transitions(args) -> int:
+    conn = ledger.connect()
+    rows = conn.execute(
+        "SELECT event_type, COUNT(*) n, SUM(spans_gap) gaps FROM transition_events "
+        "GROUP BY 1 ORDER BY n DESC").fetchall()
+    if not rows:
+        print("no transition events recorded yet -- run `archive` first")
+        return 0
+    print("TRANSITION EVENTS (observed filing movements, NOT acquisitions)")
+    print(f"{'event_type':<18}{'count':>10}{'gap-spanning':>14}")
+    for r in rows:
+        print(f"{r['event_type']:<18}{r['n']:>10,}{(r['gaps'] or 0):>14,}")
+    snaps = conn.execute("SELECT COUNT(*) n, MIN(snapshot_date) a, MAX(snapshot_date) b FROM snapshot").fetchone()
+    print()
+    print(f"from {snaps['n']:,} snapshots spanning {snaps['a']} -> {snaps['b']}")
+    return 0
+
+
 def cmd_leads(args) -> int:
     conn = ledger.connect()
     print(leads_mod.render(leads_mod.collect(conn, limit=args.limit)))
@@ -136,6 +181,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("monthly", help="pull the SEC monthly bulk CSV (Item 4, richer Part 1A)")
     s.set_defaults(func=cmd_monthly)
+
+    s = sub.add_parser("archive", help="ingest the historical archive and diff it (B1+B2)")
+    s.add_argument("--census-only", action="store_true", help="enumerate without downloading")
+    s.add_argument("--limit", type=int, default=None)
+    s.add_argument("--delay", type=float, default=1.0)
+    s.set_defaults(func=cmd_archive)
+
+    s = sub.add_parser("transitions", help="observed transition events by type")
+    s.set_defaults(func=cmd_transitions)
 
     s = sub.add_parser("leads", help="firms with succession-shaped movement (unranked)")
     s.add_argument("--limit", type=int, default=50)

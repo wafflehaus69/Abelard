@@ -6,6 +6,8 @@ requires-python = ">=3.12"
 dependencies = [
     "requests>=2.31",
     "pypdf>=4.0",
+    # Roughly half the historical archive by file count is XLSX.
+    "openpyxl>=3.1",
 ]
 
 # NOTE: abelard-common is deliberately NOT declared here. It is a monorepo

@@ -128,6 +128,37 @@ _MONTHLY_COLUMNS: dict[str, str] = {
     "common_control": "TEXT",
 }
 
+#: B1 snapshot store. One row per (crd, snapshot_date) is far too wide for 196
+#: snapshots x ~14k firms, so this holds snapshot METADATA and the transition
+#: events carry the movement. Raw ZIPs are preserved on disk separately.
+_SNAPSHOT_COLUMNS: dict[str, str] = {
+    "snapshot_date": "TEXT",
+    "source_file": "TEXT PRIMARY KEY",
+    "era": "TEXT",
+    "n_columns": "INTEGER",
+    "n_rows": "INTEGER",
+    "skipped_rows": "INTEGER",
+    "absent_fields": "TEXT",
+    "ingested_unix": "INTEGER NOT NULL",
+}
+
+#: B2 transition events. APPEND-ONLY, and unified with the live change log by a
+#: provenance column. This is the reconstructed history; nothing overwrites it.
+_TRANSITION_COLUMNS: dict[str, str] = {
+    "event_id": "INTEGER PRIMARY KEY AUTOINCREMENT",
+    "crd": "TEXT NOT NULL",
+    "event_type": "TEXT NOT NULL",
+    "field": "TEXT",
+    "old_value": "TEXT",
+    "new_value": "TEXT",
+    "snapshot_from": "TEXT",
+    "snapshot_to": "TEXT",
+    "interval_months": "INTEGER",
+    "spans_gap": "INTEGER",
+    "source_file": "TEXT",
+    "provenance": "TEXT NOT NULL",
+}
+
 _RUN_COLUMNS: dict[str, str] = {
     "run_id": "TEXT PRIMARY KEY",
     "started_unix": "INTEGER NOT NULL",
@@ -191,6 +222,8 @@ def apply_schema(conn: sqlite3.Connection) -> None:
             ("firm_change", _CHANGE_COLUMNS),
             ("adv_detail", _ADV_COLUMNS),
             ("monthly", _MONTHLY_COLUMNS),
+            ("snapshot", _SNAPSHOT_COLUMNS),
+            ("transition_events", _TRANSITION_COLUMNS),
             ("run", _RUN_COLUMNS),
         ):
             conn.execute(_ddl(table, cols))
@@ -200,6 +233,9 @@ def apply_schema(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_firm_changed ON firm(last_changed_unix)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_firm_state ON firm(state, rgstn_status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_monthly_succ ON monthly(is_self_succession)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tr_crd ON transition_events(crd, snapshot_to)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tr_type ON transition_events(event_type, snapshot_to)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tr_prov ON transition_events(provenance)")
         cur = conn.execute("SELECT version FROM schema_version LIMIT 1").fetchone()
         if cur is None:
             conn.execute("INSERT INTO schema_version(version) VALUES (?)", (SCHEMA_VERSION,))
@@ -321,3 +357,35 @@ def upsert_monthly(conn: sqlite3.Connection, rows: list[dict]) -> int:
         [[r.get(c) for c in cols] for r in rows],
     )
     return len(rows)
+
+
+def record_snapshot(conn: sqlite3.Connection, meta: dict) -> None:
+    cols = [c for c in _SNAPSHOT_COLUMNS if c in meta]
+    updates = ", ".join(f"{c}=excluded.{c}" for c in cols if c != "source_file")
+    conn.execute(
+        f"INSERT INTO snapshot ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
+        f"ON CONFLICT(source_file) DO UPDATE SET {updates}",
+        [meta[c] for c in cols],
+    )
+
+
+def append_transitions(conn: sqlite3.Connection, rows: list[dict]) -> int:
+    """Append transition events. Never updates, never deletes.
+
+    The archive keeps ~8 days of live feeds and the published monthly files can
+    be re-uploaded, so this table is the only durable record of what moved.
+    """
+    if not rows:
+        return 0
+    cols = list(_TRANSITION_COLUMNS)
+    cols.remove("event_id")
+    conn.executemany(
+        f"INSERT INTO transition_events ({', '.join(cols)}) "
+        f"VALUES ({', '.join('?' * len(cols))})",
+        [[r.get(c) for c in cols] for r in rows],
+    )
+    return len(rows)
+
+
+def ingested_files(conn: sqlite3.Connection) -> set:
+    return {r["source_file"] for r in conn.execute("SELECT source_file FROM snapshot")}
