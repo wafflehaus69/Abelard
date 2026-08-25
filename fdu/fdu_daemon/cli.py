@@ -100,6 +100,34 @@ def cmd_transitions(args) -> int:
     return 0
 
 
+def cmd_worksheet(args) -> int:
+    from pathlib import Path
+
+    from . import adjudicate
+    conn = ledger.connect()
+    cands = adjudicate.gather_disappearances(conn)
+    if not cands:
+        print("no disappearances recorded yet -- run `archive` first")
+        return 1
+    sample = adjudicate.stratified_sample(cands, n=args.n)
+    out = adjudicate.write_worksheet(sample, Path(args.out))
+    usable = [c for c in cands if not c.spans_gap]
+    print(f"disappearances observed   {len(cands):,}")
+    print(f"  usable (not gap-spanning) {len(usable):,}")
+    print(f"  excluded as gap-spanning  {len(cands) - len(usable):,}")
+    print(f"sampled                   {len(sample)}")
+    import collections
+    strata = collections.Counter((c.era, c.aum_band) for c in sample)
+    for k, n in sorted(strata.items()):
+        print(f"    {k[0]:<16} {k[1]:<8} {n}")
+    print(f"worksheet -> {out}")
+    print()
+    print("Outcome vocabulary for the adjudicator:")
+    for o in adjudicate.OUTCOMES:
+        print(f"    {o}")
+    return 0
+
+
 def cmd_leads(args) -> int:
     conn = ledger.connect()
     print(leads_mod.render(leads_mod.collect(conn, limit=args.limit)))
@@ -190,6 +218,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("transitions", help="observed transition events by type")
     s.set_defaults(func=cmd_transitions)
+
+    s = sub.add_parser("worksheet", help="build the L2 adjudication worksheet (firm-level only)")
+    s.add_argument("--n", type=int, default=50)
+    s.add_argument("--out", default="l2_worksheet.csv")
+    s.set_defaults(func=cmd_worksheet)
 
     s = sub.add_parser("leads", help="firms with succession-shaped movement (unranked)")
     s.add_argument("--limit", type=int, default=50)

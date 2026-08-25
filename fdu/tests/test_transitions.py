@@ -170,3 +170,92 @@ def test_normalize_int_never_invents_a_zero():
     assert lineage.normalize_int("8.0") == 8
     assert lineage.normalize_int("1,234") == 1234
     assert lineage.normalize_int("0") == 0
+
+
+# -- L2 worksheet: firm-level only, and no machine-suggested label -------
+
+
+def test_worksheet_offers_no_machine_label():
+    """A suggested label is the thing a human then agrees with.
+
+    L2's entire value is an independent judgement, so the worksheet must carry
+    observed facts and lookup URLs and nothing resembling a guess.
+
+    Checked against the emitted COLUMNS, not the source text -- a first cut
+    grepped the module and failed on its own docstring explaining that it does
+    not score anything.
+    """
+    import csv
+    import tempfile
+    from pathlib import Path
+
+    from fdu_daemon.adjudicate import Candidate, write_worksheet
+
+    c = Candidate(crd="1", last_name_seen="A LLC", snapshot_from="2020-01-01",
+                  snapshot_to="2020-02-01", interval_months=1, spans_gap=False,
+                  last_aum=1, last_employees=1, era="x")
+    with tempfile.TemporaryDirectory() as d:
+        p = write_worksheet([c], Path(d) / "w.csv")
+        header = next(csv.reader(p.open(encoding="utf-8")))
+    for banned in ("likely", "predicted", "score", "probability", "confidence", "rank"):
+        offenders = [h for h in header if banned in h.lower()]
+        assert not offenders, f"worksheet column suggests a label: {offenders}"
+    # the decision columns must be present and empty for the human to fill
+    for needed in ("OUTCOME", "SUCCESSOR_FIRM", "EVIDENCE_URL", "ADJUDICATOR"):
+        assert needed in header
+
+
+def test_outcome_vocabulary_includes_the_boring_answers():
+    """A worksheet offering only interesting outcomes manufactures them."""
+    from fdu_daemon.adjudicate import OUTCOMES
+
+    for needed in ("wound_down", "moved_to_state", "reorganized_same_owner", "undetermined"):
+        assert needed in OUTCOMES
+
+
+def test_worksheet_has_no_person_columns():
+    """I-11: person-level artifacts stay forbidden until the approval file lands."""
+    import csv, io, re
+
+    from fdu_daemon.adjudicate import Candidate, write_worksheet
+    from pathlib import Path
+    import tempfile
+
+    c = Candidate(crd="1", last_name_seen="A LLC", snapshot_from="2020-01-01",
+                  snapshot_to="2020-02-01", interval_months=1, spans_gap=False,
+                  last_aum=1, last_employees=1, era="x")
+    with tempfile.TemporaryDirectory() as d:
+        p = write_worksheet([c], Path(d) / "w.csv")
+        header = next(csv.reader(p.open(encoding="utf-8")))
+    person = re.compile(r"first_?name|last_?name$|email|phone|principal|owner|contact|advisor_name", re.I)
+    bad = [h for h in header if person.search(h)]
+    assert not bad, f"worksheet exposes person-shaped columns: {bad}"
+
+
+def test_gap_spanning_disappearances_excluded_from_sample():
+    from fdu_daemon.adjudicate import Candidate, stratified_sample
+
+    good = [Candidate(crd=str(i), last_name_seen="A", snapshot_from="2020-01-01",
+                      snapshot_to="2020-02-01", interval_months=1, spans_gap=False,
+                      last_aum=None, last_employees=None, era="e", aum_band="unknown")
+            for i in range(10)]
+    bad = [Candidate(crd="x", last_name_seen="B", snapshot_from="2023-01-01",
+                     snapshot_to="2024-02-01", interval_months=13, spans_gap=True,
+                     last_aum=None, last_employees=None, era="e", aum_band="unknown")]
+    picked = stratified_sample(good + bad, n=20)
+    assert all(not c.spans_gap for c in picked)
+
+
+def test_sample_is_deterministic():
+    from fdu_daemon.adjudicate import Candidate, stratified_sample
+
+    cands = [Candidate(crd=str(i), last_name_seen="A", snapshot_from="2020-01-01",
+                       snapshot_to="2020-02-01", interval_months=1, spans_gap=False,
+                       last_aum=i * 1_000_000, last_employees=None, era="e")
+             for i in range(60)]
+    for c in cands:
+        from fdu_daemon.adjudicate import _band
+        c.aum_band = _band(c.last_aum)
+    a = [c.crd for c in stratified_sample(cands, n=20)]
+    b = [c.crd for c in stratified_sample(cands, n=20)]
+    assert a == b, "an adjudicator must be able to be handed the same 50 twice"
