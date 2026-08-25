@@ -37,6 +37,31 @@ OUTCOME_UPDATED = "updated"
 OUTCOME_ERROR = "error"
 
 
+LAST_SCAN_KEY = "last_scan_unix"
+
+
+def record_scan_completed(con, now_unix):
+    """Stamp that a scan RAN, separately from whether it changed anything.
+
+    These are different facts and the dashboard needs the first one. Most nights
+    are no-ops by design, so the snapshot legitimately keeps an old
+    generated_unix while the daemon is perfectly healthy — measured live, two
+    consecutive clean no-ops left the snapshot 54h old and a staleness banner
+    claiming the nightly had not completed, when it had, twice.
+    """
+    con.execute("INSERT OR REPLACE INTO meta_kv(key, value) VALUES (?,?)",
+                (LAST_SCAN_KEY, str(int(now_unix))))
+    con.commit()
+
+
+def read_last_scan(con):
+    row = con.execute("SELECT value FROM meta_kv WHERE key=?", (LAST_SCAN_KEY,)).fetchone()
+    try:
+        return int(row[0]) if row else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _wm_key(cik):
     return "{}{}".format(WATERMARK_PREFIX, cik)
 
@@ -166,6 +191,8 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     subs_seen = {c.cik: c.submissions_doc for c in checks if c.submissions_doc}
     subs_seen.update(submissions_by_cik or {})
     supplier_legs, harvested = _harvest_suppliers(roster, con, http, subs_seen, errors)
+
+    record_scan_completed(con, started)
 
     affected = [c for c in checks if c.is_affected]
     # A run is a no-op only when NOTHING changed. Newly harvested supplier

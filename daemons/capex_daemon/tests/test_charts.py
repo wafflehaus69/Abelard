@@ -358,22 +358,39 @@ def test_a_fresh_snapshot_shows_its_stamp_and_no_warning():
     import time as _t
     snap = _fake_snapshot()
     snap["generated_unix"] = int(_t.time())
-    banner = dashboard._stale_banner(snap)
-    assert "snapshot generated" in banner and "STALE" not in banner
+    banner = dashboard._stale_banner(snap, last_scan_unix=snap["generated_unix"])
+    assert "scan is current" in banner and "HAS NOT RUN" not in banner
 
 
-def test_a_stale_snapshot_is_SERVED_with_a_banner_not_refused():
-    """Stale panel data is still true as of its stamp. Refusing on age would
-    withhold good history because a cron slot was missed."""
+def test_staleness_measures_the_SCAN_not_the_snapshot():
+    """Most nights are no-ops by design, so a healthy daemon serves a snapshot
+    days old. Measured live: two clean consecutive no-ops left the snapshot 54h
+    old and the banner claiming the nightly had not completed, when it had run
+    twice. Stale means THE SCAN stopped, which is the actual failure."""
+    import time as _t
+    now = int(_t.time())
+    old_snap = _fake_snapshot()
+    old_snap["generated_unix"] = now - int(3600 * 200)     # panel unchanged for days
+    # ...but the scan ran an hour ago: healthy, no warning.
+    stale, _age = dashboard._staleness(old_snap, last_scan_unix=now - 3600)
+    assert not stale
+    assert "scan is current" in dashboard._stale_banner(old_snap, last_scan_unix=now - 3600)
+    # ...and when the SCAN stops, it warns.
+    dead = now - int(3600 * (dashboard.STALE_AFTER_HOURS + 5))
+    stale, age = dashboard._staleness(old_snap, last_scan_unix=dead)
+    assert stale and age > dashboard.STALE_AFTER_HOURS
+    assert "SCAN HAS NOT RUN" in dashboard._stale_banner(old_snap, last_scan_unix=dead)
+    # ...and the view still renders rather than 503-ing
+    assert dashboard.render("/", old_snap, last_scan_unix=dead)
+
+
+def test_staleness_falls_back_to_the_snapshot_stamp_when_never_scanned():
+    """A database written before last_scan_unix existed still reports honestly."""
     import time as _t
     snap = _fake_snapshot()
     snap["generated_unix"] = int(_t.time()) - int(3600 * (dashboard.STALE_AFTER_HOURS + 5))
-    stale, age = dashboard._staleness(snap)
-    assert stale and age > dashboard.STALE_AFTER_HOURS
-    banner = dashboard._stale_banner(snap)
-    assert "STALE SNAPSHOT" in banner
-    # ...and the view still renders rather than 503-ing
-    assert dashboard.render("/", snap)
+    stale, _age = dashboard._staleness(snap, last_scan_unix=None)
+    assert stale
 
 
 def test_every_view_carries_the_provenance_banner():
@@ -388,6 +405,8 @@ def test_every_view_carries_the_provenance_banner():
     fresh["generated_unix"] = int(_t.time())
     stale = _fake_snapshot()          # fixture stamp is deliberately old
     for path, _name in dashboard.VIEWS:
-        assert "snapshot generated" in dashboard.render(path, fresh)
-        out = dashboard.render(path, stale)
-        assert "STALE SNAPSHOT" in out and "generated" in out
+        import time as _t
+        assert "scan is current" in dashboard.render(
+            path, fresh, last_scan_unix=int(_t.time()))
+        out = dashboard.render(path, stale, last_scan_unix=1)
+        assert "SCAN HAS NOT RUN" in out and "panel itself last changed" in out

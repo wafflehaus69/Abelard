@@ -23,7 +23,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import config, phases, snapshot, svgcharts, trend
+from . import config, phases, scan, snapshot, svgcharts, trend
 
 PORT = 8788
 
@@ -674,7 +674,7 @@ ROUTES = {"/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
           "/commitments": view_commitments, "/suppliers": view_suppliers}
 
 
-def render(path, snap):
+def render(path, snap, last_scan_unix=None):
     """One view, with the snapshot's own provenance banner injected.
 
     Injected here rather than in each view so a new view cannot be added
@@ -685,47 +685,58 @@ def render(path, snap):
     if fn is None:
         return None
     html_out = fn(snap)
-    return html_out.replace("<main>", "<main>" + _stale_banner(snap), 1)
+    return html_out.replace(
+        "<main>", "<main>" + _stale_banner(snap, last_scan_unix), 1)
 
 
 def _read_only_snapshot(db_path):
-    """Open the DB read-only and load the persisted snapshot. Zero write paths."""
+    """Open the DB read-only; return (snapshot, last_scan_unix). Zero write paths."""
     uri = "file:{}?mode=ro".format(str(db_path).replace("?", "%3F"))
     con = sqlite3.connect(uri, uri=True)
     try:
-        return snapshot.load(con)
+        return snapshot.load(con), scan.read_last_scan(con)
     finally:
         con.close()
 
 
-def _staleness(snap, now_unix=None):
-    """(is_stale, age_hours) from the snapshot's own generated_unix.
+def _staleness(snap, now_unix=None, last_scan_unix=None):
+    """(is_stale, age_hours) measured on the LAST SCAN, not the snapshot.
 
-    Derived from what the snapshot layer already publishes — no new field and no
-    new policy. A MISSING snapshot refuses (503, below); a STALE one is served
-    with a banner, because stale panel data is still true as of its stamp and a
-    reader who can see the stamp is not misled. Refusing on age would withhold
-    good history because a cron slot was missed.
+    The two are different facts and only one of them means something is wrong.
+    Most nights are no-ops by design — nothing filed, nothing to rebuild — so a
+    healthy daemon legitimately serves a snapshot whose generated_unix is days
+    old. Measuring staleness on that stamp lit the banner permanently, claiming
+    the nightly had not completed when it had run cleanly twice.
+
+    So: stale means THE SCAN has not run, which is the actual failure. The
+    snapshot's own stamp is still shown, because when the panel last changed is
+    what a reader needs to interpret the numbers.
+
+    Falls back to generated_unix when no scan has ever been stamped, so a
+    database written before this existed still reports something honest.
     """
-    gen = (snap or {}).get("generated_unix")
-    if not gen:
+    ref = last_scan_unix or (snap or {}).get("generated_unix")
+    if not ref:
         return False, None
-    age = (int(now_unix if now_unix is not None else time.time()) - int(gen)) / 3600.0
+    age = (int(now_unix if now_unix is not None else time.time()) - int(ref)) / 3600.0
     return age > STALE_AFTER_HOURS, age
 
 
-def _stale_banner(snap):
-    stale, age = _staleness(snap)
+def _stale_banner(snap, last_scan_unix=None):
+    stale, age = _staleness(snap, last_scan_unix=last_scan_unix)
     gen = (snap or {}).get("generated_unix")
     stamp = (time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(int(gen)))
              if gen else "unknown")
     if not stale:
-        return "<p class='chartnote'>snapshot generated {}</p>".format(_esc(stamp))
-    return ("<div class='warn'><b>STALE SNAPSHOT — {:.0f}h old</b> (generated {}). "
-            "The nightly scan has not completed since then, so every figure below "
-            "is true as of that stamp and not of now. Served rather than withheld "
-            "because stale history is still history; check "
-            "<code>~/.openclaw/capex_daemon/logs/scan.log</code>.</div>".format(
+        return ("<p class='chartnote'>panel last changed {} · scan is current</p>"
+                .format(_esc(stamp)))
+    return ("<div class='warn'><b>SCAN HAS NOT RUN IN {:.0f}h</b> — the nightly is "
+            "not completing, so nothing below can have picked up a new filing. "
+            "The panel itself last changed {}, which may legitimately be older "
+            "still, since most nights are no-ops by design. Served rather than "
+            "withheld because stale history is still history; check "
+            "<code>~/.openclaw/capex_daemon/logs/scan.log</code> and "
+            "<code>launchctl list | grep capex</code>.</div>".format(
                 age, _esc(stamp)))
 
 
@@ -736,16 +747,19 @@ def serve(db_path=None, port=PORT, host=HOST_DEFAULT):
         def do_GET(self):
             path = urlparse(self.path).path
             try:
-                snap = _read_only_snapshot(db_path)
+                snap, last_scan = _read_only_snapshot(db_path)
             except Exception as exc:
                 return self._send(500, "<pre>snapshot unavailable: {}</pre>".format(_esc(exc)))
             if snap is None:
                 return self._send(503, "<pre>no snapshot yet — run `capex-daemon scan`</pre>")
             if path == "/health":
-                return self._send(200, json.dumps({"ok": True,
-                                                   "generated_unix": snap["generated_unix"]}),
+                stale, age = _staleness(snap, last_scan_unix=last_scan)
+                return self._send(200, json.dumps({
+                    "ok": not stale, "generated_unix": snap["generated_unix"],
+                    "last_scan_unix": last_scan,
+                    "hours_since_scan": round(age, 1) if age is not None else None}),
                                   ctype="application/json")
-            body = render(path, snap)
+            body = render(path, snap, last_scan_unix=last_scan)
             if body is None:
                 return self._send(404, "<pre>no such view</pre>")
             self._send(200, body)
