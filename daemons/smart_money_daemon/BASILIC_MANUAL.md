@@ -248,3 +248,41 @@ watermarks. Not for the nightly slot — this is a hand-run recovery tool.
 **Don't-break note.** Watermarks are per-issuer (`scan:<cik10>`), hold a filing
 date rather than `now()`, only move forward, and do not advance when a refresh
 fails. Hand-editing them silently skips filings.
+
+---
+
+## 13. Capex dashboard + News Watch nightly — INSTALLED 2026-08-24 (CD-DASH1)
+
+**`com.abelard.capex-dash`** — always-on, `RunAtLoad` + `KeepAlive`, mirroring
+`com.abelard.smart-money-dash`. Serves the capex snapshot read-only at
+**`http://100.106.84.115:8788`** — the Tailscale address only. All seven views
+verified over the tailnet from a second device. `scripts/run_dash.sh` resolves
+the Tailscale IPv4 and **refuses to start without one** rather than widening the
+bind. Failure modes catalogued in `daemons/capex_daemon/OPERATIONS.md`.
+
+`/health` returns `hours_since_scan` and flips `ok` false when the nightly stops,
+so liveness is machine-checkable without scraping HTML.
+
+**`com.abelard.news-watch`** — **21:30** America/New_York, ahead of
+smart-money 22:30, smart-money-brief 23:15 and capex 23:40, so the evening block
+runs in order without overlap. `RunAtLoad` false and **no `KeepAlive`**: the
+cycle spends real LLM money and runs to completion, so a KeepAlive would restart
+it the instant it finished — an unbounded spend loop wearing the same shape as
+the dashboard's restart-on-crash.
+
+Supervised first run 2026-08-24: **$0.5339** (pass_c $0.2862, pass_e $0.1921,
+theme_segments $0.0556), against a ~$0.25–0.30 expectation. The overrun is
+backlog, not per-run cost — the corpus had not moved since Jul 29, so one run
+absorbed ~4 weeks (2,578 → 4,085 headlines). A nightly on a 24h window should
+land far lower; the second run is the one that establishes the real figure.
+
+**The evening block**
+
+| job | slot | posture |
+|---|---|---|
+| `com.abelard.news-watch` | 21:30 | fire-and-finish, LLM spend |
+| `com.abelard.smart-money` | 22:30 | fire-and-finish |
+| `com.abelard.smart-money-brief` | 23:15 | fire-and-finish |
+| `com.abelard.capex` | 23:40 | fire-and-finish, no LLM |
+| `com.abelard.capex-dash` | — | always-on |
+| `com.abelard.smart-money-dash` | — | always-on |
