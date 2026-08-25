@@ -80,3 +80,71 @@ Two things a Basilic job definition should carry:
    the intended behaviour, but is a confusing first failure if the variable is simply missing.
 
 No log rotation is needed: the scan writes one line to stdout and its state to SQLite.
+
+---
+
+## Dashboard failure modes (CD-DASH1 P1, catalogued 2026-08-24)
+
+`com.abelard.capex-dash` serves the snapshot read-only on **`100.106.84.115:8788`**
+— the Tailscale address only, never `0.0.0.0`. Each mode below was either
+observed during the install or is enforced by a code path that has a test.
+
+### Snapshot missing — REFUSE (503)
+
+`_read_only_snapshot()` returns `None` when no scan has ever run, and every
+route answers `503 no snapshot yet — run capex-daemon scan`. Refusing is right
+here: there is no data, and a page rendered from nothing would invite a reader
+to conclude the panel is empty rather than unbuilt.
+
+### Scan not running — SERVE, with a banner
+
+**Measured on the wrong quantity first, and the correction matters.** The banner
+originally compared `snapshot.generated_unix` against 36h. But most nights are
+no-ops *by design* — nothing filed, nothing to rebuild — so a perfectly healthy
+daemon serves a snapshot days old. After two clean consecutive nightlies the
+dashboard was telling readers "the nightly scan has not completed", while
+`scan.log` showed it completing at 03:40 UTC on both nights.
+
+That banner would have been permanently lit on a quarterly-cadence panel, which
+is worse than none: it trains the reader to ignore it.
+
+Staleness is now measured on `meta_kv['last_scan_unix']`, stamped by every
+completed cycle *including no-ops*, because "it ran" and "it changed something"
+are different facts. The snapshot's own stamp is still shown — when the panel
+last changed is what a reader needs to interpret the numbers. `/health` reports
+`hours_since_scan` and flips `ok` to false, so the condition is machine-checkable
+without scraping HTML.
+
+Serving beats refusing: stale history is still history, and withholding it
+because a cron slot was missed helps nobody.
+
+### Port collision — the launcher dies loudly, launchd retries
+
+Observed live while restarting the service: a second bind to 8788 raises
+`OSError: [Errno 48] Address already in use` and the process exits non-zero.
+With `KeepAlive` and `ThrottleInterval 10` launchd restarts it every 10s, so a
+genuine collision shows as a **restart loop with a repeating traceback** in
+`dashboard.err.log` rather than as a silent outage.
+
+Diagnose with `lsof -nP -iTCP:8788 -sTCP:LISTEN`. Note that `launchctl list`
+showing a PID plus a `-15` in the status column is NORMAL after any restart —
+that is the previous instance's SIGTERM, not the current one's health. Check the
+socket, not the status column.
+
+### No Tailscale address — REFUSE TO START
+
+`scripts/run_dash.sh` resolves the Tailscale IPv4 and exits 1 if there is none,
+rather than falling back to a broader bind. A dashboard that quietly becomes
+reachable from somewhere it should not be is worse than one that is down. This
+also means a wedged Tailscale (see BASILIC_MANUAL §2, the NordVPN kill-switch
+interaction) presents as a dashboard restart loop with a one-line reason.
+
+### launchd death
+
+`KeepAlive true` restarts on crash. A job that is loaded but not running shows
+`-` in the PID column of `launchctl list | grep capex-dash`. Reload with
+`launchctl unload <plist> && launchctl load <plist>`; force a restart with
+`launchctl kickstart -k gui/$(id -u)/com.abelard.capex-dash`. The plist is
+host-specific at `~/Library/LaunchAgents/`; the reference copy lives in
+`deploy/`, and only a plist edit needs a reload — a code change needs `git pull`
+and a restart.
