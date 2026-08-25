@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- News Watch nightly on Basilic. Mando-authorized 2026-08-24 (CD-DASH1 P4).
+     21:30 America/New_York — ahead of smart-money 22:30, smart-money-brief
+     23:15 and capex 23:40, so the evening block runs in order without overlap.
+
+     RunAtLoad FALSE and no KeepAlive: this cycle spends real LLM money, so it
+     must fire on schedule only. A KeepAlive on a run-to-completion job would
+     restart it the moment it finished — an unbounded spend loop.
+
+     Reference copy; the live plist is host-specific at ~/Library/LaunchAgents/. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.news-watch</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/wafflehaus/Code/Abelard/daemons/news_watch_daemon/scripts/run_nightly.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>21</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/daemons/news_watch_daemon</string>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/news_watch/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/news_watch/logs/launchd.err.log</string>
+  <key>ExitTimeOut</key>
+  <integer>1800</integer>
+</dict>
+</plist>
