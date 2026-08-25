@@ -449,9 +449,7 @@ def run_digest(queue: "AlertQueue", *, out_dir: str, now_unix: Optional[int] = N
                          f"last_error={it.last_dispatch_error!r}")
         lines.append("")
 
-    out_path.write_text("
-".join(lines) + "
-", encoding="utf-8")
+    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {
         "digest_path": str(out_path),
         "pending": len(pending),
