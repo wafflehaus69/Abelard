@@ -148,3 +148,61 @@ interaction) presents as a dashboard restart loop with a one-line reason.
 host-specific at `~/Library/LaunchAgents/`; the reference copy lives in
 `deploy/`, and only a plist edit needs a reload — a code change needs `git pull`
 and a restart.
+
+---
+
+## On-command verbs (CD-DASH2, 2026-08-25)
+
+**Files may be automated. Outward sends may not.** Two things run on a schedule
+and two run only when Mando says so. The split is enforced by which jobs exist,
+not by anyone remembering the rule.
+
+### Scheduled (files only)
+
+| job | slot | what it does |
+|---|---|---|
+| `com.abelard.capex` | 23:40 | nightly scan; zero LLM calls |
+| `com.abelard.capex-dash` | always-on | serves the snapshot read-only |
+| `com.abelard.queue-digest` | 06:00 | writes a dated digest; **sends nothing** |
+
+`queue-digest` may hold a schedule because it *cannot* send: `run_digest` is
+unreachable from `send_telegram`, `run_dispatch` and `requests`, proved over the
+module call graph in `abelard_queue/tests/test_digest_cannot_send.py` — with the
+control assertion that `run_dispatch` MUST reach a send, since a check that
+cannot detect the bad case proves nothing about the good one.
+
+Its wrapper maps exit 2 to 0: a non-empty queue is this job's normal steady
+state, and letting launchd record that as failure makes a real failure
+indistinguishable from a working Tuesday.
+
+### On command only
+
+**News Watch** — ruled off-schedule by Mando 2026-08-25. It spends real LLM
+money, so it spends it when he says. `com.abelard.news-watch` is unloaded and
+absent from `launchctl list`; the plist stays in
+`daemons/news_watch_daemon/deploy/` as the on-command definition.
+
+```bash
+ssh wafflehaus@basilic 'cd ~/Code/Abelard/daemons/news_watch_daemon && \
+  ./.venv/bin/news-watch-daemon run --quiet'
+```
+
+Cost: the supervised first run was **$0.5339**, but that absorbed four weeks of
+backlog (2,578 → 4,085 headlines) after the corpus sat still since Jul 29. A
+run over a normal 24h window should be far lower. **The steady-state figure is
+still unmeasured** — the next commanded run establishes it, and until then no
+number here should be quoted as the per-run cost.
+
+**Queue dispatch** — the outward verb. No schedule, and it will not acquire one.
+
+```bash
+ssh wafflehaus@basilic 'cd ~/Code/Abelard/abelard_queue && \
+  ./.venv/bin/abelard-queue dispatch'          # send items already marked push
+ssh wafflehaus@basilic 'cd ~/Code/Abelard/abelard_queue && \
+  ./.venv/bin/abelard-queue triage --no-haiku' # rules-only, free; writes decisions
+```
+
+`triage` writes a decision onto every row it touches, so it is an on-command
+verb too even though it sends nothing — a decision written before the item was
+read is a review pre-empted. `--no-haiku` keeps it free and mechanical; without
+it, undecided items go to a cheap LLM tier.
