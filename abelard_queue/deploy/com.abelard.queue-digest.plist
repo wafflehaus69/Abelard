@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Alert-digest writer on Basilic. Mando-authorized 2026-08-25 (CD-DASH2 P2).
+
+     06:00 America/New_York, after the entire nightly block, so each morning's
+     file reflects last night's scans.
+
+     This job WRITES A FILE AND SENDS NOTHING. It is the only queue subcommand
+     with a schedule; `abelard-queue dispatch` deliberately has none, because
+     outward sends stay on Mando's command. RunAtLoad false: a boot should not
+     manufacture a digest that looks like a scheduled one.
+
+     Reference copy; the live plist is host-specific at ~/Library/LaunchAgents/. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.queue-digest</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/wafflehaus/Code/Abelard/abelard_queue/scripts/run_digest.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/abelard_queue</string>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/abelard_queue/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/abelard_queue/logs/launchd.err.log</string>
+  <key>ExitTimeOut</key>
+  <integer>300</integer>
+</dict>
+</plist>
