@@ -206,3 +206,57 @@ ssh wafflehaus@basilic 'cd ~/Code/Abelard/abelard_queue && \
 verb too even though it sends nothing — a decision written before the item was
 read is a review pre-empted. `--no-haiku` keeps it free and mechanical; without
 it, undecided items go to a cheap LLM tier.
+
+### Diagnostic traps — things that look like faults and are not
+
+Catalogued 2026-08-26 after a triage that found no fault. Both of these were
+mistaken for outages during real diagnosis, so they are written down beside the
+genuine failure modes.
+
+**`curl 127.0.0.1:8788` refusing connection is CORRECT.** The service binds the
+Tailscale address only. A loopback connect that *succeeds* would mean it had
+bound a wildcard, which is the posture we forbid. So:
+
+```
+curl: (7) Failed to connect to 127.0.0.1 port 8788 after 0 ms: Couldn't connect to server
+```
+
+is the security property working, not the service being down. Test the service
+on the address it actually binds:
+
+```bash
+curl -sS -m 5 "http://$(tailscale ip -4 | head -1):8788/health"
+```
+
+This is the single likeliest misdiagnosis, because loopback is the reflex check
+and it is guaranteed to fail here.
+
+**A PID beside a `-15` in `launchctl list` is normal.** Column 2 is the LAST
+exit status, which after any restart is the previous instance's SIGTERM — not
+the health of the process currently running. `com.abelard.capex-dash` showed
+`79813  -15` while serving correctly for 25 hours with empty logs. Check the
+socket (`lsof -nP -iTCP:8788 -sTCP:LISTEN`) and the process start time
+(`ps -o lstart,etime -p <pid>`), never the status column alone.
+
+### Untested: behaviour across a reboot
+
+**The Tailscale-bind boot race is unexercised, not disproven.** `run_dash.sh`
+resolves the Tailscale IPv4 and exits 1 if there is none, so a launchd start
+that beats the interface up should fail, be restarted by `KeepAlive` after
+`ThrottleInterval` 10s, and self-heal within seconds. That is the design intent
+and it has never actually happened: Basilic has been up 41 days and the job was
+installed 2026-08-24, so it has served continuously and never started from cold.
+
+The signature to watch for, should it ever occur:
+
+```
+OSError: [Errno 49] Can't assign requested address
+```
+
+with `run_dash: no Tailscale IPv4 address - refusing to start` as the earlier,
+cleaner variant when the CLI is up but the interface is not. Either presents as
+a restart loop in `dashboard.err.log`, never as a silent outage.
+
+If it does occur, the ruled remedy is bind-retry with backoff inside the server
+(retry for a bounded window at startup rather than dying) — **never** a
+`KeepAlive` crashloop as the mechanism, and **never** binding `0.0.0.0`.
