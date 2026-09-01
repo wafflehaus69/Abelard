@@ -52,9 +52,9 @@ def _contiguous(quarters):
     return idx[-1] - idx[0] == len(quarters) - 1
 
 
-def issuer_calendar_series(indexed, include_leases=False):
+def issuer_calendar_series(indexed, include_leases=False, cik=None):
     """{calendar_quarter: value} for one issuer, or None when capex is unresolved."""
-    r = tagmap.resolve(indexed, tagmap.CAPEX)
+    r = tagmap.resolve(indexed, tagmap.CAPEX, cik=cik)
     if r.is_multi_line or r.is_unresolved:
         return None
     rows = normalize.discrete_quarters(tagmap.series_facts(indexed, r))
@@ -316,7 +316,8 @@ def build(roster, indexed_by_cik, include_leases=False):
         indexed = indexed_by_cik.get(cik)
         if indexed is None:
             continue
-        qmap = issuer_calendar_series(indexed, include_leases=include_leases)
+        qmap = issuer_calendar_series(indexed, include_leases=include_leases,
+                                      cik=entity.cik)
         if not qmap:
             continue
         issuer_series[entity.ticker_display] = qmap

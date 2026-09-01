@@ -170,3 +170,63 @@ def test_restatements_collapse_to_the_latest_filed():
     rows = tagmap.series_facts(idx, r)
     assert len(rows) == 1
     assert rows[0][0].value == 45e9
+
+
+# --- ruled concept elections (CD-GAP1 P2) ----------------------------------
+
+def _riot_like():
+    """RIOT's real shape and real numbers, from the 2026Q1 10-Q cash-flow
+    statement quoted in CD-1-VERIFY §1: two SEPARATE investing lines,
+    co-reported, different values — PP&E purchases and equipment deposits."""
+    return index(
+        fact("PaymentsToAcquirePropertyPlantAndEquipment",
+             "2026-01-01", "2026-03-31", 115465000.0),
+        fact("PaymentsToAcquirePropertyPlantAndEquipment",
+             "2025-01-01", "2025-03-31", 32858000.0),
+        fact("PaymentsToAcquireMachineryAndEquipment",
+             "2026-01-01", "2026-03-31", 16184000.0),
+        fact("PaymentsToAcquireMachineryAndEquipment",
+             "2025-01-01", "2025-03-31", 26655000.0),
+    )
+
+
+def test_without_a_ruling_the_ambiguity_still_refuses():
+    """The guard is right by default: two concepts, one period, different
+    values, and recency cannot arbitrate. Refusing stays the behaviour."""
+    r = tagmap.resolve(_riot_like(), tagmap.CAPEX)
+    assert r.is_multi_line
+    assert r.current_concept == tagmap.UNRESOLVED_MULTILINE
+    assert not r.is_ruled
+
+
+def test_a_ruling_arbitrates_what_recency_cannot():
+    """R-B6-4 read the filing and ruled. The guard defers to the ruling rather
+    than overriding it — that is the whole point of having ruled."""
+    r = tagmap.resolve(_riot_like(), tagmap.CAPEX, cik="0001167419")
+    assert r.is_ruled and r.ruling["ruling"] == "R-B6-4"
+    assert not r.is_multi_line
+    assert r.current_concept == "PaymentsToAcquirePropertyPlantAndEquipment"
+
+
+def test_the_excluded_line_cannot_re_enter_through_the_overlap_check():
+    """Equipment deposits are dropped from the span map entirely, not merely
+    out-ranked — summing them would double-count when the equipment lands."""
+    r = tagmap.resolve(_riot_like(), tagmap.CAPEX, cik="0001167419")
+    assert "PaymentsToAcquireMachineryAndEquipment" not in r.candidates_present
+    assert "PaymentsToAcquireMachineryAndEquipment" not in r.multi_line_concepts
+
+
+def test_a_ruled_election_is_marked_and_never_passes_as_automatic():
+    """Same discipline as MU's unit mapping: a human judgement stays visible."""
+    auto = tagmap.resolve(_riot_like(), tagmap.CAPEX)
+    ruled = tagmap.resolve(_riot_like(), tagmap.CAPEX, cik="0001167419")
+    assert auto.ruling is None and auto.is_ruled is False
+    assert ruled.is_ruled and ruled.ruling["ruled_on"] == "2026-08-14"
+    assert tagmap.STATUS_RULED == "RULED-CONCEPT"
+
+
+def test_a_ruling_for_another_issuer_does_not_leak():
+    assert tagmap.ruled_concept("0000789019", tagmap.CAPEX) is None
+    assert tagmap.ruled_concept(None, tagmap.CAPEX) is None
+    # ...and the RIOT ruling is scoped to CAPEX, not to every kind.
+    assert tagmap.ruled_concept("0001167419", tagmap.DEBT) is None

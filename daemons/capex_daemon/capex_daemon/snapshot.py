@@ -13,7 +13,7 @@ reader cannot audit is a figure they have to trust blindly.
 import json
 import time
 
-from . import commitments, config, divergence, normalize, phases, trend
+from . import commitments, config, disclosure, divergence, normalize, phases, trend
 
 SNAPSHOT_KEY = "panel_snapshot"
 
@@ -21,6 +21,22 @@ SNAPSHOT_KEY = "panel_snapshot"
 # alert. One quarter of slack, because issuers file weeks apart and a name that
 # transitions on the quarter just before the frontier is still current news.
 ALERT_LOOKBACK_QUARTERS = 1
+
+
+def _last_tagged(indexed, entity):
+    """Newest period end the capex concepts carry, regardless of derivability.
+
+    Distinguishes an annual-basis filer from one that stopped tagging. Reads the
+    raw index rather than the derived series precisely because the derived
+    series is empty in both cases.
+    """
+    from . import tagmap
+    newest = None
+    for c in tagmap.CANDIDATES[tagmap.CAPEX]:
+        for f in indexed.get(c, []):
+            if f.period_end and (newest is None or f.period_end > newest):
+                newest = f.period_end
+    return newest
 
 
 def _obs_json(o):
@@ -158,6 +174,12 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
             "coverage": list(view.statuses),
             "quarters": [{"q": q, "value": series[q]} for q in
                          sorted(series, key=trend._cq_sort)],
+            # CD-GAP1 P1: why there is no state, and what IS known anyway. None
+            # for a classified name — an explanation is only owed for a gap.
+            "disclosure": disclosure.classify(
+                e, series, coverage=view.statuses,
+                state=t["issuer_states"].get(e.ticker_display),
+                last_tagged=_last_tagged(indexed, e)),
             "yoy_series": [{"q": q, "yoy": yoy[q]} for q in
                            sorted(yoy, key=trend._cq_sort)],
             "observations": [_obs_json(o) for o in obs],
