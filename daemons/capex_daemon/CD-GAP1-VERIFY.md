@@ -1,6 +1,6 @@
 # CD-GAP1-VERIFY — graduated disclosure
 
-Produced 2026-08-26 on `cd-gap1`. **227 tests pass.** Nothing merged, nothing
+Produced 2026-08-26 on `cd-gap1`. **238 tests pass.** Nothing merged, nothing
 pushed. Every figure computed against live SEC data.
 
 **P7 executed and NBIS admitted — both ruled "yes" by Mando 2026-08-26.** See
@@ -65,7 +65,7 @@ what it does have:
 | KEEL | THIN-MATURING | 4 | 6 | — | — | ~2028-02-11 |
 | BTBT | SIDECAR | 10 | 0 | $0.48B | +516.9% | n/a |
 | BABA | **TAGGING-CEASED** | 0 | 10 | — | — | — |
-| NBIS | FPI-ANNUAL-BASIS | 0 | 10 | — | — | — |
+| NBIS | **DERIVED-FROM-PROSE** | 4 | n/a | — | +671% (half/half) | never — see §P3-ADMITTED |
 | SPCX | NO-DATA | 0 | 10 | — | — | — |
 
 **10 contiguous quarters** is the classification threshold, measured rather than
@@ -109,6 +109,11 @@ the same fact. Getting BABA into the panel needs a source that is not
 companyfacts — a separate build, not a rendering change.
 
 ## P3 — NBIS prose probe: extraction works, the BASIS does not match
+
+> **Superseded by §P3-ADMITTED.** This section is the probe as it stood when
+> the basis question was still open; Mando ruled it admissible on 2026-08-26
+> and the row now publishes under a marked basis. Kept because the reasoning
+> that produced the question is what makes the marking load-bearing.
 
 Bounded exactly as ordered: regex-tier, zero LLM, one issuer.
 
@@ -167,15 +172,22 @@ issuer with a rounding error attached".
 
 ## Open
 
-1. **P7 LANDLORD merge** — awaiting the word the relay did not carry.
-2. **NBIS basis** — yours: admit the broader "PP&E + intangibles" line under a
-   marked basis, or hold. The extractor is built and verified either way.
+1. ~~**P7 LANDLORD merge**~~ — **RULED YES 2026-08-26**, executed; see §P7.
+2. ~~**NBIS basis**~~ — **RULED YES 2026-08-26**, admitted under a marked basis;
+   see §P3-ADMITTED.
 3. **BABA** — needs a non-companyfacts source or stays dark; not a rendering
    problem.
 4. **SPCX** — 2 duration facts, no derivable quarter, currently `NO-DATA`. Worth
    a look at whether its filings are semi-annual before assuming it matures.
 5. **Commitments** — re-measure again when a third disclosing name reaches six
    quarters; the concentration, not the count, is the gate.
+6. **Landlord bands** — applied under the order's "rides automatically" clause
+   and stamped 2026-08-26. Adjustable on a word; the re-measurement obligation
+   runs from that date like every other band.
+7. **NBIS scan wiring** — `prose.py` is built, tested and verified against live
+   filings, but the nightly does not yet call it. Reading it costs ~40 filing-index
+   fetches per run, so it wants the same per-instance cache the supplier harvest
+   uses rather than a naive re-scan; that is a build, not a config change.
 
 ---
 
