@@ -3,9 +3,8 @@
 Produced 2026-08-26 on `cd-gap1`. **227 tests pass.** Nothing merged, nothing
 pushed. Every figure computed against live SEC data.
 
-**P7 is not executed.** The order says a word in the relay executes or strikes
-the LANDLORD merge; the relay carried neither, so the bucket split is unchanged
-and no band was re-measured. It is neither done nor declined — it is waiting.
+**P7 executed and NBIS admitted — both ruled "yes" by Mando 2026-08-26.** See
+§P7 and §P3-ADMITTED at the end.
 
 ---
 
@@ -177,3 +176,88 @@ issuer with a rounding error attached".
    a look at whether its filings are semi-annual before assuming it matures.
 5. **Commitments** — re-measure again when a third disclosing name reaches six
    quarters; the concentration, not the count, is the gate.
+
+---
+
+## P7 — LANDLORD merge, ruled YES 2026-08-26
+
+`reit` + `host` are one bucket. Members and preserved sub-types:
+
+| ticker | bucket | sub-type |
+|---|---|---|
+| DLR | landlord | reit |
+| EQIX | landlord | reit |
+| AMT | landlord | **reit** |
+| IRM | landlord | **reit** |
+| CCOI | landlord | host |
+
+Four of the five are REITs, two of them (AMT, IRM) having sat under `host` — the
+split really was thin on its own terms. `reit` and `host` remain VALID bucket
+names so a pre-merge roster still loads; nothing assigns them any more.
+
+**Bands re-measured on the merged pool the same day, and applied:**
+
+| class | n | p25 | applied |
+|---|---|---|---|
+| `issuer:landlord` | **68** | 4.7pp | **5pp** |
+| `bucketsum:landlord` | 14 | 3.8pp | **4pp** |
+
+n=68 against reit's 27 and host's 41 measured apart — the merge improved the
+measurement basis as well as the coverage. Stamped `2026-08-26` in
+`DEAD_BAND_MEASURED`, applied under the order's "rides automatically" clause and
+adjustable on a word.
+
+**The bucket is alive: PLATEAU, $7.71B, +30.4%, 3 matched members** — against
+`INSUFFICIENT-MEMBERSHIP` at 1 before. With five names, one late filing can no
+longer dark it; `test_five_members_clears_the_floor_with_room` pins that.
+
+**A consequence worth stating: the headline number moved.** `host` was never an
+aggregated bucket, so AMT, IRM and CCOI have entered the total panel for the
+first time — **$603.3B → $608.9B, 16 → 20 matched members**. The dollar change is
+small because they are small against hyperscalers, but the panel is measuring a
+slightly different population than it was this morning.
+
+Member states are genuinely mixed, and the bucket reads PLATEAU over them:
+
+| AMT | EQIX | DLR | IRM | CCOI |
+|---|---|---|---|---|
+| ACCELERATING +18.0% | PLATEAU +56.7% | PLATEAU +10.3% | **CONTRACTING −4.4%** | **CONTRACTING −28.0%** |
+
+Two of five contracting inside a bucket reading PLATEAU is exactly the
+breadth-against-dollar-weight divergence the panel exists to expose.
+
+## P3-ADMITTED — NBIS on a marked broader basis, ruled YES 2026-08-26
+
+`prose.py` reads the capex table out of Nebius's earnings exhibits. Verified
+end-to-end against live filings:
+
+```
+2025Q1  $543.9M      2026Q1  $2,472.9M
+2025Q2  $510.6M      2026Q2  $5,657.4M     (= 8,130.3 − 2,472.9)
+```
+
+Anchors recorded and checked: the FY2024 20-F's `2022 14.6 | 2023 83.4 |
+2024 807.7`. H1-2025 alone ($1,054.5M) exceeds all of FY2024, consistent with
+the releases' own language about substantially increasing the pace.
+
+**Two properties are marked, not assumed.**
+
+*The basis is broader.* The line is "property and equipment **and intangible
+assets**" where the panel is PP&E-only. Every row carries
+`basis=PPE-PLUS-INTANGIBLES` and the `DERIVED-FROM-PROSE` cause, and NBIS sits in
+`fpi`, which no aggregate reads — so the broader measure is structurally unable
+to contaminate a sum rather than merely discouraged from it (E23).
+
+*It can never classify, and that is structural, not a countdown.* Nebius reports
+Q1, H1 and FY, so Q3 is never separate and Q4 exists only inside an H2 lump. The
+series is permanently non-contiguous, which means no TTM, no TTM YoY and no phase
+state — ever, from this source. `test_the_series_can_never_be_contiguous_and_never_classifies`
+pins it. The row publishes a **level** and a like-for-like **half-over-half**
+growth read (**+671%**), and must not be rendered as maturing toward eligibility.
+
+**The trap the tests keep alive:** "capital expenditures" appears in the
+forward-looking-statements boilerplate of nearly every release, so a
+phrase-keyed extractor matches ~100% of them and returns nothing. The fixture
+for that case is Nebius's actual boilerplate sentence.
+
+**238 tests pass.**

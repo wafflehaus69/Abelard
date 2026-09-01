@@ -26,8 +26,30 @@ UNIVERSE_CSV = os.path.join(os.path.dirname(__file__), "data", "universe.csv")
 # the buildout rather than buy it, so their revenue is the same dollar as
 # someone else's capex seen from the other side of the invoice. It is absent
 # from `trend.AGGREGATED_BUCKETS` by design (CD-R2 §2.3) and must stay absent.
-BUCKETS = ("hyperscaler", "builder", "reit", "fpi", "mirror", "host", "sidecar",
-           "supplier")
+# `landlord` merges what were `reit` and `host`. Ruled by Mando 2026-08-26: they
+# are all property-owners renting capacity to the buildout, the split was thin
+# on its own terms (AMT and IRM are REITs, and sat under `host`), and a two-name
+# REIT bucket had already gone dark for a month on one late filing. Five members
+# means the MIN_BUCKET_MEMBERS floor is not one absence away from breaching.
+#
+# The old names remain VALID so an older roster still loads; nothing in the
+# panel assigns them any more.
+BUCKETS = ("hyperscaler", "builder", "landlord", "fpi", "mirror", "sidecar",
+           "supplier", "reit", "host")
+
+# Sub-type survives the merge — the distinction is real even where the bucket
+# boundary was not, and a reader asking "is this a REIT?" deserves an answer.
+LANDLORD_SUBTYPE = {
+    "0001297996": "reit",   # DLR
+    "0001101239": "reit",   # EQIX
+    "0001053507": "reit",   # AMT
+    "0001020569": "reit",   # IRM
+    "0001158324": "host",   # CCOI
+}
+
+
+def landlord_subtype(cik):
+    return LANDLORD_SUBTYPE.get(config.cik10(cik)) if cik else None
 
 TIER_CORE = "CORE"
 TIER_THIN = "THIN"

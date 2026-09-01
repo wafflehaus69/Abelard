@@ -21,7 +21,7 @@ the other.
 from . import commitments, divergence, facts_api, normalize, phases, tagmap
 
 WINDOW = 4
-AGGREGATED_BUCKETS = ("hyperscaler", "builder", "reit")
+AGGREGATED_BUCKETS = ("hyperscaler", "builder", "landlord")
 
 LEASE_CONCEPT = "RightOfUseAssetObtainedInExchangeForFinanceLeaseLiability"
 
