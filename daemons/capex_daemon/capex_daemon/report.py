@@ -990,7 +990,9 @@ def sec_commitments(snap, styles):
                 "<b>These do not alert yet.</b> The threshold is UNSET pending "
                 "ratification (E8). Measured over 308 observation pairs: p50 1.00x, "
                 "p90 2.00x, p95 3.20x — but the tail is near-zero bases, so a bare "
-                "multiple is a bad gate. Proposed and held: <b>2.0x AND &ge;$1B</b>.",
+                "multiple is a bad gate, and a multiple ALONE misses META's "
+                "+$111.64B at 1.47x — the largest move on the panel. Proposed and "
+                "held: <b>(2.0x AND &ge;$1B) OR &ge;$20B</b>.",
                 styles))
             out.append(_spacer(4))
         out.append(_table(

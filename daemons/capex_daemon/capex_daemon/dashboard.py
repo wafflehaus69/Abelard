@@ -737,8 +737,9 @@ def _commitment_deltas_block(snap):
     out.append("<div class='warn'><b>These do not alert yet.</b> The threshold is "
                "UNSET pending ratification (E8). Measured over 308 observation pairs: "
                "p50 1.00x, p90 2.00x, p95 3.20x — but the tail is near-zero bases, so "
-               "a bare multiple is a bad gate. Proposed and held: <b>2.0x AND "
-               "&ge;$1B</b>.</div>" if not armed else "")
+               "a bare multiple is a bad gate — and a multiple ALONE misses META's "
+               "+$111.64B at 1.47x, the largest move on the panel. Proposed and "
+               "held: <b>(2.0x AND &ge;$1B) OR &ge;$20B</b>.</div>" if not armed else "")
     out.append("<table><tr><th>Issuer</th><th>Concept</th><th>From</th><th>To</th>"
                "<th class='num'>gap</th><th class='num'>was</th><th class='num'>now</th>"
                "<th class='num'>change</th><th class='num'>multiple</th></tr>")

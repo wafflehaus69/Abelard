@@ -96,3 +96,54 @@ def test_the_event_key_is_content_derived_so_a_rerun_does_not_realert():
     assert snapshot.commitment_deltas(snap)[0]["event_key"] == k
     assert snapshot.commitment_alert_lines(snap, multiple=2.0, min_delta=1e9,
                                            prior_keys=[k]) == []
+
+
+# --- the second arm: a large base makes the multiple blind ------------------
+
+META = [{"q": "2026Q1", "value": 237.67e9}, {"q": "2026Q2", "value": 349.31e9}]
+
+
+def test_a_multiple_gate_is_blind_to_the_largest_move_on_the_panel():
+    """META added $111.64B in one quarter at 1.47x — the largest absolute move
+    measured, and no defensible multiple catches it. Measured live: META went
+    $27.95B -> $349.31B over four quarters and a 2.0x gate sees one step of
+    four. This is why the absolute arm exists."""
+    d = snapshot.commitment_deltas(_snap(META, concept="ContractualObligation",
+                                         bucket="hyperscaler", ticker="META"))[0]
+    assert d["delta"] == pytest.approx(111.64e9)
+    assert d["multiple"] == pytest.approx(1.47, abs=0.01)
+    snap = _snap(META, concept="ContractualObligation", bucket="hyperscaler",
+                 ticker="META")
+    assert snapshot.commitment_alert_lines(snap, multiple=2.0, min_delta=1e9) == []
+
+
+def test_the_absolute_arm_catches_it():
+    snap = _snap(META, concept="ContractualObligation", bucket="hyperscaler",
+                 ticker="META")
+    fired = snapshot.commitment_alert_lines(snap, absolute=20e9)
+    assert len(fired) == 1
+    assert fired[0]["armed_by"] == "absolute"
+
+
+def test_the_absolute_arm_does_not_rescue_a_near_zero_base():
+    """WULF's 846x move is +$0.118B — below any absolute floor worth setting."""
+    wulf = [{"q": "2026Q1", "value": 140_000.0}, {"q": "2026Q2", "value": 118_000_000.0}]
+    snap = _snap(wulf, ticker="WULF", bucket="builder")
+    assert snapshot.commitment_alert_lines(snap, multiple=2.0, min_delta=1e9,
+                                           absolute=20e9) == []
+
+
+def test_an_unarmed_arm_does_not_disable_the_other():
+    snap = _snap(SMCI)
+    assert snapshot.commitment_alert_lines(snap, multiple=2.0, min_delta=1e9)
+    assert snapshot.commitment_alert_lines(snap, absolute=20e9)
+    assert snapshot.commitment_alert_lines(snap) == []      # neither armed
+
+
+def test_a_zero_base_move_can_still_fire_on_size_alone():
+    """AVGO went $0.05B -> $128.11B. The multiple is meaningless there; the
+    size is not."""
+    avgo = [{"q": "2026Q1", "value": 0.0}, {"q": "2026Q2", "value": 128.11e9}]
+    snap = _snap(avgo, ticker="AVGO")
+    fired = snapshot.commitment_alert_lines(snap, absolute=20e9)
+    assert len(fired) == 1 and "from a zero base" in fired[0]["reason"]

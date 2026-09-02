@@ -137,24 +137,39 @@ times and **six of those move less than $1B**:
 
 None of those is a forward-demand event; each is a small denominator.
 
+### The multiple alone is still wrong — deploying it showed why
+
+A large base makes the multiple small however enormous the absolute move. META's
+four largest increases, measured:
+
+| window | move | multiple | 2.0x gate |
+|---|---|---|---|
+| 2025Q2→Q3 | +$53.24B | 2.90× | caught |
+| 2025Q3→Q4 | +$49.86B | 1.61× | **missed** |
+| 2025Q4→2026Q1 | +$106.62B | 1.81× | **missed** |
+| 2026Q1→Q2 | +$111.64B | 1.47× | **missed** |
+
+META went **$27.95B → $349.31B in four quarters** — a $321B forward-demand
+build, the largest on the panel — and a multiple-only gate sees one step of
+four. My first proposal would have been blind to the biggest thing the
+commitments leg has ever had to report.
+
 ### Proposed, and held for ratification
 
-> **multiple ≥ 2.0× AND absolute move ≥ $1B**
+> **(multiple ≥ 2.0× AND move ≥ $1B) OR (move ≥ $20B)**
 
-2.0× is the measured p90; $1B removes the near-zero-base tail. The pair fires on
-**16 of 308 pairs (5.2%)**, and every one is materially large — SMCI's citing
-case at 3.39× / +$24.10B, META +$53.24B, AVGO +$128.06B, AMD +$13.54B, ORCL
-+$7.77B.
+Two independent arms, because one measure cannot see both shapes. The first
+catches a small issuer tripling; the second catches a large one adding more than
+most issuers hold. Over the 147 measured increases: p50 $0.41B, p90 $7.77B,
+p95 $16.45B, p97.5 $49.86B, max $128.06B — so $20B sits just above p95.
 
-**The caveat to weigh before ratifying:** *five of those sixteen are SMCI.* One
-issuer would account for a third of all commitment alerts. Its stock genuinely is
-that volatile — $1.60B → $11.60B → $3.90B → $10.10B → $34.20B across five
-quarters. Whether that is the signal working or one name capturing the channel is
-a judgement, not a measurement, so it is Mando's.
+Fires on **19 of 308 pairs (6.2%)**. Concentration: META 5, SMCI 5, AMD 2. The
+absolute arm *improved* the concentration — under the multiple alone SMCI was 5
+of 16, a third of the channel.
 
-`COMMITMENT_JUMP_MULTIPLE` and `COMMITMENT_JUMP_MIN_DELTA` are both **None**.
-Deltas are published; nothing alerts. `commitment_alert_lines` returns `[]` while
-either is unset, and requires both together.
+`COMMITMENT_JUMP_MULTIPLE`, `COMMITMENT_JUMP_MIN_DELTA` and
+`COMMITMENT_JUMP_ABSOLUTE` are all **None**. Deltas are published; nothing
+alerts. An arm that is not fully armed does not fire, and the other still can.
 
 ---
 

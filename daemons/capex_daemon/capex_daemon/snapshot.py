@@ -445,13 +445,34 @@ def load(con):
 # materially large — SMCI's citing case at 3.39x/+$24.10B, META +$53.24B,
 # AVGO +$128.06B, AMD +$13.54B.
 #
-# The caveat Mando should weigh before ratifying: FIVE of those 16 are SMCI, so
-# one issuer would account for a third of all commitment alerts. Its stock is
-# genuinely that volatile (1.60 -> 11.60 -> 3.90 -> 10.10 -> 34.20 $B across five
-# quarters). That is either the signal working or one name dominating the
-# channel, and it is a judgement rather than a measurement.
+# **That pair alone is still wrong, and deploying it is what showed why.** A
+# large base makes the multiple small however enormous the absolute move. META's
+# four largest increases:
+#
+#     2025Q2->Q3  +$53.24B  2.90x   caught
+#     2025Q3->Q4  +$49.86B  1.61x   MISSED
+#     2025Q4->Q1  +$106.62B 1.81x   MISSED
+#     2026Q1->Q2  +$111.64B 1.47x   MISSED
+#
+# META went $27.95B -> $349.31B in four quarters — a $321B forward-demand build,
+# the largest on the panel — and a multiple-only gate sees one step of four. So a
+# second, independent arm on the absolute move. Measured over the 147 increases:
+# p50 $0.41B, p90 $7.77B, p95 $16.45B, p97.5 $49.86B, max $128.06B.
+#
+# Proposed and held:
+#
+#     (multiple >= 2.0x AND move >= $1B)  OR  (move >= $20B)
+#
+# 19 of 308 pairs (6.2%). $20B sits just above the measured p95 of increases. The
+# arms are complementary by construction: the first catches a small issuer
+# tripling, the second catches a large one adding more than most issuers hold.
+#
+# Concentration, for Mando to weigh: META 5, SMCI 5, AMD 2 of the 19. Adding the
+# absolute arm improved this — under the multiple alone SMCI was 5 of 16, a third
+# of the channel.
 COMMITMENT_JUMP_MULTIPLE = None       # proposed 2.0
 COMMITMENT_JUMP_MIN_DELTA = None      # proposed 1_000_000_000.0
+COMMITMENT_JUMP_ABSOLUTE = None       # proposed 20_000_000_000.0
 
 
 def commitment_deltas(snap, frontier=None):
@@ -501,27 +522,49 @@ def commitment_deltas(snap, frontier=None):
     return out
 
 
-def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None):
-    """Commitment jumps worth announcing. Empty while either bound is UNSET.
+def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
+                           absolute=None):
+    """Commitment jumps worth announcing. Empty while every bound is UNSET.
 
     E8 in its literal form: the consumer of an unset constant surfaces the
-    absence rather than substituting a default. A multiple picked to make SMCI
-    fire would be a threshold fitted to one observation, so both bounds stay
-    None until ratified and this returns nothing.
+    absence rather than substituting a default. A threshold picked to make SMCI
+    fire would be one fitted to a single observation, so the bounds stay None
+    until ratified and this returns nothing.
 
-    Both bounds are required together. A multiple alone fires on a near-zero
-    base; an absolute floor alone fires on every large issuer's routine drift.
+    **Two independent arms, because one measure cannot see both shapes.**
+
+      * `multiple` AND `min_delta` together — a small issuer tripling. Neither
+        works alone: a multiple by itself fires on a near-zero base (WULF
+        $0.000B -> $0.118B reads 846x), and a floor by itself fires on routine
+        drift at a large issuer.
+      * `absolute` — a large issuer adding more than most issuers hold. This arm
+        exists because META added $111.64B in one quarter at 1.47x, which no
+        defensible multiple would ever catch.
+
+    An arm that is not fully armed simply does not fire; the other still can.
     """
     multiple = COMMITMENT_JUMP_MULTIPLE if multiple is None else multiple
     min_delta = COMMITMENT_JUMP_MIN_DELTA if min_delta is None else min_delta
-    if multiple is None or min_delta is None:
+    absolute = COMMITMENT_JUMP_ABSOLUTE if absolute is None else absolute
+    rel_armed = multiple is not None and min_delta is not None
+    if not rel_armed and absolute is None:
         return []
     prior = set(prior_keys or ())
-    return [dict(d, reason="forward-commitment stock {:.2f}x ({:+,.1f}B) {} -> {}"
-                 .format(d["multiple"], d["delta"] / 1e9, d["from_q"], d["to_q"]))
-            for d in commitment_deltas(snap, frontier=_frontier_quarter(snap))
-            if d["multiple"] is not None and d["multiple"] >= multiple
-            and d["delta"] >= min_delta and d["event_key"] not in prior]
+    out = []
+    for d in commitment_deltas(snap, frontier=_frontier_quarter(snap)):
+        if d["event_key"] in prior:
+            continue
+        by_multiple = (rel_armed and d["multiple"] is not None
+                       and d["multiple"] >= multiple and d["delta"] >= min_delta)
+        by_size = absolute is not None and d["delta"] >= absolute
+        if not (by_multiple or by_size):
+            continue
+        out.append(dict(d, reason="forward-commitment stock {} ({:+,.1f}B) {} -> {}"
+                        .format("{:.2f}x".format(d["multiple"]) if d["multiple"]
+                                else "from a zero base",
+                                d["delta"] / 1e9, d["from_q"], d["to_q"]),
+                        armed_by="multiple" if by_multiple else "absolute"))
+    return out
 
 
 def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):
