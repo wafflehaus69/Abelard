@@ -38,8 +38,16 @@ def _hex(c):
     return colors.HexColor(c)
 
 
-def composite_drawing(snap, width=PAGE_W, height=210):
-    """The View 0 composite as vector art, from the shared model."""
+def composite_drawing(snap, width=PAGE_W, height=210, margins=(46, 92, 16, 26),
+                      tick_size=5.5, label_size=5.8, font="Helvetica"):
+    """The View 0 composite as vector art, from the shared model.
+
+    `margins` and the two font sizes are parameters because the same drawing is
+    asked for at two sizes — 524pt on the portrait phase page and 720pt on the
+    landscape dashboard report — and type that is right at one is unreadable or
+    absurd at the other. The geometry is identical either way; only the trim
+    changes.
+    """
     from reportlab.graphics.shapes import Drawing, Line, PolyLine, Rect, String
 
     m = svgcharts.composite_model(snap)
@@ -49,7 +57,7 @@ def composite_drawing(snap, width=PAGE_W, height=210):
                      fillColor=_hex("#999999")))
         return d
 
-    L, R, T, B = 46, 92, 16, 26
+    L, R, T, B = margins
     pw, ph = width - L - R, height - T - B
     qs = m["quarters"]
     xi = {q: i for i, q in enumerate(qs)}
@@ -75,14 +83,14 @@ def composite_drawing(snap, width=PAGE_W, height=210):
         if not lo <= gv <= hi:
             continue
         d.add(Line(L, Y(gv), L + pw, Y(gv), strokeColor=_hex("#dcdcdc"), strokeWidth=0.4))
-        d.add(String(L - 4, Y(gv) - 2.5, _money(gv), fontSize=5.5,
+        d.add(String(L - 4, Y(gv) - 2.5, _money(gv), fontSize=tick_size, fontName=font,
                      fillColor=_hex("#777777"), textAnchor="end"))
-    every = max(1, len(qs) // 9)
+    every = max(1, len(qs) // (9 if width < 600 else 14))
     for i, q in enumerate(qs):
         if i % every and i != len(qs) - 1:
             continue
-        d.add(String(X(q), B - 9, q, fontSize=5.5, fillColor=_hex("#666666"),
-                     textAnchor="middle"))
+        d.add(String(X(q), B - tick_size - 3.5, q, fontSize=tick_size, fontName=font,
+                     fillColor=_hex("#666666"), textAnchor="middle"))
 
     def poly(rows, color, w, dash=None, opacity=1.0):
         pts = []
@@ -111,10 +119,12 @@ def composite_drawing(snap, width=PAGE_W, height=210):
 
     labels.sort(reverse=True)                          # de-collide downward
     ys = [y for y, _t, _c in labels]
+    gap = label_size * 1.21
     for i in range(1, len(ys)):
-        ys[i] = min(ys[i], ys[i - 1] - 7.0)
+        ys[i] = min(ys[i], ys[i - 1] - gap)
     for (_orig, text, color), y in zip(labels, ys):
-        d.add(String(L + pw + 4, y - 2, text, fontSize=5.8, fillColor=_hex(color)))
+        d.add(String(L + pw + 4, y - 2, text, fontSize=label_size, fontName=font,
+                     fillColor=_hex(color)))
 
     for row in m["breadth"]:                           # breadth strip
         q = row["q"]

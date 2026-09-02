@@ -16,7 +16,7 @@ Rules:
     that is co-reporting of different instruments, not a migration — and picking
     one would undercount. It is flagged, never silently resolved.
 """
-from . import facts_api
+from . import config, facts_api
 
 CAPEX = "capex"
 DEBT = "debt"
@@ -88,6 +88,48 @@ UNRESOLVED_MULTILINE = "UNRESOLVED-MULTILINE"
 # and says why (E1, E8).
 MULTI_LINE_KINDS = frozenset({DEBT})
 
+# --- ruled concept elections -------------------------------------------------
+#
+# The ambiguity guard below refuses when two concepts cover one period with
+# different values, because recency cannot arbitrate a tie and picking one would
+# be a coin flip presented as an answer (E1). That is right wherever nobody has
+# looked at the filing. Where somebody HAS looked and ruled, the ruling is the
+# arbitration, and the guard should defer to it rather than override it.
+#
+# Keyed on (cik10, kind). A ruled election is marked RULED-CONCEPT everywhere it
+# is published — it must never pass as an ordinary automatic resolution, for the
+# same reason MU's unit mapping is marked MAPPED-BUSINESS-UNITS.
+STATUS_RULED = "RULED-CONCEPT"
+
+RULED_CONCEPTS = {
+    # R-B6-4, ruled from the filing text (CD-1-VERIFY §1, CD-1-SPEC §428).
+    # RIOT's cash-flow statement carries TWO separate investing lines:
+    #   "Purchases of property and equipment, including construction in progress"
+    #       -> PaymentsToAcquirePropertyPlantAndEquipment   = capex
+    #   "Deposits on equipment"
+    #       -> PaymentsToAcquireMachineryAndEquipment       = prepayment, NOT capex
+    # They are not two tags competing for one line; they are two lines. Summing
+    # them double-counts when the deposited equipment lands, so the deposits line
+    # is excluded here and carried separately as a forward indicator (C3, E23).
+    ("0001167419", CAPEX): {
+        "concept": "PaymentsToAcquirePropertyPlantAndEquipment",
+        "excludes": ("PaymentsToAcquireMachineryAndEquipment",),
+        "ruling": "R-B6-4",
+        "ruled_on": "2026-08-14",
+        "ticker": "RIOT",
+        "rationale": ("Two separate cash-flow lines, not a tag collision. The "
+                      "excluded concept is RIOT's equipment-deposits line — cash "
+                      "advanced for equipment not yet delivered or capitalised."),
+    },
+}
+
+
+def ruled_concept(cik, kind):
+    """The ruled election for an issuer+kind, or None."""
+    if not cik:
+        return None
+    return RULED_CONCEPTS.get((config.cik10(cik), kind))
+
 
 class Era:
     """A concept and the period range over which it is the resolved answer."""
@@ -121,7 +163,7 @@ class Resolution:
     """Eras plus everything a reader needs to distrust them intelligently."""
 
     def __init__(self, series_kind, eras, concurrency, candidates_present, units,
-                 multi_line_concepts=()):
+                 multi_line_concepts=(), ruling=None):
         self.series_kind = series_kind
         self.eras = eras
         self.concurrency = concurrency
@@ -129,6 +171,12 @@ class Resolution:
         self.units = units
         # Non-empty only for MULTI_LINE_KINDS with live co-reporting.
         self.multi_line_concepts = tuple(multi_line_concepts)
+        # Set when a ruled election resolved this rather than the era ordering.
+        self.ruling = ruling
+
+    @property
+    def is_ruled(self):
+        return self.ruling is not None
 
     @property
     def is_multi_line(self):
@@ -184,11 +232,23 @@ def _spans(indexed, kind, unit_filter=("USD",)):
     return out
 
 
-def resolve(indexed, kind, unit_filter=("USD",)):
-    """Build the era map for one series kind from a companyfacts index."""
+def resolve(indexed, kind, unit_filter=("USD",), cik=None):
+    """Build the era map for one series kind from a companyfacts index.
+
+    `cik` is optional and enables ruled elections. Without it the resolver
+    behaves exactly as before — automatic, and refusing genuine ambiguity.
+    """
     spans = _spans(indexed, kind, unit_filter)
     if not spans:
         return Resolution(kind, [], [], {}, set())
+
+    rule = ruled_concept(cik, kind)
+    if rule and rule["concept"] in spans:
+        # A ruling arbitrates the ambiguity the guard would otherwise refuse.
+        # Excluded concepts are dropped from the span map entirely, so they
+        # cannot re-enter through the overlap check further down.
+        spans = {c: v for c, v in spans.items()
+                 if c == rule["concept"] or c not in rule.get("excludes", ())}
 
     # Newest observation first — this ordering IS the resolution rule.
     ordered = sorted(spans.items(), key=lambda kv: (kv[1][1], kv[1][2]), reverse=True)
@@ -214,7 +274,14 @@ def resolve(indexed, kind, unit_filter=("USD",)):
         multi = _live_co_reporters(indexed, spans, live_eras[0], unit_filter)
     if not multi:
         multi = _ambiguous_overlap(indexed, spans, unit_filter)
-    return Resolution(kind, live_eras, concurrency, spans, all_units, multi)
+    if rule and rule["concept"] in spans:
+        # The ruling is the arbitration; an overlap the ruling already answered
+        # is not an open question. Anything still overlapping is a NEW ambiguity
+        # the ruling did not address and is left to refuse.
+        multi = tuple(c for c in multi if c not in rule.get("excludes", ())
+                      and c != rule["concept"])
+    return Resolution(kind, live_eras, concurrency, spans, all_units, multi,
+                      ruling=rule)
 
 
 # Two concepts covering one period with the same number are redundant tagging —

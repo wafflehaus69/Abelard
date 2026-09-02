@@ -67,6 +67,8 @@ td.num{text-align:right}
 .hero{margin:4px 0 14px}
 svg{display:block;max-width:100%;margin:0 0 14px}
 .chartnote{color:#888;font-size:11px;margin:-8px 0 16px}
+.interim{color:#1f4e9c}
+.interim i{font-style:normal;opacity:.6}
 .mapped{background:#eef3fb;border-left:3px solid #1f4e9c;padding:9px 12px;margin:10px 0;font-size:13px}
 [title]{cursor:help;border-bottom:1px dotted #bbb}
 """
@@ -121,6 +123,53 @@ def _page(title, active, body, banner=""):
             "<style>{css}</style><header><b>Capex Daemon</b> &nbsp; {nav}</header>"
             "<main>{banner}{body}</main>").format(
                 t=_esc(title), css=CSS, nav=nav, body=body, banner=banner or "")
+
+
+DISCLOSURE_COLORS = {
+    "THIN-MATURING": "#1f4e9c", "FPI-ANNUAL-BASIS": "#6b21a8",
+    "DERIVED-FROM-PROSE": "#0f7f7f", "SIDECAR": "#6b7280",
+    "REFUSED": "#8a6d1a", "NO-DATA": "#9b1c1c",
+}
+
+
+def _disclosure_cell(iss):
+    """The state cell for a name with no phase state.
+
+    CD-GAP1 P1: a dash says 'nothing is known here', which was false for a
+    builder carrying $1.16B of TTM capex. The cause replaces the label and the
+    countdown replaces the dash.
+    """
+    d = iss.get("disclosure")
+    if not d:
+        return _pill(iss["state"]) + _flags(iss.get("flags"))
+    c = d["cause"]
+    bits = []
+    if d.get("quarters_short"):
+        bits.append("{} of {} quarters".format(
+            d["quarters_held"], d["quarters_held"] + d["quarters_short"]))
+    if d.get("first_eligible"):
+        bits.append("classifies ~{}".format(d["first_eligible"]))
+    if d.get("expected_by"):
+        bits.append("{} {}".format(
+            "OVERDUE since" if d.get("filing_overdue") else "next filing due",
+            d["expected_by"]))
+    tip = " · ".join(bits) or ", ".join(d.get("coverage") or []) or c
+    return ("<span class='pill' style='background:{}' title='{}'>{}</span>"
+            .format(DISCLOSURE_COLORS.get(c, "#777"), _esc(tip), _esc(c)))
+
+
+def _interim_cell(iss):
+    """The growth column for a pre-eligible name — explicitly NOT a ladder read."""
+    d = iss.get("disclosure")
+    if not d:
+        return _pct(iss.get("latest_yoy"))
+    g = d.get("interim_growth")
+    if g is None:
+        return ("<span title='fewer than four contiguous quarters — no honest "
+                "interim read exists'>—</span>")
+    return ("<span class='interim' title='{}. NOT a phase state: no dead-band, "
+            "no confirmation window, never aggregated, never alerts.'>{} <i>~</i></span>"
+            .format(_esc(d.get("interim_basis") or ""), _pct(g)))
 
 
 def _bucket_num(bk, key, fmt):
@@ -342,8 +391,10 @@ def view_hayes(snap):
             "<td class='num'>{}</td><td class='num'>{}</td><td class='num'>{}</td>"
             "<td class='num' title='{}'>{}</td><td class='spark'>{}</td></tr>".format(
                 _esc(tick), cov, _esc(iss["bucket"]), _esc(_provenance(iss)),
-                _pill(iss["state"]), _flags(iss["flags"]),
-                _money(iss["ttm_capex"]), _pct(iss["latest_yoy"]),
+                _disclosure_cell(iss), "",
+                _money(iss["ttm_capex"] if iss["ttm_capex"] is not None
+                       else (iss.get("disclosure") or {}).get("ttm")),
+                _interim_cell(iss),
                 _pct(iss["credit_ratio"], 0),
                 _esc("{} — {}".format(comm["status"], comm["detail"])),
                 _money(comm["latest"]),
@@ -415,9 +466,9 @@ def view_phases(snap):
             "<td>{}</td><td class='num'>{}</td><td class='num'>{}</td><td>{}</td>"
             "<td class='num'>{}pp</td><td class='spark'>{}</td></tr>".format(
                 _esc(tick), mirror, _esc(iss["bucket"]),
-                _pill(iss["state"]), _flags(iss["flags"]),
+                _disclosure_cell(iss), "",
                 iss["quarters_in_state"] or "—", _esc(iss["entered"] or "—"),
-                _pct(iss["latest_yoy"]),
+                _interim_cell(iss),
                 "{:+.1f}pp".format(iss["latest_delta"]) if iss["latest_delta"] is not None else "—",
                 _esc(iss["direction"] or "—"), iss.get("band"),
                 _spark([p["yoy"] for p in iss["yoy_series"]])))

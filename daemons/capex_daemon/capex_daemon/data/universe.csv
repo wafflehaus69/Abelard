@@ -4,8 +4,8 @@ cik,ticker_display,bucket,tier_override,notes
 1018724,AMZN,hyperscaler,,Tag migration 2017 PaymentsToAcquirePropertyPlantAndEquipment to PaymentsToAcquireProductiveAssets.
 1326801,META,hyperscaler,,Anchor concept bundles finance-lease ROU. Louisiana VIE dimensioned.
 1341439,ORCL,hyperscaler,,Off-calendar Nov Feb May grid. Anchor tagged annually only.
-1297996,DLR,reit,,Capex concept is PaymentsToDevelopRealEstateAssets. No PropertyPlantAndEquipment concepts at all.
-1101239,EQIX,reit,,Double-tags capex under two concepts. Never sum across them.
+1297996,DLR,landlord,,LANDLORD merge ruled by Mando 2026-08-26; sub-type=reit. reit/host split was thin -- AMT and IRM are REITs too. Capex concept is PaymentsToDevelopRealEstateAssets. No PropertyPlantAndEquipment concepts at all.
+1101239,EQIX,landlord,,LANDLORD merge ruled by Mando 2026-08-26; sub-type=reit. reit/host split was thin -- AMT and IRM are REITs too. Double-tags capex under two concepts. Never sum across them.
 1167419,RIOT,builder,,
 1839341,CORZ,builder,,No PP and E anchor concept. Expect UNANCHORED.
 1083301,WULF,builder,,Seven debt-tag variants across eras.
@@ -25,12 +25,12 @@ cik,ticker_display,bucket,tier_override,notes
 1507605,MARA,builder,,Ratified CD-R2 2026-08-14. Owns and builds 19 sites approx 1.9GW. HPC via Exaion.
 827876,CLSK,builder,,Ratified CD-R2 2026-08-14. Owns own facilities converting power to datacenter use. Uses ProductiveAssets concept.
 1854368,DGXX,builder,,Ratified CD-R2 2026-08-14. Renamed from Digihost. Converts powered sites to AI datacenters.
-1020569,IRM,host,,Ratified CD-R2 2026-08-14. Owns and hosts. Datacenter segment revenue is parser only. Capex unseparable so not aggregated.
-1053507,AMT,host,,Ratified CD-R2 2026-08-14. Owns datacenter property via CoreSite. Capex dominated by towers so not aggregated.
-1158324,CCOI,host,,Ratified CD-R2 2026-08-14 as the sixth add. Owns datacenters inside a telecom capex line so not aggregated.
+1020569,IRM,landlord,,LANDLORD merge ruled by Mando 2026-08-26; sub-type=reit. reit/host split was thin -- AMT and IRM are REITs too. Ratified CD-R2 2026-08-14. Owns and hosts. Datacenter segment revenue is parser only. Capex unseparable so not aggregated.
+1053507,AMT,landlord,,LANDLORD merge ruled by Mando 2026-08-26; sub-type=reit. reit/host split was thin -- AMT and IRM are REITs too. Ratified CD-R2 2026-08-14. Owns datacenter property via CoreSite. Capex dominated by towers so not aggregated.
+1158324,CCOI,landlord,,LANDLORD merge ruled by Mando 2026-08-26; sub-type=host. reit/host split was thin -- AMT and IRM are REITs too. Ratified CD-R2 2026-08-14 as the sixth add. Owns datacenters inside a telecom capex line so not aggregated.
 1710350,BTBT,sidecar,,Ratified CD-R2 2026-08-14. Consolidates WYFI which is already in the panel. Tracked on the side never summed.
 1045810,NVDA,supplier,,"CD-3 supplier leg. DataCenterMember on ProductOrServiceAxis; 17 quarters. Cross-check only, never summed into spending."
-2488,AMD,supplier,,"CD-3 supplier leg. DataCenterMember on StatementBusinessSegmentsAxis; 10-K spells it Datacenter. 5 periods restated by later filings."
-1730168,AVGO,supplier,,"CD-3. UNCOVERED-NO-DC-MEMBER: segments are InfrastructureSoftware / SemiconductorSolutions. Carried for its $128.1B purchase obligations."
-723125,MU,supplier,,"CD-3. MAPPED-BUSINESS-UNITS ruled by Mando 2026-08-21: CMBU+CDBU summed as datacenter; MCBU/AEBU/AllOther excluded. Mapped never measured."
-1375365,SMCI,supplier,,"CD-3. UNCOVERED-NO-DC-MEMBER: no segment axis at all in any of 14 instances."
+2488,AMD,supplier,,CD-3 supplier leg. DataCenterMember on StatementBusinessSegmentsAxis; 10-K spells it Datacenter. 5 periods restated by later filings.
+1730168,AVGO,supplier,,CD-3. UNCOVERED-NO-DC-MEMBER: segments are InfrastructureSoftware / SemiconductorSolutions. Carried for its $128.1B purchase obligations.
+723125,MU,supplier,,CD-3. MAPPED-BUSINESS-UNITS ruled by Mando 2026-08-21: CMBU+CDBU summed as datacenter; MCBU/AEBU/AllOther excluded. Mapped never measured.
+1375365,SMCI,supplier,,CD-3. UNCOVERED-NO-DC-MEMBER: no segment axis at all in any of 14 instances.

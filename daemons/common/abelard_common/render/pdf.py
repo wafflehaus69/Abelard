@@ -175,9 +175,19 @@ def signal_box(inner: list[Any], *, content_width: float = CONTENT_W, active: bo
 
 def build_pdf(out_path: Path | str, story: list[Any], *, title: str,
               left_margin: float = 44, right_margin: float = 44,
-              top_margin: float = 44, bottom_margin: float = 40) -> Path:
+              top_margin: float = 44, bottom_margin: float = 40,
+              pagesize: tuple[float, float] | None = None,
+              on_page: Any = None) -> Path:
     """Build `story` into a PDF at `out_path`. Fail-loud (PdfRenderError) on an
-    empty story or a zero-byte result — never a silent empty PDF. Returns the path."""
+    empty story or a zero-byte result — never a silent empty PDF. Returns the path.
+
+    `pagesize` defaults to portrait Letter, which is every existing consumer.
+    It is a parameter because a document whose content is genuinely wide — a
+    dashboard's ten-column issuer table, a 66-quarter phase grid — is not made
+    narrower by being cut in half; landscape is the honest page for it.
+    `on_page` is passed through as onFirstPage/onLaterPages for running
+    headers and footers.
+    """
     from reportlab.lib.pagesizes import letter
     from reportlab.platypus import SimpleDocTemplate
 
@@ -186,11 +196,15 @@ def build_pdf(out_path: Path | str, story: list[Any], *, title: str,
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        SimpleDocTemplate(
-            str(out_path), pagesize=letter, title=title,
+        doc = SimpleDocTemplate(
+            str(out_path), pagesize=(pagesize or letter), title=title,
             leftMargin=left_margin, rightMargin=right_margin,
             topMargin=top_margin, bottomMargin=bottom_margin,
-        ).build(story)
+        )
+        if on_page is not None:
+            doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
+        else:
+            doc.build(story)
     except Exception as exc:  # noqa: BLE001 — surface any reportlab failure loud
         raise PdfRenderError(f"PDF build failed: {exc}") from exc
     if not out_path.is_file() or out_path.stat().st_size == 0:

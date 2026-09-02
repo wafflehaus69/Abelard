@@ -93,7 +93,7 @@ def issuer_issuance_calendar_series(indexed):
 def build_issuer_view(entity, indexed):
     """Compute one issuer's capex, issuance and ratio with statuses attached."""
     statuses = []
-    capex_res = tagmap.resolve(indexed, tagmap.CAPEX)
+    capex_res = tagmap.resolve(indexed, tagmap.CAPEX, cik=entity.cik)
     if capex_res.is_multi_line or capex_res.is_unresolved:
         return IssuerView(entity.cik, entity.ticker_display, entity.bucket,
                           None, None, None, [STATUS_NO_CAPEX], 0)

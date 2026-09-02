@@ -410,3 +410,130 @@ def test_every_view_carries_the_provenance_banner():
             path, fresh, last_scan_unix=int(_t.time()))
         out = dashboard.render(path, stale, last_scan_unix=1)
         assert "SCAN HAS NOT RUN" in out and "panel itself last changed" in out
+
+
+# --- CD-GAP1 P1/P5: graduated disclosure -----------------------------------
+
+class _E:
+    def __init__(self, bucket, cik="0000000001", ticker="TEST"):
+        self.bucket, self.cik, self.ticker_display = bucket, cik, ticker
+
+
+def _qs(n, start=(2024, 1), value=100.0):
+    from capex_daemon import disclosure  # noqa: F401
+    out, (y, q) = {}, start
+    for i in range(n):
+        out["{}Q{}".format(y, q)] = value * (1 + i)
+        q += 1
+        if q > 4:
+            y, q = y + 1, 1
+    return out
+
+
+def test_ten_quarters_is_the_classification_threshold():
+    """Measured, not assumed: TTM needs 4, a TTM YoY needs 8, and the ladder
+    needs N_CONFIRM+1 = 3 YoY points."""
+    from capex_daemon import disclosure
+    assert disclosure.QUARTERS_TO_CLASSIFY == 10
+    _d, short = disclosure.first_eligible(_qs(6))
+    assert short == 4
+    _d, short = disclosure.first_eligible(_qs(10))
+    assert short == 0
+
+
+def test_a_pre_eligible_name_publishes_its_level_not_a_dash():
+    """FRMI carried $1.16B of TTM capex behind a dash. What was unknown was its
+    YoY, not its spending."""
+    from capex_daemon import disclosure
+    d = disclosure.classify(_E("builder"), _qs(6))
+    assert d["cause"] == disclosure.CAUSE_THIN_MATURING
+    assert d["ttm"] is not None and d["ttm"] > 0
+    assert d["quarters_held"] == 6 and d["quarters_short"] == 4
+    assert d["first_eligible"]
+
+
+def test_the_interim_read_is_never_a_phase_state():
+    """It has no dead-band and no confirmation window, so it must never be
+    mistakable for a ladder verdict."""
+    from capex_daemon import disclosure, phases
+    d = disclosure.classify(_E("builder"), _qs(6))
+    assert d["interim_growth"] is not None
+    assert "non-ladder" in d["interim_basis"]
+    assert d["cause"] not in phases.REAL_STATES
+
+
+def test_the_cause_is_split_not_lumped():
+    from capex_daemon import disclosure
+    assert disclosure.classify(_E("sidecar"), _qs(10))["cause"] == disclosure.CAUSE_SIDECAR
+    assert disclosure.classify(_E("fpi"), {})["cause"] == disclosure.CAUSE_FPI_ANNUAL
+    assert disclosure.classify(
+        _E("builder"), {}, coverage=("CAPEX-UNRESOLVED",)
+    )["cause"] == disclosure.CAUSE_REFUSED
+
+
+def test_an_fpi_that_stopped_tagging_is_not_an_annual_basis_issuer():
+    """Alibaba's capex concept carries data through 2020 and nothing after.
+    'Reports annually' and 'stopped reporting' look identical from an empty
+    quarterly series and are not the same fact."""
+    from capex_daemon import disclosure
+    import datetime
+    d = disclosure.classify(_E("fpi"), {}, last_tagged="2020-09-30",
+                            today=datetime.date(2026, 8, 26))
+    assert d["cause"] == disclosure.CAUSE_TAGGING_CEASED
+    fresh = disclosure.classify(_E("fpi"), {}, last_tagged="2026-03-31",
+                                today=datetime.date(2026, 8, 26))
+    assert fresh["cause"] == disclosure.CAUSE_FPI_ANNUAL
+
+
+def test_a_classified_name_is_owed_no_explanation():
+    from capex_daemon import disclosure, phases
+    assert disclosure.classify(
+        _E("builder"), _qs(12), state=phases.STATE_ACCELERATING) is None
+
+
+def test_lateness_is_measured_against_the_calendar_not_the_panel():
+    """The first cut compared each issuer to the most advanced filer and marked
+    seven current names late, because one off-calendar filer had already reached
+    the next calendar quarter."""
+    from capex_daemon import disclosure
+    import datetime
+    q = _qs(6, start=(2025, 1))                    # ends 2026Q2
+    due, overdue = disclosure.expected_by(q, today=datetime.date(2026, 8, 26))
+    assert due.isoformat() == "2026-11-14"         # 2026Q3 end + 45 days
+    assert overdue is False
+    _due, overdue = disclosure.expected_by(q, today=datetime.date(2027, 1, 1))
+    assert overdue is True
+
+
+# --- CD-GAP2A A6: two live rendering defects -------------------------------
+
+def test_a_fractional_axis_gets_more_than_one_gridline():
+    """Every YoY and ratio chart is fractional — +84.7% is 0.847. The old
+    magnitude floored at 1.0, so a -0.2..+0.9 panel produced ticks at 0 and 1
+    and every such chart on the live dashboard rendered a single '+0%' line."""
+    ticks = svgcharts._nice_ticks(-0.2, 0.9, 5)
+    inside = [t for t in ticks if -0.2 <= t <= 0.9]
+    assert len(inside) >= 4, ticks
+    # and the dollar axes it always handled must be UNCHANGED: Leg 1 spans
+    # 0..$600B and prints $200B/$400B/$600B, before and after.
+    assert svgcharts._nice_ticks(0.0, 600e9, 5) == [0.0, 200e9, 400e9, 600e9]
+
+
+def test_tiny_and_degenerate_ranges_do_not_explode():
+    assert svgcharts._nice_ticks(0.5, 0.5) == [0.5]
+    assert svgcharts._nice_ticks(0.0, 0.004, 4)
+    assert svgcharts._nice_ticks(-0.03, 0.03, 5)
+
+
+def test_the_last_quarter_label_is_never_overprinted():
+    """66 quarters with every=4 drew index 64 and index 65 on top of each other:
+    '2026Q1' and '2026Q2' rendered as '20226Q2' on Leg 1."""
+    q = qs(2010, 1, 66)
+    f = svgcharts.Frame(q, 0.0, 1.0, width=1160, height=250)
+    body = svgcharts.quarter_axis(f)
+    root = ET.fromstring("<svg xmlns='http://www.w3.org/2000/svg'>" + body + "</svg>")
+    xs = sorted(float(t.get("x")) for t in root.iter(SVG + "text"))
+    labels = [t.text for t in root.iter(SVG + "text")]
+    assert q[-1] in labels
+    gaps = [b - a for a, b in zip(xs, xs[1:])]
+    assert gaps and min(gaps) >= svgcharts.MIN_LABEL_GAP - 1e-6, min(gaps)

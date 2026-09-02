@@ -124,6 +124,11 @@ DEAD_BAND_RECHECK_AFTER_QUARTERS = 2
 DEAD_BANDS = {
     "issuer:hyperscaler": 6.0,
     "issuer:builder": 27.0,
+    # LANDLORD merge ruled by Mando 2026-08-26; bands re-measured the same day
+    # on the merged pool, which is n=68 against reit's 27 and host's 41 apart —
+    # the merge improved the measurement basis as well as the coverage.
+    "issuer:landlord": 5.0,
+    # Retained so a pre-merge database still classifies rather than raising.
     "issuer:reit": 2.0,
     "issuer:host": 5.0,
     # MIRROR classifies but is excluded from alerts and aggregates; it is banded
@@ -148,6 +153,7 @@ DEAD_BANDS = {
     "dcrev:supplier": 9.0,
     "bucketsum:hyperscaler": 4.0,
     "bucketsum:builder": 27.0,
+    "bucketsum:landlord": 4.0,
     "bucketsum:reit": 6.0,
     "total:panel": 5.0,
 }
@@ -156,6 +162,8 @@ DEAD_BANDS = {
 # 2026-08-18; the supplier classes were measured later, against different
 # series, and a band's re-measurement obligation runs from ITS OWN date.
 DEAD_BAND_MEASURED = {
+    "issuer:landlord": "2026-08-26",
+    "bucketsum:landlord": "2026-08-26",
     "issuer:supplier": "2026-08-22",
     "dcrev:supplier": "2026-08-21",
 }
