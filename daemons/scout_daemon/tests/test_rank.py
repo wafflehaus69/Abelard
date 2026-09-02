@@ -389,3 +389,69 @@ def test_pool_rows_still_reconcile_exactly_once() -> None:
     seen = [r.opportunity_id for v in res.ranked.values() for r in v]
     seen += [r.opportunity_id for r in res.unranked]
     assert len(seen) == len(set(seen)) == len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Aux-table migration (2026-09-02 incident)
+# ---------------------------------------------------------------------------
+
+def test_every_owned_schema_is_parseable_not_hand_listed() -> None:
+    """Five tables live outside ledger.py and none had a migration path either.
+    scan_cost is simply the one the 2026-09-02 failure landed on first."""
+    from scout_daemon import state as state_mod
+    from scout_daemon import surface as surface_mod
+    from scout_daemon import verdicts as verdicts_mod
+
+    aux = ledger.columns_from_ddl(ledger._AUX_SCHEMA)
+    assert "transport_retries" in aux["scan_cost"], \
+        "the parser must see every column the DDL declares"
+
+    state_tables = ledger.columns_from_ddl(state_mod._SCHEMA)
+    assert {"scan_log", "source_health", "schema_meta"} <= set(state_tables)
+    assert "opportunity_verdicts" in ledger.columns_from_ddl(verdicts_mod.VERDICT_SCHEMA)
+    assert "seen_categories" in ledger.columns_from_ddl(surface_mod.SEEN_CATEGORIES_SCHEMA)
+
+
+def test_the_parser_reads_its_argument_not_a_captured_global() -> None:
+    """It silently ignored its parameter once. A parser that always returns the
+    same tables regardless of input is worse than no parser."""
+    only_aux = ledger.columns_from_ddl(ledger._AUX_SCHEMA)
+    assert "scan_log" not in only_aux, "argument is being ignored"
+    assert ledger.columns_from_ddl("") == {}
+
+
+def test_a_missing_aux_column_is_added_not_left_to_fail_at_insert(tmp_path) -> None:
+    """The 2026-09-02 failure: a scan spent a real LLM call, then died at
+    record_cost because scan_cost lacked a column the DDL had gained."""
+    c = state.connect(tmp_path / "old.sqlite3")
+    # Simulate a pre-existing ledger whose scan_cost predates the column.
+    c.executescript("""
+        CREATE TABLE scan_cost (scan_id TEXT NOT NULL, recorded_unix INTEGER NOT NULL,
+          model TEXT, llm_calls INTEGER NOT NULL DEFAULT 0,
+          input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+          cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+          cost_usd REAL NOT NULL DEFAULT 0.0, items_classified INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (scan_id, recorded_unix));
+    """)
+    c.commit()
+    assert "transport_retries" not in {r[1] for r in c.execute("PRAGMA table_info(scan_cost)")}
+    ledger.apply_schema(c)
+    assert "transport_retries" in {r[1] for r in c.execute("PRAGMA table_info(scan_cost)")}
+    # and the insert that used to explode now works
+    ledger.record_cost(c, scan_id="s", model="m", llm_calls=1, input_tokens=1,
+                       output_tokens=1, cache_read_tokens=0, cache_creation_tokens=0,
+                       cost_usd=0.1, items_classified=5, transport_retries=1)
+    assert c.execute("SELECT transport_retries FROM scan_cost").fetchone()[0] == 1
+
+
+def test_migration_is_idempotent_across_every_table(tmp_path) -> None:
+    c = state.connect(tmp_path / "i.sqlite3")
+    ledger.apply_schema(c)
+    before = {t: {r[1] for r in c.execute(f"PRAGMA table_info({t})")}
+              for t in ("opportunities", "scan_cost", "scan_log", "source_health")}
+    ledger.apply_schema(c)
+    ledger.apply_schema(c)
+    after = {t: {r[1] for r in c.execute(f"PRAGMA table_info({t})")}
+             for t in ("opportunities", "scan_cost", "scan_log", "source_health")}
+    assert before == after

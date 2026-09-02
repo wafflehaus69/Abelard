@@ -32,6 +32,7 @@ Two columns are kept DESPITE being near-constant, each for a stated reason:
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -234,24 +235,71 @@ class Classification:
     promoted_unix: int | None = None
 
 
+def columns_from_ddl(ddl: str) -> dict[str, dict[str, str]]:
+    """{table: {column: ddl}} parsed from any CREATE TABLE script.
+
+    Parsed rather than hand-listed so the expectation cannot drift from the DDL
+    it mirrors. A second hand-maintained list is a second thing to forget, and
+    forgetting is precisely what this migration exists to prevent.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for block in re.finditer(
+        r"CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\((.*?)\n\);", ddl, re.S
+    ):
+        table, body = block.group(1), block.group(2)
+        cols: dict[str, str] = {}
+        for line in body.splitlines():
+            line = line.strip().rstrip(",")
+            if not line or line.upper().startswith(
+                ("PRIMARY KEY", "UNIQUE", "FOREIGN KEY", "CHECK")
+            ):
+                continue
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                cols[parts[0]] = parts[1]
+        out[table] = cols
+    return out
+
+
 def _add_missing_columns(conn: sqlite3.Connection) -> None:
     """Additive migration for ledgers created before a column existed.
 
     `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table, so adding a
-    name to `_COLUMNS` alone would leave live databases without it and fail at
-    the next insert. ADD COLUMN only -- nothing here drops, renames, or
-    rewrites, so an older ledger gains columns and loses nothing.
+    name to a schema alone leaves live databases without it and fails at the
+    next insert. ADD COLUMN only -- nothing here drops, renames, or rewrites, so
+    an older ledger gains columns and loses nothing.
+
+    IT COVERS THE AUX TABLES TOO, and that is what this revision is for. The
+    first version handled `opportunities` only. `transport_retries` was later
+    added to `scan_cost` with no migration behind it, and on 2026-09-02 a live
+    scan fetched all 14 sources, ran the mechanical pass, spent a real LLM call
+    on 157 items, then died at `record_cost` with "table scan_cost has no column
+    named transport_retries" -- money spent, not one row persisted. A migration
+    that covers one table is a migration that silently does not cover the rest.
     """
-    have = {r[1] for r in conn.execute("PRAGMA table_info(opportunities)")}
-    if not have:
-        return  # table not created yet; the CREATE above will carry every column
-    for name, ddl in _COLUMNS.items():
-        if name in have:
-            continue
-        # NOT NULL cannot be added to a populated table without a default;
-        # every column added this way is deliberately nullable.
-        safe = ddl.replace(" NOT NULL", "")
-        conn.execute(f"ALTER TABLE opportunities ADD COLUMN {name} {safe}")
+    # EVERY schema this daemon owns, not just this module's. Five tables live
+    # in three other modules and none of them had a migration path either --
+    # the incident below happened to land on `scan_cost` first.
+    from . import state as _state
+    from . import surface as _surface
+    from . import verdicts as _verdicts
+
+    tables: dict[str, dict[str, str]] = {"opportunities": dict(_COLUMNS)}
+    for ddl in (_AUX_SCHEMA, _state._SCHEMA,
+                _verdicts.VERDICT_SCHEMA, _surface.SEEN_CATEGORIES_SCHEMA):
+        tables.update(columns_from_ddl(ddl))
+
+    for table, expected in tables.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if not have:
+            continue  # not created yet; the CREATE above carries every column
+        for name, ddl in expected.items():
+            if name in have:
+                continue
+            # NOT NULL cannot be added to a populated table without a default,
+            # so such a column keeps its DEFAULT and loses only the constraint.
+            safe = ddl.replace(" NOT NULL", "")
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {safe}")
     conn.commit()
 
 
