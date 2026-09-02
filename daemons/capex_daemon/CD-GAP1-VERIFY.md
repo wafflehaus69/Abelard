@@ -6,6 +6,12 @@ pushed. Every figure computed against live SEC data.
 **P7 executed and NBIS admitted — both ruled "yes" by Mando 2026-08-26.** See
 §P7 and §P3-ADMITTED at the end.
 
+**Corrected 2026-09-02.** The §P1 table listed NBIS under a cause the classifier
+cannot return. The row now says what the panel says, and §P3-ADMITTED marks its
+figures as probe output rather than published rows — see the correction under
+§P1 and Open item 7. Every other row was re-checked against this branch and
+stands.
+
 ---
 
 ## P2 — RIOT: the ruling never reached the panel
@@ -65,8 +71,29 @@ what it does have:
 | KEEL | THIN-MATURING | 4 | 6 | — | — | ~2028-02-11 |
 | BTBT | SIDECAR | 10 | 0 | $0.48B | +516.9% | n/a |
 | BABA | **TAGGING-CEASED** | 0 | 10 | — | — | — |
-| NBIS | **DERIVED-FROM-PROSE** | 4 | n/a | — | +671% (half/half) | never — see §P3-ADMITTED |
+| NBIS | **FPI-ANNUAL-BASIS** | 0 | 10 | — | — | — |
 | SPCX | NO-DATA | 0 | 10 | — | — | — |
+
+**Correction, 2026-09-02.** The NBIS row above previously read
+`DERIVED-FROM-PROSE · held 4 · interim +671%`. That was wrong in three cells and
+in its premise. Measured against this branch:
+
+```
+disclosure.classify(NBIS, {}, coverage=("SHORT-HISTORY",))
+  -> cause 'FPI-ANNUAL-BASIS', quarters_held 0, interim_growth None
+```
+
+`prose.py` is imported by neither `scan`, `snapshot` nor `dashboard`, so it
+publishes no row; `CAUSE_FROM_PROSE` is defined in `disclosure.py` and **assigned
+nowhere in the package** — `classify()` cannot return it. `dashboard.py` already
+carries a label for the string, so the renderer is ready for a cause the
+classifier cannot yet produce. NBIS sits in `fpi` and falls to the FPI branch,
+which is the correct answer for the code as it stands.
+
+The figures in §P3-ADMITTED are real and were verified against live filings —
+they are **probe output, not panel output**. The wiring that would make them a
+published row is Open item 7, and until it lands this table is what the panel
+says.
 
 **10 contiguous quarters** is the classification threshold, measured rather than
 assumed: TTM needs 4, a TTM YoY needs 8, the ladder needs `N_CONFIRM + 1 = 3`
@@ -114,6 +141,12 @@ companyfacts — a separate build, not a rendering change.
 > the basis question was still open; Mando ruled it admissible on 2026-08-26
 > and the row now publishes under a marked basis. Kept because the reasoning
 > that produced the question is what makes the marking load-bearing.
+
+> **PREMISE CORRECTED 2026-09-02 — see §P3-COMPANYFACTS.** This section, the
+> probe tool and `prose.py` all assert that Nebius "puts zero capex in
+> companyfacts". Re-measured against the live API, that is false: the concept
+> carries 58 facts, 19 of them USD. The prose leg is still worth building; the
+> reason it is worth building is not the one written here.
 
 Bounded exactly as ordered: regex-tier, zero LLM, one issuer.
 
@@ -184,10 +217,21 @@ issuer with a rounding error attached".
 6. **Landlord bands** — applied under the order's "rides automatically" clause
    and stamped 2026-08-26. Adjustable on a word; the re-measurement obligation
    runs from that date like every other band.
-7. **NBIS scan wiring** — `prose.py` is built, tested and verified against live
-   filings, but the nightly does not yet call it. Reading it costs ~40 filing-index
-   fetches per run, so it wants the same per-instance cache the supplier harvest
-   uses rather than a naive re-scan; that is a build, not a config change.
+7. **NBIS scan wiring — the branch's one live gap, on an amended premise.**
+   `prose.py` is built, tested and verified against live filings, but **nothing
+   calls it**: it is imported by neither `scan`, `snapshot` nor `dashboard`, and
+   `CAUSE_FROM_PROSE` is assigned nowhere in the package. So the ruling of
+   2026-08-26 is recorded and not yet acted on — the same shape as the RIOT
+   defect §P2 was written to fix, and worth naming as the second instance in one
+   branch. NBIS therefore renders `FPI-ANNUAL-BASIS`; §P1 carries the correction.
+   Reading the prose costs ~40 filing-index fetches per run, so it wants the
+   per-instance cache the supplier harvest uses rather than a naive re-scan; that
+   is a build, not a config change. **Amended 2026-09-02:** the premise that
+   companyfacts carries nothing for NBIS is false (§P3-COMPANYFACTS). The API has
+   annual USD capex through FY2025 ($4.066B, currently unpublished). Cheapest
+   first move is therefore an annual-basis row off the API, not the prose leg;
+   the prose leg's remaining value is half-yearly granularity and earlier
+   arrival. Both want a word before either is built.
 
 ---
 
@@ -255,17 +299,24 @@ the releases' own language about substantially increasing the pace.
 **Two properties are marked, not assumed.**
 
 *The basis is broader.* The line is "property and equipment **and intangible
-assets**" where the panel is PP&E-only. Every row carries
-`basis=PPE-PLUS-INTANGIBLES` and the `DERIVED-FROM-PROSE` cause, and NBIS sits in
-`fpi`, which no aggregate reads — so the broader measure is structurally unable
-to contaminate a sum rather than merely discouraged from it (E23).
+assets**" where the panel is PP&E-only. The module stamps every row it produces
+with `basis=PPE-PLUS-INTANGIBLES` and the `DERIVED-FROM-PROSE` cause, and NBIS
+sits in `fpi`, which no aggregate reads — so the broader measure is structurally
+unable to contaminate a sum rather than merely discouraged from it (E23).
+
+**Tense matters here, so state it plainly: no such row exists yet.** `prose.py`
+is a verified extractor that nothing calls. The panel today publishes
+`FPI-ANNUAL-BASIS` for NBIS and no figure at all — see the correction under §P1.
+The ruling of 2026-08-26 admitted the basis; the wiring that acts on it is Open
+item 7 and is not in this branch.
 
 *It can never classify, and that is structural, not a countdown.* Nebius reports
 Q1, H1 and FY, so Q3 is never separate and Q4 exists only inside an H2 lump. The
 series is permanently non-contiguous, which means no TTM, no TTM YoY and no phase
 state — ever, from this source. `test_the_series_can_never_be_contiguous_and_never_classifies`
-pins it. The row publishes a **level** and a like-for-like **half-over-half**
-growth read (**+671%**), and must not be rendered as maturing toward eligibility.
+pins it. The row, **once wired**, publishes a **level** and a like-for-like
+**half-over-half** growth read (**+671%**, measured by the probe), and must not
+be rendered as maturing toward eligibility.
 
 **The trap the tests keep alive:** "capital expenditures" appears in the
 forward-looking-statements boilerplate of nearly every release, so a
@@ -273,3 +324,54 @@ phrase-keyed extractor matches ~100% of them and returns nothing. The fixture
 for that case is Nebius's actual boilerplate sentence.
 
 **238 tests pass.**
+
+---
+
+## P3-COMPANYFACTS — the premise was wrong, measured 2026-09-02
+
+`prose.py`, `tools/nbis_prose_probe.py` and §P3 above all state that Nebius puts
+**zero capex in companyfacts**. Re-measured against the live API on 2026-09-02:
+
+```
+PaymentsToAcquirePropertyPlantAndEquipment   58 facts   USD 19 · RUB 39
+every duration 364 or 365 days — annual, without exception
+```
+
+The USD series runs 2020 → **FY2025**:
+
+| FY | USD | note |
+|---|---|---|
+| 2020 | 332.3M | |
+| 2021 | 600.6M | |
+| 2022 | 718.6M **and** 14.6M | two tagged values |
+| 2023 | 1,010.6M, 83.4M **and** 82.9M | three tagged values |
+| 2024 | 807.7M **and** 807.5M | two tagged values |
+| 2025 | **4,066.0M** | current, and the panel shows a dash |
+
+So three things change.
+
+**One — NBIS classifying as `FPI-ANNUAL-BASIS` is not a fallback, it is the
+right answer.** The name files annually and its capex facts are annual
+durations that cannot difference into quarters. The label now rests on a
+measured fact rather than on a bucket assignment.
+
+**Two — the anchors `prose.py` hardcodes were already in the API.** Its
+`anchors={"2022": 14.6, "2023": 83.4, "2024": 807.7}` were read out of the
+FY2024 20-F's text. All three are tagged facts. Reading a filing's prose to
+recover a number the API already publishes is work the API had done.
+
+**Three — the multi-value years are the real concept problem, and they are not
+the one §P3 describes.** 2023 carries 1,010.6M, 83.4M and 82.9M under one
+concept. The prose leg's stated worry was PP&E-versus-intangibles; the API's
+worry is which of three tagged values for one year is the capex line. That is
+an E23 question with a different shape and it is unresolved here.
+
+**What this does not change.** The prose leg still buys something the API does
+not: half-yearly granularity (2025Q1/Q2, 2026Q1/Q2) where companyfacts carries
+only full years, and a within-year read months before the 20-F lands. The case
+for building it stands. The case as previously written — "the API has nothing"
+— does not, and Open item 7 is amended to say so.
+
+**FY2025 at $4.066B is current, tagged, and unpublished.** The panel renders a
+dash for NBIS today. Whether an annual-only figure should reach the disclosure
+row is a ruling, not a parse, and it is not taken here.

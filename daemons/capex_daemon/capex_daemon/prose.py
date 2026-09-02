@@ -1,8 +1,21 @@
 """CD-GAP1 P3 — capex read out of filing PROSE, for issuers that tag none.
 
 Admitted by Mando 2026-08-26 for Nebius, which files 245 6-Ks and 16 20-Fs and
-puts **zero capex in companyfacts**. It was ruled into the panel as a major
-neocloud and contributed nothing for two months.
+was ruled into the panel as a major neocloud while contributing nothing.
+
+**Premise corrected 2026-09-02.** This module was written on the claim that
+Nebius puts *zero capex in companyfacts*. Re-measured against the live API, that
+is false: `PaymentsToAcquirePropertyPlantAndEquipment` carries 58 facts (19 USD,
+39 RUB), every one an annual 364/365-day duration, running 2020 through FY2025
+at $4,066.0M — and the three anchors hardcoded below were already among them.
+What companyfacts does NOT carry is anything shorter than a year, so no
+quarterly or half-yearly series can be derived from it and NBIS is correctly
+`FPI-ANNUAL-BASIS` today.
+
+That is what this module is actually for: **granularity and arrival time**, not
+the absence of data. The interim releases give 2025Q1/Q2 and 2026Q1/Q2 halves
+months before the 20-F lands. A cheaper first move — an annual row straight off
+the API — exists and has not been ruled on. See CD-GAP1-VERIFY §P3-COMPANYFACTS.
 
 Regex-tier, zero LLM (E2). Restricted to issuers with an explicit entry in
 `PROSE_SOURCES` — this is not a general prose reader and must not become one by

@@ -1,9 +1,16 @@
 """CD-GAP1 P3 — NBIS prose capex probe. Report-only; publishes no row.
 
-Nebius is a foreign private issuer: 245 6-Ks, 16 20-Fs, and **zero capex in
-companyfacts**. It was ruled into the panel as a major neocloud and has
-contributed nothing for two months, which is the materiality case the deferred
-prose leg was waiting for.
+Nebius is a foreign private issuer: 245 6-Ks and 16 20-Fs. It was ruled into the
+panel as a major neocloud and has contributed nothing for two months, which is
+the materiality case the deferred prose leg was waiting for.
+
+**Premise corrected 2026-09-02.** This tool was written asserting *zero capex in
+companyfacts*. Measured against the live API that is false — 58 facts on
+`PaymentsToAcquirePropertyPlantAndEquipment`, 19 USD, all annual durations,
+through FY2025 at $4,066.0M, including all three anchors below. The API carries
+no sub-annual duration, which is why no quarterly series exists; the prose leg's
+value is half-yearly granularity and earlier arrival, not filling a void. See
+CD-GAP1-VERIFY §P3-COMPANYFACTS.
 
 **Regex-tier, zero LLM, one issuer** (E2: scripts-first). The extraction works.
 Whether the extracted number may enter the panel is a different question, and
