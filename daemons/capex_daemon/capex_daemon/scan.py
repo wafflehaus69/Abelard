@@ -206,7 +206,34 @@ def check_issuer(con, entity, http=None, submissions_doc=None, covered=None):
                       filing.filing_date, wm, detail, submissions_doc=doc)
 
 
-def refresh_issuer(con, entity, http=None, facts_doc=None, submissions_doc=None):
+def _fill_gaps(roster, indexed, subs_by_cik, http=None):
+    """Run the filing-instance fallback across the panel. Returns {cik: Fill}.
+
+    Operates on the index the snapshot is built from, in place. An issuer whose
+    capex concept is REFUSED is skipped: its gap is a resolution question
+    (RIOT: CAPEX-UNRESOLVED, already published as coverage), not a late API, and
+    treating it as an ingest gap would re-fetch its filing every night forever
+    for a hole no fetch can fill.
+    """
+    out = {}
+    for cik, ix in (indexed or {}).items():
+        sub = (subs_by_cik or {}).get(cik)
+        if sub is None or cik not in roster:
+            continue
+        res = tagmap.resolve(ix, tagmap.CAPEX)
+        if res.is_unresolved or not res.current_concept:
+            continue
+        try:
+            out[cik] = freshness.fill_from_filing(
+                cik, sub, ix, concept=res.current_concept, http=http)
+        except Exception as exc:            # a fill must never fail a scan
+            out[cik] = freshness.Fill(freshness.FILL_FAILED,
+                                      detail="fill raised: {}".format(exc))
+    return out
+
+
+def refresh_issuer(con, entity, http=None, facts_doc=None, submissions_doc=None,
+                   indexed=None):
     """Re-derive one issuer's view. Returns (IssuerView, indexed facts, Fill).
 
     **The fallback runs here, and until 2026-09-02 it ran nowhere.** `freshness`
@@ -219,8 +246,10 @@ def refresh_issuer(con, entity, http=None, facts_doc=None, submissions_doc=None)
     `submissions_doc` is optional only so existing callers keep working; without
     it there is no filing to fall back to and the API is trusted as before.
     """
-    doc = facts_doc if facts_doc is not None else edgar.fetch_companyfacts(entity.cik, http)
-    indexed = facts_api.index_facts(doc)
+    if indexed is None:
+        doc = (facts_doc if facts_doc is not None
+               else edgar.fetch_companyfacts(entity.cik, http))
+        indexed = facts_api.index_facts(doc)
     fill = None
     if submissions_doc is not None:
         res = tagmap.resolve(indexed, tagmap.CAPEX)
@@ -299,14 +328,34 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
             "started_unix": started,
         }
 
+    # The snapshot is the single published view-model — dashboard, PDF and
+    # alerts all read it and none recomputes (P4). It is built BEFORE the
+    # refresh loop because the fallback fill has to land in THIS index.
+    #
+    # The first cut of the ingest fix filled a private copy inside
+    # refresh_issuer, whose only consumer is `views`. Measured on Basilic: the
+    # run reported "updated: 2 of 35 — AMT, DLR" and published a snapshot still
+    # sitting on their previous quarter, because the index the snapshot is
+    # built from was fetched separately and never saw the fill. Filling the
+    # right object is the whole fix.
+    indexed = _indexed_all(roster, http, facts_by_cik, errors=errors)
+    fills = _fill_gaps(roster, indexed, subs_seen if fallback else {}, http=http)
+
     views, refreshed, ingest_gaps = [], [], []
     for c in affected:
         entity = roster[c.cik]
+        fill = fills.get(c.cik)
+        ix = indexed.get(c.cik)
+        if ix is None:
+            # `_indexed_all` already recorded why it could not be fetched. An
+            # issuer with no index was not refreshed, so its watermark must not
+            # move — and it must NOT quietly fall through to a second network
+            # fetch here, which would turn an injected failure into a live call.
+            continue
         try:
-            view, _ix, fill = refresh_issuer(
-                con, entity, http=http,
-                facts_doc=(facts_by_cik or {}).get(c.cik),
-                submissions_doc=(subs_seen.get(c.cik) if fallback else None))
+            # Reuse the filled index rather than re-fetching companyfacts for
+            # an issuer `_indexed_all` has already fetched.
+            view, _ix, _f = refresh_issuer(con, entity, http=http, indexed=ix)
         except Exception as exc:
             errors.append((c.ticker, "refresh failed: {}".format(exc)))
             continue
@@ -338,9 +387,6 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         if write_watermark(con, c.cik, c.newest_filing, now_unix=started):
             advanced.append(c.ticker)
 
-    # The snapshot is the single published view-model — dashboard, PDF and
-    # alerts all read it and none recomputes (P4).
-    indexed = _indexed_all(roster, http, facts_by_cik, errors=errors)
     # CD-3 supplier leg. Parser-only, so it is harvested per FILING rather than
     # per fact: only instances absent from the cache are fetched, which keeps a
     # quiet night to one submissions request per supplier.

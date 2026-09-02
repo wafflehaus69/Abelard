@@ -197,3 +197,55 @@ def test_a_failed_fetch_is_a_reported_gap_not_an_exception(monkeypatch):
         concept="PaymentsToDevelopRealEstateAssets")
     assert fill.status == freshness.FILL_FAILED
     assert "EDGAR timed out" in fill.detail
+
+
+# --- the fill must land in the index the SNAPSHOT is built from -------------
+
+def _companyfacts(concept, rows):
+    """Minimal companyfacts document: [(start, end, val)] -> the API's shape."""
+    return {"facts": {"us-gaap": {concept: {"units": {"USD": [
+        {"start": s, "end": e, "val": v, "form": "10-Q", "filed": "2026-05-01",
+         "fy": 2026, "fp": "Q1", "frame": None} for s, e, v in rows]}}}}}
+
+
+def test_the_fill_reaches_the_published_snapshot_not_just_the_view(con, monkeypatch):
+    """The defect this pins was shipped and caught on Basilic.
+
+    The first cut filled a private index inside `refresh_issuer`, whose only
+    consumer is the `views` list. The run reported "updated: 2 of 35 — AMT, DLR"
+    and published a snapshot still sitting on their previous quarter, because
+    `snapshot.build` consumes an index fetched separately by `_indexed_all`.
+    Asserting on the view would have passed. Only the snapshot proves the fix.
+    """
+    from capex_daemon import scan as scanmod
+    CONCEPT = "PaymentsToAcquirePropertyPlantAndEquipment"
+    entity = universe.Entity("789019", "MSFT", "hyperscaler", "", "")
+    roster = {"0000789019": entity}
+    # Eight quarters of history, ending 2026Q1 — the API is one quarter behind.
+    rows, y, m = [], 2024, 1
+    for i in range(9):
+        start = "{}-{:02d}-01".format(y, m)
+        end_m = m + 2
+        end = "{}-{:02d}-{}".format(y, end_m, 30 if end_m in (6, 9) else 31)
+        rows.append((start, end, 1.0e9 + i * 1.0e8))
+        m += 3
+        if m > 12:
+            y, m = y + 1, 1
+    facts = {"0000789019": _companyfacts(CONCEPT, rows)}
+
+    filed_q2 = _fact(CONCEPT, "2026-04-01", "2026-06-30", 2.5e9)
+    monkeypatch.setattr(freshness, "fetch_fallback_facts", _Stub([filed_q2]))
+
+    r = scanmod.run(con=con, roster=roster, render=False,
+                    submissions_by_cik={"0000789019": subs(filed="2026-07-31",
+                                                           period="2026-06-30")},
+                    facts_by_cik=facts)
+    assert r["outcome"] == scanmod.OUTCOME_UPDATED
+    assert not r["ingest_gaps"], r["ingest_gaps"]
+
+    from capex_daemon import snapshot as snapmod
+    published = snapmod.load(con)
+    quarters = [q["q"] for q in published["issuers"]["MSFT"]["quarters"]]
+    assert "2026Q2" in quarters, quarters
+    # and the watermark may now advance, because the period actually arrived
+    assert scanmod.read_watermark(con, "0000789019") == "2026-07-31"
