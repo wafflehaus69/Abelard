@@ -201,6 +201,22 @@ def grid(frame, fmt=_money, ticks=5):
 MIN_LABEL_GAP = 38.0        # px; "2026Q2" at font-size 10 plus air
 
 
+def label_picks(n, every, x_of, min_gap):
+    """Indices to label: every Nth, the last one always, none overprinted.
+
+    Shared by the time axis and the phase grid because both had the same
+    defect — drawing every Nth AND the last unconditionally, so the final two
+    collide whenever the length is not a multiple of N. The last quarter is the
+    one a reader most wants, so it wins and its neighbour is dropped.
+    """
+    picks = [i for i in range(n) if i % every == 0]
+    if n and n - 1 not in picks:
+        picks.append(n - 1)
+    while len(picks) >= 2 and x_of(picks[-1]) - x_of(picks[-2]) < min_gap:
+        picks.pop(-2)
+    return picks
+
+
 def quarter_axis(frame, every=None, min_gap=MIN_LABEL_GAP):
     """Quarter labels, with the last one guaranteed and never overprinted.
 
@@ -215,11 +231,7 @@ def quarter_axis(frame, every=None, min_gap=MIN_LABEL_GAP):
     every = every or max(1, n // 14)
     out = ["<line x1='{}' y1='{:.1f}' x2='{}' y2='{:.1f}' stroke='#bbb'/>".format(
         frame.l, frame.t + frame.ph, frame.l + frame.pw, frame.t + frame.ph)]
-    picks = [i for i in range(n) if i % every == 0]
-    if n - 1 not in picks:
-        picks.append(n - 1)
-    while len(picks) >= 2 and frame.x(qs[picks[-1]]) - frame.x(qs[picks[-2]]) < min_gap:
-        picks.pop(-2)
+    picks = label_picks(n, every, lambda i: frame.x(qs[i]), min_gap)
     for i in picks:
         out.append("<text x='{:.1f}' y='{:.1f}' font-size='10' fill='#666' "
                    "text-anchor='middle'>{}</text>".format(
@@ -678,10 +690,14 @@ def state_grid(rows, quarters, width=1160, cell=15, label_w=104):
     height = 34 + len(rows) * cell + 26
     body = []
     every = max(1, len(quarters) // 16)
-    for q, i in idx.items():
-        if i % every and i != len(quarters) - 1:
-            continue
-        x = label_w + i * cell + cell / 2.0
+
+    def _gx(i):
+        return label_w + i * cell + cell / 2.0
+
+    # Same overprint the time axis had: the grid drew every Nth label AND the
+    # last, so "2026Q2" and "2026Q3" landed on top of each other.
+    for i in label_picks(len(quarters), every, _gx, cell * 2.6):
+        x, q = _gx(i), quarters[i]
         body.append("<text x='{:.1f}' y='24' font-size='9' fill='#777' text-anchor='middle' "
                     "transform='rotate(-40 {:.1f} 24)'>{}</text>".format(x, x, _e(q)))
     for r, (key, states, sub) in enumerate(rows):

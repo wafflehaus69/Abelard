@@ -537,3 +537,15 @@ def test_the_last_quarter_label_is_never_overprinted():
     assert q[-1] in labels
     gaps = [b - a for a, b in zip(xs, xs[1:])]
     assert gaps and min(gaps) >= svgcharts.MIN_LABEL_GAP - 1e-6, min(gaps)
+
+
+def test_the_phase_grid_labels_do_not_overprint_either():
+    """The grid had the same defect as the time axis in its own label loop:
+    '2026Q2' and '2026Q3' landed on top of each other at the right edge."""
+    rows = [("A", {q: phases.STATE_PLATEAU for q in qs(2010, 1, 67)}, "")]
+    svg = svgcharts.state_grid(rows, qs(2010, 1, 67))
+    root = ET.fromstring(svg)
+    xs = sorted(float(t.get("x")) for t in root.iter(SVG + "text")
+                if (t.text or "").endswith(("Q1", "Q2", "Q3", "Q4")))
+    gaps = [b - a for a, b in zip(xs, xs[1:])]
+    assert gaps and min(gaps) > 1.0, min(gaps)

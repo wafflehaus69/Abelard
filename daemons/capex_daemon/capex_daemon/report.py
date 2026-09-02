@@ -194,12 +194,9 @@ def _quarter_axis(d, pf, size=6.0, font="Helvetica", every=None):
     every = every or max(1, n // 14)
     d.add(Line(pf.l, pf.base_y(), pf.l + pf.pw, pf.base_y(),
                strokeColor=_hex("#bbbbbb"), strokeWidth=0.5))
-    picks = [i for i in range(n) if i % every == 0]
-    if n - 1 not in picks:
-        picks.append(n - 1)
-    min_gap = size * 4.2                       # ~"2026Q2" at this size, plus air
-    while len(picks) >= 2 and pf.x(qs[picks[-1]]) - pf.x(qs[picks[-2]]) < min_gap:
-        picks.pop(-2)
+    # ~"2026Q2" at this size, plus air. Shared pick logic with the SVG axis and
+    # the phase grid, all three of which had the same overprint.
+    picks = svgcharts.label_picks(n, every, lambda i: pf.x(qs[i]), size * 4.2)
     for i in picks:
         d.add(String(pf.x(qs[i]), pf.base_y() - size - 3, qs[i], fontSize=size,
                      fontName=font, fillColor=_hex("#666666"), textAnchor="middle"))
@@ -400,10 +397,12 @@ def state_grid_drawing(rows, quarters, width=CHART_W, label_w=96, cell=None):
     height = 20 + body_h + 20
     d = Drawing(width, height)
     every = max(1, len(quarters) // 12)
-    for q, i in idx.items():
-        if i % every and i != len(quarters) - 1:
-            continue
-        d.add(String(label_w + i * cell + cell / 2.0, height - 12, q, fontSize=5.4,
+
+    def _gx(i):
+        return label_w + i * cell + cell / 2.0
+
+    for i in svgcharts.label_picks(len(quarters), every, _gx, cell * 2.6):
+        d.add(String(_gx(i), height - 12, quarters[i], fontSize=5.4,
                      fontName="Helvetica", fillColor=_hex("#777777"),
                      textAnchor="middle"))
     for r, (key, states, _sub) in enumerate(rows):
