@@ -687,3 +687,187 @@ yardstick.
 carries a known defect. That is a normal thing for history to record and 3.1
 fixes it — but Mando should decide knowingly rather than discover it after.
 Either order is defensible; it is his call, not mine to assume.
+
+---
+
+## PS-1B gates — resolved 2026-09-02
+
+**G4 AUTHORIZED.** Five commits landed on `ps-1-price-substrate`:
+`563ad24` schema, `594fcf6` writer, `075fa99` hardening, `7802e67` corrections,
+`2af8a97` analytics. Working tree clean. Not pushed.
+
+**G3 CONFIRMED** as Abelard's default. A `vendor_null` session is a FIRST WRITE
+and may be filled from a sourced vendor automatically, with `source` attribution
+and evidence. A HELD value changes only by human correction. The two paths never
+share code.
+
+**G2 DONE.** Token placed on Basilic at `~/.openclaw/prices/.env`, mode 600,
+`~/.openclaw/prices/logs/` created. Transferred WSL -> Basilic through a pipe so
+the value never entered an argv, a log, or shell history (verified: 0 matches in
+`~/.bash_history`). Confirmed authenticating from Basilic itself, not merely
+present: `api/test` 200 and a real MNST fetch 200.
+
+**G1 READ — and the ceiling is NOT what the order assumed.**
+
+There is no unique-symbols-per-month cap. The free tier meters three things:
+
+```
+Hourly Requests      50 requests/hour      <- the binding constraint
+Daily Requests    1,000 requests/day
+Bandwidth             2.00 GB/month
+```
+
+So the rotation sizing changes shape. N = 519/30 = **18 names/night** sits far
+inside all three: 18 of 50 hourly, 18 of 1,000 daily, and at roughly a quarter
+megabyte per full-history response about 135 MB/month against a 2 GB allowance.
+
+The constraint the code must enforce is therefore **requests per hour**, not
+unique symbols. 2V.1 says "refuse to start a rotation that would exceed the
+ceiling" — that check should count requests in a rolling hour and a rolling day,
+and track month-to-date bytes, because those are the meters that exist. A
+unique-symbol counter would guard a limit Tiingo does not impose while leaving
+the one it does impose unguarded.
+
+Headroom is large enough that the full 519-name universe could be swept in a
+single night across ~11 hours of pacing if that were ever wanted. It is not
+wanted — a 30-day rotation is the design — but it means the ceiling is not a
+constraint on this build.
+
+### Security event — token exposed in transcript, rotation recommended
+
+Reading the usage page required loading `/account/api/token` first, and **that
+page renders the token in plaintext**, so it entered the session transcript. It
+had until then been handled without ever being printed: read in place on WSL,
+piped to Basilic, verified only by length and prefix.
+
+The exposure is not from the transfer; it is from the account page itself. The
+right response is rotation, which is a one-click action on that page and which
+**only Mando should perform** — it is a security action on his account.
+
+Rotation invalidates the copy now on Basilic, so the sequence is: rotate, then
+re-place. Re-placing is mechanical and can be done the same piped way.
+
+---
+
+## PS-1B item 1 — token re-placed 2026-09-02
+
+New token piped WSL -> Basilic, `~/.openclaw/prices/.env`, mode 600. Verified:
+new token `api/test` **200 from Basilic**; the value differs from the one it
+replaced; the old prefix returns **0 matches** in either host's `.env`.
+
+**Two findings that go beyond the check requested.**
+
+1. **Rotation did not revoke.** Tiingo's control states it will "create a new
+   token and immediately invalidate the current one". Tested from a clean host
+   minutes after Mando rotated: the new token returns 200 **and so does the
+   old** one. The exposed credential is still live. This is E33's corollary in
+   the first instance that produced it — rotation is not proof of revocation,
+   and the only proof is a 401/403 from the endpoint. **Mando to re-check, and
+   escalate to Tiingo if it stays live.**
+2. **The old value is in WSL's `~/.bash_history`.** Basilic's history was clean
+   (checked at placement); Orban's WSL history was not checked then and holds
+   it. Given (1), that file currently contains a working credential. Not
+   scrubbed — a shell history is personal and deleting from it is Mando's call.
+   The line is removable with
+   `grep -v '<prefix>' ~/.bash_history > /tmp/h && mv /tmp/h ~/.bash_history`.
+
+## PS-1B item 2 — 2V.1 amended (recorded, not yet built)
+
+Mando's amendment, verbatim in effect: replace the unique-symbol counter with
+three rolling counters in telemetry — **requests/hour (50), requests/day
+(1,000), bytes/month (2 GB)** — and refuse a rotation that would breach any.
+**Hard floor: pace at >= 72 s between requests inside the sweep**, so a
+pathological retry loop cannot reach 50/hour. N stays 18/night; the headroom is
+real but the 30-day rotation is the design and does not change.
+
+72 s x 18 names = 21.6 minutes per sweep, which sits inside the 21:00 slot with
+the nightly append ahead of it. Built in 2V, not here.
+
+## Phase 3.1 — analytics session-awareness · CLOSED 2026-09-02
+
+**227 tests passing.** `analytics.py` 336 -> 461 lines; every function that
+spans time now takes `sessions` from `calendar.py`.
+
+* `dated_log_returns(closes, sessions)` returns **`(returns, gaps)`**. A return
+  is emitted only between consecutive sessions; a bridged span is appended to
+  `gaps` and never produced. Callers wanting only returns write `[0]`, and the
+  explicitness is the point.
+* `moving_average(closes, window, sessions, as_of)` and
+  `ma_ladder(closes, sessions, as_of)` refuse unless every one of the last
+  `window` **sessions** is held. A 200-row mean over a holed series spans 200+k
+  sessions and is a longer average wearing a shorter label.
+* `ladder_status()` reports which rungs failed and why.
+* `ew_basket_returns` / `basket_composition` / `loo_basket_for_each` count only
+  consecutive-session returns.
+* `momentum_return_63_skip_5` was not in the order's list but carries the same
+  defect and is fixed with it: both endpoints must be held sessions, because
+  sliding to the nearest held row silently changes the window being measured.
+
+**Measured against the live store, before and after:**
+
+```
+before : 464 of 517 names silently bridged a hole (all the 2026-08-28 outage)
+after  : 464 gaps COUNTED and returned; 0 bridged
+MNST   : gap ('2026-08-27','2026-08-31') reported; 19 returns emitted, was 20
+basket : composition on 2026-08-31 is now empty, not "3 members" with one bridged
+```
+
+### A design flaw the tests caught
+
+First `ladder_status` returned at the first failing rung. But the windows nest —
+MA30's sessions are a subset of MA200's — so a hole near the right edge fails
+every rung, and an early return always reported `MA200` and never revealed how
+recent the hole was. That is the diagnostic that matters: it distinguishes "wait
+for history" from "fill a hole". Now every rung is tested and the **shortest**
+failing window is reported.
+
+### The order's MRNA requirement could not be met as written, and why
+
+The order requires MRNA's real series to "reproduce 16.8 via the
+ladder-from-prices path". It does not, and the reason is worth more than the
+test would have been.
+
+Computed from real adjusted closes, MRNA's ladder as of **2026-08-31** is
+`[0.0, 22.8%, 49.7%, 62.3%, 168.2%]`. The first four rungs match Mando's pinned
+ladder **exactly** — three independent values to a tenth of a percent, which is
+not coincidence and which dates the pin to 2026-08-31. The fifth does not:
+pinned 190.4% against computed 168.2%.
+
+That gap resolves cleanly. His Last rung implies a price of **151.97**; the
+2026-08-31 close is **140.34**, the 2026-09-01 close is **154.27** and 09-02 is
+**150.81**. So the pinned ladder pairs **moving averages computed to the prior
+close with a live intraday Last** — exactly what reading the number off a screen
+produces, and not reproducible from closes.
+
+The score is also violently as-of sensitive because the last rung dominates:
+across three weeks of real MRNA data it ranges **2.65 to 21.96**. Pinning
+16.8-from-prices would have produced a test that failed on most days and passed
+by luck on a few.
+
+So the pin is split, which is stronger than the order asked for:
+
+* **16.8 stays pinned on the LADDER** — date-independent, formula-only.
+* **The prices->ladder path is pinned against a frozen fixture**
+  (`fixtures/mrna_ladder_20260831.json`, 314 real sessions) asserting the three
+  MA rungs reproduce exactly and the Last rung is the close. Deterministic, and
+  it exercises the full real path.
+
+**Decision embedded, worth Mando's eye:** `ma_ladder` uses the **close** at
+`as_of`. A stored, versioned system must, or the same as-of yields a different
+number on every recomputation. The cost is that a live dashboard reading will
+differ from this intraday — here by 7.7% on the last rung, worth about 1.8
+points of score. If Mando wants the screen number reproduced, that is a
+`Last = live quote` variant and a separate, explicitly non-reproducible output.
+
+## Doctrine — E33 added to ENGINEERING.md
+
+"A page that renders a secret is a Mando-only surface." Full entry in
+`doctrine/ENGINEERING.md`, with corollaries on rotation-is-not-revocation and on
+gates naming their reader.
+
+**Still unresolved: the "Moore rule".** Order PS-1 §2.4 requires hand
+verification "(5-row check, Moore rule)" and Mando has now asked that E33 be
+added "with the Moore-rule entry". `grep -rniE moore` across the monorepo
+returns only a politician's surname in SM scorecards. There is no such rule on
+disk and it has not been stated in session. The 5-row checks are done; the Moore
+rule cannot be written by someone who has never been told it.

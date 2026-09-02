@@ -23,6 +23,22 @@ Layer-1 economic-eligibility test to own, and only in that order.
 sessions has no 200-day moving average, and inventing one from what is there is
 the failure this whole substrate exists to prevent. Callers get ``None`` and
 decide; the batch helpers report how many they got.
+
+**Every window is measured in SESSIONS, never in rows.** This module's first
+version walked adjacent rows, which is the same thing only when the series has
+no holes — and holes are normal here: a ``vendor_null``, a quarantined session,
+anything ``adjusted_view`` excludes. Measured on the live store, **464 of 517
+names** had a hole inside their own span (all of them the 2026-08-28 mass
+vendor-null), so `log(c[d_i]/c[d_{i-1}])` was emitting a two-session return
+keyed to one date, `ew_basket_returns` was averaging it against genuine
+single-session returns, and a 200-row mean with k holes was spanning 200+k
+sessions while still being labelled MA200.
+
+Every function that spans time therefore takes ``sessions`` — the exchange
+calendar's ordered session list from ``calendar.py`` — and either refuses or
+reports when the data does not cover it. A return is emitted only between
+consecutive sessions; a skipped span is COUNTED and returned, never silently
+bridged.
 """
 
 from __future__ import annotations
@@ -97,20 +113,42 @@ def log_returns(closes: Mapping[str, float] | Sequence[float]) -> list[float]:
     return out
 
 
-def dated_log_returns(closes: Mapping[str, float]) -> dict[str, float]:
-    """Log returns keyed by the session they belong to — the shape needed to
-    align two names that do not share every date."""
+def dated_log_returns(
+    closes: Mapping[str, float],
+    sessions: Sequence[str],
+) -> tuple[dict[str, float], list[tuple[str, str]]]:
+    """Log returns keyed by the session they belong to, plus the spans skipped.
+
+    Returns ``(returns, gaps)``. A return is emitted **only** where the two
+    dates are consecutive entries in ``sessions``; anywhere they are not, the
+    span is appended to ``gaps`` as ``(from, to)`` and no return is produced.
+
+    Bridging a hole is not a smaller error than omitting one — it is a larger
+    one, because the result looks like a single-session return and gets averaged
+    with real ones. Callers that genuinely only want the returns write
+    ``dated_log_returns(...)[0]``, and the explicitness is the point.
+    """
+    order = {d: i for i, d in enumerate(sessions)}
     dates = sorted(closes)
     out: dict[str, float] = {}
+    gaps: list[tuple[str, str]] = []
     for i in range(1, len(dates)):
-        a, b = closes[dates[i - 1]], closes[dates[i]]
+        prev, cur = dates[i - 1], dates[i]
+        a, b = closes[prev], closes[cur]
+        pi, ci = order.get(prev), order.get(cur)
+        if pi is None or ci is None or ci - pi != 1:
+            gaps.append((prev, cur))
+            continue
         if a and b and a > 0 and b > 0:
-            out[dates[i]] = math.log(b / a)
-    return out
+            out[cur] = math.log(b / a)
+        else:
+            gaps.append((prev, cur))
+    return out, gaps
 
 
 def aligned_returns(
     panel: Mapping[str, Mapping[str, float]],
+    sessions: Sequence[str],
     min_sessions: int = 2,
 ) -> tuple[list[str], dict[str, list[float]]]:
     """Return series restricted to dates EVERY name has.
@@ -122,7 +160,7 @@ def aligned_returns(
     series, so a caller can see the window it actually got rather than assume
     the one it asked for.
     """
-    per_name = {k: dated_log_returns(v) for k, v in panel.items()}
+    per_name = {k: dated_log_returns(v, sessions)[0] for k, v in panel.items()}
     per_name = {k: v for k, v in per_name.items() if len(v) >= min_sessions - 1}
     if not per_name:
         return [], {}
@@ -133,40 +171,134 @@ def aligned_returns(
 
 # ----------------------------------------------------------- moving averages --
 
-def moving_average(closes: Sequence[float], window: int) -> float | None:
-    """Mean of the last ``window`` sessions, or None if there are not that many.
+def moving_average(
+    closes: Mapping[str, float],
+    window: int,
+    sessions: Sequence[str],
+    as_of: str | None = None,
+) -> float | None:
+    """Mean of the last ``window`` **sessions** ending at ``as_of``.
 
-    Not a partial average over what happens to be present: a 40-session name has
-    no MA200, and a number computed from 40 sessions and labelled MA200 is the
-    exact species of quiet wrongness this substrate is built against.
+    Sessions, not rows. A 200-row mean over a series with k holes spans 200+k
+    sessions and is not an MA200 — it is a longer average wearing the label of a
+    shorter one, and it moves differently. Returns None unless every one of the
+    last ``window`` calendar sessions is present in ``closes``.
+
+    Not a partial average over what happens to be there, either: a 40-session
+    name has no MA200, and a number built from 40 sessions and labelled MA200 is
+    the exact quiet wrongness this substrate is built against.
     """
-    if window <= 0 or len(closes) < window:
+    if window <= 0 or not sessions:
         return None
-    tail = closes[-window:]
-    if any(c is None for c in tail):
+    end = as_of or max(closes) if closes else None
+    if end is None or end not in sessions:
         return None
-    return sum(tail) / window
+    idx = sessions.index(end)
+    if idx + 1 < window:
+        return None
+    need = sessions[idx + 1 - window: idx + 1]
+    vals = []
+    for d in need:
+        c = closes.get(d)
+        if c is None:
+            return None          # a hole inside the window
+        vals.append(c)
+    return sum(vals) / window
 
 
-def ma_ladder(closes: Mapping[str, float] | Sequence[float]) -> list[float] | None:
+def ma_ladder(
+    closes: Mapping[str, float],
+    sessions: Sequence[str],
+    as_of: str | None = None,
+) -> list[float] | None:
     """The five rungs as ratios to MA200: ``y_k = MA_k / MA200 - 1``.
 
-    Order is [MA200, MA100, MA50, MA30, Last], so ``y[0]`` is always exactly 0
-    by construction — MA200 measured against itself. Returns None if the name
-    is too short for MA200, or if MA200 is non-positive.
+    Order is [MA200, MA100, MA50, MA30, Last], so ``y[0]`` is exactly 0 by
+    construction — MA200 measured against itself.
+
+    ``Last`` is the **close** at ``as_of``. Worth stating because it is a real
+    difference from reading the number off a screen: a live ladder pairs moving
+    averages computed to the prior close with an intraday Last, and the two can
+    diverge materially. Measured on MRNA, Mando's pinned ladder reproduces its
+    MA100/MA50/MA30 rungs exactly as of 2026-08-31 while its Last rung implies
+    151.97 against that session's close of 140.34 — 7.7%, worth about 1.8 points
+    of score. A stored, versioned system has to use the close, or the same as-of
+    date yields a different number every time it is recomputed.
+
+    Returns None if any rung cannot be built. Use :func:`ladder_status` to find
+    out which one.
     """
-    series = [c for c in _ordered(closes) if c is not None]
-    ma200 = moving_average(series, 200)
-    if not ma200 or ma200 <= 0:
+    status = ladder_status(closes, sessions, as_of)
+    if not status.ok:
         return None
-    rungs: list[float] = []
-    for w in LADDER_WINDOWS:
-        ma = moving_average(series, w)
-        if ma is None:
-            return None
-        rungs.append(ma / ma200 - 1.0)
-    rungs.append(series[-1] / ma200 - 1.0)
-    return rungs
+    return status.ladder
+
+
+@dataclass(frozen=True)
+class LadderStatus:
+    """Which rungs could be built, and why any could not."""
+
+    as_of: str | None
+    ladder: list[float] | None
+    failed: list[str]
+    detail: str = ""
+
+    @property
+    def ok(self) -> bool:
+        return self.ladder is not None and not self.failed
+
+
+def ladder_status(
+    closes: Mapping[str, float],
+    sessions: Sequence[str],
+    as_of: str | None = None,
+) -> LadderStatus:
+    """The companion to :func:`ma_ladder`: report the failure, do not just
+    return None.
+
+    A caller looking at 500 names needs to know whether a missing ladder means
+    "too short" or "a hole inside MA30", because those have different fixes —
+    one waits for history, the other is a hole to fill.
+    """
+    if not closes:
+        return LadderStatus(None, None, ["MA200"], "no closes")
+    end = as_of or max(closes)
+    if end not in sessions:
+        return LadderStatus(end, None, ["MA200"],
+                            "as_of {} is not a trading session".format(end))
+
+    # Every rung is tested, and none short-circuits. The windows nest — MA30's
+    # sessions are a subset of MA200's — so a hole near the right edge fails
+    # EVERY rung, and an implementation that returned at the first failure would
+    # always report MA200 and never reveal how recent the hole was. The shortest
+    # failing window is the diagnostic that matters: it says whether the fix is
+    # to wait for history or to fill a hole.
+    mas: dict[int, float | None] = {
+        w: moving_average(closes, w, sessions, end) for w in LADDER_WINDOWS
+    }
+    failed = ["MA{}".format(w) for w in LADDER_WINDOWS if mas[w] is None]
+    last = closes.get(end)
+    if last is None:
+        failed.append("Last")
+
+    held = sum(1 for d in sessions[:sessions.index(end) + 1] if d in closes)
+    if failed:
+        shortest = min((w for w in LADDER_WINDOWS if mas[w] is None), default=None)
+        if held < 200:
+            detail = ("only {} sessions held through {}; MA200 needs 200"
+                      .format(held, end))
+        else:
+            detail = ("hole inside the last {} sessions (failing rungs: {})"
+                      .format(shortest, ", ".join(failed)))
+        return LadderStatus(end, None, failed, detail)
+
+    ma200 = mas[200]
+    if not ma200 or ma200 <= 0:
+        return LadderStatus(end, None, ["MA200"], "MA200 is non-positive")
+    rungs = [0.0]
+    rungs.extend(mas[w] / ma200 - 1.0 for w in LADDER_WINDOWS[1:])
+    rungs.append(last / ma200 - 1.0)
+    return LadderStatus(end, rungs, [])
 
 
 def ols_slope(y: Sequence[float], x: Sequence[float] = LADDER_X) -> float:
@@ -203,7 +335,9 @@ class Momentum:
 
 
 def momentum_ma_ladder(
-    closes: Mapping[str, float] | Sequence[float]
+    closes: Mapping[str, float],
+    sessions: Sequence[str],
+    as_of: str | None = None,
 ) -> Momentum | None:
     """The ladder and its score together.
 
@@ -215,14 +349,16 @@ def momentum_ma_ladder(
     DESCRIPTIVE OUTPUT. See the module docstring: this tags activity, it does
     not select.
     """
-    ladder = ma_ladder(closes)
+    ladder = ma_ladder(closes, sessions, as_of)
     if ladder is None:
         return None
     return Momentum(ladder=ladder, score=ladder_score(ladder))
 
 
 def momentum_return_63_skip_5(
-    closes: Mapping[str, float] | Sequence[float],
+    closes: Mapping[str, float],
+    sessions: Sequence[str],
+    as_of: str | None = None,
     lookback: int = MOMENTUM_LOOKBACK,
     skip: int = MOMENTUM_SKIP,
 ) -> float | None:
@@ -235,13 +371,21 @@ def momentum_return_63_skip_5(
 
     Returns a LOG return, matching :func:`log_returns`, so it composes.
     """
-    series = [c for c in _ordered(closes) if c is not None and c > 0]
-    need = lookback + skip + 1
-    if len(series) < need:
+    if not closes:
         return None
-    end = series[-(skip + 1)]
-    begin = series[-(skip + 1 + lookback)]
-    if begin <= 0 or end <= 0:
+    anchor = as_of or max(closes)
+    if anchor not in sessions:
+        return None
+    i = sessions.index(anchor)
+    end_i, begin_i = i - skip, i - skip - lookback
+    if begin_i < 0:
+        return None
+    end_d, begin_d = sessions[end_i], sessions[begin_i]
+    end, begin = closes.get(end_d), closes.get(begin_d)
+    # Both endpoints must be real sessions we hold. A 63-session window whose
+    # endpoint fell in a hole is not a 63-session return, and sliding to the
+    # nearest held row would quietly change the window it claims to measure.
+    if end is None or begin is None or begin <= 0 or end <= 0:
         return None
     return math.log(end / begin)
 
@@ -250,6 +394,7 @@ def momentum_return_63_skip_5(
 
 def ew_basket_returns(
     members: Mapping[str, Mapping[str, float]],
+    sessions: Sequence[str],
     leave_out: str | None = None,
 ) -> dict[str, float]:
     """Equal-weight basket log return per session, optionally leave-one-out.
@@ -268,7 +413,8 @@ def ew_basket_returns(
     to report it rather than leaving a caller to assume stability (E14).
     """
     per_name = {
-        k: dated_log_returns(v) for k, v in members.items() if k != leave_out
+        k: dated_log_returns(v, sessions)[0]
+        for k, v in members.items() if k != leave_out
     }
     per_date: dict[str, list[float]] = {}
     for rets in per_name.values():
@@ -279,11 +425,18 @@ def ew_basket_returns(
 
 def basket_composition(
     members: Mapping[str, Mapping[str, float]],
+    sessions: Sequence[str],
     leave_out: str | None = None,
 ) -> dict[str, int]:
-    """How many members actually contributed to each session's basket return."""
+    """How many members contributed a CONSECUTIVE-SESSION return each session.
+
+    A member whose only available return spans a hole is not counted, because it
+    is not a single-session return and averaging it with ones that are is the
+    defect this phase exists to remove.
+    """
     per_name = {
-        k: dated_log_returns(v) for k, v in members.items() if k != leave_out
+        k: dated_log_returns(v, sessions)[0]
+        for k, v in members.items() if k != leave_out
     }
     counts: dict[str, int] = {}
     for rets in per_name.values():
@@ -293,10 +446,12 @@ def basket_composition(
 
 
 def loo_basket_for_each(
-    members: Mapping[str, Mapping[str, float]]
+    members: Mapping[str, Mapping[str, float]],
+    sessions: Sequence[str],
 ) -> dict[str, dict[str, float]]:
     """One leave-one-out basket per member — the shape §5.2 consumes."""
-    return {name: ew_basket_returns(members, leave_out=name) for name in members}
+    return {name: ew_basket_returns(members, sessions, leave_out=name)
+            for name in members}
 
 
 # ------------------------------------------------------------------ helpers --
