@@ -133,14 +133,25 @@ class Frame:
 
 
 def _nice_ticks(lo, hi, n=5):
-    """Round tick values covering [lo, hi]. Plain 1/2/5 stepping."""
+    """Round tick values covering [lo, hi]. Plain 1/2/5 stepping.
+
+    **The magnitude must be able to go below 1.** The first cut computed it from
+    the digit count of `int(raw)` and floored it at 1 for any raw < 1, so every
+    fractional axis got a step of at least 1.0. Every YoY and ratio chart on the
+    dashboard is fractional — a TTM YoY of +84.7% is 0.847 — so a panel spanning
+    -0.2 to +0.9 produced ticks at 0 and 1, of which only one was in range, and
+    the chart rendered with a single gridline reading "+0%". Measured on the live
+    dashboard: every yoy_chart and every ratio chart, unreadable for that reason.
+    """
     span = hi - lo
     if span <= 0:
         return [lo]
     raw = span / max(1, n)
-    mag = 10 ** (len(str(int(abs(raw)))) - 1) if abs(raw) >= 1 else 1
+    if raw <= 0:
+        return [lo, hi]
+    mag = 10.0 ** math.floor(math.log10(raw))
     step = next((m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw), raw)
-    out, v = [], (int(lo / step) * step)
+    out, v = [], (math.floor(lo / step) * step)
     while v <= hi + step * 0.001:
         if v >= lo - step * 0.001:
             out.append(v)
@@ -187,17 +198,32 @@ def grid(frame, fmt=_money, ticks=5):
     return "".join(out)
 
 
-def quarter_axis(frame, every=None):
-    n = len(frame.quarters)
+MIN_LABEL_GAP = 38.0        # px; "2026Q2" at font-size 10 plus air
+
+
+def quarter_axis(frame, every=None, min_gap=MIN_LABEL_GAP):
+    """Quarter labels, with the last one guaranteed and never overprinted.
+
+    Every Nth label AND the last one were both drawn unconditionally, so
+    whenever the series length was not a multiple of N the final two landed on
+    top of each other — Leg 1 rendered "2026Q1" and "2026Q2" as "20226Q2" on the
+    live dashboard. The last quarter is the one a reader most wants, so it wins
+    and the neighbour that would collide with it is dropped.
+    """
+    qs = frame.quarters
+    n = len(qs)
     every = every or max(1, n // 14)
     out = ["<line x1='{}' y1='{:.1f}' x2='{}' y2='{:.1f}' stroke='#bbb'/>".format(
         frame.l, frame.t + frame.ph, frame.l + frame.pw, frame.t + frame.ph)]
-    for i, q in enumerate(frame.quarters):
-        if i % every and i != n - 1:
-            continue
+    picks = [i for i in range(n) if i % every == 0]
+    if n - 1 not in picks:
+        picks.append(n - 1)
+    while len(picks) >= 2 and frame.x(qs[picks[-1]]) - frame.x(qs[picks[-2]]) < min_gap:
+        picks.pop(-2)
+    for i in picks:
         out.append("<text x='{:.1f}' y='{:.1f}' font-size='10' fill='#666' "
                    "text-anchor='middle'>{}</text>".format(
-                       frame.x(q), frame.t + frame.ph + 14, _e(q)))
+                       frame.x(qs[i]), frame.t + frame.ph + 14, _e(qs[i])))
     return "".join(out)
 
 

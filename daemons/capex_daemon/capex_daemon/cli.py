@@ -73,6 +73,14 @@ def cmd_dashboard(args):
     return 0
 
 
+def cmd_report(args):
+    """Render every dashboard view into one PDF. Read-only; recomputes nothing."""
+    from . import report as reportmod
+    print("wrote {}".format(
+        reportmod.build_from_db(db_path=args.db, out_path=args.out)))
+    return 0
+
+
 def cmd_initdb(args):
     con = storage.connect(args.db)
     tables = [r[0] for r in con.execute(
@@ -118,6 +126,12 @@ def main(argv=None):
                         "passes the Tailscale address and refuses to start without one. "
                         "Never bind 0.0.0.0.")
     p.set_defaults(func=cmd_dashboard)
+
+    p = sub.add_parser("report", help="render all seven dashboard views to one PDF")
+    p.add_argument("--db", default=None)
+    p.add_argument("--out", default=None,
+                   help="output path; defaults to <state home>/charts/capex_dashboard.pdf")
+    p.set_defaults(func=cmd_report)
 
     p = sub.add_parser("initdb", help="create the state schema")
     p.add_argument("--db", default=None)

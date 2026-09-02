@@ -146,3 +146,121 @@ def fetch_fallback_facts(cik, filing, http=None, prefer_instance=True):
 
 def provenance_for(source):
     return PROVENANCE_API if source == SCALE_BASIS_API else PROVENANCE_INSTANCE
+
+
+# --- the crossing: filing facts into the API's own shape --------------------
+
+def to_api_facts(facts, filing):
+    """`ixbrl.Fact` -> `facts_api.Fact`, so a filled period is indistinguishable
+    downstream from one companyfacts served.
+
+    **Undimensioned only, and that is not a detail.** The API's undimensioned
+    series is a total; an instance carries the total *and* every segment
+    breakdown under the same concept. Merging those in would add a company's
+    parts to its whole and silently double-count the quarter this function
+    exists to recover.
+    """
+    from .facts_api import ApiFact, _days
+    out = []
+    for f in facts:
+        if f.dim_key:
+            continue
+        if f.period_start is None or f.period_end is None:
+            continue
+        out.append(ApiFact(
+            concept=f.concept, taxonomy=f.taxonomy, unit=f.unit, value=f.value,
+            period_start=f.period_start, period_end=f.period_end,
+            duration_days=_days(f.period_start, f.period_end),
+            form=filing.form, filed=filing.filing_date, frame=None))
+    return out
+
+
+class Fill:
+    """What a fallback attempt did, so a caller can report it rather than guess."""
+
+    __slots__ = ("status", "filing", "period", "added", "undetermined",
+                 "concepts", "detail")
+
+    def __init__(self, status, filing=None, period=None, added=0,
+                 undetermined=0, concepts=(), detail=""):
+        self.status = status
+        self.filing = filing
+        self.period = period
+        self.added = added
+        self.undetermined = undetermined
+        self.concepts = tuple(concepts)
+        self.detail = detail
+
+    @property
+    def filled(self):
+        return self.status == FILL_FILLED
+
+    def __repr__(self):
+        return "Fill({} period={} added={})".format(
+            self.status, self.period, self.added)
+
+
+FILL_NOT_NEEDED = "NOT-NEEDED"
+FILL_FILLED = "FILLED"
+FILL_EMPTY = "EMPTY"
+FILL_FAILED = "FAILED"
+
+
+def fill_from_filing(cik, submissions_doc, indexed, concept=None, http=None,
+                     candidates=None):
+    """Merge the newest filed period into `indexed` when the API lacks it (E6).
+
+    Mutates `indexed` in place and returns a `Fill` describing what happened.
+
+    This is the wiring the module was written for and never had. `assess` and
+    `fetch_fallback_facts` existed, were tested, and were called by nothing
+    outside this file — so the companyfacts lag they were built to cover ran
+    unmitigated in production. Measured 2026-09-02: DLR and AMT had a filed
+    2026Q2 that companyfacts still did not carry 33 and 36 days after filing,
+    and both were invisible to the panel.
+
+    Only concepts the daemon actually reads are filled. A blanket merge would
+    pull ~1800 facts per filing into an index sized for the ones that matter.
+    """
+    from . import tagmap
+    if candidates is None:
+        candidates = {c for cs in tagmap.CANDIDATES.values() for c in cs}
+    st = assess(cik, submissions_doc, indexed, concept)
+    if st.status != STATUS_STALE or st.filing is None:
+        return Fill(FILL_NOT_NEEDED, st.filing, None, detail=st.detail)
+    try:
+        facts, _prov, mode = fetch_fallback_facts(cik, st.filing, http=http)
+    except Exception as exc:
+        return Fill(FILL_FAILED, st.filing, st.filing.report_date,
+                    detail="filing fetch/parse failed: {}".format(exc))
+    wanted = [f for f in facts if f.concept in candidates]
+    ok, undetermined = gate_scale_basis(wanted)      # E5: no silent trust
+    api_facts = to_api_facts(ok, st.filing)
+    if not api_facts:
+        return Fill(FILL_EMPTY, st.filing, st.filing.report_date,
+                    undetermined=len(undetermined),
+                    detail="{}: no undimensioned facts on a tracked concept "
+                           "({} undetermined-basis dropped)".format(
+                               mode, len(undetermined)))
+    touched, added = set(), 0
+    for f in api_facts:
+        rows = indexed.setdefault(f.concept, [])
+        # Holes only. A period companyfacts already carries is authoritative —
+        # this path exists because the API is LATE, not because it is wrong, and
+        # a filled fact must never displace a served one.
+        if any(r.period_start == f.period_start and r.period_end == f.period_end
+               for r in rows):
+            continue
+        rows.append(f)
+        touched.add(f.concept)
+        added += 1
+    if not added:
+        return Fill(FILL_EMPTY, st.filing, st.filing.report_date,
+                    undetermined=len(undetermined),
+                    detail="{}: every parsed period was already in the index"
+                           .format(mode))
+    return Fill(FILL_FILLED, st.filing, st.filing.report_date, added=added,
+                undetermined=len(undetermined), concepts=sorted(touched),
+                detail="filled period {} from the {} of {}: {} facts across {} "
+                       "concepts".format(st.filing.report_date, mode,
+                                         st.filing.accession, added, len(touched)))

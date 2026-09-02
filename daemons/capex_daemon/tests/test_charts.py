@@ -503,3 +503,37 @@ def test_lateness_is_measured_against_the_calendar_not_the_panel():
     assert overdue is False
     _due, overdue = disclosure.expected_by(q, today=datetime.date(2027, 1, 1))
     assert overdue is True
+
+
+# --- CD-GAP2A A6: two live rendering defects -------------------------------
+
+def test_a_fractional_axis_gets_more_than_one_gridline():
+    """Every YoY and ratio chart is fractional — +84.7% is 0.847. The old
+    magnitude floored at 1.0, so a -0.2..+0.9 panel produced ticks at 0 and 1
+    and every such chart on the live dashboard rendered a single '+0%' line."""
+    ticks = svgcharts._nice_ticks(-0.2, 0.9, 5)
+    inside = [t for t in ticks if -0.2 <= t <= 0.9]
+    assert len(inside) >= 4, ticks
+    # and the dollar axes it always handled must be UNCHANGED: Leg 1 spans
+    # 0..$600B and prints $200B/$400B/$600B, before and after.
+    assert svgcharts._nice_ticks(0.0, 600e9, 5) == [0.0, 200e9, 400e9, 600e9]
+
+
+def test_tiny_and_degenerate_ranges_do_not_explode():
+    assert svgcharts._nice_ticks(0.5, 0.5) == [0.5]
+    assert svgcharts._nice_ticks(0.0, 0.004, 4)
+    assert svgcharts._nice_ticks(-0.03, 0.03, 5)
+
+
+def test_the_last_quarter_label_is_never_overprinted():
+    """66 quarters with every=4 drew index 64 and index 65 on top of each other:
+    '2026Q1' and '2026Q2' rendered as '20226Q2' on Leg 1."""
+    q = qs(2010, 1, 66)
+    f = svgcharts.Frame(q, 0.0, 1.0, width=1160, height=250)
+    body = svgcharts.quarter_axis(f)
+    root = ET.fromstring("<svg xmlns='http://www.w3.org/2000/svg'>" + body + "</svg>")
+    xs = sorted(float(t.get("x")) for t in root.iter(SVG + "text"))
+    labels = [t.text for t in root.iter(SVG + "text")]
+    assert q[-1] in labels
+    gaps = [b - a for a, b in zip(xs, xs[1:])]
+    assert gaps and min(gaps) >= svgcharts.MIN_LABEL_GAP - 1e-6, min(gaps)

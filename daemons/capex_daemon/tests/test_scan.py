@@ -80,7 +80,7 @@ def test_rename_surfaces_in_the_scan_detail(con):
 def test_zero_new_filings_is_a_noop_that_says_so(con):
     roster = {"0000789019": one_entity()}
     scan.write_watermark(con, "0000789019", "2026-08-04")
-    r = scan.run(con=con, roster=roster, render=False,
+    r = scan.run(con=con, roster=roster, render=False, fallback=False,
                  submissions_by_cik={"0000789019": subs()})
     assert r["outcome"] == scan.OUTCOME_NOOP
     assert r["affected"] == 0
@@ -92,7 +92,7 @@ def test_noop_run_preserves_the_watermark_exactly(con):
     roster = {"0000789019": one_entity()}
     scan.write_watermark(con, "0000789019", "2026-08-04")
     before = scan.read_watermark(con, "0000789019")
-    scan.run(con=con, roster=roster, render=False,
+    scan.run(con=con, roster=roster, render=False, fallback=False,
              submissions_by_cik={"0000789019": subs()})
     assert scan.read_watermark(con, "0000789019") == before
 
@@ -101,7 +101,7 @@ def test_a_failed_refresh_does_not_advance_the_watermark(con):
     """The watermark is a claim that data was ingested. A refresh that raised
     ingested nothing, so moving it would silently skip that filing forever."""
     roster = {"0000789019": one_entity()}
-    r = scan.run(con=con, roster=roster, render=False,
+    r = scan.run(con=con, roster=roster, render=False, fallback=False,
                  submissions_by_cik={"0000789019": subs()},
                  facts_by_cik={"0000789019": "not-a-document"})   # raises in index_facts
     assert scan.read_watermark(con, "0000789019") is None
@@ -112,11 +112,11 @@ def test_scan_is_idempotent_across_two_runs(con):
     """Second run the same night finds the same newest filing and does nothing."""
     roster = {"0000789019": one_entity()}
     facts = {"0000789019": {"facts": {"us-gaap": {}}}}
-    first = scan.run(con=con, roster=roster, render=False,
+    first = scan.run(con=con, roster=roster, render=False, fallback=False,
                      submissions_by_cik={"0000789019": subs()}, facts_by_cik=facts)
     assert first["outcome"] == scan.OUTCOME_UPDATED
     assert first["watermarks_advanced"] == ["MSFT"]
-    second = scan.run(con=con, roster=roster, render=False,
+    second = scan.run(con=con, roster=roster, render=False, fallback=False,
                       submissions_by_cik={"0000789019": subs()}, facts_by_cik=facts)
     assert second["outcome"] == scan.OUTCOME_NOOP
     assert second["affected"] == 0
