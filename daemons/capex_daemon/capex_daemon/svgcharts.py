@@ -718,8 +718,25 @@ def state_grid(rows, quarters, width=1160, cell=15, label_w=104):
     return svg(width, height, "".join(body), title="phase grid")
 
 
+SUPPLIER_CAPEX_SUFFIX = " · own capex"
+
+
 def issuer_rows_for_grid(snap):
-    """Rows for `state_grid`, ordered aggregate-first then worst-state-first."""
+    """Rows for `state_grid`, ordered aggregate-first then worst-state-first.
+
+    **A supplier's primary row is its DATACENTER REVENUE phase, not its capex.**
+    The board previously gave a supplier's own capex the same weight and the
+    same look as a hyperscaler's, and they do not mean the same thing. NVDA's
+    capex is a ~$7B series covering its offices and test equipment; its
+    datacenter revenue is $277.8B and is the other side of the hyperscalers'
+    invoice. Reading a DECELERATING on the first as a bend in the buildout is a
+    category error, and the board's layout invited it — the dcrev phase lived
+    on a different page.
+
+    So suppliers show `dcrev` first, and their capex follows as a clearly
+    labelled secondary row rather than being hidden: it is still a real series,
+    it is just not a buildout signal.
+    """
     order = {phases.STATE_CONTRACTING: 0, phases.STATE_DECELERATING: 1,
              phases.STATE_PLATEAU: 2, phases.STATE_ACCELERATING: 3}
     rows, quarters = [], set()
@@ -733,9 +750,18 @@ def issuer_rows_for_grid(snap):
     add("TOTAL PANEL", (snap.get("total") or {}).get("observations"), "matched membership")
     for b, bk in sorted((snap.get("buckets") or {}).items()):
         add("bucket:" + b, bk.get("observations"), "{} members".format(bk.get("member_count")))
+
+    legs = ((snap.get("suppliers") or {}).get("legs") or {})
     issuers = sorted((snap.get("issuers") or {}).items(),
                      key=lambda kv: (order.get(kv[1]["state"], 9), kv[0]))
     for tick, iss in issuers:
+        leg = legs.get(tick)
+        if leg and leg.get("dc_observations"):
+            add(tick, leg["dc_observations"],
+                "supplier · DATACENTER REVENUE — the buildout series")
+            add(tick + SUPPLIER_CAPEX_SUFFIX, iss.get("observations"),
+                "supplier's OWN capex — not a buildout signal")
+            continue
         add(tick, iss.get("observations"),
             "{}{}".format(iss["bucket"], " · MIRROR, never alerts"
                           if iss["bucket"] == "mirror" else ""))

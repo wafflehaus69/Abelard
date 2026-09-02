@@ -37,7 +37,7 @@ parity that matters; the wording is a follow-up.
 import socket
 import time
 
-from . import brief, dashboard, phases, svgcharts, trend
+from . import brief, dashboard, phases, snapshot, svgcharts, trend
 
 # The box the dashboard actually serves from. A render produced anywhere else is
 # a copy of a copy: the snapshot was pulled at some moment and cannot know what
@@ -973,6 +973,36 @@ def sec_commitments(snap, styles):
     if ref:
         out.append(_warn(ref, styles))
         out.append(_spacer(4))
+
+    deltas = [d for d in snapshot.commitment_deltas(snap) if d["multiple"] is not None]
+    if deltas:
+        deltas.sort(key=lambda d: -(d["multiple"] or 0))
+        out.append(_P("Change since the previous observation", styles["_h2"]))
+        out.append(_P(
+            "Each issuer against <b>its own</b> previous disclosure on <b>its own</b> "
+            "concept — never across issuers, so the basis problem that makes cross-issuer "
+            "commitment totals incomparable does not arise. A stock is disclosed on the "
+            "issuer's own schedule, so the <b>gap</b> travels beside the move: 3x over one "
+            "quarter and 3x over eight are different facts.", styles["_note"]))
+        if (snapshot.COMMITMENT_JUMP_MULTIPLE is None
+                or snapshot.COMMITMENT_JUMP_MIN_DELTA is None):
+            out.append(_warn(
+                "<b>These do not alert yet.</b> The threshold is UNSET pending "
+                "ratification (E8). Measured over 308 observation pairs: p50 1.00x, "
+                "p90 2.00x, p95 3.20x — but the tail is near-zero bases, so a bare "
+                "multiple is a bad gate. Proposed and held: <b>2.0x AND &ge;$1B</b>.",
+                styles))
+            out.append(_spacer(4))
+        out.append(_table(
+            ("Issuer", "Concept", "From", "To", "gap", "was", "now", "change", "multiple"),
+            [["<b>{}</b>".format(_x(d["ticker"])), _x(d["concept"]), _x(d["from_q"]),
+              _x(d["to_q"]), "{}q".format(d["quarters_between"]),
+              _x(_money(d["from_value"])), _x(_money(d["to_value"])),
+              _x(_money(d["delta"])), "{:.2f}x".format(d["multiple"])]
+             for d in deltas],
+            [52, 176, 52, 52, 34, 74, 74, 78, 56], styles,
+            right_cols=(4, 5, 6, 7, 8)))
+
     rows = []
     for tick, iss in sorted(snap["issuers"].items(),
                             key=lambda kv: -((kv[1]["commitments"] or {}).get("latest") or -1)):
@@ -1005,6 +1035,25 @@ def sec_suppliers(snap, styles):
         "companyfacts API drops it entirely — NVDA's API record carries total Revenues and a "
         "segment <i>count</i>, and nothing else. Every figure below was read out of the "
         "filing itself.", styles["_note"]))
+
+    fr = sup.get("frontier") or {}
+    if fr.get("rows"):
+        out.append(_P("One quarter ahead of the demand panel", styles["_h2"]))
+        out.append(_P(
+            "The hyperscalers' newest reported quarter is <b>{}</b>. These suppliers close "
+            "off-calendar and have already filed beyond it. There is <b>no ratio here and "
+            "there cannot be</b> — the denominator does not exist yet — so each row is the "
+            "supplier's own discrete quarter against its own prior quarter and its own "
+            "year-ago quarter. <b>Not a TTM, not a phase state, and in no aggregate.</b> It "
+            "is the earliest signal the panel carries, and it is one name at a time.".format(
+                _x(fr.get("demand_frontier"))), styles["_note"]))
+        out.append(_table(
+            ("Supplier", "Quarter", "DC revenue", "QoQ", "YoY", "compared against"),
+            [["<b>{}</b>".format(_x(r["ticker"])), _x(r["q"]), _x(_money(r["value"])),
+              _x(_pct(r["qoq"])), _x(_pct(r["yoy"])),
+              "{} and {}".format(_x(r["prior_q"]), _x(r["year_ago_q"]))]
+             for r in fr["rows"]],
+            [70, 62, 92, 72, 72, 160], styles, right_cols=(2, 3, 4)))
 
     series = cc.get("series") or []
     if series:
