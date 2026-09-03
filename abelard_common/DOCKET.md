@@ -1268,3 +1268,42 @@ store can print; the phrase now means only that. Behaviour unchanged — an
 unadjudicated corruption still holds the nightly's exit code at 1.
 
 **D.3 complete. Holding at the D.4 gate.**
+
+---
+
+## MNST — Mando's ruling, 2026-09-03
+
+**Source-override mechanism, per Abelard, as PS-1C — after two watched nights.**
+
+Until PS-1C lands, MNST stays quarantined and out of the panel. The store is
+already doing this correctly (1,406 rows quarantined); the ruling is that the
+remedy is a *mechanism* — one instrument sourced from the verifier instead of
+the primary — and not 1,400 hand-reviewed correction rows. Sequenced behind
+D.4/D.5 so the nightly is proven before a new write path is added to it.
+
+**The nine corrections applied 2026-09-03 stand.** They are verified against
+Tiingo to the cent and they are on the record; they simply do not scale to the
+problem, which is the finding, not a defect in them.
+
+### Pre-registered: the first nightly exits 1, and that is correct
+
+Three MNST detections (2026-07-20, 07-23, 07-31) are unadjudicated and will stay
+so until PS-1C. `is_clean` is false while any unadjudicated corruption stands, so
+`status` returns 1 and `run_prices.sh` returns 1 as the night's worst leg.
+
+**Recorded in advance so it cannot be read as a failure of the deploy.** The
+first clean-exit night is a PS-1C deliverable, not a D.4 one. What D.4 is
+watching for is everything else: the append landing, `is_final_session` holding,
+the roll flag armed, reconciliation passing, telemetry written.
+
+### What made the size of this visible
+
+2V worked a 21-session window and concluded Yahoo had missed 15 pre-split
+sessions. Against five years the count is **1,400 of 1,410**, so the shape of
+the fault was right and the scale was off by two orders of magnitude. The
+five-year backfill is the only thing that could have shown it — the same way it
+was the only thing that showed the spinoff defect.
+
+And the substrate was checked before the vendor was blamed: **CRWD (4:1), IBKR
+(4:1) and NVDA (4:1 and 10:1) each reconcile at ratio 1.0 across all 1,410
+sessions.** Reconstruction is correct. MNST is uniquely broken in the primary.

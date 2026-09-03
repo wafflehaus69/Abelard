@@ -354,6 +354,16 @@ tail -20 ~/.openclaw/prices/logs/prices.log
 cd ~/Code/Abelard/daemons/common && .venv/bin/python -m abelard_common.prices.cli status
 ```
 
+**Expect exit 1, from the first night, until PS-1C.** Three MNST vendor-corruption
+detections (2026-07-20, 07-23, 07-31) are unadjudicated, and an unadjudicated
+corruption holds the store unclean by design. Yahoo serves 1,400 of MNST's 1,410
+sessions unadjusted while declaring its 2:1 split, so the name is quarantined and
+out of the panel; Mando ruled 2026-09-03 that the remedy is a source-override
+mechanism (PS-1C), not correction rows. **A 1 on this job means "look at it", not
+"it is broken" — and right now the thing to look at is already known.** What
+would be new is a 2 (could not start), a 3 (bad wrapper or venv), a reconciliation
+FAIL, or a fact-change event.
+
 **Before it is installed** — Phase D.3 requires `universe-sync` and a full 5-year
 backfill run by hand, in the foreground, on Basilic, with throughput recorded.
 Do not load the plist onto an empty store: the first `nightly` would have no
