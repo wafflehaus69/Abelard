@@ -656,10 +656,7 @@ def view_suppliers(snap):
                        _esc(tick),
                        "<span class='pill' style='background:{}'>{}</span>".format(
                            colour, _esc(st)),
-                       _esc("banded on dcrev:supplier at {}pp, measured {} — NOT the "
-                            "issuer:supplier band, which applies to the supplier's own "
-                            "capex".format(leg.get("dc_band"),
-                                           leg.get("dc_band_measured_on"))),
+                       _esc("dcrev phase — see the band footnote below the table"),
                        _pill(dcs), _flags(leg.get("dc_flags")),
                        _money(leg.get("ttm")),
                        _pct(leg.get("dc_latest_yoy")),
@@ -671,6 +668,7 @@ def view_suppliers(snap):
                        _esc(leg.get("detail") or ""),
                        _esc(", ".join(leg.get("axes") or []) or leg.get("detail", "")[:60])))
     out.append("</table>")
+    out.append(_dcrev_band_footnote(legs))
 
     if series:
         out.append("<h2>Cross-check history</h2><table><tr><th>Quarter</th>"
@@ -761,6 +759,28 @@ def _commitment_deltas_block(snap):
                        _money(r["to_value"]), _money(r["delta"]), r["multiple"]))
     out.append("</table>")
     return "".join(out)
+
+
+def _dcrev_band_footnote(legs):
+    """The band note, once. It was printed verbatim on all five supplier rows.
+
+    Five identical sentences is not five facts. The band is a property of the
+    SERIES CLASS, not of any one supplier, so it belongs under the table."""
+    bands = {(l.get("dc_band"), l.get("dc_band_measured_on"))
+             for l in (legs or {}).values() if l.get("dc_band")}
+    if not bands:
+        return ""
+    if len(bands) > 1:                       # would be a real finding, not noise
+        return ("<p class='note'><b>Supplier dcrev bands disagree:</b> {}. A single "
+                "series class cannot carry two bands.</p>".format(
+                    _esc("; ".join("{}pp measured {}".format(b, d)
+                                   for b, d in sorted(bands)))))
+    band, measured = bands.pop()
+    return ("<p class='note'><b>Band.</b> Every DC-revenue phase above is banded on "
+            "<code>dcrev:supplier</code> at <b>{}pp</b>, measured {}. That is "
+            "<b>not</b> the <code>issuer:supplier</code> band, which applies to a "
+            "supplier's own capex and is a different series class.</p>".format(
+                _esc(band), _esc(measured)))
 
 
 def _frontier_block(fr):

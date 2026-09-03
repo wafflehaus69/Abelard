@@ -137,6 +137,30 @@ def suspect_identity(ttm_capex, ttm_issuance, figures=SIGNIFICANT_FIGURES):
     return True
 
 
+# B7 — a flag with no resolution is a question left open on the page forever.
+# Every SUSPECT-IDENTITY that has been investigated states its verdict in the
+# status itself, because the status is what a reader sees.
+STATUS_SUSPECT_VERIFIED_COINCIDENCE = "SUSPECT-IDENTITY-VERIFIED-COINCIDENCE"
+
+IDENTITY_RESOLUTIONS = {
+    "IREN": {
+        "verdict": "COINCIDENCE",
+        "checked": "2026-09-02",
+        "evidence": (
+            "capex $2,998,006,000 from PaymentsToAcquirePropertyPlantAndEquipment; "
+            "issuance $3,000,000,000 from ProceedsFromConvertibleDebt. Disjoint "
+            "concepts, no shared fact, 0.07% apart. Convertible notes are issued "
+            "in round amounts and a real capex figure landed next to one; the "
+            "display rounding 1.000665 to '+100%' is what made it look like an "
+            "identity."),
+    },
+}
+
+
+def identity_resolution(ticker):
+    return IDENTITY_RESOLUTIONS.get(ticker)
+
+
 def shares_a_concept(capex_concept, issuance_concepts):
     """Is the same concept feeding both legs? The distinguishing question when
     SUSPECT-IDENTITY fires — disjoint concepts point to coincidence, a shared
@@ -195,7 +219,10 @@ def build_issuer_view(entity, indexed):
             statuses.append(STATUS_RATIO_TAUTOLOGY)
             ratio = None
         else:
-            statuses.append(STATUS_SUSPECT_IDENTITY)
+            res = identity_resolution(entity.ticker_display)
+            statuses.append(STATUS_SUSPECT_VERIFIED_COINCIDENCE
+                            if res and res["verdict"] == "COINCIDENCE"
+                            else STATUS_SUSPECT_IDENTITY)
     if not statuses:
         statuses.append(STATUS_OK)
     return IssuerView(entity.cik, entity.ticker_display, entity.bucket, ttm_capex,

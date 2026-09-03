@@ -1093,12 +1093,23 @@ def sec_suppliers(snap, styles):
          "Quarters", "Restated", "Resolved"),
         rows, [58, 124, 118, 78, 62, 50, 50, 180], styles, right_cols=(3, 4, 5, 6)))
 
-    band_notes = ["<b>{}</b> banded on dcrev:supplier at {}pp, measured {} — NOT the "
-                  "issuer:supplier band, which applies to the supplier's own capex".format(
-                      _x(t), l.get("dc_band"), _x(l.get("dc_band_measured_on")))
-                  for t, l in sorted(legs.items()) if l.get("dc_band")]
-    if band_notes:
-        out.append(_P(" &nbsp;·&nbsp; ".join(band_notes), styles["_foot"]))
+    # B7 — the band is a property of the SERIES CLASS, not of any one supplier.
+    # It was printed verbatim on all five rows; five identical sentences is not
+    # five facts.
+    bands = {(l.get("dc_band"), l.get("dc_band_measured_on"))
+             for l in legs.values() if l.get("dc_band")}
+    if len(bands) == 1:
+        band, measured = bands.pop()
+        out.append(_P(
+            "<b>Band.</b> Every DC-revenue phase above is banded on "
+            "<b>dcrev:supplier</b> at <b>{}pp</b>, measured {}. That is NOT the "
+            "issuer:supplier band, which applies to a supplier's own capex and is a "
+            "different series class.".format(_x(band), _x(measured)), styles["_foot"]))
+    elif bands:
+        out.append(_P("<b>Supplier dcrev bands disagree:</b> {}. A single series "
+                      "class cannot carry two bands.".format(
+                          _x("; ".join("{}pp measured {}".format(b, d)
+                                       for b, d in sorted(bands)))), styles["_foot"]))
     restated = [(t, l) for t, l in sorted(legs.items()) if l.get("restatements")]
     if restated:
         out.append(_P("<b>Restatements</b> (carried on hover in the dashboard): " +
