@@ -1214,3 +1214,57 @@ derived from Yahoo and reproduces in 264 seconds. Deleted and re-backfilled.
 **D.4 was held for this.** Loading the plist against that store would have
 installed a nightly whose adjusted view was missing IBM, GE, MRK, MMM, HON and
 CMCSA.
+
+### D.3 after the fix — the store as it now stands on Basilic
+
+```
+names=519  requests=518  ok=502  quarantined=16  vendor_error=1  in 264s
+```
+
+| status | rows | names |
+|---|---|---|
+| `ok` | 720,320 | 518 |
+| `quarantined` | 1,723 | 16 |
+| `vendor_null` | 466 | 464 |
+
+Quarantined fell **48 names → 16**, 34,101 rows → 1,723 (0.24% of the store).
+All eighteen formerly-condemned names are whole again — GE, IBM, MRK, MMM, HON,
+CMCSA, DHR, SPGI, FDX, BDX each carry a full 1,422 `ok` rows and one
+`vendor_null`, the 2026-08-28 gap.
+
+What remains is what should: MNST's 1,406 rows (real corruption, adjudicated in
+2V), CVNA's 2022–23 squeeze, and fourteen names with a single genuine >40%
+session — GL's short-report crash, CNC −40%, ALNY +50%, PDD +56%, ARM +48%,
+HOOD +50%, MRNA +177%. Those are labelled `unknown`, which is a flag for a human
+and not a claim of corruption.
+
+Detections split cleanly: **7 `vendor_corruption`, all MNST**, showing the 2V
+signature exactly — 0.4895/1.9559, 0.4935/1.9413, 0.4984/1.9193, 0.5039, each an
+exact factor of 2 with the session's own move on top. **20 `unknown` over 15
+names.**
+
+**Reconciliation, 2026-09-02: PASS.** Rebuilt +0.4952% against actual +0.4521%,
+**+4.3bp** on a 10bp band, 503/504 members, 100.0% weight. The four earlier
+sessions report `INSUFFICIENT`: iShares serves only *latest* holdings, so there
+are no `index_weights` dated on or before them. That is the no-pass-without-
+coverage rule working, not a failure — but it does mean **historical
+reconciliation needs a historical weights source**, which the store does not
+have. Recorded as a known limit, not a defect.
+
+`HOLX` is `last=never` — delisted, 404 from the vendor, no CIK, provisional.
+Counted and not fatal, as designed since Phase 2.
+
+Verified **on Basilic**, not inferred from the dev box: 267 tests on Python
+3.14.7 arm64, and the numbers above are the host's own.
+
+### One more thing the verification turned up
+
+`status` counted vendor-corruption *detections* and printed them as
+"fact-change events" — so the first clean backfill reported seven revised facts
+when the true count was zero. `RunReport.fact_changes` is the real thing, a held
+value differing from what the vendor now offers, and `StatusReport` had borrowed
+the name for something else. A held fact changing is the most serious line this
+store can print; the phrase now means only that. Behaviour unchanged — an
+unadjudicated corruption still holds the nightly's exit code at 1.
+
+**D.3 complete. Holding at the D.4 gate.**
