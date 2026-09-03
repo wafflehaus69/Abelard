@@ -470,9 +470,50 @@ def load(con):
 # Concentration, for Mando to weigh: META 5, SMCI 5, AMD 2 of the 19. Adding the
 # absolute arm improved this — under the multiple alone SMCI was 5 of 16, a third
 # of the channel.
-COMMITMENT_JUMP_MULTIPLE = None       # proposed 2.0
-COMMITMENT_JUMP_MIN_DELTA = None      # proposed 1_000_000_000.0
-COMMITMENT_JUMP_ABSOLUTE = None       # proposed 20_000_000_000.0
+# RATIFIED by Mando, ORDER CD-BRIEF1 B4, 2026-09-02.
+COMMITMENT_JUMP_MULTIPLE = 2.0
+COMMITMENT_JUMP_MIN_DELTA = 1_000_000_000.0
+COMMITMENT_JUMP_ABSOLUTE = 20_000_000_000.0
+
+# Above this multiple, a move is QUARANTINED as BASIS-SUSPECT rather than
+# alerted: published, listed separately, and queued for a presentation check.
+#
+# A 2372x move is not a growth rate until someone has confirmed the two
+# observations measure the same thing. The failure it guards against is E23 in
+# its sharpest form — a concept whose scope changed between filings produces an
+# enormous "increase" that is really a change of subject, and an alert on that
+# is worse than silence because it is confidently wrong.
+#
+# Quarantine is a QUEUE, not a verdict. The first case cleared — see
+# `COMMITMENT_BASIS_CHECKS`.
+COMMITMENT_BASIS_SUSPECT_MULTIPLE = 10.0
+
+# Presentation checks performed, per E23. Keyed (ticker, to_quarter).
+# `verdict` is REAL (the disclosure is unchanged and the move is genuine) or
+# BASIS-CHANGE (the concept's scope moved and the two points are not comparable).
+COMMITMENT_BASIS_CHECKS = {
+    ("AVGO", "2026Q2"): {
+        "verdict": "REAL",
+        "checked": "2026-09-02",
+        "evidence": (
+            "Presentation compared across the two 10-Qs. Both carry the same "
+            "note 10 'Commitments and Contingencies' table, the same line item "
+            "'Purchase Commitments', the same fiscal-year rows and the same "
+            "units. Filed 2026-03-11 (period 2026-02-01): 2026(rem) $28M, 2027 "
+            "$12M, 2028 $10M, 2029 $4M. Filed 2026-06-09 (period 2026-05-03): "
+            "2026(rem) $22M, 2027 $55,214M, 2028 $72,870M, 2029 $4M. The "
+            "concept, the table and the presentation are IDENTICAL; what "
+            "changed is the obligation. The near-term rows carry the whole "
+            "move while 2029 and later are unchanged, which is what a real "
+            "multi-year supply commitment looks like. Corroborated by "
+            "RevenueRemainingPerformanceObligation in the same filing: "
+            "$45.0B -> $164.6B."),
+        "note": ("The quarantine did its job by forcing the check, and the "
+                 "check cleared it. Suppressing this as a tagging artefact "
+                 "would have hidden the largest single forward-demand event "
+                 "on the panel."),
+    },
+}
 
 
 def commitment_deltas(snap, frontier=None):
@@ -559,12 +600,50 @@ def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
         by_size = absolute is not None and d["delta"] >= absolute
         if not (by_multiple or by_size):
             continue
-        out.append(dict(d, reason="forward-commitment stock {} ({:+,.1f}B) {} -> {}"
-                        .format("{:.2f}x".format(d["multiple"]) if d["multiple"]
-                                else "from a zero base",
-                                d["delta"] / 1e9, d["from_q"], d["to_q"]),
-                        armed_by="multiple" if by_multiple else "absolute"))
+        row = dict(d, reason="forward-commitment stock {} ({:+,.1f}B) {} -> {}"
+                   .format("{:.2f}x".format(d["multiple"]) if d["multiple"]
+                           else "from a zero base",
+                           d["delta"] / 1e9, d["from_q"], d["to_q"]),
+                   armed_by="multiple" if by_multiple else "absolute")
+        row.update(basis_status(d))
+        out.append(row)
     return out
+
+
+BASIS_OK = "OK"
+BASIS_SUSPECT = "BASIS-SUSPECT"
+BASIS_VERIFIED_REAL = "BASIS-VERIFIED-REAL"
+BASIS_VERIFIED_CHANGE = "BASIS-VERIFIED-CHANGE"
+
+
+def basis_status(delta, threshold=None):
+    """Is this move large enough that its BASIS must be checked before it alerts?
+
+    Returns the status plus, where a check has been done, its verdict and
+    evidence. A move above the threshold with no recorded check is quarantined:
+    it publishes, it is listed separately, and it does not alert.
+    """
+    threshold = COMMITMENT_BASIS_SUSPECT_MULTIPLE if threshold is None else threshold
+    m = delta.get("multiple")
+    check = COMMITMENT_BASIS_CHECKS.get((delta.get("ticker"), delta.get("to_q")))
+    if check:
+        verdict = (BASIS_VERIFIED_REAL if check["verdict"] == "REAL"
+                   else BASIS_VERIFIED_CHANGE)
+        return {"basis": verdict, "basis_checked": check["checked"],
+                "basis_evidence": check["evidence"],
+                "alertable": check["verdict"] == "REAL"}
+    if threshold is not None and m is not None and m >= threshold:
+        return {"basis": BASIS_SUSPECT, "basis_checked": None,
+                "basis_evidence": None, "alertable": False}
+    return {"basis": BASIS_OK, "basis_checked": None, "basis_evidence": None,
+            "alertable": True}
+
+
+def commitment_alerts_and_quarantine(snap, prior_keys=()):
+    """(alertable, quarantined) — the split B1's page one prints separately."""
+    rows = commitment_alert_lines(snap, prior_keys=prior_keys)
+    return ([r for r in rows if r.get("alertable", True)],
+            [r for r in rows if not r.get("alertable", True)])
 
 
 def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):

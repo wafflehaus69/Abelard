@@ -43,14 +43,21 @@ def test_the_gap_between_observations_travels_with_the_move():
     assert snapshot.commitment_deltas(_snap(far))[0]["quarters_between"] == 8
 
 
-def test_nothing_alerts_while_the_threshold_is_unset():
+@pytest.fixture()
+def unset(monkeypatch):
+    """The pre-ratification state, kept so the E8 mechanism stays pinned: a
+    constant that is None must disable its arm rather than acquire a default."""
+    for name in ("COMMITMENT_JUMP_MULTIPLE", "COMMITMENT_JUMP_MIN_DELTA",
+                 "COMMITMENT_JUMP_ABSOLUTE"):
+        monkeypatch.setattr(snapshot, name, None)
+
+
+def test_nothing_alerts_while_every_bound_is_unset(unset):
     """E8: an unset constant is None and its consumer surfaces that."""
-    assert snapshot.COMMITMENT_JUMP_MULTIPLE is None
-    assert snapshot.COMMITMENT_JUMP_MIN_DELTA is None
     assert snapshot.commitment_alert_lines(_snap(SMCI)) == []
 
 
-def test_both_bounds_are_required_together():
+def test_both_bounds_are_required_together(unset):
     """A multiple alone fires on a near-zero base; a floor alone fires on every
     large issuer's routine drift. Supplying one is not enough to arm it."""
     snap = _snap(SMCI)
@@ -103,7 +110,7 @@ def test_the_event_key_is_content_derived_so_a_rerun_does_not_realert():
 META = [{"q": "2026Q1", "value": 237.67e9}, {"q": "2026Q2", "value": 349.31e9}]
 
 
-def test_a_multiple_gate_is_blind_to_the_largest_move_on_the_panel():
+def test_a_multiple_gate_is_blind_to_the_largest_move_on_the_panel(unset):
     """META added $111.64B in one quarter at 1.47x — the largest absolute move
     measured, and no defensible multiple catches it. Measured live: META went
     $27.95B -> $349.31B over four quarters and a 2.0x gate sees one step of
@@ -133,7 +140,7 @@ def test_the_absolute_arm_does_not_rescue_a_near_zero_base():
                                            absolute=20e9) == []
 
 
-def test_an_unarmed_arm_does_not_disable_the_other():
+def test_an_unarmed_arm_does_not_disable_the_other(unset):
     snap = _snap(SMCI)
     assert snapshot.commitment_alert_lines(snap, multiple=2.0, min_delta=1e9)
     assert snapshot.commitment_alert_lines(snap, absolute=20e9)
@@ -147,3 +154,63 @@ def test_a_zero_base_move_can_still_fire_on_size_alone():
     snap = _snap(avgo, ticker="AVGO")
     fired = snapshot.commitment_alert_lines(snap, absolute=20e9)
     assert len(fired) == 1 and "from a zero base" in fired[0]["reason"]
+
+
+# --- B4: ratified threshold and the BASIS-SUSPECT quarantine ---------------
+
+def test_the_threshold_is_ratified():
+    """ORDER CD-BRIEF1 B4, Mando 2026-09-02."""
+    assert snapshot.COMMITMENT_JUMP_MULTIPLE == 2.0
+    assert snapshot.COMMITMENT_JUMP_MIN_DELTA == 1_000_000_000.0
+    assert snapshot.COMMITMENT_JUMP_ABSOLUTE == 20_000_000_000.0
+    assert snapshot.commitment_alert_lines(_snap(SMCI))          # now fires
+
+
+def test_a_move_above_ten_times_is_quarantined_not_alerted():
+    """A 2372x move is not a growth rate until someone confirms the two
+    observations measure the same thing. Quarantine is a queue, not a verdict."""
+    unchecked = [{"q": "2026Q1", "value": 1.0e9}, {"q": "2026Q2", "value": 40.0e9}]
+    snap = _snap(unchecked, ticker="ZZZZ", bucket="builder")
+    alertable, quarantined = snapshot.commitment_alerts_and_quarantine(snap)
+    assert alertable == []
+    assert len(quarantined) == 1
+    assert quarantined[0]["basis"] == snapshot.BASIS_SUSPECT
+    assert quarantined[0]["basis_checked"] is None
+
+
+def test_avgo_is_recorded_as_checked_and_real():
+    """The first case cleared. Same note, same table, same line item; the 2027
+    and 2028 rows carried the whole move while 2029 was unchanged."""
+    check = snapshot.COMMITMENT_BASIS_CHECKS[("AVGO", "2026Q2")]
+    assert check["verdict"] == "REAL"
+    assert "55,214" in check["evidence"] and "72,870" in check["evidence"]
+    avgo = [{"q": "2026Q1", "value": 54_000_000.0},
+            {"q": "2026Q2", "value": 128_110_000_000.0}]
+    snap = _snap(avgo, ticker="AVGO", bucket="supplier",
+                 concept="UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount")
+    alertable, quarantined = snapshot.commitment_alerts_and_quarantine(snap)
+    assert quarantined == []
+    assert len(alertable) == 1
+    assert alertable[0]["basis"] == snapshot.BASIS_VERIFIED_REAL
+
+
+def test_a_verified_basis_change_never_alerts_however_large():
+    """The other verdict. A concept whose scope moved produces an enormous
+    'increase' that is really a change of subject."""
+    checks = dict(snapshot.COMMITMENT_BASIS_CHECKS)
+    checks[("FAKE", "2026Q2")] = {"verdict": "BASIS-CHANGE", "checked": "2026-09-02",
+                                  "evidence": "scope moved", "note": ""}
+    d = {"ticker": "FAKE", "to_q": "2026Q2", "multiple": 50.0}
+    orig = snapshot.COMMITMENT_BASIS_CHECKS
+    try:
+        snapshot.COMMITMENT_BASIS_CHECKS = checks
+        st = snapshot.basis_status(d)
+    finally:
+        snapshot.COMMITMENT_BASIS_CHECKS = orig
+    assert st["basis"] == snapshot.BASIS_VERIFIED_CHANGE
+    assert st["alertable"] is False
+
+
+def test_an_ordinary_move_is_not_quarantined():
+    st = snapshot.basis_status({"ticker": "X", "to_q": "2026Q2", "multiple": 3.4})
+    assert st["basis"] == snapshot.BASIS_OK and st["alertable"] is True
