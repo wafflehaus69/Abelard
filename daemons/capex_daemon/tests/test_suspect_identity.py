@@ -53,3 +53,45 @@ def test_the_two_statuses_are_distinct_and_only_one_refuses():
     assert dv.STATUS_SUSPECT_IDENTITY != dv.STATUS_RATIO_TAUTOLOGY
     assert dv.STATUS_SUSPECT_IDENTITY == "SUSPECT-IDENTITY"
     assert dv.STATUS_RATIO_TAUTOLOGY == "RATIO-TAUTOLOGY"
+
+
+# --- B7: a flag must state its own resolution ------------------------------
+
+def test_a_resolved_suspicion_says_so_in_the_status():
+    """A flag with no resolution is a question left open on the page forever.
+    IREN was investigated and cleared; the status has to carry that."""
+    res = dv.identity_resolution("IREN")
+    assert res["verdict"] == "COINCIDENCE" and res["checked"] == "2026-09-02"
+    assert "ProceedsFromConvertibleDebt" in res["evidence"]
+    assert dv.STATUS_SUSPECT_VERIFIED_COINCIDENCE.endswith("VERIFIED-COINCIDENCE")
+
+
+def test_an_unresolved_suspicion_keeps_the_bare_flag():
+    assert dv.identity_resolution("SOMEONE-ELSE") is None
+
+
+def test_the_resolution_is_visible_on_the_issuer_row():
+    from capex_daemon import universe
+    e = universe.Entity("0001878848", "IREN", "builder", "", "")
+    ix = _iren_index()
+    v = dv.build_issuer_view(e, ix)
+    assert dv.STATUS_SUSPECT_VERIFIED_COINCIDENCE in v.statuses
+    assert dv.STATUS_SUSPECT_IDENTITY not in v.statuses
+
+
+def _iren_index():
+    """A miniature IREN: disjoint concepts landing 0.07% apart."""
+    from capex_daemon.facts_api import ApiFact
+    def f(concept, start, end, val):
+        return ApiFact(concept=concept, taxonomy="us-gaap", unit="USD", value=val,
+                       period_start=start, period_end=end, duration_days=91,
+                       form="10-Q", filed=end, frame=None)
+    qs = [("2025-07-01", "2025-09-30"), ("2025-10-01", "2025-12-31"),
+          ("2026-01-01", "2026-03-31"), ("2026-04-01", "2026-06-30")]
+    return {
+        "PaymentsToAcquirePropertyPlantAndEquipment":
+            [f("PaymentsToAcquirePropertyPlantAndEquipment", a, b, 749_501_500.0)
+             for a, b in qs],
+        "ProceedsFromConvertibleDebt":
+            [f("ProceedsFromConvertibleDebt", a, b, 750_000_000.0) for a, b in qs],
+    }

@@ -665,7 +665,12 @@ def sec_aggregate(snap, styles):
         rows.append(["credit issuance", "—", _x(_money(iss[-1]["value"])), "—",
                      str(iss[-1]["members"]), "—"])
     if comm:
-        rows.append(["forward commitments", "—", _x(_money(comm[-1]["value"])), "—",
+        # B5 — refused rather than printed; three concepts, three scopes.
+        cp = panel.get("commitments_panel") or {}
+        cell = ("<font color='{}'>{}</font>".format(COV_RULE, _x(cp["status"]))
+                if str(cp.get("status", "")).startswith("REFUSED")
+                else _x(_money(comm[-1]["value"])))
+        rows.append(["forward commitments", "—", cell, "—",
                      str(comm[-1]["members"]), "—"])
     out.append(_table(("Series", "State", "TTM", "TTM YoY", "Members", "Band"), rows,
                       [150, 132, 96, 84, 62, 56], styles, right_cols=(2, 3, 4, 5)))
@@ -1088,12 +1093,23 @@ def sec_suppliers(snap, styles):
          "Quarters", "Restated", "Resolved"),
         rows, [58, 124, 118, 78, 62, 50, 50, 180], styles, right_cols=(3, 4, 5, 6)))
 
-    band_notes = ["<b>{}</b> banded on dcrev:supplier at {}pp, measured {} — NOT the "
-                  "issuer:supplier band, which applies to the supplier's own capex".format(
-                      _x(t), l.get("dc_band"), _x(l.get("dc_band_measured_on")))
-                  for t, l in sorted(legs.items()) if l.get("dc_band")]
-    if band_notes:
-        out.append(_P(" &nbsp;·&nbsp; ".join(band_notes), styles["_foot"]))
+    # B7 — the band is a property of the SERIES CLASS, not of any one supplier.
+    # It was printed verbatim on all five rows; five identical sentences is not
+    # five facts.
+    bands = {(l.get("dc_band"), l.get("dc_band_measured_on"))
+             for l in legs.values() if l.get("dc_band")}
+    if len(bands) == 1:
+        band, measured = bands.pop()
+        out.append(_P(
+            "<b>Band.</b> Every DC-revenue phase above is banded on "
+            "<b>dcrev:supplier</b> at <b>{}pp</b>, measured {}. That is NOT the "
+            "issuer:supplier band, which applies to a supplier's own capex and is a "
+            "different series class.".format(_x(band), _x(measured)), styles["_foot"]))
+    elif bands:
+        out.append(_P("<b>Supplier dcrev bands disagree:</b> {}. A single series "
+                      "class cannot carry two bands.".format(
+                          _x("; ".join("{}pp measured {}".format(b, d)
+                                       for b, d in sorted(bands)))), styles["_foot"]))
     restated = [(t, l) for t, l in sorted(legs.items()) if l.get("restatements")]
     if restated:
         out.append(_P("<b>Restatements</b> (carried on hover in the dashboard): " +
@@ -1184,7 +1200,144 @@ def sec_provenance(snap, styles):
     return out
 
 
+def sec_since(snap, styles):
+    """B1 — page one of everything. What changed since the last scan.
+
+    The daemon has been a state dump: everything it knows, every night, with no
+    way to see what is NEW without diffing two renders by hand. That is how
+    SMCI's commitments tripled unremarked and how DLR sat stranded a month.
+
+    Every section reports its own emptiness. A section that vanishes when empty
+    is indistinguishable from one that failed to run, and on a page whose whole
+    purpose is "what is new", silence has to be a statement.
+    """
+    since = snap.get(snapshot.SINCE_KEY) or {}
+    out = []
+    _heading(out, styles, "Since the last scan")
+    if not since:
+        out.append(_warn(
+            "<b>This snapshot predates the since-last-scan record.</b> It was built "
+            "before the scan began writing one, so what changed in its run cannot be "
+            "reconstructed after the fact. The next scan will carry it.", styles))
+        return out
+
+    stamp = _stamp(since.get("scan_unix"))
+    out.append(_P(
+        "Everything below happened in the scan of <b>{}</b>. History is not repeated "
+        "here — it is in the full Reference render, below the rule on each view. "
+        "Transitions are frontier-gated: a state change derived tonight for a quarter "
+        "years back is history however freshly computed.".format(_x(stamp)),
+        styles["_note"]))
+    if since.get("first_run_backfill"):
+        out.append(_warn(
+            "<b>First run.</b> This scan rediscovered the entire history at once. "
+            "That is a backfill, not news, so no transition is reported as new.",
+            styles))
+
+    for key, title, empty in snapshot.SINCE_SECTIONS:
+        rows = since.get(key) or []
+        out.append(_P(title, styles["_h3"]))
+        if not rows:
+            out.append(_P("<i>{}</i>".format(_x(empty)), styles["_foot"]))
+            continue
+        out.append(_since_table(key, rows, styles))
+    return out
+
+
+def _since_table(key, rows, styles):
+    """One table per section. Each shape gets its own columns."""
+    if key == "transitions":
+        return _table(("Series", "Quarter", "From", "To", "TTM YoY", "Why"),
+                      [["<b>NEW</b> " + _x(r["series_key"]), _x(r["quarter"]),
+                        _state_text(r["from_state"]), _state_text(r["to_state"]),
+                        _x(_pct(r.get("yoy"))), _x(r["reason"])] for r in rows],
+                      [140, 54, 116, 116, 66, 208], styles, right_cols=(4,))
+    if key == "filings":
+        return _table(("Issuer", "Form", "Period", "Filed"),
+                      [["<b>{}</b>".format(_x(r["ticker"])), _x(r.get("form") or "—"),
+                        _x(r.get("period") or "—"), _x(r.get("filed") or "—")]
+                       for r in rows], [80, 70, 90, 90], styles)
+    if key in ("commitment_alerts", "commitment_quarantined"):
+        return _table(("Issuer", "Concept", "From", "To", "was", "now", "change",
+                       "multiple", "basis"),
+                      [["<b>{}</b>".format(_x(r["ticker"])), _x(r["concept"]),
+                        _x(r["from_q"]), _x(r["to_q"]), _x(_money(r["from_value"])),
+                        _x(_money(r["to_value"])), _x(_money(r["delta"])),
+                        "{:.2f}x".format(r["multiple"]) if r["multiple"] else "—",
+                        _x(r.get("basis", ""))]
+                       for r in rows],
+                      [50, 150, 48, 48, 66, 66, 70, 52, 130], styles,
+                      right_cols=(4, 5, 6, 7))
+    if key == "supplier_frontier":
+        return _table(("Supplier", "Quarter", "DC revenue", "QoQ", "YoY"),
+                      [["<b>{}</b>".format(_x(r["ticker"])), _x(r["q"]),
+                        _x(_money(r["value"])), _x(_pct(r["qoq"])),
+                        _x(_pct(r["yoy"]))] for r in rows],
+                      [70, 62, 96, 72, 72], styles, right_cols=(2, 3, 4))
+    if key == "composition_events":
+        return _table(("Bucket", "Quarter", "Issuer", "Change"),
+                      [[_x(r.get("bucket")), _x(r["quarter"]), _x(r["ticker"]),
+                        _x(r["change"])] for r in rows],
+                      [90, 62, 70, 110], styles)
+    return _table(("Issuer", "Detail"),
+                  [["<b>{}</b>".format(_x(r.get("ticker", "?"))),
+                    _x(r.get("detail", ""))] for r in rows], [70, 500], styles)
+
+
+def sec_thesis(snap, styles):
+    """B2 — the mechanical read, then the one chart it is read from."""
+    out = []
+    _heading(out, styles, "The thesis line")
+    out.append(_P(
+        "Computed, never composed. The same sentence structure every day, so a "
+        "changed clause is visible without reading. No adjectives and no judgement: "
+        "any word chosen for emphasis destroys the property that makes a fixed "
+        "sentence useful.", styles["_chartnote"]))
+    from reportlab.lib import colors
+    from reportlab.platypus import Table, TableStyle
+    t = Table([[_P("<b>{}</b>".format(_x(snapshot.thesis_line(snap))), styles["_note"])]],
+              colWidths=[CONTENT_W])
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f4f6f9")),
+        ("LINEBEFORE", (0, 0), (0, -1), 3.0, colors.HexColor("#1a1a1a")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
+    out.append(t)
+    out.append(_spacer(8))
+    out.append(brief.composite_drawing(
+        snap, width=CHART_W, height=286, margins=(66, 132, 40, 40),
+        tick_size=6.2, label_size=6.8))
+    return out
+
+
+def sec_phase_board(snap, styles):
+    """The grid alone — the Brief's third page."""
+    out = []
+    _heading(out, styles, "Phase board")
+    rows, quarters = svgcharts.issuer_rows_for_grid(snap)
+    out.append(state_grid_drawing(rows, quarters))
+    out.append(_P(
+        "Every classified series, every quarter it classifies. A blank cell is "
+        "INSUFFICIENT-HISTORY, deliberately uncoloured so that absence of a state does "
+        "not read as a fifth state. Suppliers show their DATACENTER REVENUE phase; "
+        "their own capex follows as a labelled secondary row and is not a buildout "
+        "signal.", styles["_chartnote"]))
+    return out
+
+
+# B3 — the Brief is three pages and is what rides the pipeline; the Reference is
+# the full render. Both come from one snapshot and one set of section functions,
+# so they cannot disagree.
+BRIEF_SECTIONS = (
+    ("Since the last scan", None, sec_since),
+    ("The thesis line", None, sec_thesis),
+    ("Phase board", "/phases", sec_phase_board),
+)
+
+
 SECTIONS = (
+    ("Since the last scan", "/since", sec_since),
+    ("The thesis line", None, sec_thesis),
     ("The aggregate", "/", sec_aggregate),
     ("Hayes panel", "/hayes", sec_hayes),
     ("Phase board", "/phases", sec_phases),
@@ -1238,16 +1391,19 @@ def render_provenance(snap, last_scan_unix=None):
     }
 
 
-def _footer_line(prov):
-    base = "Capex Daemon — dashboard report · rendered on {} · snapshot {} · last scan {}"\
-        .format(prov["host"], prov["snapshot"], prov["last_scan"])
+REFERENCE_TITLE = "Capex Daemon — dashboard report"
+
+
+def _footer_line(prov, title=None):
+    base = "{} · rendered on {} · snapshot {} · last scan {}".format(
+        title or REFERENCE_TITLE, prov["host"], prov["snapshot"], prov["last_scan"])
     if prov["is_live_host"]:
         return base
     return "LOCAL COPY — NOT THE LIVE DASHBOARD · " + base
 
 
-def _footer_factory(prov):
-    line = _footer_line(prov)
+def _footer_factory(prov, title="Capex Daemon — dashboard report"):
+    line = _footer_line(prov, title)
     live = prov["is_live_host"]
 
     def _footer(canvas, doc):
@@ -1266,8 +1422,13 @@ def _footer_factory(prov):
 
 
 def build(snap, out_path, last_scan_unix=None,
-          title="Capex Daemon — dashboard report"):
-    """Render every dashboard view into one PDF. Returns the written path."""
+          title="Capex Daemon — dashboard report", sections=None, brief=False):
+    """Render the requested sections into one PDF. Returns the written path.
+
+    `sections` defaults to the full Reference render. `BRIEF_SECTIONS` gives the
+    three-page Brief. Both read the same snapshot through the same section
+    functions, so the Brief cannot say anything the Reference does not.
+    """
     from abelard_common.render import pdf as housepdf
     from reportlab.platypus import PageBreak
 
@@ -1281,9 +1442,13 @@ def build(snap, out_path, last_scan_unix=None,
 
     story = [_P(_x(title), styles["_h1"])]
     story.append(_P(
-        "All seven views of the read-only dashboard, rendered from the same persisted "
-        "snapshot the server renders. Panel state <b>{}</b> · TTM {} · TTM YoY {} · "
-        "{} issuers · dead-bands stamped {}.".format(
+        ("What changed since the last scan, the thesis line, and the phase board — "
+         "read from the same persisted snapshot the server renders. Panel state "
+         "<b>{}</b> · TTM {} · TTM YoY {} · {} issuers · dead-bands stamped {}."
+         if brief else
+         "All seven views of the read-only dashboard, rendered from the same persisted "
+         "snapshot the server renders. Panel state <b>{}</b> · TTM {} · TTM YoY {} · "
+         "{} issuers · dead-bands stamped {}.").format(
             _x(total["state"]), _x(_money(total.get("ttm"))),
             _x(_pct(total.get("latest_yoy"))), len(snap.get("issuers") or {}),
             _x(snap.get("bands_measured_on"))), styles["_note"]))
@@ -1305,15 +1470,50 @@ def build(snap, out_path, last_scan_unix=None,
                 _x(prov["host"]), _x(LIVE_HOST), _x(prov["snapshot"]),
                 _x(prov["last_scan"])), styles))
 
+    sections = SECTIONS if sections is None else sections
     contents = " &nbsp;·&nbsp; ".join(
         "{}. {}{}".format(i, _x(name), " ({})".format(_x(route)) if route else "")
-        for i, (name, route, _fn) in enumerate(SECTIONS, start=1))
+        for i, (name, route, _fn) in enumerate(sections, start=1))
     story.append(_P("<b>Contents.</b> " + contents, styles["_foot"]))
     story.append(_spacer(10))
 
     # Three things differ from the screen, and a reader who does not know that
-    # will read a difference as a disagreement.
-    story.append(_P("How this differs from the screen", styles["_h2"]))
+    # will read a difference as a disagreement. But that is REFERENCE material:
+    # on a three-page Brief it consumed the whole of page one, and B1 says the
+    # since-last-scan page IS page one. The Brief cites where to find it.
+    if brief:
+        story.append(_P(
+            "Provenance, the sparkline note and the layout note are in the Reference "
+            "render, which is built by the same scan and carries every view in full.",
+            styles["_foot"]))
+    else:
+        story.extend(_screen_differences(styles))
+
+    # The Reference gives every view its own page, in nav order. The Brief must
+    # not: B1 says the since-last-scan page IS page one, and a cover page that
+    # only restates the header pushes it to page two and costs a third of a
+    # three-page document.
+    for i, (name, _route, fn) in enumerate(sections):
+        if i or not brief:
+            story.append(PageBreak())
+        story.extend(fn(snap, styles))
+
+    return housepdf.build_pdf(
+        out_path, story, title=title, pagesize=PAGE_SIZE,
+        left_margin=MARGIN_L, right_margin=MARGIN_R,
+        top_margin=MARGIN_T, bottom_margin=MARGIN_B,
+        on_page=_footer_factory(prov, title))
+
+
+BRIEF_TITLE = "Capex Daemon — Brief"
+
+BRIEF_NAME = "capex_brief.pdf"
+REFERENCE_NAME = "capex_dashboard.pdf"
+
+
+def _screen_differences(styles):
+    """The Reference-only note on how paper differs from the screen."""
+    story = [_P("How this differs from the screen", styles["_h2"])]
     story.append(_P(
         "<b>Provenance moved, it did not go away.</b> On the dashboard, matched membership, "
         "per-issuer band and state entry, and supplier restatement history are hover "
@@ -1337,25 +1537,18 @@ def build(snap, out_path, last_scan_unix=None,
         "Where the dashboard withholds a number it withholds it here for the same reason and "
         "says so; where a leg is refused, the refusal is printed where the leg would have "
         "been.", styles["_foot"]))
-
-    for name, _route, fn in SECTIONS:
-        story.append(PageBreak())
-        story.extend(fn(snap, styles))
-
-    return housepdf.build_pdf(
-        out_path, story, title=title, pagesize=PAGE_SIZE,
-        left_margin=MARGIN_L, right_margin=MARGIN_R,
-        top_margin=MARGIN_T, bottom_margin=MARGIN_B,
-        on_page=_footer_factory(prov))
+    return story
 
 
-def build_from_db(db_path=None, out_path=None, title="Capex Daemon — dashboard report"):
+def build_from_db(db_path=None, out_path=None, title=None, brief=False):
     """Load the snapshot read-only and render it. No write path exists here."""
     import os
 
     from . import config
     db_path = db_path or config.DB_PATH_DEFAULT
     snap, last_scan = dashboard._read_only_snapshot(db_path)
-    out_path = out_path or os.path.join(config.STATE_HOME, "charts",
-                                        "capex_dashboard.pdf")
-    return build(snap, out_path, last_scan_unix=last_scan, title=title)
+    out_path = out_path or os.path.join(
+        config.STATE_HOME, "charts", BRIEF_NAME if brief else REFERENCE_NAME)
+    return build(snap, out_path, last_scan_unix=last_scan,
+                 title=title or (BRIEF_TITLE if brief else REFERENCE_TITLE),
+                 sections=BRIEF_SECTIONS if brief else SECTIONS, brief=brief)

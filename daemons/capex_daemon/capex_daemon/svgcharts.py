@@ -38,6 +38,9 @@ SERIES_COLORS = {
     "builder": "#8a3fa0",
     "reit": "#0f7f7f",
     "issuance": "#c2410c",
+    # The frontier pair sits beside the constant-membership jaws and must be
+    # legible as a DIFFERENT claim, not a variant of the same line.
+    "frontier": "#0891b2",
     "commitments": "#6b7280",
 }
 
@@ -355,9 +358,16 @@ def breadth_strip(frame, breadth_rows, y, height=16):
         c = BREADTH_COLORS.get((net > 0) - (net < 0), "#8a8a8a")
         x0 = max(frame.l, frame.x(q) - half)
         w = min(frame.l + frame.pw, frame.x(q) + half) - x0
-        tip = "{} — net {:+d} · ACC {} · PLAT {} · DEC {} · CONTR {}".format(
-            q, net, row.get(phases.STATE_ACCELERATING, 0), row.get(phases.STATE_PLATEAU, 0),
-            row.get(phases.STATE_DECELERATING, 0), row.get(phases.STATE_CONTRACTING, 0))
+        # B6 — both censuses. States are runs; directions are this quarter.
+        tip = ("{} — states: net {:+d} · ACC {} · PLAT {} · DEC {} · CONTR {}"
+               "  |  moves this quarter: {} up, {} down, {} in-band"
+               .format(q, net,
+                       row.get(phases.STATE_ACCELERATING, 0),
+                       row.get(phases.STATE_PLATEAU, 0),
+                       row.get(phases.STATE_DECELERATING, 0),
+                       row.get(phases.STATE_CONTRACTING, 0),
+                       row.get("moved_up", 0), row.get("moved_down", 0),
+                       row.get("moved_flat", 0)))
         out.append("<rect x='{:.1f}' y='{}' width='{:.1f}' height='{}' fill='{}' "
                    "fill-opacity='{:.2f}'><title>{}</title></rect>".format(
                        x0, y, max(0.0, w - 0.6), height, c,
@@ -535,6 +545,7 @@ def composite_model(snap):
         "jaws_capex": jaws_cap, "jaws_capex_panel": jc,
         "issuance": iss, "growth": growth, "issuance_panel": ji,
         "commitments_panel": panel.get("commitments_panel") or {},
+        "frontier_pair": panel.get("frontier_pair") or {},
         "breadth": panel.get("breadth_series") or [],
         "states": _states_of(total.get("observations")),
         "state": total.get("state"),
@@ -621,6 +632,25 @@ def composite(snap, width=1240, height=560):
                              s[0], _money(s[1]), n)))
         _lab(jaws_cap, "capex ({} names)".format(n), oc)
         _lab(iss, "credit (same {})".format(n), oc)
+
+    # B6/P1 — the same pair over FULL CURRENT membership, trailing 8 quarters,
+    # drawn lighter and labelled. The constant-membership legs are the honest
+    # level; these are the currency read, and the difference is the point.
+    fp = m.get("frontier_pair") or {}
+    if fp.get("capex") and fp.get("issuance"):
+        fc = [(r["q"], r["value"]) for r in fp["capex"] if r["q"] in f.index]
+        fi = [(r["q"], r["value"]) for r in fp["issuance"] if r["q"] in f.index]
+        nf = fp["issuance"][-1]["members"] if fp["issuance"] else 0
+        if len(fc) >= 2 and len(fi) >= 2:
+            fcol = SERIES_COLORS["frontier"]
+            body.append(line(f, [(q, v, "frontier capex") for q, v in fc], fcol,
+                             width=1.6, opacity=0.55,
+                             title_fmt=lambda s_, nn=nf: "{} capex TTM {} "
+                             "(frontier, {} names)".format(s_[0], _money(s_[1]), nn)))
+            body.append(line(f, fi, fcol, width=1.9, dash="2 3", opacity=0.75,
+                             title_fmt=lambda s_, nn=nf: "{} credit TTM {} "
+                             "(frontier, {} names)".format(s_[0], _money(s_[1]), nn)))
+            _lab(fi, "credit — frontier ({})".format(nf), fcol)
     body.append(line(f, tser, SERIES_COLORS["total"], width=3.0, dots=True))
     _lab(m["total"], "TOTAL PANEL", SERIES_COLORS["total"])
 

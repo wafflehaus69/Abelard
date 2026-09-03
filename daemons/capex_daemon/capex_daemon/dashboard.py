@@ -73,7 +73,8 @@ svg{display:block;max-width:100%;margin:0 0 14px}
 [title]{cursor:help;border-bottom:1px dotted #bbb}
 """
 
-VIEWS = [("/", "The aggregate"), ("/hayes", "Hayes panel"), ("/phases", "Phase board"),
+VIEWS = [("/since", "Since last scan"),
+         ("/", "The aggregate"), ("/hayes", "Hayes panel"), ("/phases", "Phase board"),
          ("/divergence", "Divergence"), ("/buckets", "Bucket drilldowns"),
          ("/commitments", "Forward commitments"), ("/suppliers", "Suppliers")]
 
@@ -102,8 +103,14 @@ def _pill(state):
     return "<span class='pill' style='background:{}'>{}</span>".format(c, _esc(state))
 
 
+# CONTESTED is not decoration: it says the label above it is being argued with
+# by the most recent move, so it gets a colour rather than the grey chip.
+FLAG_STYLES = {phases.FLAG_CONTESTED: "background:#8a3fa0;color:#fff"}
+
+
 def _flags(fl):
-    return "".join("<span class='flag'>{}</span>".format(_esc(f)) for f in (fl or []))
+    return "".join("<span class='flag' style='{}'>{}</span>".format(
+        FLAG_STYLES.get(f, ""), _esc(f)) for f in (fl or []))
 
 
 def _spark(vals, width=24):
@@ -304,10 +311,17 @@ def view_aggregate(snap):
                            panel.get("issuance_membership_latest") or [])),
                        iss[-1]["members"]))
     if comm:
+        # B5 — the total is REFUSED, not printed. Three different concepts with
+        # three different scopes were being added into one front-page figure.
+        cp = panel.get("commitments_panel") or {}
+        refused = str(cp.get("status", "")).startswith("REFUSED")
+        cell = ("<span class='cov' title='{}'>{}</span>".format(
+                    _esc(cp.get("detail", "")), _esc(cp["status"]))
+                if refused else _money(comm[-1]["value"]))
         out.append("<tr><td>forward commitments</td><td>—</td><td class='num'>{}</td>"
                    "<td class='num'>—</td><td class='num' title='{}'>{}</td>"
                    "<td class='num'>—</td></tr>".format(
-                       _money(comm[-1]["value"]),
+                       cell,
                        _esc("disclosing: " + ", ".join(
                            panel.get("commitments_membership_latest") or [])),
                        comm[-1]["members"]))
@@ -649,10 +663,7 @@ def view_suppliers(snap):
                        _esc(tick),
                        "<span class='pill' style='background:{}'>{}</span>".format(
                            colour, _esc(st)),
-                       _esc("banded on dcrev:supplier at {}pp, measured {} — NOT the "
-                            "issuer:supplier band, which applies to the supplier's own "
-                            "capex".format(leg.get("dc_band"),
-                                           leg.get("dc_band_measured_on"))),
+                       _esc("dcrev phase — see the band footnote below the table"),
                        _pill(dcs), _flags(leg.get("dc_flags")),
                        _money(leg.get("ttm")),
                        _pct(leg.get("dc_latest_yoy")),
@@ -664,6 +675,7 @@ def view_suppliers(snap):
                        _esc(leg.get("detail") or ""),
                        _esc(", ".join(leg.get("axes") or []) or leg.get("detail", "")[:60])))
     out.append("</table>")
+    out.append(_dcrev_band_footnote(legs))
 
     if series:
         out.append("<h2>Cross-check history</h2><table><tr><th>Quarter</th>"
@@ -756,6 +768,28 @@ def _commitment_deltas_block(snap):
     return "".join(out)
 
 
+def _dcrev_band_footnote(legs):
+    """The band note, once. It was printed verbatim on all five supplier rows.
+
+    Five identical sentences is not five facts. The band is a property of the
+    SERIES CLASS, not of any one supplier, so it belongs under the table."""
+    bands = {(l.get("dc_band"), l.get("dc_band_measured_on"))
+             for l in (legs or {}).values() if l.get("dc_band")}
+    if not bands:
+        return ""
+    if len(bands) > 1:                       # would be a real finding, not noise
+        return ("<p class='note'><b>Supplier dcrev bands disagree:</b> {}. A single "
+                "series class cannot carry two bands.</p>".format(
+                    _esc("; ".join("{}pp measured {}".format(b, d)
+                                   for b, d in sorted(bands)))))
+    band, measured = bands.pop()
+    return ("<p class='note'><b>Band.</b> Every DC-revenue phase above is banded on "
+            "<code>dcrev:supplier</code> at <b>{}pp</b>, measured {}. That is "
+            "<b>not</b> the <code>issuer:supplier</code> band, which applies to a "
+            "supplier's own capex and is a different series class.</p>".format(
+                _esc(band), _esc(measured)))
+
+
 def _frontier_block(fr):
     """A3 — the supplier quarters the demand panel has not reached yet.
 
@@ -800,7 +834,50 @@ def charts_ratio_svg(series):
         fmt=lambda v: "{:.0f}%".format(100 * v))
 
 
-ROUTES = {"/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
+def view_since(snap):
+    """B1 — what changed in the scan that produced this snapshot.
+
+    Every section reports its own emptiness. A section that vanishes when empty
+    is indistinguishable from one that failed to run, and on a page whose whole
+    purpose is "what is new", silence has to be a statement.
+    """
+    since = snap.get(snapshot.SINCE_KEY) or {}
+    out = ["<h2>Since the last scan</h2>"]
+    if not since:
+        out.append("<div class='warn'><b>This snapshot predates the "
+                   "since-last-scan record.</b> It was built before the scan began "
+                   "writing one, so what changed in its run cannot be reconstructed "
+                   "after the fact. The next scan will carry it.</div>")
+        return _page("Since last scan", "/since", "".join(out))
+    stamp = (time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(int(since["scan_unix"])))
+             if since.get("scan_unix") else "unknown")
+    out.append("<p class='note'>Everything below happened in the scan of <b>{}</b>. "
+               "History is not repeated here — it is on the full views, below the "
+               "rule. Transitions are frontier-gated: a state change derived tonight "
+               "for a quarter years back is history, however freshly computed.</p>"
+               .format(_esc(stamp)))
+    if since.get("first_run_backfill"):
+        out.append("<div class='warn'><b>First run.</b> This scan rediscovered the "
+                   "entire history at once. That is a backfill, not news.</div>")
+    out.append("<p class='note'><b>Thesis line.</b> {}</p>".format(
+        _esc(snapshot.thesis_line(snap))))
+    for key, title, empty in snapshot.SINCE_SECTIONS:
+        rows = since.get(key) or []
+        out.append("<h2>{}</h2>".format(_esc(title)))
+        if not rows:
+            out.append("<p class='note'><i>{}</i></p>".format(_esc(empty)))
+            continue
+        out.append("<table><tr>{}</tr>".format(
+            "".join("<th>{}</th>".format(_esc(k)) for k in sorted(rows[0]))))
+        for r in rows:
+            out.append("<tr>{}</tr>".format("".join(
+                "<td>{}</td>".format(_esc(r[k])) for k in sorted(r))))
+        out.append("</table>")
+    return _page("Since last scan", "/since", "".join(out))
+
+
+ROUTES = {"/since": view_since,
+          "/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
           "/divergence": view_divergence, "/buckets": view_buckets,
           "/commitments": view_commitments, "/suppliers": view_suppliers}
 

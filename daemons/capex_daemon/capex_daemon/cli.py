@@ -74,10 +74,13 @@ def cmd_dashboard(args):
 
 
 def cmd_report(args):
-    """Render every dashboard view into one PDF. Read-only; recomputes nothing."""
+    """Render the Brief or the full Reference. Read-only; recomputes nothing."""
     from . import report as reportmod
-    print("wrote {}".format(
-        reportmod.build_from_db(db_path=args.db, out_path=args.out)))
+    if args.brief and args.reference:
+        print("--brief and --reference are exclusive; pick one")
+        return 2
+    print("wrote {}".format(reportmod.build_from_db(
+        db_path=args.db, out_path=args.out, brief=args.brief)))
     return 0
 
 
@@ -127,10 +130,16 @@ def main(argv=None):
                         "Never bind 0.0.0.0.")
     p.set_defaults(func=cmd_dashboard)
 
-    p = sub.add_parser("report", help="render all seven dashboard views to one PDF")
+    p = sub.add_parser("report", help="render the Brief (3 pages) or the full Reference")
     p.add_argument("--db", default=None)
     p.add_argument("--out", default=None,
-                   help="output path; defaults to <state home>/charts/capex_dashboard.pdf")
+                   help="output path; defaults to <state home>/charts/capex_brief.pdf "
+                        "or capex_dashboard.pdf")
+    p.add_argument("--brief", action="store_true",
+                   help="three pages: since-last-scan, thesis line + composite, "
+                        "phase board. This is what rides the brief pipeline.")
+    p.add_argument("--reference", action="store_true",
+                   help="the full render (default)")
     p.set_defaults(func=cmd_report)
 
     p = sub.add_parser("initdb", help="create the state schema")

@@ -45,6 +45,48 @@ def _obs_json(o):
             "quarters_in_state": o.quarters_in_state, "entered": o.entered}
 
 
+# CD-BRIEF1 B6 (was GAP2 P1). How many quarters the frontier pair spans.
+FRONTIER_PAIR_QUARTERS = 8
+
+
+def _frontier_pair(capex_ttm, capex_membership, iss_ttm, iss_membership,
+                   quarters=FRONTIER_PAIR_QUARTERS):
+    """The jaws over FULL CURRENT membership for the trailing quarters. B6/P1.
+
+    The constant-membership jaws are the honest LEVEL: five names held fixed
+    across the whole window, so a rise is spending rather than arrivals. That
+    correctness costs currency — the five are chosen for coverage across sixty
+    quarters, so the newest and largest credit issuers are not in them.
+
+    So a second, shorter pair on everyone who currently contributes. It is
+    explicitly NOT a level to be compared with the long one: over eight quarters
+    membership still changes, and every entry inside the window is published as
+    a composition event so a step caused by an arrival cannot be read as
+    spending. Two legs, both labelled, neither pretending to be the other.
+    """
+    qs = sorted(set(capex_ttm) & set(iss_ttm), key=trend._cq_sort)[-quarters:]
+    if len(qs) < 2:
+        return {}
+    first = set(iss_membership.get(qs[0], []))
+    entries = []
+    for q in qs[1:]:
+        now = set(iss_membership.get(q, []))
+        for tick in sorted(now - first):
+            entries.append({"q": q, "ticker": tick, "change": "entered"})
+        first |= now
+    return {
+        "quarters": qs,
+        "capex": [{"q": q, "value": capex_ttm[q],
+                   "members": len(capex_membership.get(q, []))} for q in qs],
+        "issuance": [{"q": q, "value": iss_ttm[q],
+                      "members": len(iss_membership.get(q, []))} for q in qs],
+        "composition_events": entries,
+        "basis": ("full current membership over the trailing {} quarters — a "
+                  "CURRENCY read, not a level. Entries inside the window are "
+                  "published beside it.".format(len(qs))),
+    }
+
+
 def _supplier_section(legs, bucket_trends):
     """CD-3 — the supplier cross-check, published beside the panel, never in it.
 
@@ -311,6 +353,9 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
         "issuance_membership_latest": (
             t["issuance_membership"][max(t["issuance_membership"], key=trend._cq_sort)]
             if t["issuance_membership"] else []),
+        "frontier_pair": _frontier_pair(
+            t["total_trend"].ttm, t["total_trend"].membership,
+            t["issuance_ttm"], t["issuance_membership"]),
         "commitments": _ser(t["commitments_stock"], t["commitments_membership"], "value"),
         "commitments_membership_latest": (
             t["commitments_membership"][max(t["commitments_membership"], key=trend._cq_sort)]
@@ -374,6 +419,39 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
         }
     else:
         panel["commitments_panel"] = {"status": "OK", "detail": "", "disclosing_issuers": 0}
+
+    # B5 — the MIXED-BASIS refusal, which outranks the membership one because it
+    # holds even when membership is perfectly constant.
+    #
+    # `ContractualObligation`, `PurchaseObligation` and
+    # `UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount` are three
+    # different measures with three different scopes. Adding them produces a
+    # number with no defined meaning, and it has been on the front page as
+    # though it had one. Per-issuer figures are untouched: each is internally
+    # consistent and comparable to its own history, which is exactly why the A4
+    # deltas are computed per issuer and never summed.
+    #
+    # Held until GAP2 P2 assigns basis classes. Once assigned, a total may be
+    # published WITHIN one class and still never across them.
+    bases = {}
+    for tick, iss in (issuers or {}).items():
+        c = (iss.get("commitments") or {})
+        if c.get("status") == commitments.STATUS_COVERED and c.get("concept"):
+            bases.setdefault(c["concept"], []).append(tick)
+    if len(bases) > 1:
+        panel["commitments_panel"] = {
+            "status": "REFUSED-MIXED-BASIS",
+            "detail": ("the {} disclosing issuers use {} different concepts, which "
+                       "are not the same measure: {}. Summing them yields a number "
+                       "with no defined meaning. Per-issuer figures and deltas are "
+                       "unaffected — what fails is ADDING them. Held until basis "
+                       "classes are assigned (GAP2 P2)".format(
+                           sum(len(v) for v in bases.values()), len(bases),
+                           "; ".join("{} ({})".format(k, ", ".join(sorted(v)))
+                                     for k, v in sorted(bases.items())))),
+            "disclosing_issuers": sum(len(v) for v in bases.values()),
+            "basis_classes": {k: sorted(v) for k, v in sorted(bases.items())},
+        }
 
     # The divergence chart plots a RATIO, so the ratio is published rather than
     # divided in a renderer. Two views dividing the same pair independently is
@@ -470,9 +548,50 @@ def load(con):
 # Concentration, for Mando to weigh: META 5, SMCI 5, AMD 2 of the 19. Adding the
 # absolute arm improved this — under the multiple alone SMCI was 5 of 16, a third
 # of the channel.
-COMMITMENT_JUMP_MULTIPLE = None       # proposed 2.0
-COMMITMENT_JUMP_MIN_DELTA = None      # proposed 1_000_000_000.0
-COMMITMENT_JUMP_ABSOLUTE = None       # proposed 20_000_000_000.0
+# RATIFIED by Mando, ORDER CD-BRIEF1 B4, 2026-09-02.
+COMMITMENT_JUMP_MULTIPLE = 2.0
+COMMITMENT_JUMP_MIN_DELTA = 1_000_000_000.0
+COMMITMENT_JUMP_ABSOLUTE = 20_000_000_000.0
+
+# Above this multiple, a move is QUARANTINED as BASIS-SUSPECT rather than
+# alerted: published, listed separately, and queued for a presentation check.
+#
+# A 2372x move is not a growth rate until someone has confirmed the two
+# observations measure the same thing. The failure it guards against is E23 in
+# its sharpest form — a concept whose scope changed between filings produces an
+# enormous "increase" that is really a change of subject, and an alert on that
+# is worse than silence because it is confidently wrong.
+#
+# Quarantine is a QUEUE, not a verdict. The first case cleared — see
+# `COMMITMENT_BASIS_CHECKS`.
+COMMITMENT_BASIS_SUSPECT_MULTIPLE = 10.0
+
+# Presentation checks performed, per E23. Keyed (ticker, to_quarter).
+# `verdict` is REAL (the disclosure is unchanged and the move is genuine) or
+# BASIS-CHANGE (the concept's scope moved and the two points are not comparable).
+COMMITMENT_BASIS_CHECKS = {
+    ("AVGO", "2026Q2"): {
+        "verdict": "REAL",
+        "checked": "2026-09-02",
+        "evidence": (
+            "Presentation compared across the two 10-Qs. Both carry the same "
+            "note 10 'Commitments and Contingencies' table, the same line item "
+            "'Purchase Commitments', the same fiscal-year rows and the same "
+            "units. Filed 2026-03-11 (period 2026-02-01): 2026(rem) $28M, 2027 "
+            "$12M, 2028 $10M, 2029 $4M. Filed 2026-06-09 (period 2026-05-03): "
+            "2026(rem) $22M, 2027 $55,214M, 2028 $72,870M, 2029 $4M. The "
+            "concept, the table and the presentation are IDENTICAL; what "
+            "changed is the obligation. The near-term rows carry the whole "
+            "move while 2029 and later are unchanged, which is what a real "
+            "multi-year supply commitment looks like. Corroborated by "
+            "RevenueRemainingPerformanceObligation in the same filing: "
+            "$45.0B -> $164.6B."),
+        "note": ("The quarantine did its job by forcing the check, and the "
+                 "check cleared it. Suppressing this as a tagging artefact "
+                 "would have hidden the largest single forward-demand event "
+                 "on the panel."),
+    },
+}
 
 
 def commitment_deltas(snap, frontier=None):
@@ -559,12 +678,217 @@ def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
         by_size = absolute is not None and d["delta"] >= absolute
         if not (by_multiple or by_size):
             continue
-        out.append(dict(d, reason="forward-commitment stock {} ({:+,.1f}B) {} -> {}"
-                        .format("{:.2f}x".format(d["multiple"]) if d["multiple"]
-                                else "from a zero base",
-                                d["delta"] / 1e9, d["from_q"], d["to_q"]),
-                        armed_by="multiple" if by_multiple else "absolute"))
+        row = dict(d, reason="forward-commitment stock {} ({:+,.1f}B) {} -> {}"
+                   .format("{:.2f}x".format(d["multiple"]) if d["multiple"]
+                           else "from a zero base",
+                           d["delta"] / 1e9, d["from_q"], d["to_q"]),
+                   armed_by="multiple" if by_multiple else "absolute")
+        row.update(basis_status(d))
+        out.append(row)
     return out
+
+
+BASIS_OK = "OK"
+BASIS_SUSPECT = "BASIS-SUSPECT"
+BASIS_VERIFIED_REAL = "BASIS-VERIFIED-REAL"
+BASIS_VERIFIED_CHANGE = "BASIS-VERIFIED-CHANGE"
+
+
+def basis_status(delta, threshold=None):
+    """Is this move large enough that its BASIS must be checked before it alerts?
+
+    Returns the status plus, where a check has been done, its verdict and
+    evidence. A move above the threshold with no recorded check is quarantined:
+    it publishes, it is listed separately, and it does not alert.
+    """
+    threshold = COMMITMENT_BASIS_SUSPECT_MULTIPLE if threshold is None else threshold
+    m = delta.get("multiple")
+    check = COMMITMENT_BASIS_CHECKS.get((delta.get("ticker"), delta.get("to_q")))
+    if check:
+        verdict = (BASIS_VERIFIED_REAL if check["verdict"] == "REAL"
+                   else BASIS_VERIFIED_CHANGE)
+        return {"basis": verdict, "basis_checked": check["checked"],
+                "basis_evidence": check["evidence"],
+                "alertable": check["verdict"] == "REAL"}
+    if threshold is not None and m is not None and m >= threshold:
+        return {"basis": BASIS_SUSPECT, "basis_checked": None,
+                "basis_evidence": None, "alertable": False}
+    return {"basis": BASIS_OK, "basis_checked": None, "basis_evidence": None,
+            "alertable": True}
+
+
+def commitment_alerts_and_quarantine(snap, prior_keys=()):
+    """(alertable, quarantined) — the split B1's page one prints separately."""
+    rows = commitment_alert_lines(snap, prior_keys=prior_keys)
+    return ([r for r in rows if r.get("alertable", True)],
+            [r for r in rows if not r.get("alertable", True)])
+
+
+# B2 — the cross-check band. UNSET, and the comment that used to sit here was
+# wrong: it claimed "from CD-3b" and named 44-48%, and CD-3-VERIFY registers no
+# such band. I invented two numbers and labelled them "pre-registered" on what
+# is meant to become the front page of a daily read.
+#
+# CD-3b measured the dcrev:supplier DEAD-BAND (9pp, for the classifier). That is
+# a different quantity: a band on quarter-to-quarter MOVES in the phase ladder,
+# not a registered range for the ratio's LEVEL. Nothing has ever registered the
+# latter, and E8 forbids inventing it — least of all in a sentence whose whole
+# purpose is that a reader trusts its structure without re-reading it.
+#
+# So the clause reports the level and its own recent change, and says plainly
+# that no band is registered. A range can be pre-registered later, which is what
+# "pre-registered" has to mean to be worth anything.
+CROSSCHECK_BAND = None
+
+
+def thesis_line(snap, band=CROSSCHECK_BAND):
+    """B2 — one mechanical paragraph, same structure every day.
+
+    Computed, never composed. No adjectives and no judgement: the value of a
+    fixed sentence is that a reader who sees it daily notices a changed clause
+    without reading, and any word chosen for emphasis destroys that. Every
+    number here is read from the snapshot; this function divides nothing and
+    decides nothing.
+
+    Four clauses, always in this order and always present:
+      1. the three legs and their directions
+      2. the cross-check against its pre-registered band
+      3. the hyperscaler state census
+      4. what is refused
+    """
+    total = snap.get("total") or {}
+    panel = snap.get("panel") or {}
+    buckets = snap.get("buckets") or {}
+    cc = ((snap.get("suppliers") or {}).get("crosscheck") or {})
+
+    def _dir(series, key):
+        rows = [r for r in (series or []) if r.get(key) is not None]
+        if len(rows) < 2:
+            return "no reading"
+        a, b = rows[-2][key], rows[-1][key]
+        if a == 0:
+            return "rising" if b > 0 else "flat"
+        ch = (b - a) / abs(a)
+        return "rising" if ch > 0.02 else ("falling" if ch < -0.02 else "flat")
+
+    capex_dir = _dir(total.get("ttm_series"), "ttm")
+    credit_dir = _dir(panel.get("issuance_ttm"), "value")
+    # B5 refused the cross-basis commitments TOTAL, so this sentence must not
+    # give it a direction. "Forward commitments are rising" is precisely the
+    # claim that was withheld one screen away, and a Brief that contradicts its
+    # own refusal is worse than one that says nothing.
+    cp0 = panel.get("commitments_panel") or {}
+    if str(cp0.get("status", "")).startswith("REFUSED"):
+        comm_clause = "the forward-commitment total is refused, so it has no direction"
+    else:
+        comm_clause = "forward commitments are {}".format(
+            _dir(panel.get("commitments") or [], "value"))
+
+    ratio = cc.get("latest_ratio")
+    ser = cc.get("series") or []
+    if ratio is None:
+        cc_clause = "the supplier cross-check has no current reading"
+    elif band:
+        lo, hi = band
+        where = ("inside" if lo <= ratio <= hi
+                 else ("above" if ratio > hi else "below"))
+        cc_clause = ("the supplier cross-check reads {:.1f}%, {} its "
+                     "pre-registered {:.0f}–{:.0f}% band".format(
+                         100 * ratio, where, 100 * lo, 100 * hi))
+    else:
+        prior = ser[-2]["ratio"] if len(ser) >= 2 else None
+        cc_clause = ("the supplier cross-check reads {:.1f}%{}, against no "
+                     "pre-registered band".format(
+                         100 * ratio,
+                         "" if prior is None else
+                         " from {:.1f}% a quarter earlier".format(100 * prior)))
+
+    census = {}
+    for tick, iss in (snap.get("issuers") or {}).items():
+        if iss.get("bucket") == "hyperscaler":
+            census[iss["state"]] = census.get(iss["state"], 0) + 1
+    census_clause = ", ".join(
+        "{} {}".format(census.get(s, 0), s) for s in phases.REAL_STATES
+        if census.get(s)) or "none classified"
+
+    cp = panel.get("commitments_panel") or {}
+    refused = ("the panel commitment total is {}".format(cp["status"])
+               if str(cp.get("status", "")).startswith("REFUSED")
+               else "nothing is refused at panel level")
+
+    return ("Panel capex TTM {} is {} and reads {}; credit issuance is {}; "
+            "{}. {}. Hyperscalers: {}. {}.".format(
+                _money_plain(total.get("ttm")), capex_dir, total.get("state"),
+                credit_dir, comm_clause, cc_clause[0].upper() + cc_clause[1:],
+                census_clause, refused[0].upper() + refused[1:]))
+
+
+def _money_plain(v):
+    if v is None:
+        return "—"
+    if abs(v) >= 1e12:
+        return "${:,.2f}T".format(v / 1e12)
+    if abs(v) >= 1e9:
+        return "${:,.2f}B".format(v / 1e9)
+    return "${:,.0f}".format(v)
+
+
+SINCE_KEY = "since_last_scan"
+
+
+def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
+                    scan_unix=None):
+    """B1 — what changed in the scan that produced this snapshot.
+
+    The daemon has been a state dump: everything it knows, every night, with no
+    way to see what is NEW without diffing two renders by hand. That is how
+    SMCI's commitments tripled unremarked and how DLR sat stranded for a month.
+
+    This is assembled by the SCAN, not by a renderer, because "new" is a fact
+    about the run and a renderer reading only the snapshot cannot know it. It is
+    persisted with the snapshot so the Brief and the dashboard agree about what
+    happened without recomputing it — the same one-computation rule the rest of
+    the view-model follows.
+
+    **Silence is explicit.** Every section reports its own emptiness rather than
+    disappearing, because a section that vanishes when empty is indistinguishable
+    from a section that failed to run.
+    """
+    frontier = _frontier_quarter(snap)
+    alertable, quarantined = commitment_alerts_and_quarantine(
+        snap, prior_keys=prior_keys)
+    comp = []
+    for b, bk in sorted((snap.get("buckets") or {}).items()):
+        for e in (bk.get("composition_events") or []):
+            if not frontier or trend._cq_sort(e["quarter"]) >= trend._cq_sort(frontier):
+                comp.append(dict(e, bucket=b))
+    fr = ((snap.get("suppliers") or {}).get("frontier") or {}).get("rows") or []
+    return {
+        "scan_unix": scan_unix,
+        "generated_unix": snap.get("generated_unix"),
+        "frontier": frontier,
+        "transitions": alert_lines(snap, prior_keys=prior_keys),
+        "filings": list(filings or ()),
+        "commitment_alerts": alertable,
+        "commitment_quarantined": quarantined,
+        "supplier_frontier": fr,
+        "composition_events": comp,
+        "ingest_gaps": list(ingest_gaps or ()),
+    }
+
+
+SINCE_SECTIONS = (
+    ("transitions", "Phase transitions", "no series changed state"),
+    ("filings", "Filings ingested", "no issuer filed"),
+    ("commitment_alerts", "Forward-commitment moves", "no commitment stock moved "
+     "past the ratified threshold"),
+    ("commitment_quarantined", "Quarantined — BASIS-SUSPECT, presentation check "
+     "queued", "nothing quarantined"),
+    ("supplier_frontier", "Suppliers ahead of the demand panel", "no supplier is "
+     "ahead of the panel"),
+    ("composition_events", "Composition changes", "no bucket changed membership"),
+    ("ingest_gaps", "Ingest gaps", "none — every filed period reached the panel"),
+)
 
 
 def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):
