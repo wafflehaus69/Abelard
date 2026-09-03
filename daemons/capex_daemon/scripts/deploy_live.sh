@@ -24,6 +24,25 @@
 set -euo pipefail
 
 LIVE="${ABELARD_LIVE:-$HOME/Code/abelard-live}"
+
+# --- 0. run from a COPY, because step 2 rewrites this file -------------------
+#
+# This script lives inside the tree it deploys, and the pull below updates it.
+# bash reads a script incrementally by byte offset, so a file that changes
+# underneath a running shell resumes at the wrong place and executes whatever
+# now sits at that offset. It bit this gate twice: the second run reported a
+# health-check timeout of 7795ms when the code being edited had a 3s cap — the
+# shell was executing the previous revision's bytes.
+#
+# So: copy to a stable location outside the tree and hand over immediately. The
+# copy is immune to the pull, and re-exec happens before anything else is read.
+if [ -z "${ABELARD_DEPLOY_DETACHED:-}" ]; then
+  _self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+  _copy="$(mktemp -t abelard-deploy)" || exit 1
+  cat "$_self" >"$_copy"
+  chmod +x "$_copy"
+  ABELARD_DEPLOY_DETACHED=1 exec bash "$_copy"
+fi
 DAEMON="$LIVE/daemons/capex_daemon"
 EXPECT_BRANCH=main
 
