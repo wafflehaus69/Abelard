@@ -1,0 +1,28 @@
+[project]
+name = "builder-daemon"
+version = "0.1.0"
+description = "The Tribe's code-PR drafter: reads work Mando has admitted, establishes whether the project will accept a contribution and whether the issue is unclaimed, and emits a provenance packet with a patch attached. Drafts only; never submits, never authenticates, never holds a credential against a counterparty."
+requires-python = ">=3.12"
+# abelard_common is a real import dependency (builder imports
+# abelard_common.http_client). Not declared below: it is a monorepo editable
+# install, not a published package, so a bare `abelard-common` requirement would
+# resolve against PyPI and fail. Install it FIRST: pip install -e ../common
+dependencies = [
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+builder-daemon = "builder_daemon.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["builder_daemon*"]
