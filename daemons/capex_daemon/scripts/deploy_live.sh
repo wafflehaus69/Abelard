@@ -90,14 +90,27 @@ PLIST="$HOME/Library/LaunchAgents/com.abelard.capex-dash.plist"
 launchctl unload "$PLIST" 2>/dev/null || true
 sleep 1
 launchctl load "$PLIST"
-sleep 4
 launchctl list | grep capex-dash || fail "capex-dash did not load"
 
 TS_BIN="$(command -v tailscale || true)"
 [ -x "$TS_BIN" ] || TS_BIN="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 HOST="$("$TS_BIN" ip -4 2>/dev/null | head -1)"
 [ -n "$HOST" ] || fail "no Tailscale address; dashboard cannot be verified"
-curl -fsS --max-time 25 "http://$HOST:8788/health" || fail "health check failed"
+
+# POLL for readiness; never sleep-and-hope. A fixed sleep failed this gate on
+# its first real run — the server was binding and answered a second later — and
+# "wait a guessed interval, then assert" is the same shape as the redirect this
+# script exists to eliminate: it converts a timing question into a false verdict.
+ready=""
+for _ in $(seq 1 30); do
+  if curl -fsS --max-time 3 "http://$HOST:8788/health" >/tmp/capex_health.json 2>/dev/null; then
+    ready=1
+    break
+  fi
+  sleep 1
+done
+[ -n "$ready" ] || fail "dashboard did not answer /health within 30s"
+cat /tmp/capex_health.json
 echo
 
 echo
