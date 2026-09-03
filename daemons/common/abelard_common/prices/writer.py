@@ -104,8 +104,43 @@ def held_raw_closes(con: sqlite3.Connection, instrument_id: str) -> dict[str, fl
     # vendor is compared against -- otherwise a vendor legitimately fixing its
     # own bad print would fail the fact gate forever with no way to accept it.
     # The prices_raw row itself is never touched.
+    # A session quarantined AFTER ingest (by the cross-vendor sweep) is no
+    # longer a fact we would compare a vendor against -- same reasoning as the
+    # status='quarantined' exclusion above, and for the same reason: leaving it
+    # in would freeze the name, since every later correct fetch would read as a
+    # fact change.
+    for d in quarantined_dates(con, instrument_id):
+        held.pop(d, None)
     held.update(corrections_for(con, instrument_id))
     return held
+
+
+def _fills_for(con: sqlite3.Connection, instrument_id: str) -> dict[str, float]:
+    """Closes taken from the verification vendor to fill a hole the primary
+    left. Kept out of ``held_raw_closes``: a fill is not something the primary
+    ever claimed, so it is not a fact to hold the primary to."""
+    try:
+        return {r["date"]: r["filled_close"] for r in con.execute(
+            "SELECT date, filled_close FROM fills WHERE instrument_id=?",
+            (instrument_id,))}
+    except sqlite3.OperationalError:
+        return {}          # store predates v3
+
+
+def quarantined_dates(con: sqlite3.Connection, instrument_id: str) -> set[str]:
+    """Dates under an unreleased post-ingest quarantine.
+
+    Append-only, so "current" is the newest row per date and a release is a
+    later row with released=1 rather than an edit.
+    """
+    return {
+        r["date"] for r in con.execute(
+            "SELECT date, released FROM quarantine q WHERE instrument_id=?"
+            " AND quarantined_at = (SELECT MAX(q2.quarantined_at) FROM quarantine q2"
+            "   WHERE q2.instrument_id=q.instrument_id AND q2.date=q.date)",
+            (instrument_id,))
+        if not r["released"]
+    }
 
 
 def corrections_for(con: sqlite3.Connection, instrument_id: str) -> dict[str, float]:
@@ -207,7 +242,16 @@ def _rebuild_view(
             "ORDER BY date", (instrument_id,)
         )
     ]
-    usable = {b.date: b.close for b in rows if b.status == "ok" and b.close is not None}
+    blocked = quarantined_dates(con, instrument_id)
+    usable = {b.date: b.close for b in rows
+              if b.status in ("ok", "filled") and b.close is not None
+              and b.date not in blocked}
+    # A fill overlays a vendor_null slot the primary already occupies. Applied
+    # before corrections, because a correction outranks a fill: one is a human
+    # adjudication, the other an automatic first write.
+    for d, v in _fills_for(con, instrument_id).items():
+        if d not in blocked:
+            usable.setdefault(d, v)
     # The view honours corrections; the fact does not move. A correction applies
     # to ANY date, including one currently quarantined -- rescuing a session the
     # detector could not adjudicate is exactly what the human path is for.

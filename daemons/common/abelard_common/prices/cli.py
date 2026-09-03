@@ -27,11 +27,13 @@ import time
 from pathlib import Path
 
 from ..http_client import HttpClient
-from . import corrections, reconcile, reference, schema, universe, writer
+from . import corrections, reconcile, reference, schema, universe, verify, writer
+from .vendor_tiingo import TiingoVendor, QuotaExceeded, quota_state
 from .schema import PriceStoreError
 from .vendor import USER_AGENT, YahooVendor
 
 ENV_DB_PATH = "ABELARD_PRICES_DB_PATH"
+ENV_TIINGO = "TIINGO_API_TOKEN"
 DEFAULT_DB_PATH = "~/.openclaw/prices/prices.db"
 
 
@@ -44,6 +46,11 @@ def resolve_db_path(explicit: str | None = None) -> Path:
 def _client(contact: str | None) -> HttpClient:
     ua = USER_AGENT + (" ({})".format(contact) if contact else "")
     return HttpClient(user_agent=ua)
+
+
+def dt_days_ago(as_of: str, days: int) -> str:
+    import datetime as _dt
+    return (_dt.date.fromisoformat(as_of) - _dt.timedelta(days=days)).isoformat()
 
 
 def _echo(line: str) -> None:
@@ -90,6 +97,17 @@ def main(argv: list[str] | None = None) -> int:
     p_c.add_argument("file", help="staging JSON")
     p_c.add_argument("--apply", action="store_true",
                      help="write it; without this the plan is printed and nothing changes")
+
+    p_v = sub.add_parser("verify", help="cross-vendor rotation sweep (Tiingo)")
+    p_v.add_argument("-n", type=int, default=18, help="names per sweep (519/30)")
+    p_v.add_argument("--since", default=None, help="span start (default: 90d back)")
+    p_v.add_argument("--as-of", default=None)
+
+    p_f = sub.add_parser("fill-holes", help="fill vendor_null sessions (G3)")
+    p_f.add_argument("--from", dest="src", choices=("yahoo", "tiingo"),
+                     default="yahoo", help="which sourced vendor fills")
+    p_f.add_argument("--as-of", default=None)
+    p_f.add_argument("--limit", type=int)
 
     sub.add_parser("status", help="freshness ledger")
 
@@ -166,6 +184,43 @@ def main(argv: list[str] | None = None) -> int:
             _echo("[prices] rebuilt adjusted_view for {} instruments".format(
                 len(corrections.affected_instruments(plan))))
             return 0
+
+        if args.cmd in ("verify", "fill-holes"):
+            as_of = getattr(args, "as_of", None) or time.strftime("%Y-%m-%d")
+            run_asof = int(time.time())
+            if args.cmd == "verify" or args.src == "tiingo":
+                token = os.environ.get(ENV_TIINGO, "")
+                if not token:
+                    _echo("[prices] {} is not set; the library never reads env "
+                          "itself and the sweep cannot run without it"
+                          .format(ENV_TIINGO))
+                    return 2
+                tv = TiingoVendor(token=token, con=con, run_asof=run_asof)
+                _echo("[prices] " + quota_state(con).render())
+            if args.cmd == "verify":
+                since = args.since or (dt_days_ago(as_of, 90))
+                try:
+                    res = verify.sweep(con, tv, args.n, as_of, since,
+                                       run_asof=run_asof, progress=_echo)
+                except QuotaExceeded as exc:
+                    _echo("[prices] sweep refused: {}".format(exc))
+                    return 1
+                _echo(res.render())
+                bad = any(k != "VERIFIED" for _i, _t, k in res.checked)
+                return 1 if bad else 0
+            filler = (tv if args.src == "tiingo"
+                      else verify.YahooAsFiller(YahooVendor(client=_client(args.contact))))
+            fres = verify.fill_holes(con, filler, as_of, run_asof=run_asof,
+                                     limit=args.limit, progress=_echo,
+                                     enforce_quota=(args.src == "tiingo"))
+            _echo(fres.render())
+            for iid in {f[0] for f in fres.filled}:
+                splits, divs = writer.declared_actions(con, iid)
+                writer._rebuild_view(con, iid, splits, divs,
+                                     writer.current_factor_version(con, iid) or 1,
+                                     run_asof)
+            con.commit()
+            return 0 if not fres.errors else 1
 
         if args.cmd == "status":
             rep = writer.status(con)

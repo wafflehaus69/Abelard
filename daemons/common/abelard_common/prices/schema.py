@@ -34,12 +34,16 @@ from pathlib import Path
 
 from ..errors import DaemonError
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # A price row's honesty flag. 'ok' is a fact; the other two are records of the
 # vendor failing, kept as rows so a gap is visible rather than inferred from
 # absence (A5 — a silently dropped null makes freshness lie).
-PRICE_STATUSES = ("ok", "vendor_null", "quarantined")
+# 'filled' is a FACT written from a second vendor into a hole the primary left.
+# It is a first write, never a change: G3 (Mando, 2026-09-02) rules that a
+# vendor_null may be filled automatically with attribution while a HELD value
+# moves only by human correction, and that the two paths never share code.
+PRICE_STATUSES = ("ok", "vendor_null", "quarantined", "filled")
 
 # Vendor-DECLARED corporate actions, from the chart endpoint's events block.
 CA_KINDS = ("split", "dividend")
@@ -58,6 +62,24 @@ class PriceStoreError(DaemonError):
     def __init__(self, message: str, *, stage: str = "price_store") -> None:
         super().__init__(message, stage=stage)
 
+
+_PRICES_RAW_DDL = """
+CREATE TABLE IF NOT EXISTS prices_raw (
+    instrument_id TEXT NOT NULL REFERENCES instruments(instrument_id),
+    date          TEXT NOT NULL,
+    open          REAL,
+    high          REAL,
+    low           REAL,
+    close         REAL,
+    volume        INTEGER,
+    status        TEXT NOT NULL DEFAULT 'ok'
+        CHECK (status IN ('ok','vendor_null','quarantined','filled')),
+    source        TEXT NOT NULL,
+    fetched_at    INTEGER NOT NULL,
+    run_asof      INTEGER NOT NULL,
+    UNIQUE (instrument_id, date)
+);
+"""
 
 _SCHEMA = """
 -- ---------------------------------------------------------------- identity --
@@ -128,21 +150,9 @@ CREATE TABLE IF NOT EXISTS classification (
 -- AAPL's clean 4:1 of 2020-08-31: Yahoo does split-adjust volume).
 -- INSERT ONLY -- see the triggers below.
 -- run_asof is one timestamp for a whole nightly run (window-alignment doctrine).
-CREATE TABLE IF NOT EXISTS prices_raw (
-    instrument_id TEXT NOT NULL REFERENCES instruments(instrument_id),
-    date          TEXT NOT NULL,
-    open          REAL,
-    high          REAL,
-    low           REAL,
-    close         REAL,
-    volume        INTEGER,
-    status        TEXT NOT NULL DEFAULT 'ok'
-        CHECK (status IN ('ok','vendor_null','quarantined')),
-    source        TEXT NOT NULL,
-    fetched_at    INTEGER NOT NULL,
-    run_asof      INTEGER NOT NULL,
-    UNIQUE (instrument_id, date)
-);
+-- prices_raw DDL lives in _PRICES_RAW_DDL so the v2->v3 rebuild can
+-- recreate byte-identically rather than from a second copy that drifts.
+{PRICES_RAW_DDL}
 
 -- The vendor's DECLARED corporate actions. Primary detector: the chart
 -- endpoint returns these in the same request as prices, at one-day granularity,
@@ -238,7 +248,7 @@ CREATE TABLE IF NOT EXISTS reference_series (
     contract   TEXT,
     roll_flag  INTEGER NOT NULL DEFAULT 0 CHECK (roll_flag IN (0,1)),
     status     TEXT NOT NULL DEFAULT 'ok'
-        CHECK (status IN ('ok','vendor_null','quarantined')),
+        CHECK (status IN ('ok','vendor_null','quarantined','filled')),
     source     TEXT NOT NULL,
     fetched_at INTEGER NOT NULL,
     PRIMARY KEY (series_id, date, source)
@@ -318,6 +328,79 @@ CREATE TABLE IF NOT EXISTS reconciliation (
     PRIMARY KEY (as_of, index_code, benchmark, run_asof)
 );
 
+-- ------------------------------------------------- v3: cross-vendor verify --
+-- One row per name per sweep. The rotation is VERIFICATION, not a fetch path:
+-- nothing here writes a price or a correction. It records what a second vendor
+-- said and whether it agreed.
+CREATE TABLE IF NOT EXISTS verification (
+    instrument_id     TEXT NOT NULL REFERENCES instruments(instrument_id),
+    as_of             TEXT NOT NULL,
+    vendor            TEXT NOT NULL,
+    sessions_compared INTEGER NOT NULL DEFAULT 0,
+    agreements        INTEGER NOT NULL DEFAULT 0,
+    disagreements     INTEGER NOT NULL DEFAULT 0,
+    kind              TEXT NOT NULL
+        CHECK (kind IN ('VERIFIED','DISAGREE_PRICE','DISAGREE_CA',
+                        'TIINGO_UNKNOWN','INSUFFICIENT')),
+    detail            TEXT,
+    run_asof          INTEGER NOT NULL,
+    PRIMARY KEY (instrument_id, as_of, vendor)
+);
+
+-- ------------------------------------------------- v3: quarantine overlay --
+-- 2V.3 says a disagreeing session is "quarantined (row status, fact
+-- untouched)". Those two clauses conflict here: prices_raw is insert-only by
+-- construction, so a row's status cannot be edited after the fact -- which is
+-- the property that makes "fact untouched" true in the first place. Quarantine
+-- at INGEST is stamped on the row before it is written; quarantine AFTER the
+-- fact has to be an overlay.
+--
+-- So it is one, on the same pattern corrections already established: the fact
+-- stays exactly as the vendor gave it, and the view honours the overlay. A
+-- released quarantine is a new row with released=1, never a delete, so the
+-- history of what was doubted survives the doubt being resolved.
+CREATE TABLE IF NOT EXISTS quarantine (
+    instrument_id  TEXT NOT NULL REFERENCES instruments(instrument_id),
+    date           TEXT NOT NULL,
+    reason         TEXT NOT NULL,
+    source         TEXT NOT NULL,
+    released       INTEGER NOT NULL DEFAULT 0 CHECK (released IN (0,1)),
+    quarantined_at INTEGER NOT NULL,
+    run_asof       INTEGER,
+    PRIMARY KEY (instrument_id, date, quarantined_at)
+);
+
+-- ------------------------------------------------------------ v3: fills --
+-- The evidence behind every status='filled' row. Separate from corrections
+-- because a fill and a correction are different acts: a fill is a FIRST write
+-- into a hole and may be automatic; a correction changes a held fact and is
+-- human. G3 requires the paths never share code, and they do not share a table
+-- either -- so "what did we invent" and "what did we revise" stay answerable
+-- apart.
+CREATE TABLE IF NOT EXISTS fills (
+    instrument_id TEXT NOT NULL REFERENCES instruments(instrument_id),
+    date          TEXT NOT NULL,
+    filled_close  REAL NOT NULL,
+    source        TEXT NOT NULL,
+    evidence      TEXT,
+    filled_at     INTEGER NOT NULL,
+    run_asof      INTEGER NOT NULL,
+    PRIMARY KEY (instrument_id, date, source)
+);
+
+-- --------------------------------------------------- v3: vendor call log --
+-- Tiingo meters requests/hour (50), requests/day (1,000) and bytes/month (2GB).
+-- The ceiling is enforced by counting these rows, not by remembering a number:
+-- a sweep that would breach any meter refuses to start.
+CREATE TABLE IF NOT EXISTS vendor_calls (
+    vendor     TEXT NOT NULL,
+    called_at  INTEGER NOT NULL,
+    symbol     TEXT,
+    bytes      INTEGER NOT NULL DEFAULT 0,
+    status     INTEGER,
+    run_asof   INTEGER
+);
+
 -- ----------------------------------------------------------------- indexes --
 CREATE INDEX IF NOT EXISTS idx_prices_raw_date        ON prices_raw (date);
 CREATE INDEX IF NOT EXISTS idx_adjusted_view_date     ON adjusted_view (date);
@@ -327,6 +410,9 @@ CREATE INDEX IF NOT EXISTS idx_freshness_lastdate     ON freshness (last_date_he
 CREATE INDEX IF NOT EXISTS idx_ca_effective           ON corporate_actions (effective_date);
 CREATE INDEX IF NOT EXISTS idx_corrections_instrument ON corrections (instrument_id, date);
 CREATE INDEX IF NOT EXISTS idx_weights_index_asof     ON index_weights (index_code, as_of);
+CREATE INDEX IF NOT EXISTS idx_vendor_calls_time      ON vendor_calls (vendor, called_at);
+CREATE INDEX IF NOT EXISTS idx_verification_asof      ON verification (as_of);
+CREATE INDEX IF NOT EXISTS idx_quarantine_instrument  ON quarantine (instrument_id, date);
 
 -- ---------------------------------------------------------------- triggers --
 -- Insert-only enforcement. DELETE is blocked as well as UPDATE because SQLite
@@ -398,6 +484,16 @@ BEFORE DELETE ON adjustment_factors BEGIN
     SELECT RAISE(ABORT, 'adjustment_factors versions are never deleted; past statistics must stay reproducible');
 END;
 
+CREATE TRIGGER IF NOT EXISTS trg_quarantine_no_update
+BEFORE UPDATE ON quarantine BEGIN
+    SELECT RAISE(ABORT, 'quarantine is append-only: releasing one is a new row with released=1, so the record of what was doubted survives');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_quarantine_no_delete
+BEFORE DELETE ON quarantine BEGIN
+    SELECT RAISE(ABORT, 'quarantine is append-only: no deletes');
+END;
+
 CREATE TRIGGER IF NOT EXISTS trg_corrections_no_update
 BEFORE UPDATE ON corrections BEGIN
     SELECT RAISE(ABORT, 'corrections is append-only: a revised correction is a new row with its own authored_at');
@@ -417,7 +513,7 @@ CREATE TRIGGER IF NOT EXISTS trg_adjustment_events_no_delete
 BEFORE DELETE ON adjustment_events BEGIN
     SELECT RAISE(ABORT, 'adjustment_events is append-only.');
 END;
-"""
+""".replace("{PRICES_RAW_DDL}", _PRICES_RAW_DDL)
 
 
 def connect(db_path: Path | str) -> sqlite3.Connection:
@@ -463,14 +559,60 @@ def migrate(con: sqlite3.Connection) -> int:
             "refusing to run against a newer shape".format(found, SCHEMA_VERSION),
             stage="migrate",
         )
+    # v2 -> v3 needs real work, not just new tables. Adding 'filled' to
+    # prices_raw's status CHECK cannot be done with ALTER TABLE, and
+    # CREATE TABLE IF NOT EXISTS would leave an existing store carrying the v2
+    # constraint while price_meta claimed v3 -- code and table disagreeing
+    # about what is legal, which is exactly the class of silent wrongness this
+    # store exists to prevent.
+    if found is not None and found < 3:
+        _rebuild_prices_raw_for_v3(con)
     with con:
         con.executescript(_SCHEMA)
         con.execute(
-            "INSERT OR IGNORE INTO price_meta (key, value) VALUES "
+            "INSERT OR REPLACE INTO price_meta (key, value) VALUES "
             "('schema_version', ?)",
             (str(SCHEMA_VERSION),),
         )
     return SCHEMA_VERSION
+
+
+def _rebuild_prices_raw_for_v3(con: sqlite3.Connection) -> None:
+    """Recreate ``prices_raw`` with the v3 status CHECK, carrying every row.
+
+    The insert-only triggers have to come off for the copy and go back on after
+    -- which is the one moment in this store's life when a fact could be
+    rewritten, so it happens inside a single transaction with foreign keys off,
+    and the row count is asserted on both sides. If the counts disagree the
+    transaction rolls back and the store stays at v2 rather than half-migrated.
+    """
+    cols = [r[1] for r in con.execute("PRAGMA table_info(prices_raw)")]
+    if not cols:
+        return                      # fresh store; _SCHEMA creates it at v3
+    if "status" not in cols:
+        return
+    before = con.execute("SELECT COUNT(*) FROM prices_raw").fetchone()[0]
+    con.execute("PRAGMA foreign_keys=OFF")
+    try:
+        with con:
+            for t in ("trg_prices_raw_no_replace", "trg_prices_raw_no_update",
+                      "trg_prices_raw_no_delete"):
+                con.execute("DROP TRIGGER IF EXISTS {}".format(t))
+            con.execute("ALTER TABLE prices_raw RENAME TO prices_raw_v2")
+            con.executescript(_PRICES_RAW_DDL)
+            con.execute(
+                "INSERT INTO prices_raw (instrument_id, date, open, high, low,"
+                " close, volume, status, source, fetched_at, run_asof)"
+                " SELECT instrument_id, date, open, high, low, close, volume,"
+                " status, source, fetched_at, run_asof FROM prices_raw_v2")
+            after = con.execute("SELECT COUNT(*) FROM prices_raw").fetchone()[0]
+            if after != before:
+                raise PriceStoreError(
+                    "v2->v3 rebuild would lose rows: {} before, {} after"
+                    .format(before, after), stage="migrate")
+            con.execute("DROP TABLE prices_raw_v2")
+    finally:
+        con.execute("PRAGMA foreign_keys=ON")
 
 
 def schema_version(con: sqlite3.Connection) -> int | None:

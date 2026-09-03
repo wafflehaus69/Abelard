@@ -871,3 +871,190 @@ added "with the Moore-rule entry". `grep -rniE moore` across the monorepo
 returns only a politician's surname in SM scorecards. There is no such rule on
 disk and it has not been stated in session. The 5-row checks are done; the Moore
 rule cannot be written by someone who has never been told it.
+
+---
+
+## Phase 2V — Tiingo verification adapter · 2026-09-02
+
+**251 tests passing.** New: `vendor_tiingo.py`, `verify.py`, schema v3 with a
+real v2→v3 migration, `verify` and `fill-holes` CLI verbs.
+
+### Schema v3 needed a migration, not just new tables
+
+Adding `'filled'` to `prices_raw`'s status CHECK cannot be done with ALTER
+TABLE, and `CREATE TABLE IF NOT EXISTS` would have left an existing store
+carrying the v2 constraint while `price_meta` claimed v3 — code and table
+disagreeing about what is legal, which is the class of silent wrongness this
+store exists to prevent.
+
+So `migrate()` rebuilds the table: triggers off, rename, recreate, copy, assert
+the row count on both sides, drop the shadow, triggers back — inside one
+transaction with foreign keys off, and it rolls back to v2 rather than land
+half-migrated. Exercised against a real 8,538-row store: **rows preserved,
+checksum identical, shadow dropped, all three insert-only triggers restored and
+still enforcing, and `'filled'` accepted while a bogus status is still refused.**
+
+### 2V.3's two clauses conflicted, and the overlay is the resolution
+
+The order says a disagreeing session is "quarantined (row status, fact
+untouched)". Those cannot both hold here: `prices_raw` is insert-only, which is
+*why* "fact untouched" is true, so a row's status cannot be edited afterwards.
+Quarantine at INGEST is stamped before the write; quarantine AFTER the fact has
+to be an overlay — so it is one, on the pattern corrections already established.
+New `quarantine` table, append-only; a release is a new row with `released=1`,
+never a delete, so the record of what was doubted survives the doubt being
+resolved.
+
+### Fill and correct are separate code, on purpose
+
+G3 draws the line at "has this date ever had a value". A hole is an absence and
+filling it invents nothing; a held value is a claim and changing it revises the
+record. A single function with `overwrite=True` would put one bad call between
+those two. Different tables (`fills` vs `corrections`), different authority
+(automatic vs human), different code. There is a test asserting a fill leaves a
+held value alone even when the verifier disagrees about it.
+
+Two shapes of hole, each getting the mechanism that fits: where the primary
+returned a session with no price, the `vendor_null` row already occupies the
+slot and stays as the record that the primary had nothing, with the fill as an
+overlay; where the primary never returned the session at all, the fill is a
+plain insert with `status='filled'`. `fills` carries the evidence either way.
+**A correction outranks a fill** — human adjudication over automatic first
+write — and there is a test.
+
+### 2V.1 as amended: the meters the vendor actually keeps
+
+`vendor_calls` logs every request; `check_quota` counts rolling
+requests/hour (50), requests/day (1,000) and bytes/month (2 GB) and refuses
+**before the first request**, against the whole plan — a sweep that dies at
+request 43 of 60 has spent the quota and left the store half-verified. Pace
+floor 72 s. Tests cover each meter and assert that a refused sweep makes **not
+one** request.
+
+Header auth only. The hygiene test walks the package **by AST** rather than by
+grep, because a line-based check flags `TiingoVendor(token=...)` — a Python
+keyword argument, perfectly safe — and a test that cries wolf gets disabled. It
+looks for a `token` key in a params dict and for `token=` inside a URL literal.
+I verified it actually fails by putting a token in the params dict, then
+restored: a hygiene test nobody has seen fail is a decoration.
+
+### 2V.5 — the transient-fault hypothesis is REFUTED
+
+The order's first move on 2026-08-28 is to refetch from Yahoo on the theory that
+the 464 nulls were a transient fault. Re-probed four days later, on names that
+were actually null:
+
+```
+A ABBV ABNB ABT ACGL ACN ADBE ADM ADP ADSK AEE AEP  ->  0 of 12 resolved
+```
+
+Still null. (AAPL, MSFT and SPY do have 2026-08-28 — but they were never among
+the nulls, so they are not evidence.) The session is a **coverage gap in the
+primary, not a transient fault**, and Yahoo will not fix it by being asked
+again.
+
+**And the remediation does not fit in one pass.** 464 names against a 50/hour
+meter is **9.3 hours** of metered fetching; the daily meter is not the
+constraint, the hourly one is. `check_quota` correctly refuses the single pass.
+Index weight with a real 2026-08-28 close is **46.0%** against the 80% the
+reconciliation requires, so 08-28 stays `INSUFFICIENT` until the gap closes.
+
+This is a scheduling decision for Mando, not something to force:
+
+* **(a) Schedule the backfill** — ~10 hours of metered fetching, one time, e.g.
+  45-name chunks hourly overnight. Moves 08-28 to a PASS/FAIL number.
+* **(b) Let the rotation absorb it** — the nightly sweep already records
+  `holes_vendor_has` as a by-product, so 08-28 closes over the 30-day cycle at
+  no extra cost. Slower, free, and 08-28 stays INSUFFICIENT meanwhile.
+* **(c) Accept it** — one session in five years, flagged and visible.
+
+My read is **(b)**: the meter exists to stop exactly the kind of burst (a)
+requires, the session is already correctly reported as insufficient rather than
+quietly wrong, and nothing downstream is blocked by one gap that the system
+already knows about. But it is a call about how much a single session is worth,
+which is Mando's.
+
+### Deferred
+
+**2V.6 (SEC split corroboration)** is not built. The order marks it low priority
+and "may defer to a later order if 2V.1–2V.5 run long" — they did. The shape is
+settled and unchanged: per declared split, read
+`dei:EntityCommonStockSharesOutstanding` from the next 10-Q via the Capex iXBRL
+parser and check for a ratio jump, lagged a quarter, stored as
+`sec_corroborated`. It is the only non-vendor evidence available for a split,
+which is why it is worth doing even at low priority.
+
+### Note on the "Moore rule"
+
+Mando ruled 2026-09-02: disregard, a vestige or an error. Recorded so the
+phantom requirement in PS-1 §2.4 does not resurface as a gap in a later audit.
+
+### The fill path, exercised live
+
+Four holes filled from Tiingo at the 72 s pace floor, against the real store:
+
+```
+before: tiingo quota: 0/50 hour · 0/1000 day · 0.00/2147 MB month
+   ABT    2026-08-28    112.47  from tiingo
+   APD    2026-08-28    308.09  from tiingo
+   SWKS   2026-08-28     65.79  from tiingo
+   HWM    2026-08-28    264.85  from tiingo
+after : tiingo quota: 4/50 hour · 4/1000 day
+
+the primary's record is untouched:
+   ABT  prices_raw status=vendor_null close=None      (x4)
+filled session now in the analytics view:
+   ABT  adjusted_view 2026-08-28 = 112.47             (x4)
+```
+
+Note what this settles: **Tiingo has the session Yahoo does not have at all.**
+2026-08-28 is a coverage gap in the primary, and the verifier can close it — the
+remaining question is only how fast the meter allows, not whether the data
+exists.
+
+---
+
+## Ruling — 08-28 remediation, Mando 2026-09-02
+
+**(b): let the rotation absorb it.** With the reasoning stated: *"correlation
+isn't time sensitive — there's no urgency behind it. I'm perfectly fine with a
+24 hour lag."*
+
+So 2026-08-28 closes over the 30-day rotation as a by-product of the sweep,
+which already records `holes_vendor_has` per name. No scheduled 10-hour backfill,
+no burst against a meter that exists to prevent bursts. The session stays
+`INSUFFICIENT` in the reconciliation until enough weight is covered, which is
+the correct report rather than a silent wrong one.
+
+### The lag tolerance has wider consequences, and they are all slack
+
+Recorded because it relaxes constraints elsewhere and a later reader should not
+re-tighten them by accident:
+
+* A missed nightly is not an incident. The append already requests
+  `last_date_held -> today` as a span, so one skipped run is closed by the next
+  in a single call. That was built for the one-session-per-night crawl; it also
+  means the 21:00 slot has no hard edge.
+* The rotation may pace generously. 72 s between requests, 18 names, ~22
+  minutes — none of that is under time pressure.
+* Phase D's 3-to-5-night coexistence window has no clock on it.
+
+### A change the remark suggested, tested, and NOT made
+
+If a 24-hour lag is acceptable, the session-finality gate could move from 17:00
+same-day to T-1 — only committing a session after it has been settled for a full
+day. That would eliminate the risk of committing a close the vendor later
+revises, which under insert-only would surface as a fail-loud fact change.
+
+**Measured before proposing it.** Eight names whose 2026-09-01 closes were
+committed on 2026-09-02, refetched a day later:
+
+```
+A AAPL ABBV ABNB ABT ACGL ACN ADBE  ->  0 of 8 changed
+```
+
+A settled close is stable. The 17:00 gate is not producing fact-change risk in
+practice, so **the change is not made**: adding a session of lag to defend
+against a revision I cannot demonstrate would be a cost paid for a hypothesis.
+Recorded as tested-and-declined rather than never-considered, so it does not get
+re-proposed from first principles later.
