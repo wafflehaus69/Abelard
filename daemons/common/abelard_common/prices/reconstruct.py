@@ -65,6 +65,20 @@ SPLIT_RESIDUAL_TOL = 0.25
 IMPLAUSIBLE_RETURN = 0.40
 
 
+def _is_implausible_move(ratio: float) -> bool:
+    """Is a day-over-day close ratio too large to be an ordinary session move?
+
+    ARITHMETIC, not logarithmic. The rule is "|return| > 40%", and a return is
+    ``ratio - 1``. Testing ``|log(ratio)| > log(1.40)`` instead looks equivalent
+    and is not: it puts the downside trigger at **-28.6%**, because 1/1.40 is
+    0.714. That silently caught a shelf of real earnings crashes -- NFLX's -35%
+    on 2022-04-20, DG's -32%, EW's -31% -- and quarantined two good sessions
+    apiece. Log symmetry is the right idea for comparing *returns*; it is the
+    wrong idea for a threshold stated as a plain percentage.
+    """
+    return abs(ratio - 1.0) > IMPLAUSIBLE_RETURN
+
+
 @dataclass(frozen=True)
 class Split:
     """A vendor-DECLARED split. ``ratio`` is 2.0 for a 2:1."""
@@ -283,8 +297,11 @@ def detect_anomalies(
 
     * a day-over-day ratio in the vendor's close matching a DECLARED split ratio
       or its inverse — the vendor declared the split but did not apply it
-      uniformly to its own history, so its closes sit on two different scales;
-    * any ``|return| > 40%`` with no declared action on that date.
+      uniformly to its own history, so its closes sit on two different scales.
+      Only ratios that could not themselves be an ordinary session move are
+      eligible: a spinoff is declared as a split with a ratio near 1.0, and such
+      a ratio matches almost every day in a series (see the note on the gate);
+    * any ``|return| > 40%``, arithmetic, with no declared action on that date.
 
     A step matching a declared ratio is ``vendor_corruption``; an unexplained
     large move is ``unknown``. We never label something a split the vendor has
@@ -293,6 +310,22 @@ def detect_anomalies(
     declared_dates = {s.effective_date for s in splits}
     targets: list[float] = []
     for s in splits:
+        # A declared ratio only carries evidence if a step OF THAT SIZE could
+        # not be an ordinary trading day. Yahoo encodes a SPINOFF as a split
+        # whose ratio sits near 1.0 -- DHR/Veralto is 1.128, GE HealthCare
+        # 1.281, GE Vernova 1.253 -- and with a +/-25% residual window either
+        # side, the match window for such a ratio contains a FLAT DAY. Measured
+        # on the real series: 1,420 of DHR's 1,421 sessions matched, so the
+        # whole five-year history was condemned as vendor corruption. Eighteen
+        # index-heavy names went the same way (GE, IBM, MRK, MMM, HON, CMCSA
+        # among them) on the first full backfill.
+        #
+        # Gating on the same implausibility floor Rule 2 uses keeps every case
+        # this rule exists for -- MNST's 2.0, AAPL's and NVDA's 4.0, GE's 0.125
+        # reverse split -- because a genuine split step is nothing like a
+        # trading day. It drops exactly the ratios that never carried evidence.
+        if not _is_implausible_move(s.ratio) and not _is_implausible_move(1.0 / s.ratio):
+            continue
         targets.extend((s.ratio, 1.0 / s.ratio))
 
     usable = [b for b in bars if b.close]
@@ -314,7 +347,7 @@ def detect_anomalies(
                                   "declared: its own history is on two scales"},
             ))
             continue
-        if abs(math.log(ratio)) > math.log(1.0 + IMPLAUSIBLE_RETURN):
+        if _is_implausible_move(ratio):
             if cur.date in declared_dates:
                 continue  # a declared action on this very date explains it
             found.append(Anomaly(

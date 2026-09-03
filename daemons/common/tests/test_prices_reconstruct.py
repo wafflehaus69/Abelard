@@ -249,3 +249,95 @@ def test_quarantine_keeps_the_values_as_evidence():
     bars = [R.RawBar("2026-01-02", 1, 1, 1, 10.0, 5, "ok")]
     out = R.apply_quarantine(bars, {"2026-01-02"})
     assert out[0].status == "quarantined" and out[0].close == 10.0
+
+
+# ---------------------------------------------------------------------------
+# PS-1B D.3 — the detector condemned 48 of 519 names on the first full backfill.
+# Both rules were wrong, in opposite directions, and both are pinned here.
+# ---------------------------------------------------------------------------
+
+def _flat_series(start: str, n: int, price: float = 100.0) -> list[Bar]:
+    """A deliberately boring series: small, ordinary daily moves and nothing
+    else. Anything the detector finds in here is a false positive by
+    construction."""
+    import datetime as _dt
+    d = _dt.date.fromisoformat(start)
+    out, p = [], price
+    for i in range(n):
+        while d.weekday() >= 5:
+            d += _dt.timedelta(days=1)
+        p *= 1.004 if i % 2 else 0.997          # +0.4% / -0.3%, alternating
+        out.append(R.Bar(date=d.isoformat(), close=round(p, 4)))
+        d += _dt.timedelta(days=1)
+    return out
+
+
+def test_a_spinoff_ratio_does_not_condemn_the_series():
+    """DHR/Veralto, the real case. Yahoo declares the spinoff as a split of
+    1.128; its inverse is 0.8865, and with the +/-25% residual window that
+    target matches a FLAT DAY. On the real series 1,420 of 1,421 sessions
+    matched and the whole five-year history was quarantined."""
+    bars = _flat_series("2023-01-02", 400)
+    splits = [R.Split(effective_date="2023-10-02", ratio=1.128)]
+    assert R.detect_anomalies(bars, splits) == []
+
+
+def test_every_spinoff_ratio_seen_on_the_panel_is_silent():
+    """The full band observed across the 519-name backfill. Each of these was
+    a real corporate action correctly recorded; none is evidence of corruption."""
+    bars = _flat_series("2021-01-04", 600)
+    for ratio in (0.9535, 0.963, 1.01, 1.025, 1.03, 1.032, 1.033, 1.046, 1.048,
+                  1.056, 1.057, 1.061, 1.067, 1.128, 1.164, 1.175, 1.196,
+                  1.197, 1.241, 1.253, 1.272, 1.281, 1.323, 1.324, 1.327):
+        found = R.detect_anomalies(bars, [R.Split(effective_date="2021-06-01",
+                                              ratio=ratio)])
+        assert found == [], "ratio {} still condemns an ordinary series: {}".format(
+            ratio, [a.date for a in found[:3]])
+
+
+def test_the_gate_does_not_blind_the_rule_it_was_added_to():
+    """MNST is why Rule 1 exists: a declared 2:1 applied to only part of the
+    vendor's own history, so its adjusted closes sit on two scales. The gate
+    must not touch this — a 2.0 step is nothing like a trading day."""
+    bars = _flat_series("2026-07-01", 30)
+    i = 15
+    scaled = [b if k < i else R.Bar(date=b.date, close=b.close / 2.0)
+              for k, b in enumerate(bars)]
+    found = R.detect_anomalies(scaled, [R.Split(effective_date="2026-08-11", ratio=2.0)])
+    assert [a.kind for a in found] == ["vendor_corruption"]
+    assert found[0].date == scaled[i].date
+
+
+def test_a_reverse_split_ratio_stays_detectable():
+    """GE's 2021 8:1 reverse is 0.125. Far from 1.0, so the gate keeps it —
+    GE was quarantined by its two SPINOFFS (1.281, 1.253), not by this."""
+    bars = _flat_series("2021-01-04", 30)
+    i = 12
+    scaled = [b if k < i else R.Bar(date=b.date, close=b.close * 8.0)
+              for k, b in enumerate(bars)]
+    found = R.detect_anomalies(scaled, [R.Split(effective_date="2021-08-02", ratio=0.125)])
+    assert [a.kind for a in found] == ["vendor_corruption"]
+
+
+def test_implausible_return_is_arithmetic_not_logarithmic():
+    """The rule is stated as |return| > 40%. Testing |log(ratio)| > log(1.40)
+    reads as the same thing and puts the downside trigger at -28.6%, because
+    1/1.40 = 0.714. That is what caught NFLX's -35% on 2022-04-20, DG's -32%
+    and EW's -31% and quarantined two good sessions apiece."""
+    assert not R._is_implausible_move(1.0 - 0.35)     # NFLX 2022-04-20
+    assert not R._is_implausible_move(1.0 - 0.32)     # DG   2024-08-29
+    assert not R._is_implausible_move(1.0 - 0.31)     # EW   2024-07-25
+    assert R._is_implausible_move(1.0 - 0.41)         # past the stated line
+    assert R._is_implausible_move(1.0 + 0.41)
+    assert not R._is_implausible_move(1.0 + 0.39)
+    assert R._is_implausible_move(2.77)               # MRNA +177%, still caught
+
+
+def test_a_real_crash_no_longer_costs_two_sessions():
+    """End to end on the shape that produced 24 of the 48: a genuine -35%
+    earnings day with no declared action."""
+    bars = _flat_series("2022-03-01", 40)
+    i = 20
+    crashed = [b if k < i else R.Bar(date=b.date, close=b.close * 0.65)
+               for k, b in enumerate(bars)]
+    assert R.detect_anomalies(crashed, []) == []

@@ -1138,3 +1138,79 @@ Mando commits and pushes, then Basilic pulls. So D.3–D.5 stop here.
 an empty database would make the first `nightly` see no history, and every one of
 516 names would look like a first write. D.3's manual backfill is not a
 formality; it is the thing that makes D.4 legible.
+
+---
+
+## Phase D.3 — the first full backfill, and what it caught · 2026-09-03
+
+```
+names=519  requests=518  ok=470  quarantined=48  vendor_error=1  in 264s
+```
+
+**0.51 s/name.** Store: 722,509 rows, 518 names, 2021-01-04 to 2026-09-02, 68 MB.
+`ok` 687,942 rows over 500 names; `vendor_null` 466 over 464 (the known
+2026-08-28 Yahoo gap, absorbing by rotation per Mando's ruling (b)).
+
+And **48 names quarantined — 9.2% of the panel — every one of them a false
+positive.** The five-year backfill is what surfaced it; no shorter window had.
+
+### Rule 1 had no floor on the ratio it was matching
+
+`detect_anomalies` builds `targets = {ratio, 1/ratio}` per declared split and
+tests **every session** against them, `_ratio_matches` allowing a ±25% residual
+so an ordinary session move can ride on top of a scale error. That tolerance is
+right for MNST's 2:1. It is catastrophic for a ratio near 1.0.
+
+Yahoo encodes a **spinoff** as a split whose ratio is near 1.0 — DHR/Veralto
+1.128, GE HealthCare 1.281, GE Vernova 1.253. Target 1/1.128 = 0.8865 with a
+±25% window spans `[0.709, 1.108]`, which **contains a flat day**. Measured on
+DHR's real series:
+
+```
+sessions  match_inverse  match_direct
+1421      1420           1418
+```
+
+Every session bar one. Hence the whole five-year history condemned, for 18
+index-heavy names: BDX CMCSA DHR DTE FDX GE HON IBM IP J LEN LH MMM MRK O SPGI
+TRI ZBH. Their loss would have gutted the correlation work this substrate
+exists to feed.
+
+The data was never wrong. GE 12.95 → 100.60 is an 8:1 reverse split raising the
+raw price; DHR 248.10 → 213.74 is a spinoff lowering it. Both are exactly what
+an unadjusted close should do.
+
+**Fix:** a declared ratio is eligible only if a step of that size could not be an
+ordinary trading day — the same floor Rule 2 uses. Keeps MNST's 2.0, AAPL's and
+NVDA's 4.0, GE's 0.125 reverse split; drops the whole 0.95–1.33 spinoff band,
+which never carried evidence. GE is the instructive case: it has all three
+shapes, and it was the two spinoffs that condemned it, not the reverse split.
+
+### Rule 2 said 40% and meant 28.6%
+
+`abs(math.log(ratio)) > math.log(1.40)` reads as `|return| > 40%` and is not:
+`1/1.40 = 0.714`, so the **downside** trigger sat at −28.6%. That is the other
+24 names — NFLX's −35% on 2022-04-20, DG's −32%, EW's −31%, DXCM, ARM, APP,
+HOOD, RDDT, MRNA — real moves, two good sessions quarantined apiece.
+
+A return is `ratio − 1`. The test is now arithmetic. MRNA's +177% is still
+caught; NFLX's crash is not.
+
+### Tests
+
+Six added, negative-checked: four fail against the old detector, and the two
+that pass in both versions are the ones asserting the gate does **not** blind
+Rule 1 to MNST or to a reverse split — guards against over-correcting, which
+is why they are supposed to pass either way. 266 passing.
+
+### The store is being rebuilt, not repaired
+
+`prices_raw` is insert-only, so a row's status cannot be restated — which is the
+property that makes the store trustworthy and also means a detector bug cannot
+be patched in place. The store holds nothing human-authored (`corrections`,
+`fills`, `quarantine`, `verification`, `vendor_calls` all zero); it is entirely
+derived from Yahoo and reproduces in 264 seconds. Deleted and re-backfilled.
+
+**D.4 was held for this.** Loading the plist against that store would have
+installed a nightly whose adjusted view was missing IBM, GE, MRK, MMM, HON and
+CMCSA.
