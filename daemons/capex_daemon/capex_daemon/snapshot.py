@@ -375,6 +375,39 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
     else:
         panel["commitments_panel"] = {"status": "OK", "detail": "", "disclosing_issuers": 0}
 
+    # B5 — the MIXED-BASIS refusal, which outranks the membership one because it
+    # holds even when membership is perfectly constant.
+    #
+    # `ContractualObligation`, `PurchaseObligation` and
+    # `UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount` are three
+    # different measures with three different scopes. Adding them produces a
+    # number with no defined meaning, and it has been on the front page as
+    # though it had one. Per-issuer figures are untouched: each is internally
+    # consistent and comparable to its own history, which is exactly why the A4
+    # deltas are computed per issuer and never summed.
+    #
+    # Held until GAP2 P2 assigns basis classes. Once assigned, a total may be
+    # published WITHIN one class and still never across them.
+    bases = {}
+    for tick, iss in (issuers or {}).items():
+        c = (iss.get("commitments") or {})
+        if c.get("status") == commitments.STATUS_COVERED and c.get("concept"):
+            bases.setdefault(c["concept"], []).append(tick)
+    if len(bases) > 1:
+        panel["commitments_panel"] = {
+            "status": "REFUSED-MIXED-BASIS",
+            "detail": ("the {} disclosing issuers use {} different concepts, which "
+                       "are not the same measure: {}. Summing them yields a number "
+                       "with no defined meaning. Per-issuer figures and deltas are "
+                       "unaffected — what fails is ADDING them. Held until basis "
+                       "classes are assigned (GAP2 P2)".format(
+                           sum(len(v) for v in bases.values()), len(bases),
+                           "; ".join("{} ({})".format(k, ", ".join(sorted(v)))
+                                     for k, v in sorted(bases.items())))),
+            "disclosing_issuers": sum(len(v) for v in bases.values()),
+            "basis_classes": {k: sorted(v) for k, v in sorted(bases.items())},
+        }
+
     # The divergence chart plots a RATIO, so the ratio is published rather than
     # divided in a renderer. Two views dividing the same pair independently is
     # exactly how a dashboard starts disagreeing with the brief.

@@ -304,10 +304,17 @@ def view_aggregate(snap):
                            panel.get("issuance_membership_latest") or [])),
                        iss[-1]["members"]))
     if comm:
+        # B5 — the total is REFUSED, not printed. Three different concepts with
+        # three different scopes were being added into one front-page figure.
+        cp = panel.get("commitments_panel") or {}
+        refused = str(cp.get("status", "")).startswith("REFUSED")
+        cell = ("<span class='cov' title='{}'>{}</span>".format(
+                    _esc(cp.get("detail", "")), _esc(cp["status"]))
+                if refused else _money(comm[-1]["value"]))
         out.append("<tr><td>forward commitments</td><td>—</td><td class='num'>{}</td>"
                    "<td class='num'>—</td><td class='num' title='{}'>{}</td>"
                    "<td class='num'>—</td></tr>".format(
-                       _money(comm[-1]["value"]),
+                       cell,
                        _esc("disclosing: " + ", ".join(
                            panel.get("commitments_membership_latest") or [])),
                        comm[-1]["members"]))

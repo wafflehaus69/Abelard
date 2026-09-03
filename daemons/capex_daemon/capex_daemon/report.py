@@ -665,7 +665,12 @@ def sec_aggregate(snap, styles):
         rows.append(["credit issuance", "—", _x(_money(iss[-1]["value"])), "—",
                      str(iss[-1]["members"]), "—"])
     if comm:
-        rows.append(["forward commitments", "—", _x(_money(comm[-1]["value"])), "—",
+        # B5 — refused rather than printed; three concepts, three scopes.
+        cp = panel.get("commitments_panel") or {}
+        cell = ("<font color='{}'>{}</font>".format(COV_RULE, _x(cp["status"]))
+                if str(cp.get("status", "")).startswith("REFUSED")
+                else _x(_money(comm[-1]["value"])))
+        rows.append(["forward commitments", "—", cell, "—",
                      str(comm[-1]["members"]), "—"])
     out.append(_table(("Series", "State", "TTM", "TTM YoY", "Members", "Band"), rows,
                       [150, 132, 96, 84, 62, 56], styles, right_cols=(2, 3, 4, 5)))
