@@ -41,6 +41,18 @@ STATE_INSUFFICIENT = "INSUFFICIENT-HISTORY"
 FLAG_SOFTENING = "SOFTENING"
 FLAG_CONFIRMED = "CONFIRMED"
 
+# CD-BRIEF1 B6 (was GAP2 P4). The latest out-of-band move OPPOSES the state the
+# series is in. Not a state change — the ladder requires N_CONFIRM=2 for that,
+# deliberately, so one move against the trend cannot flip it. But a reader
+# looking at a DECELERATING label has no way to see that its most recent move
+# was a large step the other way.
+#
+# Measured live: HUT reads DECELERATING with a latest delta of +228.1pp against
+# a 27.0pp band. Both facts are true and the label alone carries only one.
+# CONTESTED is the mirror of SOFTENING, which has always flagged the first
+# out-of-band decline inside a rising state.
+FLAG_CONTESTED = "CONTESTED"
+
 DIR_UP = "up"
 DIR_FLAT = "flat"
 DIR_DOWN = "down"
@@ -190,11 +202,27 @@ def classify(series, series_class, series_key="?"):
             flags.append(FLAG_SOFTENING)
         if run >= N_CONFIRMED_FLAG and state in (STATE_ACCELERATING, STATE_DECELERATING):
             flags.append(FLAG_CONFIRMED)
+        if contested(state, direction):
+            flags.append(FLAG_CONTESTED)
 
         qis = (_cq_index(q) - _cq_index(entered) + 1) if entered else 0
         out.append(Observation(q, yoy, delta, direction, state or STATE_INSUFFICIENT,
                                flags, qis, entered))
     return out
+
+
+def contested(state, direction):
+    """Does the latest out-of-band move oppose the state?
+
+    Only out-of-band moves count: `direction_of` already returns DIR_FLAT inside
+    the dead-band, and a move inside the band is noise the ladder is built to
+    ignore. So this fires on a real step in the wrong direction, never on drift.
+    """
+    if direction == DIR_UP:
+        return state in (STATE_DECELERATING, STATE_CONTRACTING)
+    if direction == DIR_DOWN:
+        return state == STATE_ACCELERATING
+    return False
 
 
 def transitions(observations, series_key):
@@ -223,6 +251,21 @@ def breadth(states_by_name):
             counts[s] += 1
     counts["net_direction"] = counts[STATE_ACCELERATING] - counts[STATE_DECELERATING]
     return counts
+
+
+def breadth_by_direction(directions_by_name):
+    """B6 — how many names MOVED up and down this quarter, beside how many SIT
+    in each state.
+
+    A state is a run; a direction is this quarter. They answer different
+    questions and the strip published only the first, so a quarter in which most
+    names turned while few had yet confirmed looked identical to a quiet one.
+    """
+    up = sum(1 for d in directions_by_name.values() if d == DIR_UP)
+    down = sum(1 for d in directions_by_name.values() if d == DIR_DOWN)
+    flat = sum(1 for d in directions_by_name.values() if d == DIR_FLAT)
+    return {"moved_up": up, "moved_down": down, "moved_flat": flat,
+            "net_moves": up - down}
 
 
 def _cq_sort(q):

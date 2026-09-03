@@ -102,8 +102,14 @@ def _pill(state):
     return "<span class='pill' style='background:{}'>{}</span>".format(c, _esc(state))
 
 
+# CONTESTED is not decoration: it says the label above it is being argued with
+# by the most recent move, so it gets a colour rather than the grey chip.
+FLAG_STYLES = {phases.FLAG_CONTESTED: "background:#8a3fa0;color:#fff"}
+
+
 def _flags(fl):
-    return "".join("<span class='flag'>{}</span>".format(_esc(f)) for f in (fl or []))
+    return "".join("<span class='flag' style='{}'>{}</span>".format(
+        FLAG_STYLES.get(f, ""), _esc(f)) for f in (fl or []))
 
 
 def _spark(vals, width=24):

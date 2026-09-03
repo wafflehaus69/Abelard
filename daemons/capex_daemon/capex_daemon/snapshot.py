@@ -45,6 +45,48 @@ def _obs_json(o):
             "quarters_in_state": o.quarters_in_state, "entered": o.entered}
 
 
+# CD-BRIEF1 B6 (was GAP2 P1). How many quarters the frontier pair spans.
+FRONTIER_PAIR_QUARTERS = 8
+
+
+def _frontier_pair(capex_ttm, capex_membership, iss_ttm, iss_membership,
+                   quarters=FRONTIER_PAIR_QUARTERS):
+    """The jaws over FULL CURRENT membership for the trailing quarters. B6/P1.
+
+    The constant-membership jaws are the honest LEVEL: five names held fixed
+    across the whole window, so a rise is spending rather than arrivals. That
+    correctness costs currency — the five are chosen for coverage across sixty
+    quarters, so the newest and largest credit issuers are not in them.
+
+    So a second, shorter pair on everyone who currently contributes. It is
+    explicitly NOT a level to be compared with the long one: over eight quarters
+    membership still changes, and every entry inside the window is published as
+    a composition event so a step caused by an arrival cannot be read as
+    spending. Two legs, both labelled, neither pretending to be the other.
+    """
+    qs = sorted(set(capex_ttm) & set(iss_ttm), key=trend._cq_sort)[-quarters:]
+    if len(qs) < 2:
+        return {}
+    first = set(iss_membership.get(qs[0], []))
+    entries = []
+    for q in qs[1:]:
+        now = set(iss_membership.get(q, []))
+        for tick in sorted(now - first):
+            entries.append({"q": q, "ticker": tick, "change": "entered"})
+        first |= now
+    return {
+        "quarters": qs,
+        "capex": [{"q": q, "value": capex_ttm[q],
+                   "members": len(capex_membership.get(q, []))} for q in qs],
+        "issuance": [{"q": q, "value": iss_ttm[q],
+                      "members": len(iss_membership.get(q, []))} for q in qs],
+        "composition_events": entries,
+        "basis": ("full current membership over the trailing {} quarters — a "
+                  "CURRENCY read, not a level. Entries inside the window are "
+                  "published beside it.".format(len(qs))),
+    }
+
+
 def _supplier_section(legs, bucket_trends):
     """CD-3 — the supplier cross-check, published beside the panel, never in it.
 
@@ -311,6 +353,9 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
         "issuance_membership_latest": (
             t["issuance_membership"][max(t["issuance_membership"], key=trend._cq_sort)]
             if t["issuance_membership"] else []),
+        "frontier_pair": _frontier_pair(
+            t["total_trend"].ttm, t["total_trend"].membership,
+            t["issuance_ttm"], t["issuance_membership"]),
         "commitments": _ser(t["commitments_stock"], t["commitments_membership"], "value"),
         "commitments_membership_latest": (
             t["commitments_membership"][max(t["commitments_membership"], key=trend._cq_sort)]

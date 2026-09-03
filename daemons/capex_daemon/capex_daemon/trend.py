@@ -242,13 +242,22 @@ def breadth_series(issuer_obs, tickers=None):
     snapshot of states; this walks each issuer's observation history and takes
     the census at every quarter any of them classify.
     """
-    per_q = {}
+    per_q, dir_q = {}, {}
     for tick, obs in issuer_obs.items():
         if tickers is not None and tick not in tickers:
             continue
         for o in obs:
             per_q.setdefault(o.quarter, {})[tick] = o.state
-    return {q: phases.breadth(states) for q, states in per_q.items()}
+            dir_q.setdefault(o.quarter, {})[tick] = o.direction
+    # B6 — both censuses, side by side. A state is a run and a direction is this
+    # quarter; publishing only the first made a quarter in which most names
+    # turned look identical to a quiet one.
+    out = {}
+    for q, states in per_q.items():
+        row = dict(phases.breadth(states))
+        row.update(phases.breadth_by_direction(dir_q.get(q, {})))
+        out[q] = row
+    return out
 
 
 class BucketTrend:
