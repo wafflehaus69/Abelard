@@ -17,8 +17,12 @@ def test_an_out_of_band_rise_inside_a_falling_state_is_contested():
     assert phases.contested(phases.STATE_CONTRACTING, phases.DIR_UP)
 
 
-def test_the_mirror_case_is_contested_too():
-    assert phases.contested(phases.STATE_ACCELERATING, phases.DIR_DOWN)
+def test_the_mirror_case_belongs_to_softening_not_contested():
+    """Corrected after running against the live panel: firing on both mismatches
+    made CIFR and DLR carry SOFTENING and CONTESTED at once, which is one fact
+    stated twice. SOFTENING already owns the decline-inside-a-rising-state case,
+    in the ladder's existing vocabulary. The two flags are mirrors."""
+    assert not phases.contested(phases.STATE_ACCELERATING, phases.DIR_DOWN)
 
 
 def test_agreement_is_never_contested():

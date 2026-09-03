@@ -192,3 +192,34 @@ def test_the_two_renders_have_distinct_default_filenames():
     """They are emitted side by side every night; one must not overwrite the
     other."""
     assert report.BRIEF_NAME != report.REFERENCE_NAME
+
+
+# --- B6/P4: CONTESTED and SOFTENING are mirrors, never duplicates ----------
+
+def test_contested_covers_only_the_gap_softening_never_did():
+    """The first cut fired on both mismatches and the live panel showed why that
+    is wrong: CIFR and DLR came back carrying SOFTENING and CONTESTED together,
+    which is one fact stated twice. SOFTENING has always meant the first
+    out-of-band decline inside a non-contracting state."""
+    assert phases.contested(phases.STATE_DECELERATING, phases.DIR_UP)
+    assert phases.contested(phases.STATE_CONTRACTING, phases.DIR_UP)
+    # SOFTENING's territory — CONTESTED must stay out of it
+    assert not phases.contested(phases.STATE_ACCELERATING, phases.DIR_DOWN)
+    assert not phases.contested(phases.STATE_PLATEAU, phases.DIR_UP)
+    assert not phases.contested(phases.STATE_DECELERATING, phases.DIR_FLAT)
+
+
+def test_no_observation_ever_carries_both_flags():
+    """Between them the two flags label every opposing move exactly once."""
+    for state in phases.REAL_STATES:
+        for direction in (phases.DIR_UP, phases.DIR_DOWN, phases.DIR_FLAT):
+            softening = (direction == phases.DIR_DOWN
+                         and state != phases.STATE_CONTRACTING)
+            assert not (softening and phases.contested(state, direction)), (
+                state, direction)
+
+
+def test_an_in_band_move_is_never_contested():
+    """A move inside the dead-band is noise the ladder exists to ignore."""
+    assert not phases.contested(phases.STATE_DECELERATING, phases.DIR_FLAT)
+    assert not phases.contested(phases.STATE_CONTRACTING, phases.DIR_FLAT)

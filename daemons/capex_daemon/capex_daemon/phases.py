@@ -212,17 +212,26 @@ def classify(series, series_class, series_key="?"):
 
 
 def contested(state, direction):
-    """Does the latest out-of-band move oppose the state?
+    """Does the latest out-of-band move oppose the state, with nothing else saying so?
 
     Only out-of-band moves count: `direction_of` already returns DIR_FLAT inside
     the dead-band, and a move inside the band is noise the ladder is built to
     ignore. So this fires on a real step in the wrong direction, never on drift.
+
+    **Deliberately one-sided.** The first cut fired on both mismatches, and the
+    live panel immediately showed why that is wrong: CIFR and DLR came back
+    carrying SOFTENING and CONTESTED together, which is the same fact stated
+    twice. `FLAG_SOFTENING` has always meant "the first out-of-band decline
+    inside a state that is not contracting" — that IS the ACCELERATING-against-a-
+    fall case, in the vocabulary the ladder already uses.
+
+    So CONTESTED covers only the gap SOFTENING never did: an out-of-band RISE
+    inside DECELERATING or CONTRACTING. HUT is the case that prompted it —
+    DECELERATING with a latest move of +228.1pp against a 27.0pp band. The two
+    flags are mirrors, and between them every opposing move is labelled exactly
+    once.
     """
-    if direction == DIR_UP:
-        return state in (STATE_DECELERATING, STATE_CONTRACTING)
-    if direction == DIR_DOWN:
-        return state == STATE_ACCELERATING
-    return False
+    return direction == DIR_UP and state in (STATE_DECELERATING, STATE_CONTRACTING)
 
 
 def transitions(observations, series_key):
