@@ -546,3 +546,39 @@ def test_status_does_not_call_a_detection_a_fact_change(tmp_path):
         "StatusReport must not reuse RunReport's name for a different concept"
     assert "fact-change" not in rep.render()
     assert "vendor-corruption detections: 0" in rep.render()
+
+
+def test_an_adjudicated_corruption_stops_holding_the_store_unclean(tmp_path):
+    """PS-1B D.4. `adjustment_events` is append-only: ruling on a detection does
+    not erase the record that it was doubted. So counting the raw log pinned the
+    nightly's exit code at 1 for the life of the store -- and an exit code that
+    can never return to 0 is not a signal, it is a light that is always on.
+
+    A detection is settled when a human correction exists for that instrument
+    and date. The log keeps the history either way.
+    """
+    from abelard_common.prices import schema, writer
+
+    con = schema.connect(str(tmp_path / "p.db"))
+    schema.migrate(con)
+    con.execute("INSERT INTO instruments (instrument_id, source, first_seen,"
+                " last_seen) VALUES ('X', 'test', '2026-01-01', '2026-09-03')")
+    for d in ("2026-08-03", "2026-08-06"):
+        con.execute(
+            "INSERT INTO adjustment_events (instrument_id, effective_date,"
+            " implied_ratio, kind, detected_at, evidence, version)"
+            " VALUES ('X', ?, 0.5, 'vendor_corruption', 0, '{}', 1)", (d,))
+    con.commit()
+    assert len(writer.status(con).vendor_corruptions) == 2
+
+    con.execute(
+        "INSERT INTO corrections (instrument_id, date, corrected_close,"
+        " supersedes, reason, authored_by, authored_at)"
+        " VALUES ('X','2026-08-03',93.55,187.10,'vendor scale error','mando',0)")
+    con.commit()
+
+    rep = writer.status(con)
+    assert [d for _, d in rep.vendor_corruptions] == ["2026-08-06"], \
+        "an adjudicated detection must stop counting against the store"
+    # and the detection itself is still on the record
+    assert con.execute("SELECT COUNT(*) FROM adjustment_events").fetchone()[0] == 2

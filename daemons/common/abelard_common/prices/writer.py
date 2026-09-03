@@ -641,11 +641,22 @@ def status(con: sqlite3.Connection) -> StatusReport:
         for r in con.execute(
             "SELECT instrument_id FROM instruments WHERE provisional=1 ORDER BY 1")
     ]
+    # UNADJUDICATED only. adjustment_events is an append-only detection log, so
+    # a detection never disappears -- ruling on it does not erase the record that
+    # it was doubted. Counting the raw log meant the store could never return to
+    # clean and the nightly's exit code was pinned at 1 for the life of the
+    # store, which costs the runner the one thing it alerts on. A detection is
+    # settled when a human correction exists for that instrument and date; the
+    # log keeps the history either way.
     vendor_corruptions = [
         (r["instrument_id"], r["effective_date"])
         for r in con.execute(
-            "SELECT instrument_id, effective_date FROM adjustment_events"
-            " WHERE kind='vendor_corruption' ORDER BY effective_date DESC LIMIT 100")
+            "SELECT e.instrument_id, e.effective_date FROM adjustment_events e"
+            " WHERE e.kind='vendor_corruption'"
+            "   AND NOT EXISTS (SELECT 1 FROM corrections c"
+            "                   WHERE c.instrument_id = e.instrument_id"
+            "                     AND c.date = e.effective_date)"
+            " ORDER BY e.effective_date DESC LIMIT 100")
     ]
     return StatusReport(latest, lagging, quarantined, provisional,
                        vendor_corruptions)
