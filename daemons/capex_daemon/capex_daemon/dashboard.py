@@ -73,7 +73,8 @@ svg{display:block;max-width:100%;margin:0 0 14px}
 [title]{cursor:help;border-bottom:1px dotted #bbb}
 """
 
-VIEWS = [("/", "The aggregate"), ("/hayes", "Hayes panel"), ("/phases", "Phase board"),
+VIEWS = [("/since", "Since last scan"),
+         ("/", "The aggregate"), ("/hayes", "Hayes panel"), ("/phases", "Phase board"),
          ("/divergence", "Divergence"), ("/buckets", "Bucket drilldowns"),
          ("/commitments", "Forward commitments"), ("/suppliers", "Suppliers")]
 
@@ -833,7 +834,50 @@ def charts_ratio_svg(series):
         fmt=lambda v: "{:.0f}%".format(100 * v))
 
 
-ROUTES = {"/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
+def view_since(snap):
+    """B1 — what changed in the scan that produced this snapshot.
+
+    Every section reports its own emptiness. A section that vanishes when empty
+    is indistinguishable from one that failed to run, and on a page whose whole
+    purpose is "what is new", silence has to be a statement.
+    """
+    since = snap.get(snapshot.SINCE_KEY) or {}
+    out = ["<h2>Since the last scan</h2>"]
+    if not since:
+        out.append("<div class='warn'><b>This snapshot predates the "
+                   "since-last-scan record.</b> It was built before the scan began "
+                   "writing one, so what changed in its run cannot be reconstructed "
+                   "after the fact. The next scan will carry it.</div>")
+        return _page("Since last scan", "/since", "".join(out))
+    stamp = (time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(int(since["scan_unix"])))
+             if since.get("scan_unix") else "unknown")
+    out.append("<p class='note'>Everything below happened in the scan of <b>{}</b>. "
+               "History is not repeated here — it is on the full views, below the "
+               "rule. Transitions are frontier-gated: a state change derived tonight "
+               "for a quarter years back is history, however freshly computed.</p>"
+               .format(_esc(stamp)))
+    if since.get("first_run_backfill"):
+        out.append("<div class='warn'><b>First run.</b> This scan rediscovered the "
+                   "entire history at once. That is a backfill, not news.</div>")
+    out.append("<p class='note'><b>Thesis line.</b> {}</p>".format(
+        _esc(snapshot.thesis_line(snap))))
+    for key, title, empty in snapshot.SINCE_SECTIONS:
+        rows = since.get(key) or []
+        out.append("<h2>{}</h2>".format(_esc(title)))
+        if not rows:
+            out.append("<p class='note'><i>{}</i></p>".format(_esc(empty)))
+            continue
+        out.append("<table><tr>{}</tr>".format(
+            "".join("<th>{}</th>".format(_esc(k)) for k in sorted(rows[0]))))
+        for r in rows:
+            out.append("<tr>{}</tr>".format("".join(
+                "<td>{}</td>".format(_esc(r[k])) for k in sorted(r))))
+        out.append("</table>")
+    return _page("Since last scan", "/since", "".join(out))
+
+
+ROUTES = {"/since": view_since,
+          "/": view_aggregate, "/hayes": view_hayes, "/phases": view_phases,
           "/divergence": view_divergence, "/buckets": view_buckets,
           "/commitments": view_commitments, "/suppliers": view_suppliers}
 

@@ -195,13 +195,18 @@ def test_a_bucket_below_the_floor_shows_no_number_anywhere():
 
 # --- the views and the brief ----------------------------------------------
 
-def test_every_route_renders_and_view_zero_is_the_front_page():
+def test_every_route_renders_and_since_last_scan_is_the_front_page():
+    """B1 moved the front page: what is NEW comes before what is known. The
+    aggregate is still the front page of the state view, one click away."""
     snap = _fake_snapshot()
-    assert dashboard.VIEWS[0][0] == "/"
+    assert dashboard.VIEWS[0][0] == "/since"
+    assert dashboard.ROUTES["/since"] is dashboard.view_since
     assert dashboard.ROUTES["/"] is dashboard.view_aggregate
     for path, _name in dashboard.VIEWS:
         html = dashboard.render(path, snap)
-        assert html and "<svg" in html
+        assert html
+        # /since is a table page by design — it reports events, not series.
+        assert "<svg" in html or path == "/since"
 
 
 def test_the_brief_draws_from_the_same_model_as_the_dashboard(tmp_path):

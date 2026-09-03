@@ -724,6 +724,173 @@ def commitment_alerts_and_quarantine(snap, prior_keys=()):
             [r for r in rows if not r.get("alertable", True)])
 
 
+# B2 — the cross-check band. UNSET, and the comment that used to sit here was
+# wrong: it claimed "from CD-3b" and named 44-48%, and CD-3-VERIFY registers no
+# such band. I invented two numbers and labelled them "pre-registered" on what
+# is meant to become the front page of a daily read.
+#
+# CD-3b measured the dcrev:supplier DEAD-BAND (9pp, for the classifier). That is
+# a different quantity: a band on quarter-to-quarter MOVES in the phase ladder,
+# not a registered range for the ratio's LEVEL. Nothing has ever registered the
+# latter, and E8 forbids inventing it — least of all in a sentence whose whole
+# purpose is that a reader trusts its structure without re-reading it.
+#
+# So the clause reports the level and its own recent change, and says plainly
+# that no band is registered. A range can be pre-registered later, which is what
+# "pre-registered" has to mean to be worth anything.
+CROSSCHECK_BAND = None
+
+
+def thesis_line(snap, band=CROSSCHECK_BAND):
+    """B2 — one mechanical paragraph, same structure every day.
+
+    Computed, never composed. No adjectives and no judgement: the value of a
+    fixed sentence is that a reader who sees it daily notices a changed clause
+    without reading, and any word chosen for emphasis destroys that. Every
+    number here is read from the snapshot; this function divides nothing and
+    decides nothing.
+
+    Four clauses, always in this order and always present:
+      1. the three legs and their directions
+      2. the cross-check against its pre-registered band
+      3. the hyperscaler state census
+      4. what is refused
+    """
+    total = snap.get("total") or {}
+    panel = snap.get("panel") or {}
+    buckets = snap.get("buckets") or {}
+    cc = ((snap.get("suppliers") or {}).get("crosscheck") or {})
+
+    def _dir(series, key):
+        rows = [r for r in (series or []) if r.get(key) is not None]
+        if len(rows) < 2:
+            return "no reading"
+        a, b = rows[-2][key], rows[-1][key]
+        if a == 0:
+            return "rising" if b > 0 else "flat"
+        ch = (b - a) / abs(a)
+        return "rising" if ch > 0.02 else ("falling" if ch < -0.02 else "flat")
+
+    capex_dir = _dir(total.get("ttm_series"), "ttm")
+    credit_dir = _dir(panel.get("issuance_ttm"), "value")
+    # B5 refused the cross-basis commitments TOTAL, so this sentence must not
+    # give it a direction. "Forward commitments are rising" is precisely the
+    # claim that was withheld one screen away, and a Brief that contradicts its
+    # own refusal is worse than one that says nothing.
+    cp0 = panel.get("commitments_panel") or {}
+    if str(cp0.get("status", "")).startswith("REFUSED"):
+        comm_clause = "the forward-commitment total is refused, so it has no direction"
+    else:
+        comm_clause = "forward commitments are {}".format(
+            _dir(panel.get("commitments") or [], "value"))
+
+    ratio = cc.get("latest_ratio")
+    ser = cc.get("series") or []
+    if ratio is None:
+        cc_clause = "the supplier cross-check has no current reading"
+    elif band:
+        lo, hi = band
+        where = ("inside" if lo <= ratio <= hi
+                 else ("above" if ratio > hi else "below"))
+        cc_clause = ("the supplier cross-check reads {:.1f}%, {} its "
+                     "pre-registered {:.0f}–{:.0f}% band".format(
+                         100 * ratio, where, 100 * lo, 100 * hi))
+    else:
+        prior = ser[-2]["ratio"] if len(ser) >= 2 else None
+        cc_clause = ("the supplier cross-check reads {:.1f}%{}, against no "
+                     "pre-registered band".format(
+                         100 * ratio,
+                         "" if prior is None else
+                         " from {:.1f}% a quarter earlier".format(100 * prior)))
+
+    census = {}
+    for tick, iss in (snap.get("issuers") or {}).items():
+        if iss.get("bucket") == "hyperscaler":
+            census[iss["state"]] = census.get(iss["state"], 0) + 1
+    census_clause = ", ".join(
+        "{} {}".format(census.get(s, 0), s) for s in phases.REAL_STATES
+        if census.get(s)) or "none classified"
+
+    cp = panel.get("commitments_panel") or {}
+    refused = ("the panel commitment total is {}".format(cp["status"])
+               if str(cp.get("status", "")).startswith("REFUSED")
+               else "nothing is refused at panel level")
+
+    return ("Panel capex TTM {} is {} and reads {}; credit issuance is {}; "
+            "{}. {}. Hyperscalers: {}. {}.".format(
+                _money_plain(total.get("ttm")), capex_dir, total.get("state"),
+                credit_dir, comm_clause, cc_clause[0].upper() + cc_clause[1:],
+                census_clause, refused[0].upper() + refused[1:]))
+
+
+def _money_plain(v):
+    if v is None:
+        return "—"
+    if abs(v) >= 1e12:
+        return "${:,.2f}T".format(v / 1e12)
+    if abs(v) >= 1e9:
+        return "${:,.2f}B".format(v / 1e9)
+    return "${:,.0f}".format(v)
+
+
+SINCE_KEY = "since_last_scan"
+
+
+def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
+                    scan_unix=None):
+    """B1 — what changed in the scan that produced this snapshot.
+
+    The daemon has been a state dump: everything it knows, every night, with no
+    way to see what is NEW without diffing two renders by hand. That is how
+    SMCI's commitments tripled unremarked and how DLR sat stranded for a month.
+
+    This is assembled by the SCAN, not by a renderer, because "new" is a fact
+    about the run and a renderer reading only the snapshot cannot know it. It is
+    persisted with the snapshot so the Brief and the dashboard agree about what
+    happened without recomputing it — the same one-computation rule the rest of
+    the view-model follows.
+
+    **Silence is explicit.** Every section reports its own emptiness rather than
+    disappearing, because a section that vanishes when empty is indistinguishable
+    from a section that failed to run.
+    """
+    frontier = _frontier_quarter(snap)
+    alertable, quarantined = commitment_alerts_and_quarantine(
+        snap, prior_keys=prior_keys)
+    comp = []
+    for b, bk in sorted((snap.get("buckets") or {}).items()):
+        for e in (bk.get("composition_events") or []):
+            if not frontier or trend._cq_sort(e["quarter"]) >= trend._cq_sort(frontier):
+                comp.append(dict(e, bucket=b))
+    fr = ((snap.get("suppliers") or {}).get("frontier") or {}).get("rows") or []
+    return {
+        "scan_unix": scan_unix,
+        "generated_unix": snap.get("generated_unix"),
+        "frontier": frontier,
+        "transitions": alert_lines(snap, prior_keys=prior_keys),
+        "filings": list(filings or ()),
+        "commitment_alerts": alertable,
+        "commitment_quarantined": quarantined,
+        "supplier_frontier": fr,
+        "composition_events": comp,
+        "ingest_gaps": list(ingest_gaps or ()),
+    }
+
+
+SINCE_SECTIONS = (
+    ("transitions", "Phase transitions", "no series changed state"),
+    ("filings", "Filings ingested", "no issuer filed"),
+    ("commitment_alerts", "Forward-commitment moves", "no commitment stock moved "
+     "past the ratified threshold"),
+    ("commitment_quarantined", "Quarantined — BASIS-SUSPECT, presentation check "
+     "queued", "nothing quarantined"),
+    ("supplier_frontier", "Suppliers ahead of the demand panel", "no supplier is "
+     "ahead of the panel"),
+    ("composition_events", "Composition changes", "no bucket changed membership"),
+    ("ingest_gaps", "Ingest gaps", "none — every filed period reached the panel"),
+)
+
+
 def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):
     """The oldest quarter a transition may alert from.
 

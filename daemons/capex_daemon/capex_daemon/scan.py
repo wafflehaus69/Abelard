@@ -403,6 +403,25 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
                                    x["to_state"], x["yoy"], x["delta"])
                  for x in snap["transitions"]]
     phases.record_transitions(con, all_trans, now_unix=started)
+
+    # B1 — what changed in THIS run, assembled by the scan because "new" is a
+    # fact about the run and a renderer reading only the snapshot cannot know
+    # it. Persisted with the snapshot so the Brief and the dashboard agree
+    # about what happened without either recomputing it.
+    filed = [{"ticker": c.ticker, "form": None, "period": None,
+              "filed": c.newest_filing} for c in refreshed]
+    for row in filed:
+        f = freshness.latest_periodic_filing(subs_seen.get(
+            next((c.cik for c in refreshed if c.ticker == row["ticker"]), None)))
+        if f:
+            row["form"], row["period"] = f.form, f.report_date
+    snap[snapshot.SINCE_KEY] = snapshot.since_last_scan(
+        snap, prior_keys=prior, filings=filed, ingest_gaps=ingest_gaps,
+        scan_unix=started)
+    if first_run:
+        # A first run rediscovers everything; that is a backfill, not news.
+        snap[snapshot.SINCE_KEY]["transitions"] = []
+        snap[snapshot.SINCE_KEY]["first_run_backfill"] = True
     snapshot.save(con, snap)
     if first_run:
         # A first run rediscovers the entire history at once. That is a backfill,
@@ -440,6 +459,21 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
             artifacts = True
         except Exception as exc:
             errors.append(("brief", "phase page render failed: {}".format(exc)))
+        # B3 — the nightly emits BOTH. The Brief is what rides the pipeline and
+        # the digest; the Reference is what you open when the Brief raises a
+        # question. One snapshot, two renders, no second computation.
+        from . import report as reportmod
+        for is_brief, name in ((True, reportmod.BRIEF_NAME),
+                               (False, reportmod.REFERENCE_NAME)):
+            try:
+                reportmod.build(
+                    snap, os.path.join(outdir, name), last_scan_unix=started,
+                    title=(reportmod.BRIEF_TITLE if is_brief
+                           else reportmod.REFERENCE_TITLE),
+                    sections=(reportmod.BRIEF_SECTIONS if is_brief
+                              else reportmod.SECTIONS))
+            except Exception as exc:
+                errors.append(("report", "{} render failed: {}".format(name, exc)))
 
     return {
         "outcome": OUTCOME_UPDATED,
