@@ -579,11 +579,19 @@ class StatusReport:
     lagging: list[tuple[str, str, str | None]]  # (instrument_id, ticker, last_date)
     quarantined: list[tuple[str, str]]          # (instrument_id, date)
     provisional: list[str]
-    fact_changes: list[tuple[str, str]]
+    # NOT the same thing as RunReport.fact_changes, which is a HELD value being
+    # revised. These are vendor-corruption DETECTIONS: the vendor's own adjusted
+    # series stepping by a ratio it declared, so its history sits on two scales.
+    # No fact has changed. Reported as "fact-change events" until 2026-09-03,
+    # which on a clean first backfill of Basilic read as seven revised facts when
+    # the true count was zero -- and that line is what an operator reads nightly.
+    vendor_corruptions: list[tuple[str, str]]
 
     @property
     def ok(self) -> bool:
-        return not self.lagging and not self.fact_changes
+        # An unadjudicated corruption keeps the store unclean, and so keeps the
+        # nightly's exit code at 1, until a human rules on it.
+        return not self.lagging and not self.vendor_corruptions
 
     def render(self) -> str:
         out = ["latest session held: {}".format(self.latest_session or "(none)")]
@@ -594,7 +602,8 @@ class StatusReport:
             out.append("   ... {} more".format(len(self.lagging) - 20))
         out.append("quarantined sessions: {}".format(len(self.quarantined)))
         out.append("provisional instruments (no CIK): {}".format(len(self.provisional)))
-        out.append("fact-change events: {}".format(len(self.fact_changes)))
+        out.append("vendor-corruption detections: {}".format(
+            len(self.vendor_corruptions)))
         return "\n".join(out)
 
 
@@ -632,10 +641,11 @@ def status(con: sqlite3.Connection) -> StatusReport:
         for r in con.execute(
             "SELECT instrument_id FROM instruments WHERE provisional=1 ORDER BY 1")
     ]
-    fact_changes = [
+    vendor_corruptions = [
         (r["instrument_id"], r["effective_date"])
         for r in con.execute(
             "SELECT instrument_id, effective_date FROM adjustment_events"
             " WHERE kind='vendor_corruption' ORDER BY effective_date DESC LIMIT 100")
     ]
-    return StatusReport(latest, lagging, quarantined, provisional, fact_changes)
+    return StatusReport(latest, lagging, quarantined, provisional,
+                       vendor_corruptions)

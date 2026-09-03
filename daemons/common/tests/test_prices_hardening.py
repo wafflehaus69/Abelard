@@ -526,3 +526,23 @@ def test_a_correction_can_fill_a_vendor_null_hole(con):
     assert p.rows[0].held is None and p.rows[0].changes_value
     CO.apply(con, p)
     assert W.held_raw_closes(con, iid) == {"2026-08-10": 91.43}
+
+
+def test_status_does_not_call_a_detection_a_fact_change(tmp_path):
+    """PS-1B D.3. `status` counted vendor-corruption DETECTIONS and printed them
+    as "fact-change events". On Basilic's first clean backfill that line read
+    "fact-change events: 7" when no fact had been revised at all -- the seven
+    were MNST's known corruption, detected, not applied. A held value changing
+    is the single most serious thing this store can report, so the word has to
+    mean only that."""
+    from abelard_common.prices import schema, writer
+
+    db = tmp_path / "p.db"
+    con = schema.connect(str(db))
+    schema.migrate(con)
+    rep = writer.status(con)
+    assert hasattr(rep, "vendor_corruptions")
+    assert not hasattr(rep, "fact_changes"), \
+        "StatusReport must not reuse RunReport's name for a different concept"
+    assert "fact-change" not in rep.render()
+    assert "vendor-corruption detections: 0" in rep.render()
