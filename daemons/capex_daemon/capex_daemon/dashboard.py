@@ -67,6 +67,8 @@ td.num{text-align:right}
 .hero{margin:4px 0 14px}
 svg{display:block;max-width:100%;margin:0 0 14px}
 .chartnote{color:#888;font-size:11px;margin:-8px 0 16px}
+.interim{color:#1f4e9c}
+.interim i{font-style:normal;opacity:.6}
 .mapped{background:#eef3fb;border-left:3px solid #1f4e9c;padding:9px 12px;margin:10px 0;font-size:13px}
 [title]{cursor:help;border-bottom:1px dotted #bbb}
 """
@@ -121,6 +123,53 @@ def _page(title, active, body, banner=""):
             "<style>{css}</style><header><b>Capex Daemon</b> &nbsp; {nav}</header>"
             "<main>{banner}{body}</main>").format(
                 t=_esc(title), css=CSS, nav=nav, body=body, banner=banner or "")
+
+
+DISCLOSURE_COLORS = {
+    "THIN-MATURING": "#1f4e9c", "FPI-ANNUAL-BASIS": "#6b21a8",
+    "DERIVED-FROM-PROSE": "#0f7f7f", "SIDECAR": "#6b7280",
+    "REFUSED": "#8a6d1a", "NO-DATA": "#9b1c1c",
+}
+
+
+def _disclosure_cell(iss):
+    """The state cell for a name with no phase state.
+
+    CD-GAP1 P1: a dash says 'nothing is known here', which was false for a
+    builder carrying $1.16B of TTM capex. The cause replaces the label and the
+    countdown replaces the dash.
+    """
+    d = iss.get("disclosure")
+    if not d:
+        return _pill(iss["state"]) + _flags(iss.get("flags"))
+    c = d["cause"]
+    bits = []
+    if d.get("quarters_short"):
+        bits.append("{} of {} quarters".format(
+            d["quarters_held"], d["quarters_held"] + d["quarters_short"]))
+    if d.get("first_eligible"):
+        bits.append("classifies ~{}".format(d["first_eligible"]))
+    if d.get("expected_by"):
+        bits.append("{} {}".format(
+            "OVERDUE since" if d.get("filing_overdue") else "next filing due",
+            d["expected_by"]))
+    tip = " · ".join(bits) or ", ".join(d.get("coverage") or []) or c
+    return ("<span class='pill' style='background:{}' title='{}'>{}</span>"
+            .format(DISCLOSURE_COLORS.get(c, "#777"), _esc(tip), _esc(c)))
+
+
+def _interim_cell(iss):
+    """The growth column for a pre-eligible name — explicitly NOT a ladder read."""
+    d = iss.get("disclosure")
+    if not d:
+        return _pct(iss.get("latest_yoy"))
+    g = d.get("interim_growth")
+    if g is None:
+        return ("<span title='fewer than four contiguous quarters — no honest "
+                "interim read exists'>—</span>")
+    return ("<span class='interim' title='{}. NOT a phase state: no dead-band, "
+            "no confirmation window, never aggregated, never alerts.'>{} <i>~</i></span>"
+            .format(_esc(d.get("interim_basis") or ""), _pct(g)))
 
 
 def _bucket_num(bk, key, fmt):
@@ -342,8 +391,10 @@ def view_hayes(snap):
             "<td class='num'>{}</td><td class='num'>{}</td><td class='num'>{}</td>"
             "<td class='num' title='{}'>{}</td><td class='spark'>{}</td></tr>".format(
                 _esc(tick), cov, _esc(iss["bucket"]), _esc(_provenance(iss)),
-                _pill(iss["state"]), _flags(iss["flags"]),
-                _money(iss["ttm_capex"]), _pct(iss["latest_yoy"]),
+                _disclosure_cell(iss), "",
+                _money(iss["ttm_capex"] if iss["ttm_capex"] is not None
+                       else (iss.get("disclosure") or {}).get("ttm")),
+                _interim_cell(iss),
                 _pct(iss["credit_ratio"], 0),
                 _esc("{} — {}".format(comm["status"], comm["detail"])),
                 _money(comm["latest"]),
@@ -415,9 +466,9 @@ def view_phases(snap):
             "<td>{}</td><td class='num'>{}</td><td class='num'>{}</td><td>{}</td>"
             "<td class='num'>{}pp</td><td class='spark'>{}</td></tr>".format(
                 _esc(tick), mirror, _esc(iss["bucket"]),
-                _pill(iss["state"]), _flags(iss["flags"]),
+                _disclosure_cell(iss), "",
                 iss["quarters_in_state"] or "—", _esc(iss["entered"] or "—"),
-                _pct(iss["latest_yoy"]),
+                _interim_cell(iss),
                 "{:+.1f}pp".format(iss["latest_delta"]) if iss["latest_delta"] is not None else "—",
                 _esc(iss["direction"] or "—"), iss.get("band"),
                 _spark([p["yoy"] for p in iss["yoy_series"]])))
@@ -536,6 +587,7 @@ def view_commitments(snap):
                "separately and never summed. A dashed segment spans quarters with no "
                "disclosure; it is not a flat stretch.</p>")
     out.append(_commitments_refusal(snap))
+    out.append(_commitment_deltas_block(snap))
     out += ["<table><tr><th>Issuer</th><th>Bucket</th><th>Status</th>"
            "<th class='num'>Latest</th><th>Concept</th><th>Detail</th></tr>"]
     rows = sorted(snap["issuers"].items(),
@@ -569,6 +621,8 @@ def view_suppliers(snap):
            "qualified, so the companyfacts API drops it entirely — NVDA's API record carries "
            "total <code>Revenues</code> and a segment <i>count</i>, and nothing else. Every "
            "figure below was read out of the filing itself.</p>"]
+
+    out.append(_frontier_block(sup.get("frontier") or {}))
 
     series = cc.get("series") or []
     if series:
@@ -657,6 +711,83 @@ def view_suppliers(snap):
                    "on the buildout, and because a named refusal is worth more than a silent "
                    "omission.</p>")
     return _page("Suppliers", "/suppliers", "".join(out))
+
+
+def _commitment_deltas_block(snap):
+    """A4 — the change since each issuer's previous observation.
+
+    SMCI went $10.10B -> $34.20B between two snapshots and nothing said so; it
+    was visible only by diffing two PDFs by hand. Published here, per issuer, on
+    that issuer's own concept, sorted by size of move.
+    """
+    rows = snapshot.commitment_deltas(snap)
+    rows = [r for r in rows if r["multiple"] is not None]
+    if not rows:
+        return ""
+    rows.sort(key=lambda r: -(r["multiple"] or 0))
+    armed = (snapshot.COMMITMENT_JUMP_MULTIPLE is not None
+             and snapshot.COMMITMENT_JUMP_MIN_DELTA is not None)
+    out = ["<h2>Change since the previous observation</h2>",
+           "<p class='note'>Each issuer against <b>its own</b> previous disclosure on "
+           "<b>its own</b> concept — never across issuers, so the basis problem that "
+           "makes cross-issuer commitment totals incomparable does not arise. A stock "
+           "is disclosed on the issuer's own schedule, so the <b>gap</b> is published "
+           "beside the move: 3x over one quarter and 3x over eight are different "
+           "facts.</p>"]
+    out.append("<div class='warn'><b>These do not alert yet.</b> The threshold is "
+               "UNSET pending ratification (E8). Measured over 308 observation pairs: "
+               "p50 1.00x, p90 2.00x, p95 3.20x — but the tail is near-zero bases, so "
+               "a bare multiple is a bad gate — and a multiple ALONE misses META's "
+               "+$111.64B at 1.47x, the largest move on the panel. Proposed and "
+               "held: <b>(2.0x AND &ge;$1B) OR &ge;$20B</b>.</div>" if not armed else "")
+    out.append("<table><tr><th>Issuer</th><th>Concept</th><th>From</th><th>To</th>"
+               "<th class='num'>gap</th><th class='num'>was</th><th class='num'>now</th>"
+               "<th class='num'>change</th><th class='num'>multiple</th></tr>")
+    for r in rows:
+        big = r["multiple"] >= 2.0 and r["delta"] >= 1e9
+        style = " style='font-weight:600'" if big else ""
+        out.append("<tr{}><td><b>{}</b></td><td class='note'>{}</td><td>{}</td><td>{}</td>"
+                   "<td class='num'>{}q</td><td class='num'>{}</td><td class='num'>{}</td>"
+                   "<td class='num'>{}</td><td class='num'>{:.2f}x</td></tr>".format(
+                       style, _esc(r["ticker"]), _esc(r["concept"]), _esc(r["from_q"]),
+                       _esc(r["to_q"]), r["quarters_between"], _money(r["from_value"]),
+                       _money(r["to_value"]), _money(r["delta"]), r["multiple"]))
+    out.append("</table>")
+    return "".join(out)
+
+
+def _frontier_block(fr):
+    """A3 — the supplier quarters the demand panel has not reached yet.
+
+    The fiscal-calendar offset that makes the cross-check refuse a ratio here is
+    the same offset that makes this the earliest read the daemon has. It is one
+    supplier's own quarter against its own history: no ratio, no phase state, no
+    aggregate.
+    """
+    rows = fr.get("rows") or []
+    if not rows:
+        return ""
+    out = ["<h2>One quarter ahead of the demand panel</h2>",
+           "<p class='note'>The hyperscalers' newest reported quarter is "
+           "<b>{}</b>. These suppliers close off-calendar and have already filed "
+           "beyond it. There is <b>no ratio here and there cannot be</b> — the "
+           "denominator does not exist yet — so each row is the supplier's own "
+           "discrete quarter measured against its own prior quarter and its own "
+           "year-ago quarter. <b>Not a TTM, not a phase state, and in no "
+           "aggregate.</b> It is the earliest signal the panel carries, and it is "
+           "one name at a time.</p>".format(_esc(fr.get("demand_frontier")))]
+    out.append("<table><tr><th>Supplier</th><th>Quarter</th>"
+               "<th class='num'>DC revenue</th><th class='num'>QoQ</th>"
+               "<th class='num'>YoY</th><th>compared against</th></tr>")
+    for r in rows:
+        out.append("<tr><td><b>{}</b></td><td>{}</td><td class='num'>{}</td>"
+                   "<td class='num'>{}</td><td class='num'>{}</td>"
+                   "<td class='note'>{} and {}</td></tr>".format(
+                       _esc(r["ticker"]), _esc(r["q"]), _money(r["value"]),
+                       _pct(r["qoq"]), _pct(r["yoy"]),
+                       _esc(r["prior_q"]), _esc(r["year_ago_q"])))
+    out.append("</table>")
+    return "".join(out)
 
 
 def charts_ratio_svg(series):

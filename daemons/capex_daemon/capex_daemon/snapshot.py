@@ -13,7 +13,7 @@ reader cannot audit is a figure they have to trust blindly.
 import json
 import time
 
-from . import commitments, config, divergence, normalize, phases, trend
+from . import commitments, config, disclosure, divergence, normalize, phases, trend
 
 SNAPSHOT_KEY = "panel_snapshot"
 
@@ -21,6 +21,22 @@ SNAPSHOT_KEY = "panel_snapshot"
 # alert. One quarter of slack, because issuers file weeks apart and a name that
 # transitions on the quarter just before the frontier is still current news.
 ALERT_LOOKBACK_QUARTERS = 1
+
+
+def _last_tagged(indexed, entity):
+    """Newest period end the capex concepts carry, regardless of derivability.
+
+    Distinguishes an annual-basis filer from one that stopped tagging. Reads the
+    raw index rather than the derived series precisely because the derived
+    series is empty in both cases.
+    """
+    from . import tagmap
+    newest = None
+    for c in tagmap.CANDIDATES[tagmap.CAPEX]:
+        for f in indexed.get(c, []):
+            if f.period_end and (newest is None or f.period_end > newest):
+                newest = f.period_end
+    return newest
 
 
 def _obs_json(o):
@@ -40,6 +56,10 @@ def _supplier_section(legs, bucket_trends):
     """
     out = {"legs": {}, "covered": [], "combined": {}, "crosscheck": {}}
     members = {}
+    # dcrev transitions travel with the section so they can reach the alert
+    # rule. Without this they were computed, rendered on page 17, and could
+    # never fire — the one supplier state with thesis meaning was unalertable.
+    dc_transitions = []
     for tick, leg in sorted((legs or {}).items()):
         ttm = trend.ttm_by_quarter(leg.quarters) if leg.quarters else {}
         tq = sorted(ttm, key=trend._cq_sort)
@@ -70,6 +90,7 @@ def _supplier_section(legs, bucket_trends):
         if len(dc_yoy) >= phases.N_CONFIRM + 1:
             dc_obs = phases.classify(dc_yoy, "dcrev:supplier",
                                      series_key="dcrev:{}".format(tick))
+        dc_transitions += phases.transitions(dc_obs, "dcrev:{}".format(tick))
         cur = phases.current(dc_obs)
         out["legs"][tick].update({
             "dc_state": cur.state if cur else phases.STATE_INSUFFICIENT,
@@ -120,7 +141,59 @@ def _supplier_section(legs, bucket_trends):
                 "latest_quarter": series[-1]["q"] if series else None,
                 "warning": warn,
             }
+    out["frontier"] = _supplier_frontier(legs, bucket_trends.get("hyperscaler"))
+    out["dc_transitions"] = dc_transitions
     return out
+
+
+def _supplier_frontier(legs, hyper):
+    """Supplier quarters the demand panel has not reached yet. CD-GAP2A A3.
+
+    Four of five suppliers close off-calendar — NVDA in July, MU in August, SMCI
+    in June — so they routinely file a quarter the hyperscalers will not report
+    until late October. The cross-check correctly refuses a ratio there: there
+    is no denominator yet. But the numerator exists, and it was being discarded.
+
+    This is the daemon's earliest read. It is deliberately NOT a ratio, NOT a
+    phase state and NOT aggregated with anything: it is one supplier's own
+    discrete quarter against its own prior quarter and its own year-ago quarter,
+    labelled as sitting ahead of the demand panel so it can never be mistaken
+    for a panel figure.
+    """
+    if hyper is None or not getattr(hyper, "ttm", None):
+        return {}
+    demand = max(hyper.ttm, key=trend._cq_sort)
+    rows = []
+    for tick, leg in sorted((legs or {}).items()):
+        qmap = leg.quarters or {}
+        ahead = [q for q in qmap if trend._cq_sort(q) > trend._cq_sort(demand)]
+        for q in sorted(ahead, key=trend._cq_sort):
+            rows.append({
+                "ticker": tick,
+                "q": q,
+                "value": qmap[q],
+                "qoq": _growth(qmap.get(_shift(q, -1)), qmap[q]),
+                "yoy": _growth(qmap.get(_shift(q, -4)), qmap[q]),
+                "prior_q": _shift(q, -1),
+                "year_ago_q": _shift(q, -4),
+                "basis": "the supplier's own discrete quarter — not a TTM, not a "
+                         "ratio, and not in any aggregate",
+            })
+    return {"demand_frontier": demand, "rows": rows,
+            "quarters_ahead": sorted({r["q"] for r in rows}, key=trend._cq_sort)}
+
+
+def _shift(cq, n):
+    """Calendar quarter shifted by `n` quarters."""
+    y, q = trend._cq_sort(cq)
+    idx = y * 4 + q + n
+    return "{}Q{}".format((idx - 1) // 4, (idx - 1) % 4 + 1)
+
+
+def _growth(prior, latest):
+    if prior is None or latest is None or prior <= 0:
+        return None
+    return latest / prior - 1.0
 
 
 def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
@@ -158,6 +231,12 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
             "coverage": list(view.statuses),
             "quarters": [{"q": q, "value": series[q]} for q in
                          sorted(series, key=trend._cq_sort)],
+            # CD-GAP1 P1: why there is no state, and what IS known anyway. None
+            # for a classified name — an explanation is only owed for a gap.
+            "disclosure": disclosure.classify(
+                e, series, coverage=view.statuses,
+                state=t["issuer_states"].get(e.ticker_display),
+                last_tagged=_last_tagged(indexed, e)),
             "yoy_series": [{"q": q, "yoy": yoy[q]} for q in
                            sorted(yoy, key=trend._cq_sort)],
             "observations": [_obs_json(o) for o in obs],
@@ -313,6 +392,11 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
         all_trans += phases.transitions(obs, "bucket:{}".format(b))
     all_trans += phases.transitions(t["total_obs"], "total:panel")
 
+    suppliers = _supplier_section(supplier_legs, t["bucket_trends"])
+    # A supplier's DATACENTER REVENUE phase is the one with thesis meaning, so
+    # it joins the transition record on the same footing as an issuer's capex.
+    all_trans += suppliers.pop("dc_transitions", [])
+
     return {
         "generated_unix": now_unix,
         "bands_measured_on": __import__("capex_daemon.config", fromlist=["x"]).DEAD_BAND_MEASURED_ON,
@@ -320,7 +404,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
         "buckets": buckets,
         "total": total,
         "panel": panel,
-        "suppliers": _supplier_section(supplier_legs, t["bucket_trends"]),
+        "suppliers": suppliers,
         "transitions": [{"series_key": x.series_key, "quarter": x.quarter,
                          "from_state": x.from_state, "to_state": x.to_state,
                          "yoy": x.yoy, "delta": x.delta, "event_key": x.event_key}
@@ -338,6 +422,149 @@ def save(con, snap):
 def load(con):
     row = con.execute("SELECT value FROM meta_kv WHERE key=?", (SNAPSHOT_KEY,)).fetchone()
     return json.loads(row[0]) if row else None
+
+
+# CD-GAP2A A4 — the alert gate for a commitment-stock jump. BOTH UNSET.
+#
+# E8: no threshold ships without a measured distribution behind it, and an unset
+# constant is None whose consumer must surface that rather than substitute a
+# default. Deltas are PUBLISHED; nothing ALERTS until Mando ratifies a pair.
+#
+# Measured 2026-09-02 over 308 observation-to-observation pairs across 21
+# disclosing issuers:
+#
+#     p50 1.000x   p75 1.210x   p90 2.000x   p95 3.203x   max 2372x
+#
+# The tail is dominated by near-zero bases, so a bare multiple is a bad gate: at
+# the measured p95 of 3.203x it fires 15 times and SIX of those move less than
+# $1B — WULF $0.000B->$0.118B reads 846x, CLSK $0.007B->$0.041B reads 6.54x.
+# Neither is a forward-demand event; both are a small denominator.
+#
+# Hence a PAIR, proposed and held: multiple >= 2.0x (the measured p90) AND an
+# absolute move >= $1B. That fires on 16 of 308 pairs (5.2%), and every one is
+# materially large — SMCI's citing case at 3.39x/+$24.10B, META +$53.24B,
+# AVGO +$128.06B, AMD +$13.54B.
+#
+# **That pair alone is still wrong, and deploying it is what showed why.** A
+# large base makes the multiple small however enormous the absolute move. META's
+# four largest increases:
+#
+#     2025Q2->Q3  +$53.24B  2.90x   caught
+#     2025Q3->Q4  +$49.86B  1.61x   MISSED
+#     2025Q4->Q1  +$106.62B 1.81x   MISSED
+#     2026Q1->Q2  +$111.64B 1.47x   MISSED
+#
+# META went $27.95B -> $349.31B in four quarters — a $321B forward-demand build,
+# the largest on the panel — and a multiple-only gate sees one step of four. So a
+# second, independent arm on the absolute move. Measured over the 147 increases:
+# p50 $0.41B, p90 $7.77B, p95 $16.45B, p97.5 $49.86B, max $128.06B.
+#
+# Proposed and held:
+#
+#     (multiple >= 2.0x AND move >= $1B)  OR  (move >= $20B)
+#
+# 19 of 308 pairs (6.2%). $20B sits just above the measured p95 of increases. The
+# arms are complementary by construction: the first catches a small issuer
+# tripling, the second catches a large one adding more than most issuers hold.
+#
+# Concentration, for Mando to weigh: META 5, SMCI 5, AMD 2 of the 19. Adding the
+# absolute arm improved this — under the multiple alone SMCI was 5 of 16, a third
+# of the channel.
+COMMITMENT_JUMP_MULTIPLE = None       # proposed 2.0
+COMMITMENT_JUMP_MIN_DELTA = None      # proposed 1_000_000_000.0
+COMMITMENT_JUMP_ABSOLUTE = None       # proposed 20_000_000_000.0
+
+
+def commitment_deltas(snap, frontier=None):
+    """Observation-to-observation change in each issuer's forward-commitment stock.
+
+    SMCI is the citing case: $10.10B to $34.20B between two snapshots — a server
+    assembler committing to 3.4x the components — and nothing said so. That is
+    precisely the forward-demand event the commitments leg exists to catch, and
+    it was visible only by diffing two PDFs by hand.
+
+    **Same basis by construction.** Each delta is one issuer against its own
+    previous observation on its own concept, never across issuers. The
+    cross-issuer comparability problem is real — `ContractualObligation`,
+    `PurchaseObligation` and `UnrecordedUnconditionalPurchaseObligation...` are
+    not the same measure — but it does not arise here, because nothing is
+    compared across issuers and no delta is summed into anything.
+
+    **A stock disclosed on the issuer's own schedule.** Consecutive observations
+    are not consecutive quarters, so the gap is published with the delta: a 3.4x
+    move over two quarters and over eight are different facts.
+    """
+    out = []
+    for tick, iss in sorted((snap.get("issuers") or {}).items()):
+        c = iss.get("commitments") or {}
+        pts = c.get("points_cq") or []
+        if len(pts) < 2 or not c.get("concept"):
+            continue
+        prev, cur = pts[-2], pts[-1]
+        if frontier and trend._cq_sort(cur["q"]) < trend._cq_sort(frontier):
+            continue
+        base, latest = prev.get("value"), cur.get("value")
+        if base is None or latest is None:
+            continue
+        gap = trend._cq_index(cur["q"]) - trend._cq_index(prev["q"])
+        out.append({
+            "ticker": tick,
+            "bucket": iss.get("bucket"),
+            "concept": c.get("concept"),
+            "from_q": prev["q"], "to_q": cur["q"],
+            "quarters_between": gap,
+            "from_value": base, "to_value": latest,
+            "delta": latest - base,
+            "multiple": (latest / base) if base > 0 else None,
+            "event_key": "commit:{}:{}:{}:{:.0f}".format(
+                tick, prev["q"], cur["q"], latest),
+        })
+    return out
+
+
+def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
+                           absolute=None):
+    """Commitment jumps worth announcing. Empty while every bound is UNSET.
+
+    E8 in its literal form: the consumer of an unset constant surfaces the
+    absence rather than substituting a default. A threshold picked to make SMCI
+    fire would be one fitted to a single observation, so the bounds stay None
+    until ratified and this returns nothing.
+
+    **Two independent arms, because one measure cannot see both shapes.**
+
+      * `multiple` AND `min_delta` together — a small issuer tripling. Neither
+        works alone: a multiple by itself fires on a near-zero base (WULF
+        $0.000B -> $0.118B reads 846x), and a floor by itself fires on routine
+        drift at a large issuer.
+      * `absolute` — a large issuer adding more than most issuers hold. This arm
+        exists because META added $111.64B in one quarter at 1.47x, which no
+        defensible multiple would ever catch.
+
+    An arm that is not fully armed simply does not fire; the other still can.
+    """
+    multiple = COMMITMENT_JUMP_MULTIPLE if multiple is None else multiple
+    min_delta = COMMITMENT_JUMP_MIN_DELTA if min_delta is None else min_delta
+    absolute = COMMITMENT_JUMP_ABSOLUTE if absolute is None else absolute
+    rel_armed = multiple is not None and min_delta is not None
+    if not rel_armed and absolute is None:
+        return []
+    prior = set(prior_keys or ())
+    out = []
+    for d in commitment_deltas(snap, frontier=_frontier_quarter(snap)):
+        if d["event_key"] in prior:
+            continue
+        by_multiple = (rel_armed and d["multiple"] is not None
+                       and d["multiple"] >= multiple and d["delta"] >= min_delta)
+        by_size = absolute is not None and d["delta"] >= absolute
+        if not (by_multiple or by_size):
+            continue
+        out.append(dict(d, reason="forward-commitment stock {} ({:+,.1f}B) {} -> {}"
+                        .format("{:.2f}x".format(d["multiple"]) if d["multiple"]
+                                else "from a zero base",
+                                d["delta"] / 1e9, d["from_q"], d["to_q"]),
+                        armed_by="multiple" if by_multiple else "absolute"))
+    return out
 
 
 def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):
@@ -395,6 +622,15 @@ def alert_lines(snap, prior_keys=()):
         why = None
         if issuer and issuer["bucket"] == "hyperscaler" and to == phases.STATE_DECELERATING:
             why = "hyperscaler entering DECELERATING"
+        elif key.startswith("dcrev:") and to == phases.STATE_DECELERATING:
+            # The supplier analog of the hyperscaler rule, and it is keyed on
+            # DATACENTER REVENUE rather than on the supplier's own capex —
+            # deliberately, because those are different claims. NVDA's capex is
+            # a ~$7B series covering its own facilities; a DECELERATING on it
+            # says nothing about the buildout, and was once logged as though it
+            # did. Its datacenter revenue is the other side of the
+            # hyperscalers' invoice and is what a bend would be about.
+            why = "supplier datacenter revenue entering DECELERATING"
         elif key.startswith("bucket:") or key == "total:panel":
             why = "aggregate transition"
         elif key == "CRWV":

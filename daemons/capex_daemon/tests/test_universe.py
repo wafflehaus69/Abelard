@@ -31,8 +31,12 @@ def test_buckets_match_the_ruled_decomposition():
     roster = universe.load()
     by_ticker = {e.ticker_display: e.bucket for e in roster.values()}
     assert by_ticker["MSFT"] == "hyperscaler"
-    assert by_ticker["DLR"] == "reit"
-    assert by_ticker["EQIX"] == "reit"
+    # LANDLORD merge, ruled by Mando 2026-08-26: reit + host became one bucket.
+    # DLR and EQIX were `reit`; AMT, IRM and CCOI were `host`. The split was thin
+    # on its own terms — AMT and IRM are REITs — and a two-name REIT bucket had
+    # gone dark for a month on one late filing.
+    assert by_ticker["DLR"] == "landlord"
+    assert by_ticker["EQIX"] == "landlord"
     assert by_ticker["WULF"] == "builder"
     assert by_ticker["SNOW"] == "mirror"
     assert by_ticker["NBIS"] == "fpi"
@@ -106,9 +110,9 @@ def test_ratified_adds_are_present_with_their_buckets():
     assert by["MARA"] == "builder"
     assert by["CLSK"] == "builder"
     assert by["DGXX"] == "builder"
-    assert by["IRM"] == "host"
-    assert by["AMT"] == "host"
-    assert by["CCOI"] == "host"
+    assert by["IRM"] == "landlord"
+    assert by["AMT"] == "landlord"
+    assert by["CCOI"] == "landlord"
 
 
 def test_prologis_and_tsm_are_not_admitted():
@@ -134,3 +138,32 @@ def test_host_bucket_is_tracked_but_not_aggregated():
     from capex_daemon import divergence
     assert "host" in universe.BUCKETS
     assert "host" not in divergence.BUCKET_ORDER
+
+
+def test_the_landlord_merge_preserves_sub_type():
+    """The bucket boundary was thin; the distinction inside it is not. A reader
+    asking 'is this a REIT?' still gets an answer."""
+    from capex_daemon import universe
+    roster = universe.load()
+    members = {e.ticker_display: universe.landlord_subtype(c)
+               for c, e in roster.items() if e.bucket == "landlord"}
+    assert set(members) == {"DLR", "EQIX", "AMT", "IRM", "CCOI"}
+    assert members["AMT"] == "reit" and members["IRM"] == "reit"
+    assert members["CCOI"] == "host"
+
+
+def test_landlord_is_aggregated_and_the_old_names_are_not():
+    from capex_daemon import trend, universe
+    assert "landlord" in trend.AGGREGATED_BUCKETS
+    assert "reit" not in trend.AGGREGATED_BUCKETS
+    assert "host" not in trend.AGGREGATED_BUCKETS
+    # ...but the old names still LOAD, so a pre-merge roster does not raise.
+    assert "reit" in universe.BUCKETS and "host" in universe.BUCKETS
+
+
+def test_five_members_clears_the_floor_with_room():
+    """The merge's whole point: one late filing can no longer dark the bucket."""
+    from capex_daemon import trend, universe
+    roster = universe.load()
+    n = sum(1 for e in roster.values() if e.bucket == "landlord")
+    assert n == 5 and n - 1 > trend.MIN_BUCKET_MEMBERS

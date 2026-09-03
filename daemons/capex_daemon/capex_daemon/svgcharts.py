@@ -133,14 +133,25 @@ class Frame:
 
 
 def _nice_ticks(lo, hi, n=5):
-    """Round tick values covering [lo, hi]. Plain 1/2/5 stepping."""
+    """Round tick values covering [lo, hi]. Plain 1/2/5 stepping.
+
+    **The magnitude must be able to go below 1.** The first cut computed it from
+    the digit count of `int(raw)` and floored it at 1 for any raw < 1, so every
+    fractional axis got a step of at least 1.0. Every YoY and ratio chart on the
+    dashboard is fractional — a TTM YoY of +84.7% is 0.847 — so a panel spanning
+    -0.2 to +0.9 produced ticks at 0 and 1, of which only one was in range, and
+    the chart rendered with a single gridline reading "+0%". Measured on the live
+    dashboard: every yoy_chart and every ratio chart, unreadable for that reason.
+    """
     span = hi - lo
     if span <= 0:
         return [lo]
     raw = span / max(1, n)
-    mag = 10 ** (len(str(int(abs(raw)))) - 1) if abs(raw) >= 1 else 1
+    if raw <= 0:
+        return [lo, hi]
+    mag = 10.0 ** math.floor(math.log10(raw))
     step = next((m * mag for m in (1, 2, 2.5, 5, 10) if m * mag >= raw), raw)
-    out, v = [], (int(lo / step) * step)
+    out, v = [], (math.floor(lo / step) * step)
     while v <= hi + step * 0.001:
         if v >= lo - step * 0.001:
             out.append(v)
@@ -187,17 +198,44 @@ def grid(frame, fmt=_money, ticks=5):
     return "".join(out)
 
 
-def quarter_axis(frame, every=None):
-    n = len(frame.quarters)
+MIN_LABEL_GAP = 38.0        # px; "2026Q2" at font-size 10 plus air
+
+
+def label_picks(n, every, x_of, min_gap):
+    """Indices to label: every Nth, the last one always, none overprinted.
+
+    Shared by the time axis and the phase grid because both had the same
+    defect — drawing every Nth AND the last unconditionally, so the final two
+    collide whenever the length is not a multiple of N. The last quarter is the
+    one a reader most wants, so it wins and its neighbour is dropped.
+    """
+    picks = [i for i in range(n) if i % every == 0]
+    if n and n - 1 not in picks:
+        picks.append(n - 1)
+    while len(picks) >= 2 and x_of(picks[-1]) - x_of(picks[-2]) < min_gap:
+        picks.pop(-2)
+    return picks
+
+
+def quarter_axis(frame, every=None, min_gap=MIN_LABEL_GAP):
+    """Quarter labels, with the last one guaranteed and never overprinted.
+
+    Every Nth label AND the last one were both drawn unconditionally, so
+    whenever the series length was not a multiple of N the final two landed on
+    top of each other — Leg 1 rendered "2026Q1" and "2026Q2" as "20226Q2" on the
+    live dashboard. The last quarter is the one a reader most wants, so it wins
+    and the neighbour that would collide with it is dropped.
+    """
+    qs = frame.quarters
+    n = len(qs)
     every = every or max(1, n // 14)
     out = ["<line x1='{}' y1='{:.1f}' x2='{}' y2='{:.1f}' stroke='#bbb'/>".format(
         frame.l, frame.t + frame.ph, frame.l + frame.pw, frame.t + frame.ph)]
-    for i, q in enumerate(frame.quarters):
-        if i % every and i != n - 1:
-            continue
+    picks = label_picks(n, every, lambda i: frame.x(qs[i]), min_gap)
+    for i in picks:
         out.append("<text x='{:.1f}' y='{:.1f}' font-size='10' fill='#666' "
                    "text-anchor='middle'>{}</text>".format(
-                       frame.x(q), frame.t + frame.ph + 14, _e(q)))
+                       frame.x(qs[i]), frame.t + frame.ph + 14, _e(qs[i])))
     return "".join(out)
 
 
@@ -652,10 +690,14 @@ def state_grid(rows, quarters, width=1160, cell=15, label_w=104):
     height = 34 + len(rows) * cell + 26
     body = []
     every = max(1, len(quarters) // 16)
-    for q, i in idx.items():
-        if i % every and i != len(quarters) - 1:
-            continue
-        x = label_w + i * cell + cell / 2.0
+
+    def _gx(i):
+        return label_w + i * cell + cell / 2.0
+
+    # Same overprint the time axis had: the grid drew every Nth label AND the
+    # last, so "2026Q2" and "2026Q3" landed on top of each other.
+    for i in label_picks(len(quarters), every, _gx, cell * 2.6):
+        x, q = _gx(i), quarters[i]
         body.append("<text x='{:.1f}' y='24' font-size='9' fill='#777' text-anchor='middle' "
                     "transform='rotate(-40 {:.1f} 24)'>{}</text>".format(x, x, _e(q)))
     for r, (key, states, sub) in enumerate(rows):
@@ -676,8 +718,25 @@ def state_grid(rows, quarters, width=1160, cell=15, label_w=104):
     return svg(width, height, "".join(body), title="phase grid")
 
 
+SUPPLIER_CAPEX_SUFFIX = " · own capex"
+
+
 def issuer_rows_for_grid(snap):
-    """Rows for `state_grid`, ordered aggregate-first then worst-state-first."""
+    """Rows for `state_grid`, ordered aggregate-first then worst-state-first.
+
+    **A supplier's primary row is its DATACENTER REVENUE phase, not its capex.**
+    The board previously gave a supplier's own capex the same weight and the
+    same look as a hyperscaler's, and they do not mean the same thing. NVDA's
+    capex is a ~$7B series covering its offices and test equipment; its
+    datacenter revenue is $277.8B and is the other side of the hyperscalers'
+    invoice. Reading a DECELERATING on the first as a bend in the buildout is a
+    category error, and the board's layout invited it — the dcrev phase lived
+    on a different page.
+
+    So suppliers show `dcrev` first, and their capex follows as a clearly
+    labelled secondary row rather than being hidden: it is still a real series,
+    it is just not a buildout signal.
+    """
     order = {phases.STATE_CONTRACTING: 0, phases.STATE_DECELERATING: 1,
              phases.STATE_PLATEAU: 2, phases.STATE_ACCELERATING: 3}
     rows, quarters = [], set()
@@ -691,9 +750,18 @@ def issuer_rows_for_grid(snap):
     add("TOTAL PANEL", (snap.get("total") or {}).get("observations"), "matched membership")
     for b, bk in sorted((snap.get("buckets") or {}).items()):
         add("bucket:" + b, bk.get("observations"), "{} members".format(bk.get("member_count")))
+
+    legs = ((snap.get("suppliers") or {}).get("legs") or {})
     issuers = sorted((snap.get("issuers") or {}).items(),
                      key=lambda kv: (order.get(kv[1]["state"], 9), kv[0]))
     for tick, iss in issuers:
+        leg = legs.get(tick)
+        if leg and leg.get("dc_observations"):
+            add(tick, leg["dc_observations"],
+                "supplier · DATACENTER REVENUE — the buildout series")
+            add(tick + SUPPLIER_CAPEX_SUFFIX, iss.get("observations"),
+                "supplier's OWN capex — not a buildout signal")
+            continue
         add(tick, iss.get("observations"),
             "{}{}".format(iss["bucket"], " · MIRROR, never alerts"
                           if iss["bucket"] == "mirror" else ""))

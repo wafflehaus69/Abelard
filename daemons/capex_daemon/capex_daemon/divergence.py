@@ -34,6 +34,15 @@ STATUS_ISSUANCE_NET_NEGATIVE = "ISSUANCE-NET-NEGATIVE"
 # a fact, whereas this is an absence of observation (E16: decompose coverage).
 STATUS_ISSUANCE_NO_OVERLAP = "ISSUANCE-NO-WINDOW-OVERLAP"
 
+# Numerator and denominator agree to three significant figures. The shape of one
+# fact resolved into both legs, which would make the ratio a tautology — so it is
+# surfaced for a look rather than left to be spotted by eye on a dashboard.
+STATUS_SUSPECT_IDENTITY = "SUSPECT-IDENTITY"
+
+# The same concept feeding both legs. Not a suspicion but a defect: the ratio
+# would be one fact divided by itself, so it is refused rather than published.
+STATUS_RATIO_TAUTOLOGY = "RATIO-TAUTOLOGY"
+
 
 class IssuerView:
     """One issuer's row in the divergence view, with its coverage statuses."""
@@ -90,10 +99,55 @@ def issuer_issuance_calendar_series(indexed):
     return _merged_issuance(indexed, res.contributing, keyed="calendar") or None
 
 
+SIGNIFICANT_FIGURES = 3
+
+
+def _sig(v, figures=SIGNIFICANT_FIGURES):
+    """`v` rounded to `figures` significant figures, or None."""
+    if v is None or v == 0:
+        return v
+    import math
+    exp = math.floor(math.log10(abs(v)))
+    return round(v, -(exp - (figures - 1)))
+
+
+def suspect_identity(ttm_capex, ttm_issuance, figures=SIGNIFICANT_FIGURES):
+    """Do the numerator and denominator agree to `figures` significant figures?
+
+    A credit-to-capex ratio of exactly 100% is the shape of one fact resolved
+    into both legs — a financing concept landing in the capex map, or the
+    reverse. That would make the ratio a tautology and the divergence
+    unfalsifiable, which is the whole thesis.
+
+    **It is a flag for a look, not a verdict.** Measured on IREN, which prompted
+    the rule: capex $2,998,006,000 against issuance $3,000,000,000 — equal to
+    three figures and not the same number, drawn from
+    `PaymentsToAcquirePropertyPlantAndEquipment` and `ProceedsFromConvertibleDebt`
+    respectively, which share no fact. Convertible notes are issued in round
+    amounts and a real capex number landed 0.07% away from one. So the gate
+    fires, the concepts are disjoint, and the answer is coincidence.
+
+    Zero is excluded deliberately: an explicitly tagged zero on both legs is a
+    real double zero, not a suspicious agreement (E16).
+    """
+    if not ttm_capex or not ttm_issuance:
+        return False
+    if _sig(ttm_capex, figures) != _sig(ttm_issuance, figures):
+        return False
+    return True
+
+
+def shares_a_concept(capex_concept, issuance_concepts):
+    """Is the same concept feeding both legs? The distinguishing question when
+    SUSPECT-IDENTITY fires — disjoint concepts point to coincidence, a shared
+    one points to a mapping defect."""
+    return bool(capex_concept and capex_concept in set(issuance_concepts or ()))
+
+
 def build_issuer_view(entity, indexed):
     """Compute one issuer's capex, issuance and ratio with statuses attached."""
     statuses = []
-    capex_res = tagmap.resolve(indexed, tagmap.CAPEX)
+    capex_res = tagmap.resolve(indexed, tagmap.CAPEX, cik=entity.cik)
     if capex_res.is_multi_line or capex_res.is_unresolved:
         return IssuerView(entity.cik, entity.ticker_display, entity.bucket,
                           None, None, None, [STATUS_NO_CAPEX], 0)
@@ -132,6 +186,16 @@ def build_issuer_view(entity, indexed):
 
     # `ttm_issuance == 0` is a real 0%, not a missing value — see _explicit_zero_over.
     ratio = (ttm_issuance / ttm_capex) if (ttm_issuance is not None and ttm_capex) else None
+    contributing = (issuance_res.contributing if issuance_res else ()) or ()
+    if suspect_identity(ttm_capex, ttm_issuance):
+        if shares_a_concept(capex_res.current_concept, contributing):
+            # One fact over itself is not a measurement. Publishing it as a
+            # ratio would make the divergence unfalsifiable at exactly the
+            # place the thesis is tested, so the ratio is refused outright.
+            statuses.append(STATUS_RATIO_TAUTOLOGY)
+            ratio = None
+        else:
+            statuses.append(STATUS_SUSPECT_IDENTITY)
     if not statuses:
         statuses.append(STATUS_OK)
     return IssuerView(entity.cik, entity.ticker_display, entity.bucket, ttm_capex,

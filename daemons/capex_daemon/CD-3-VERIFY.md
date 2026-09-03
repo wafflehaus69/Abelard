@@ -232,11 +232,30 @@ already-advanced watermark, a code-only change, a flag that did not exist yet.
    to close the gap, and `config.DEAD_BAND_MEASURED` now carries a date per band, since a
    re-measurement obligation runs from the date its own band was measured.
 
-   **Live supplier states**, on their own capex: AMD ACCELERATING +101.1%, AVGO ACCELERATING +59.9%,
-   MU PLATEAU +89.7%, NVDA **DECELERATING +60.5%**, SMCI PLATEAU +32.0%. NVDA is the instructive one —
-   its growth *rate* is falling hard (−26.2pp) while the level stays strongly positive, which is
-   exactly the distinction the ladder exists to draw. On datacenter revenue: NVDA and AMD both
-   PLATEAU; MU INSUFFICIENT-HISTORY at 7 quarters; AVGO and SMCI have no series to classify.
+   **Live supplier states on DATACENTER REVENUE — the leg with thesis meaning.** NVDA and AMD both
+   PLATEAU; MU INSUFFICIENT-HISTORY at 7 quarters; AVGO and SMCI have no series to classify. NVDA's
+   dcrev PLATEAU sits at +89.5% on a $277.8B TTM.
+
+   **Live supplier states on their OWN capex, which is not a buildout signal:** AMD ACCELERATING
+   +101.1%, AVGO ACCELERATING +59.9%, MU PLATEAU +89.7%, NVDA DECELERATING +60.5%, SMCI PLATEAU
+   +32.0%. The ladder is working here — NVDA's growth *rate* falls hard (−26.2pp) while the level
+   stays strongly positive, which is the distinction the ladder exists to draw.
+
+   > **CORRECTION, 2026-09-02 (Mando, owned).** An earlier audit recorded NVDA's capex
+   > `DECELERATING-CONFIRMED` as "the supply side's biggest name confirmed its rate-bend". That
+   > reads a buildout signal off the wrong series. **NVDA's own capex is a ~$7.4B series covering
+   > its offices, test equipment and internal systems — it is not the buildout.** The buildout is
+   > the $277.8B of datacenter revenue it books from the hyperscalers, and that series is PLATEAU
+   > at +89.5%, not decelerating.
+   >
+   > The ordering above was inverted for the same reason. The layout invited the error: the phase
+   > board gave a supplier's capex the same weight and the same look as a hyperscaler's, while the
+   > dcrev phase — the only supplier state that bears on the thesis — lived on a different page.
+   > Fixed under CD-GAP2A A2: suppliers now show dcrev as their primary phase-board row with capex
+   > demoted to a labelled secondary, and the alert analog of "any hyperscaler entering
+   > DECELERATING" is keyed on `dcrev:`, never on supplier capex.
+   >
+   > Two figures that differ by a factor of 37 should never have been readable as the same claim.
 
    Suppliers hold phase state and remain absent from every aggregate — `test_suppliers_classify_but_
    never_aggregate` pins both halves at once.

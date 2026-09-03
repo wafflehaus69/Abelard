@@ -28,7 +28,8 @@ import os
 import time
 
 from . import (alerts as alertmod, brief, config, divergence, edgar, facts_api,
-               freshness, identity, phases, snapshot, storage, suppliers, universe)
+               freshness, identity, phases, snapshot, storage, suppliers, tagmap,
+               universe)
 
 WATERMARK_PREFIX = "scan:"
 
@@ -110,10 +111,58 @@ class IssuerScan:
             self.ticker, self.status, self.newest_filing, self.watermark)
 
 
-def check_issuer(con, entity, http=None, submissions_doc=None):
+def _cq_of(period_end):
+    """'2026-06-30' -> '2026Q2'. Calendar quarter of a period end."""
+    try:
+        y, m, _d = str(period_end).split("-")
+        return "{}Q{}".format(int(y), (int(m) - 1) // 3 + 1)
+    except (AttributeError, ValueError):
+        return None
+
+
+def _panel_is_behind(covered, cik, filing):
+    """Does the published panel lack the newest filed period?
+
+    `covered` maps cik -> the newest calendar quarter the panel holds for that
+    issuer. Absent or empty, this answers False and the watermark keeps its old
+    meaning — a fresh database must not look like 35 ingest gaps.
+    """
+    if not covered or not filing or not filing.report_date:
+        return False
+    want = _cq_of(filing.report_date)
+    have = covered.get(cik)
+    return bool(want and have and have < want)
+
+
+def _covered_quarters(con, roster):
+    """cik -> newest calendar quarter the published panel holds for that issuer.
+
+    Read from the snapshot rather than recomputed: the snapshot is what a reader
+    sees, so it is the right authority on whether a period actually arrived. A
+    database with no snapshot yet returns {} and every watermark keeps its
+    original meaning.
+    """
+    try:
+        snap = snapshot.load(con)
+    except Exception:
+        return {}
+    if not snap:
+        return {}
+    by_ticker = {}
+    for tick, iss in (snap.get("issuers") or {}).items():
+        qs = iss.get("quarters") or []
+        if qs:
+            by_ticker[tick] = max(q["q"] for q in qs)
+    return {cik: by_ticker[e.ticker_display]
+            for cik, e in roster.items() if e.ticker_display in by_ticker}
+
+
+def check_issuer(con, entity, http=None, submissions_doc=None, covered=None):
     """Is there a periodic filing newer than this issuer's watermark?
 
     `submissions_doc` may be injected for tests; otherwise it is fetched.
+    `covered` maps cik -> newest calendar quarter already in the panel, which is
+    what distinguishes "handled" from "attempted" when the watermark disagrees.
     """
     try:
         doc = submissions_doc if submissions_doc is not None else edgar.fetch_submissions(
@@ -135,9 +184,19 @@ def check_issuer(con, entity, http=None, submissions_doc=None):
         return IssuerScan(entity.cik, entity.ticker_display, "no-periodic", None, wm,
                           "no 10-K or 10-Q in the submissions index",
                           submissions_doc=doc)
-    if wm and filing.filing_date <= wm:
+    if wm and filing.filing_date <= wm and not _panel_is_behind(covered, entity.cik, filing):
         return IssuerScan(entity.cik, entity.ticker_display, "current",
                           filing.filing_date, wm, "nothing newer than watermark",
+                          submissions_doc=doc)
+    if wm and filing.filing_date <= wm:
+        # Self-healing: the watermark says this filing was handled, the panel
+        # says its period never arrived. Trust the panel — the watermark is a
+        # record of an attempt and the panel is a record of the result.
+        return IssuerScan(entity.cik, entity.ticker_display, "new-filing",
+                          filing.filing_date, wm,
+                          "INGEST-GAP retry: {} period {} filed {} is on the index "
+                          "but absent from the panel".format(
+                              filing.form, filing.report_date, filing.filing_date),
                           submissions_doc=doc)
     detail = "new filing {} {} (period {})".format(
         filing.form, filing.filing_date, filing.report_date)
@@ -147,16 +206,67 @@ def check_issuer(con, entity, http=None, submissions_doc=None):
                       filing.filing_date, wm, detail, submissions_doc=doc)
 
 
-def refresh_issuer(con, entity, http=None, facts_doc=None):
-    """Re-derive one issuer's view. Returns (IssuerView, indexed facts)."""
-    doc = facts_doc if facts_doc is not None else edgar.fetch_companyfacts(entity.cik, http)
-    indexed = facts_api.index_facts(doc)
-    return divergence.build_issuer_view(entity, indexed), indexed
+def _fill_gaps(roster, indexed, subs_by_cik, http=None):
+    """Run the filing-instance fallback across the panel. Returns {cik: Fill}.
+
+    Operates on the index the snapshot is built from, in place. An issuer whose
+    capex concept is REFUSED is skipped: its gap is a resolution question
+    (RIOT: CAPEX-UNRESOLVED, already published as coverage), not a late API, and
+    treating it as an ingest gap would re-fetch its filing every night forever
+    for a hole no fetch can fill.
+    """
+    out = {}
+    for cik, ix in (indexed or {}).items():
+        sub = (subs_by_cik or {}).get(cik)
+        if sub is None or cik not in roster:
+            continue
+        res = tagmap.resolve(ix, tagmap.CAPEX)
+        if res.is_unresolved or not res.current_concept:
+            continue
+        try:
+            out[cik] = freshness.fill_from_filing(
+                cik, sub, ix, concept=res.current_concept, http=http)
+        except Exception as exc:            # a fill must never fail a scan
+            out[cik] = freshness.Fill(freshness.FILL_FAILED,
+                                      detail="fill raised: {}".format(exc))
+    return out
+
+
+def refresh_issuer(con, entity, http=None, facts_doc=None, submissions_doc=None,
+                   indexed=None):
+    """Re-derive one issuer's view. Returns (IssuerView, indexed facts, Fill).
+
+    **The fallback runs here, and until 2026-09-02 it ran nowhere.** `freshness`
+    was written for the case where a periodic filing exists and companyfacts has
+    not published its period yet — documented, tested, and called by nothing
+    outside its own module. Measured: DLR and AMT both filed 2026Q2 in late July
+    and companyfacts still lacked the period on 2026-09-02, so both were absent
+    from the panel and rendered as "behind on filing".
+
+    `submissions_doc` is optional only so existing callers keep working; without
+    it there is no filing to fall back to and the API is trusted as before.
+    """
+    if indexed is None:
+        doc = (facts_doc if facts_doc is not None
+               else edgar.fetch_companyfacts(entity.cik, http))
+        indexed = facts_api.index_facts(doc)
+    fill = None
+    if submissions_doc is not None:
+        res = tagmap.resolve(indexed, tagmap.CAPEX)
+        # An issuer whose capex concept is REFUSED has no period that could
+        # arrive — its gap is a resolution question (RIOT: CAPEX-UNRESOLVED,
+        # already published as coverage), not a late API. Calling that an ingest
+        # gap would hold its watermark open and re-fetch its filing every night
+        # forever, for a hole no fetch can fill.
+        if not res.is_unresolved and res.current_concept:
+            fill = freshness.fill_from_filing(entity.cik, submissions_doc, indexed,
+                                              concept=res.current_concept, http=http)
+    return divergence.build_issuer_view(entity, indexed), indexed, fill
 
 
 def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=None,
         submissions_by_cik=None, facts_by_cik=None, rebuild=False,
-        queue_path=None):
+        queue_path=None, fallback=True):
     """One scan cycle. Returns a summary dict; never raises on a single issuer.
 
     Injection points (`submissions_by_cik`, `facts_by_cik`) exist so the whole
@@ -173,10 +283,15 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     roster = roster if roster is not None else universe.load()
     started = int(now_unix if now_unix is not None else time.time())
 
+    # What the PUBLISHED panel already holds, per issuer. The watermark records
+    # that a filing was attempted; this records that its period arrived. When
+    # the two disagree the panel wins — see `_panel_is_behind`.
+    covered = _covered_quarters(con, roster)
+
     checks, errors = [], []
     for cik, entity in sorted(roster.items()):
         sub = (submissions_by_cik or {}).get(cik)
-        c = check_issuer(con, entity, http=http, submissions_doc=sub)
+        c = check_issuer(con, entity, http=http, submissions_doc=sub, covered=covered)
         checks.append(c)
         if c.status == OUTCOME_ERROR:
             errors.append((c.ticker, c.detail))
@@ -213,27 +328,65 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
             "started_unix": started,
         }
 
-    views, refreshed = [], []
+    # The snapshot is the single published view-model — dashboard, PDF and
+    # alerts all read it and none recomputes (P4). It is built BEFORE the
+    # refresh loop because the fallback fill has to land in THIS index.
+    #
+    # The first cut of the ingest fix filled a private copy inside
+    # refresh_issuer, whose only consumer is `views`. Measured on Basilic: the
+    # run reported "updated: 2 of 35 — AMT, DLR" and published a snapshot still
+    # sitting on their previous quarter, because the index the snapshot is
+    # built from was fetched separately and never saw the fill. Filling the
+    # right object is the whole fix.
+    indexed = _indexed_all(roster, http, facts_by_cik, errors=errors)
+    fills = _fill_gaps(roster, indexed, subs_seen if fallback else {}, http=http)
+
+    views, refreshed, ingest_gaps = [], [], []
     for c in affected:
         entity = roster[c.cik]
+        fill = fills.get(c.cik)
+        ix = indexed.get(c.cik)
+        if ix is None:
+            # `_indexed_all` already recorded why it could not be fetched. An
+            # issuer with no index was not refreshed, so its watermark must not
+            # move — and it must NOT quietly fall through to a second network
+            # fetch here, which would turn an injected failure into a live call.
+            continue
         try:
-            view, _ = refresh_issuer(con, entity, http=http,
-                                     facts_doc=(facts_by_cik or {}).get(c.cik))
+            # Reuse the filled index rather than re-fetching companyfacts for
+            # an issuer `_indexed_all` has already fetched.
+            view, _ix, _f = refresh_issuer(con, entity, http=http, indexed=ix)
         except Exception as exc:
             errors.append((c.ticker, "refresh failed: {}".format(exc)))
             continue
         views.append(view)
+        # A refresh that did not reach the filed period has NOT ingested it.
+        # Advancing the watermark on that is what turned a temporary API lag
+        # into a permanent hole: the gate closes, the issuer is never
+        # "affected" again, and no later scan retries. DLR sat like that from
+        # 2026-08-22 with a 2026Q2 filed on 07-31 and would have stayed dark
+        # until its Q3 filing in late October.
+        if fill is not None and fill.status in (freshness.FILL_EMPTY,
+                                                freshness.FILL_FAILED):
+            # A finding, NOT a run failure. `cmd_scan` exits non-zero on
+            # `errors`, so filing an ingest gap there would make the nightly
+            # alert every night for a condition that is already being retried
+            # and reported. It gets its own key and its own line.
+            ingest_gaps.append({
+                "ticker": c.ticker, "status": fill.status, "period": fill.period,
+                "form": fill.filing.form if fill.filing else None,
+                "accession": fill.filing.accession if fill.filing else None,
+                "detail": fill.detail})
+            continue                      # watermark stays put; retry tomorrow
         refreshed.append(c)
 
-    # Watermarks advance ONLY for issuers whose refresh actually succeeded.
+    # Watermarks advance ONLY for issuers whose refresh actually INGESTED the
+    # filed period — sighting a filing is not the same fact as holding it.
     advanced = []
     for c in refreshed:
         if write_watermark(con, c.cik, c.newest_filing, now_unix=started):
             advanced.append(c.ticker)
 
-    # The snapshot is the single published view-model — dashboard, PDF and
-    # alerts all read it and none recomputes (P4).
-    indexed = _indexed_all(roster, http, facts_by_cik, errors=errors)
     # CD-3 supplier leg. Parser-only, so it is harvested per FILING rather than
     # per fact: only instances absent from the cache are fetched, which keeps a
     # quiet night to one submissions request per supplier.
@@ -294,6 +447,9 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         "affected": len(affected),
         "refreshed": [c.ticker for c in refreshed],
         "watermarks_advanced": advanced,
+        # Findings, not failures: a gap is already being retried and reported,
+        # and putting it in `errors` would exit the nightly non-zero forever.
+        "ingest_gaps": ingest_gaps,
         "errors": errors,
         "artifacts_written": artifacts,
         "alerts": alerts,
@@ -397,6 +553,10 @@ def format_summary(result):
             "{} {} {}->{} ({})".format(a["series_key"], a["quarter"], a["from_state"],
                                        a["to_state"], a["reason"])
             for a in result["alerts"][:6]))
+    for g in result.get("ingest_gaps") or []:
+        base += (" | INGEST-GAP {}: {} period {} is on the submissions index and "
+                 "not in the panel ({})".format(g["ticker"], g.get("form") or "?",
+                                                g.get("period"), g["status"]))
     if result.get("errors"):
         base += " | ERRORS: {}".format("; ".join("{} {}".format(t, d) for t, d in result["errors"]))
     return base
