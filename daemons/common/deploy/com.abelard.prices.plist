@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Price substrate nightly on Basilic. PS-1B Phase D.
+
+     Slot 21:00 local (Basilic = America/New_York), ruled by Mando 2026-09-02.
+
+     This one DOES have an ordering dependency, unlike capex. Smart Money's
+     22:30 scan will read the freshness ledger as a precondition once Phase 4
+     lands, so the price store has to be current before it starts. Measured, the
+     nightly append is ~9 minutes at v1 scope (516 names, 0.51 s/name over a
+     short window) and the verification sweep is ~22 minutes at the 72 s pace
+     floor, so a 21:00 start finishes near 21:35 and clears 22:30 with an hour
+     to spare.
+
+     The neighbour is com.abelard.news-watch at 21:30. BASILIC_MANUAL 13 records
+     it as installed 2026-08-24; `launchctl list` on Basilic 2026-09-02 does not
+     list it, so it is authored and not activated (E32, CR-R0 R4.3). Today there
+     is nothing at 21:00-21:35 to collide with. If news-watch is ever loaded, a
+     ~35-minute prices run overlaps its start by ~5 minutes — tolerable, since
+     the two share no store and no writer and the overlapping leg is the last
+     and least consequential one (verify), but it is the reason the legs are
+     ordered as they are and not a coincidence to be re-derived later.
+
+     RunAtLoad false: it fires on schedule, never on boot. A boot-time run would
+     make a reboot indistinguishable from a real night in the logs — and the
+     cold-start path has never been exercised (see OPERATIONS.md).
+
+     ExitTimeOut 3600: the full night is ~35 minutes at v1 scope. Past an hour
+     something is hanging — most likely a vendor not answering — and the run
+     should die rather than still be holding the store when SM starts at 22:30.
+
+     This file is the REFERENCE COPY kept in the repo. The live plist is
+     host-specific and lives at ~/Library/LaunchAgents/com.abelard.prices.plist.
+     Only editing the plist needs a reload; a code change just needs git pull. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abelard.prices</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/wafflehaus/Code/Abelard/daemons/common/scripts/run_prices.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>21</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/wafflehaus/Code/Abelard/daemons/common</string>
+  <key>StandardOutPath</key>
+  <string>/Users/wafflehaus/.openclaw/prices/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/wafflehaus/.openclaw/prices/logs/launchd.err.log</string>
+  <key>ExitTimeOut</key>
+  <integer>3600</integer>
+</dict>
+</plist>

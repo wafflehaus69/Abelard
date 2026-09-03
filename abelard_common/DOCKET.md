@@ -1058,3 +1058,83 @@ practice, so **the change is not made**: adding a session of lag to defend
 against a revision I cannot demonstrate would be a cost paid for a hypothesis.
 Recorded as tested-and-declined rather than never-considered, so it does not get
 re-proposed from first principles later.
+
+---
+
+## Phase D (partial) — deploy artifacts authored, not installed · 2026-09-02
+
+**D.1, D.2 and D.6 are done. D.3, D.4 and D.5 are blocked on a push.** 260 tests
+passing (251 + 9 new deploy tests).
+
+### What was written
+
+* `daemons/common/pyproject.toml` — `abelard-prices` console entry.
+* `daemons/common/scripts/run_prices.sh` — four legs, worst exit code returned.
+* `daemons/common/deploy/com.abelard.prices.plist` — 21:00, `RunAtLoad` false,
+  `ExitTimeOut` 3600. **Reference copy. Not loaded.**
+* `BASILIC_MANUAL.md` §14, `capex_daemon/OPERATIONS.md` (D.6 cold-start note).
+* `tests/test_prices_deploy.py` — 9 tests over the artifacts themselves.
+
+### The leg order is load-bearing
+
+`nightly` → `reference` → `reconcile` → `verify`. Verify is last because it is
+the only metered leg and the only one a quota can refuse; if it ran first, a
+refusal would cost the store its nightly append. Reconcile needs the session and
+the benchmark, so it follows both. There is a test asserting this order, because
+it reads like a preference and is not one.
+
+### The plist would not have loaded
+
+The explanatory comment was written with `--` in it, which is illegal inside an
+XML comment. `plutil` and launchd would both have refused the file — a job that
+never fires, silently, on a machine nobody is watching. Found by parsing it here
+rather than by discovering an empty log tomorrow morning.
+
+Hence `test_prices_deploy.py`: it parses the plist with `plistlib` (the same
+rules launchd applies), and it checks that every verb and flag the runner names
+is one the CLI actually declares. Negative-checked both ways — a `--` in the
+comment and a `verifyy` typo each fail it — because a deploy test nobody has
+seen fail is a decoration.
+
+### BASILIC_MANUAL §13 says news-watch is installed. Basilic says otherwise.
+
+`launchctl list` on Basilic, 2026-09-02 20:55 EDT:
+
+```
+com.abelard.efd-probe · fdu · smart-money-brief · queue-digest · capex-dash
+qwen-serve · smart-money-dash · qwen-ui · capex · smart-money
+```
+
+**No `com.abelard.news-watch`.** §13 records it as installed 2026-08-24 with a
+supervised first run costing $0.5339. The run happened — by hand. The job was
+never loaded. That is E32 exactly, and CR-R0 R4.3 called it. Recorded in §14
+rather than edited out of §13, because the gap between what a document claims
+and what a host reports is the finding, not a typo.
+
+It also matters here: news-watch's slot is **21:30**, not the 21:00 I had first
+written into the plist comment from memory. A ~35-minute prices run would overlap
+its start by ~5 minutes *if it is ever loaded*. They share no store and no
+writer, and the overlapping leg is verify, so it is tolerable — but it is now
+written down instead of waiting to be rediscovered.
+
+### D.3 onward are blocked, and the block is Mando's to clear
+
+D.3 says "on Basilic by hand, in the foreground". The code is not on Basilic.
+
+```
+Basilic HEAD   5887f7c  (main, 11 commits past this branch's fork point)
+this branch    ps-1-price-substrate, 8 commits, unpushed
+remote has     origin/main, origin/fdu-pa1-recon
+```
+
+The merge is clean — **zero overlap** between the files this branch touches and
+the files main touched since the fork; main's 11 commits are all capex CD-GAP2A.
+`git merge-tree` reports no conflicts.
+
+But pushing is authorization I do not have, and the house pattern (§8) is that
+Mando commits and pushes, then Basilic pulls. So D.3–D.5 stop here.
+
+**Also note the store must be built before the plist is loaded.** Loading it onto
+an empty database would make the first `nightly` see no history, and every one of
+516 names would look like a first write. D.3's manual backfill is not a
+formality; it is the thing that makes D.4 legible.

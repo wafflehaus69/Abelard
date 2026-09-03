@@ -260,3 +260,41 @@ a restart loop in `dashboard.err.log`, never as a silent outage.
 If it does occur, the ruled remedy is bind-retry with backoff inside the server
 (retry for a bounded window at startup rather than dying) — **never** a
 `KeepAlive` crashloop as the mechanism, and **never** binding `0.0.0.0`.
+
+### Untested: the scheduled jobs across a reboot (PS-1B D.6)
+
+Recorded here beside the dashboard's cold start because it is the same untested
+condition seen from the other side, and because whoever reads one should read
+both.
+
+**Every scheduled Abelard job has `RunAtLoad` false, and none of them has ever
+started from cold.** Basilic has been up continuously since before any of them
+was installed. The design intent is that a reboot is *not* a filing night, a
+scan night, or a price night: launchd loads the job, the job does nothing, and
+the next real firing is the scheduled one. That has never been observed.
+
+The two behaviours to check the first time Basilic does reboot:
+
+1. **Did the agents reload at all?** `RunAtLoad` false governs whether a loaded
+   job *runs*; it says nothing about whether launchd still *has* it. A job
+   loaded by hand with `launchctl load` and never written into a login-persistent
+   location comes back only if the plist is in `~/Library/LaunchAgents/`, which
+   is where all of them are — so they should. `launchctl list | grep abelard`
+   is the whole test, and the failure mode is silent: a missing job produces no
+   error, just a night that never happens.
+
+2. **Did a missed slot fire late?** launchd runs a `StartCalendarInterval` job
+   that was missed while the machine was off, once, at load. So a reboot at
+   09:00 fires every evening job whose slot passed during the outage. For capex
+   and smart money that is a harmless re-run. **For `com.abelard.prices` it is
+   not harmless in the same way** — `nightly` would append against a session
+   that may be mid-flight, and the substrate's `is_final_session` guard (17:00
+   exchange-local) is the thing standing between that and a fact recorded from
+   an in-progress bar. That guard exists precisely because an early run once
+   fired `fact_change` on 510 names during the Phase 2 build. It is tested, and
+   it has not been exercised by a real reboot.
+
+Neither of these is a defect to fix pre-emptively; the guard is already in place
+for the one case that would matter. It is a **note of what has not been seen**,
+so that the first post-reboot morning is read with the right question in hand
+rather than diagnosed from scratch.

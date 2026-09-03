@@ -286,3 +286,82 @@ land far lower; the second run is the one that establishes the real figure.
 | `com.abelard.capex` | 23:40 | fire-and-finish, no LLM |
 | `com.abelard.capex-dash` | — | always-on |
 | `com.abelard.smart-money-dash` | — | always-on |
+
+---
+
+## 14. Price substrate — AUTHORED, NOT YET INSTALLED (PS-1 / PS-1B)
+
+Written 2026-09-02 under ORDER PS-1B Phase D. **The plist is not loaded.** This
+section describes a job that does not yet run; when it is installed, change this
+heading and date it, the way §12 is dated. Reading it as a description of
+something running is the mistake §13 currently invites (see the note at the end).
+
+**What it is.** One price store, one writer, many readers —
+`daemons/common/abelard_common/prices/`. Unadjusted closes are facts and are
+insert-only, enforced by SQLite triggers; adjusted closes are a view, rebuilt on
+demand and never cached as a fact. Corrections, fills and quarantines are
+append-only overlays, so a fact never moves and the record of having doubted it
+survives the doubt being resolved.
+
+**The job** — launchd `com.abelard.prices`, **21:00 America/New_York**, via
+`daemons/common/scripts/run_prices.sh`. `RunAtLoad` false. `ExitTimeOut` 3600s.
+Reference plist in `daemons/common/deploy/`.
+
+Four legs in a fixed order, worst exit code returned:
+
+| leg | what it does | why here |
+|---|---|---|
+| `nightly` | appends the session's closes | first, so the store is current before anything reads it |
+| `reference --no-fred` | CL=F, ^VIX, SPY, IVV, RSP, XLE | the reconciliation benchmark comes from here |
+| `reconcile` | index-level check on the session just appended | needs both of the above |
+| `verify -n 18` | Tiingo cross-check, 30-day rotation | last, because it is the metered leg and a quota refusal must never cost the nightly append |
+
+**Environment.** The library takes explicit paths and never reads the
+environment; `run_prices.sh` is the layer that does.
+
+| variable | source | consequence if missing |
+|---|---|---|
+| `ABELARD_PRICES_DB_PATH` | set by the runner, absolute | launchd does not expand `~`; a relative path silently creates a second, empty store |
+| `EDGAR_CONTACT` | `~/.openclaw/prices/.env`, falling back to the SM `.env` | SEC returns 403; `universe-sync` fails at the first request |
+| `TIINGO_API_TOKEN` | `~/.openclaw/prices/.env`, mode 600 | `verify` exits 2. The other three legs are unaffected — Yahoo is primary and unmetered |
+
+Exit codes: **0** clean · **1** something lagged, a fact changed, the vendor was
+degraded, or a verification disagreed — all "look at it", not "it is broken" ·
+**2** could not start · **3** the wrapper could not find the package or the venv.
+
+**The hard dependency, and it runs the other way from the usual one.** Smart
+Money at **22:30** will read the price store's freshness ledger as a precondition
+once PS-1 Phase 4 lands. So prices must be current before SM starts, which is
+why 21:00 and not a slot in the 22:30–23:40 block. At v1 scope the night is
+~35 minutes (append ~9 min over 516 names; the verify sweep ~22 min, floored by
+the 72s pace), finishing near 21:35 and clearing 22:30 with an hour of slack.
+**That hour is the margin that matters** — if the universe is ever widened to the
+Russell 2000, the append grows roughly 4x and the margin is what gets spent.
+
+**Tiingo is metered and the code enforces it, not memory.** 50 requests/hour,
+1,000/day, 2 GB/month, read off the account page 2026-09-02. Every call is
+logged to `vendor_calls` and a sweep that would breach any meter refuses
+**before the first request** — a sweep that dies at request 43 of 60 has spent
+the quota and left the store half-verified. Header auth only; a token in a query
+string is a test failure.
+
+**Build the venv on Basilic** — never copy one across hosts, same rule as SM and
+capex. `daemons/common/.venv` already exists there at Python 3.14.7.
+
+```bash
+launchctl list | grep prices
+tail -20 ~/.openclaw/prices/logs/prices.log
+cd ~/Code/Abelard/daemons/common && .venv/bin/python -m abelard_common.prices.cli status
+```
+
+**Before it is installed** — Phase D.3 requires `universe-sync` and a full 5-year
+backfill run by hand, in the foreground, on Basilic, with throughput recorded.
+Do not load the plist onto an empty store: the first `nightly` would have no
+history to compare against and every name would look like a first write.
+
+**Correction to §13 while I was here.** §13 records `com.abelard.news-watch` as
+installed 2026-08-24 with a supervised first run. It is **not in
+`launchctl list`** on Basilic as of 2026-09-02 20:55 EDT. The run happened; the
+job was never loaded. That is E32 (authored is not activated) and it is exactly
+what CR-R0 R4.3 flagged. Left as-is rather than edited away, because the gap
+between a document saying "installed" and a host saying otherwise is the finding.
