@@ -11,7 +11,17 @@
 #
 # A code change needs only `git pull` — this file is referenced by absolute path
 # from the plist and does not itself need reloading.
-cd ~/Code/Abelard/daemons/capex_daemon || exit 2
+#
+# **Resolve the daemon directory RELATIVE to this script, never absolutely.**
+# This used to `cd ~/Code/Abelard/daemons/capex_daemon`, which meant the service
+# ran whatever branch the shared development checkout happened to be on. It was
+# found on `ps-1-price-substrate` — another workstream's branch — serving code
+# no one had chosen to deploy. Worse, a plist repointed at a pinned service root
+# would still have been dragged back here by this line.
+#
+# A service root must be a pinned ref, and a runner must stay inside the tree it
+# was launched from. `run_dash.sh` already did this; this one did not.
+cd "$(dirname "$0")/.." || exit 2
 LOG=~/.openclaw/capex_daemon/logs/scan.log
 mkdir -p ~/.openclaw/capex_daemon/logs
 echo ">>> capex scan $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $LOG

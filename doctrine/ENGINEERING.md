@@ -812,3 +812,59 @@ Corollary — this shape recurs outside News Watch. A plist committed to `deploy
 is not a scheduled job until `launchctl load` puts it in `launchctl list`; the
 Capex Daemon carried exactly that gap for four days while its plist sat in the
 repo looking installed. Registry-gated runtimes are the norm, not the exception.
+
+## E33 — A service root is a pinned ref, never a working checkout
+Ruled by Mando 2026-09-03; drafted by ClaudeCode from the originating incident.
+
+Incident: CD-BRIEF1 deploy. Every production launchd job on Basilic pointed at
+`~/Code/Abelard` — the shared development checkout. Another workstream had run
+`git checkout ps-1-price-substrate` in it, so for an unknown number of days the
+capex dashboard, the nightly scan, the price runner and the queue consumer were
+all serving that branch. Nobody chose it. The dashboard reported `ok: true`
+throughout, because health is a property of the process, not of which code the
+process is.
+
+The merge that was supposed to go live had been pushed to `origin/main` and was
+simply not on the branch the services ran. `git pull --ff-only origin main`
+correctly refused to fast-forward across the divergence — and the deploy script
+had written that pull as `>/dev/null 2>&1`, so the refusal was invisible and
+every subsequent step ran against the wrong tree and reported success.
+
+Rule: **a service root is a pinned ref.** Production runs from a dedicated
+worktree checked out to a named branch that no one develops in; feature
+checkouts never host services. A daemon that serves whatever `HEAD` happens to
+say has no declared intent — it has a coincidence, and its correctness depends
+on nobody typing `git checkout` in a directory that is not obviously production.
+
+Corollaries.
+
+*Runners resolve relative to themselves.* `run_scan.sh` did `cd
+~/Code/Abelard/daemons/capex_daemon` by absolute path, so repointing the plist
+at a pinned root would still have dragged the scan back into the development
+checkout. A launcher must stay inside the tree it was started from
+(`cd "$(dirname "$0")/.."`). `run_dash.sh` already did; the pair disagreed and
+only one was right.
+
+*A deploy is a gate, not a sequence of hopeful commands.* It refuses unless the
+live tree is on the expected branch and clean; it never redirects the output of
+a command whose failure changes the meaning of everything after it; it asserts
+`HEAD == origin/<ref>` **after** pulling rather than trusting the pull; it
+prints the commit hash it deployed; and it exits nonzero on any of those. The
+redirect that hid this failure is the pull-through-tail class already recorded
+against Smart Money three times — a failure upstream of a pipe or redirect never
+reaches the exit status, so the script cannot tell it has already lost.
+
+*Health checks answer the wrong question.* `ok: true` and a fresh
+`last_scan_unix` were both true while the service ran unintended code. A
+liveness probe reports that a process is up; it says nothing about provenance.
+Where it matters which code is running, publish the deployed commit alongside
+the health signal.
+
+**Relation to [E18].** E18 rules one writer per working tree, for concurrent
+*development*. This extends the same principle to execution: one ref per service
+root. E18's worktrees keep two authors from colliding in a directory; E33 keeps
+an author from colliding with production. The Basilic checkout satisfied E18
+perfectly — a single workstream was writing to it — and still broke, because the
+thing reading it was a set of daemons that had never agreed to follow that
+author's branch. The unit of isolation for a writer is a worktree; the unit of
+isolation for a *service* is a ref.
