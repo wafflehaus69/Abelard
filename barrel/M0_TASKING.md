@@ -171,6 +171,21 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 
 ## Amendments
 
+### Index
+
+| Amendment | Author | Date | Scope |
+|---|---|---|---|
+| A1 (below) | ClaudeCode, recording Mando | 2026-09-04 | Rulings on D1, D2, D3 as given in session |
+| **v1.1** — [`docs/M0_AMENDMENT_v1.1.md`](docs/M0_AMENDMENT_v1.1.md) | Architect | 2026-09-04 | **Operative.** Formalizes and extends A1; adds A2 strata, A3 rug direction + snooping guard, A4 BOOST era split, A5 per-era fee model, A6 H3 costing gate, A7 quarantine standard |
+
+**A1 below is superseded by v1.1 where they overlap** and is retained because it is the
+contemporaneous record of what Mando actually ruled, before the Architect formalized it.
+Where the two differ in force, v1.1 governs. Two of A1's notes are *not* superseded and
+still stand, because v1.1 does not address them: the BigQuery cost caveat (petabyte-scale
+dataset, 1 TiB/month free allowance, ~$6.25/TiB after — so A1's outcome is reported with
+scan estimates attached), and the E16 obligation to enumerate and freeze the launchpad
+admission set before Gate 0 runs rather than during it.
+
 ### A1 — Rulings on D1, D2, D3 (Mando, 2026-09-04)
 
 Ruled by Mando on the findings in `docs/M0_RECON.md`. Superseded text above is left in
