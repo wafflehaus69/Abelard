@@ -291,6 +291,22 @@ dismissing on a single stale-data report.
 
 ## Decisions required from Mando
 
+> **RULED 2026-09-04 — D1, D2, D3.** See amendment **A1** in
+> [`../M0_TASKING.md`](../M0_TASKING.md), which is the operative record; the text below is
+> the *proposal* as put to Mando and is retained unedited so the ruling can be read
+> against what was actually asked. **D2 was ruled against the builder's recommendation**
+> (all venues, not PumpSwap-only) — see A1.2 for what that obliges and for the one way it
+> improves on the narrow option. **D4 and D5 remain unruled.**
+>
+> **One correction to D1 as it was put.** The option was labelled "free". BigQuery public
+> datasets are free of *subscription*, not free of *query cost*: billing is per byte
+> scanned, the free allowance is 1 TiB/month, and this is a **petabyte-scale** dataset.
+> A careless full-table scan burns the month's allowance in one query and bills at
+> ~$6.25/TiB after. `../recon/bigquery_gate0_probe.sql` is therefore staged — metadata
+> first (0 bytes), dry-run byte estimates before every scanning query — and the scan
+> estimates are reported alongside the results. If Gate 0 costs more in BigQuery scan than
+> a month of Dune Analyst, D1 gets re-ruled on numbers rather than on the word "free".
+
 Nothing further should be built until D1–D3 are ruled. D4–D5 can be ruled in parallel.
 
 **D1 — Data source and budget.** Flipside is gone (R1). Dune's free tier cannot run the

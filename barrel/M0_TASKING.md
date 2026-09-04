@@ -171,4 +171,90 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 
 ## Amendments
 
-*None yet. Proposed amendments are in `docs/M0_RECON.md` §Decisions, pending Mando's ruling.*
+### A1 — Rulings on D1, D2, D3 (Mando, 2026-09-04)
+
+Ruled by Mando on the findings in `docs/M0_RECON.md`. Superseded text above is left in
+place. D4 and D5 remain unruled.
+
+---
+
+**A1.1 — D1, data source. RULED: verify the BigQuery public Solana dataset before any
+spend.** No vendor purchase is authorized yet.
+
+Supersedes §2's "Dune or Flipside" only as to sequence: BigQuery
+(`bigquery-public-data.crypto_solana_mainnet_us`) is evaluated first, free, and Dune
+becomes the fallback if it fails. Flipside is struck as a candidate — it ceased to exist
+2026-06-17 (R1).
+
+The evaluation is not "does it have data." It is three questions, in `recon/bigquery_gate0_probe.sql`:
+
+1. **Freshness** — how far behind head is the newest block, and is the lag stable across
+   the window or does it have holes? R1 established the public record here is misleading
+   in both directions: the 2025-03-31 outage was resolved in April 2025, and a separate
+   multi-day lag was reported in November 2025 with no official response.
+2. **Coverage of the window** — per-week transaction counts back to 2025-03-20, looking
+   for gaps. §2's Gate 0 tolerance is >5% in any week = stop and report.
+3. **Whether `accounts` actually answers R8** — the state-snapshot table is the entire
+   reason this candidate is not dismissed. If it does not carry mint/freeze authority at
+   a slot, its main advantage over Dune evaporates and the S1–S7 as-of reconstruction
+   cost returns in full.
+
+**Blocked on access.** This session has no `gcloud`/`bq` and no GCP credentials, and the
+BigQuery connector is unauthorized. A public dataset still requires an authenticated
+project to query. The queries are written and waiting.
+
+---
+
+**A1.2 — D2, universe. RULED: all venues — PumpSwap, Raydium (legacy and current), and
+Meteora.** Supersedes §3's "graduated from pump.fun (or equivalent launchpad) to a
+Raydium or Meteora pool" by widening it rather than replacing it: PumpSwap is added as
+the dominant destination, and the pre-2025-03-20 Raydium era is retained in the main
+universe rather than being stratified out.
+
+Builder recommended the narrower PumpSwap-only universe (`docs/M0_RECON.md` D2); Mando
+ruled wider. Recorded because the ruling carries obligations the narrow version did not,
+and they are not optional:
+
+* **Per-venue composition on every aggregate, always co-presented [E14].** No pooled
+  headline number ships without its venue decomposition. A pooled expectancy across
+  venues with different LP mechanics, fee schedules and launchpad populations is exactly
+  the kind of aggregate E14 exists to forbid.
+* **`(or equivalent launchpad)` now binds and must be enumerated before the census.**
+  Widening past pump.fun admits Raydium LaunchLab, Meteora's own launch paths, and the
+  other current launchpads. The admitted set is written down and frozen *before* Gate 0
+  runs, not discovered during it — [E16], admission bugs masquerade as match failures.
+* **The gate's structural constants are now venue-dependent, so no check may be assumed
+  constant globally.** S1–S5 pass/fail rates get reported per venue.
+* **Per-venue cost model.** §5 gains a fee schedule per venue and per era rather than one
+  rate: PumpSwap 0.25% (0.20 LP / 0.05 protocol), Raydium v4 0.25%, Raydium CLMM tiered,
+  Meteora DLMM dynamic. Plus the creator-fee leg from R6.
+
+**The ruling has a genuine upside the narrow option did not, and it partly repairs D3.**
+R3's problem was that LP burn is structural on PumpSwap, making S5 constant and the rug
+definition's lead limb unable to fire. That is a *PumpSwap* property, not a universal one.
+On venues where LP is not burned by construction, S5 regains discriminating power and
+"LP removed ≥80%" fires as written. The cost is that the rug base rate now differs by
+venue **by construction** — so rug recall and precision are reported per venue and never
+pooled, or the mix alone will move the headline.
+
+---
+
+**A1.3 — D3, rug definition. RULED: measure first, then pre-register.** Supersedes §4's
+rug definition as to *timing*: the definition above stands as the draft, and the
+threshold is not final until amended.
+
+Binding sequence, no step skippable:
+
+1. Gate 0 census completes.
+2. The observed distribution of post-graduation reserve decay is measured and published —
+   **per venue**, per A1.2.
+3. The rug threshold is pre-registered in a numbered amendment to this file.
+4. Only then is any gate metric (recall, precision, false-block rate) computed.
+
+Computing a gate metric before step 3 is a protocol violation, not a shortcut. [E8]:
+no spec constant ships without an observed distribution behind it.
+
+---
+
+**Still unruled:** D4 (BOOST as a pre-registered era split vs. a §7 tercile) and D5
+(§12 bankroll confirmation, and the "Mando's list" wallet set for the H3 cohort variant).
