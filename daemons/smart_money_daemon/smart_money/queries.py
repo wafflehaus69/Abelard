@@ -1650,10 +1650,7 @@ def q_portfolio(con, filer_cik=None, period=None):
         elif pv is None:
             badge = "new"
         else:
-            if h["put_call"] == "long":
-                cm, pm = h["shares"], pv["shares"]
-            else:
-                cm, pm = h["value"], pv["value"]
+            cm, pm, _measure = _flow_measure(h, pv)
             badge = "added" if cm > pm else "trimmed" if cm < pm else None
         rows.append(_row(h, badge, pv["value"] if pv else None))
     # Exited: held last period, gone this period -> synthetic zero-value rows.
@@ -1693,6 +1690,25 @@ def _flow_key(h):
     """
     pc = h["put_call"] or "long"
     return ((h["ticker"] or "").upper(), "SH" if pc == "long" else pc.upper())
+
+
+def _flow_measure(h, pv):
+    """(current, prior) size for deciding added/trimmed, and which measure it is.
+
+    SHARES move only when the filer TRADES. VALUE also moves with the MARK, so a
+    position held untouched through a rally reads as 'added' when measured on
+    value. Long rows always had shares and always used them; option rows carried a
+    hardcoded 0, so both call sites fell back to value for every put and call in
+    the corpus — meaning option direction was mark-contaminated by construction.
+
+    Now that option sshPrnamt is stored, one rule serves both: use shares whenever
+    BOTH periods report them, else fall back to value. The fallback is not dead
+    code — a bucket can legitimately report 0, and rows ingested before the
+    sshPrnamt fix still carry 0 until the backfill reaches them.
+    """
+    if h.get("shares") and pv.get("shares"):
+        return h["shares"], pv["shares"], "shares"
+    return h["value"], pv["value"], "value"
 
 
 def _manager_flow(con, cik, thesis, name):
@@ -1741,10 +1757,7 @@ def _manager_flow(con, cik, thesis, name):
         if pv is None:
             flows[key] = (_DIR_ACC, h["value"], "new")
         else:
-            if h["put_call"] == "long":
-                cm, pm = h["shares"], pv["shares"]
-            else:
-                cm, pm = h["value"], pv["value"]
+            cm, pm, _measure = _flow_measure(h, pv)
             if cm > pm:
                 flows[key] = (_DIR_ACC, h["value"], "added")
             elif cm < pm:

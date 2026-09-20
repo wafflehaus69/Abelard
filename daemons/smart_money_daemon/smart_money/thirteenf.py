@@ -86,7 +86,17 @@ def fetch_cover(cik, accession, contact):
 
 def parse_holdings(raw_xml):
     """cusip -> {issuer, value, shares, putCall}. Aggregates rows per cusip
-    keeping separate put/call/long buckets folded into net fields."""
+    keeping separate put/call/long buckets folded into net fields.
+
+    OPTION ROWS CARRY sshPrnamt AND IT IS THE UNDERLYING SHARE COUNT. Duquesne's
+    Q2 Tesla call reports sshPrnamt 126000 / sshPrnamtType SH against value 52996,
+    i.e. 1,260 contracts on 126,000 shares at an implied $420.60. This parser
+    dropped it for every option row in the corpus (450 rows) on the belief that
+    Form 13F says nothing about option size. It says exactly as much about an
+    option row as about a long one: shares, type, and notional value. Nothing more
+    — there is no strike and no expiry anywhere in the schema — but the share
+    count is stated and must not be invented as zero.
+    """
     raw = re.sub(r'xmlns="[^"]+"', "", raw_xml, count=1)
     root = ET.fromstring(raw)
     holdings = {}
@@ -109,15 +119,24 @@ def parse_holdings(raw_xml):
         h = holdings.setdefault(
             cusip,
             {"issuer": g("nameOfIssuer"), "value": 0, "shares": 0,
-             "call_val": 0, "put_val": 0,
+             "call_val": 0, "put_val": 0, "call_sh": 0, "put_sh": 0,
+             "call_type": None, "put_type": None,
              "shares_type": None, "title_of_class": None},
         )
         if h["title_of_class"] is None:
             h["title_of_class"] = title
-        if pc == "Put":
-            h["put_val"] += val
-        elif pc == "Call":
-            h["call_val"] += val
+        if pc in ("Put", "Call"):
+            b = "put" if pc == "Put" else "call"
+            h[b + "_val"] += val
+            h[b + "_sh"] += sh
+            # Typed exactly like the long bucket, from the filing's own
+            # sshPrnamtType. Options are reported SH in practice, but PRN is not
+            # forbidden and MIXED must stay visible rather than resolve silently.
+            k = b + "_type"
+            if h[k] is None:
+                h[k] = stype
+            elif stype and stype != h[k]:
+                h[k] = "MIXED"
         else:
             h["value"] += val
             h["shares"] += sh
