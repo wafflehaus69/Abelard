@@ -93,18 +93,20 @@ def _holding_rows(holdings):
     """parse_holdings aggregates per cusip into long/call/put buckets; emit one
     durable row per non-zero bucket.
 
-    shares_type belongs only to the long bucket — option buckets carry shares=0 by
-    construction, so typing them SH would assert something the filing never said.
+    Every bucket carries the shares, the type and the class the filing states for
+    it. The option buckets previously emitted a hardcoded 0 shares and NULL type,
+    justified by a comment claiming the filing never said — it does say, on every
+    option row, and that comment was the defect documenting itself.
     title_of_class travels with every bucket; it is the filer's own class label."""
     for cusip, h in holdings.items():
         title = h.get("title_of_class")
         if h["value"] or h["shares"]:
             yield (cusip, h["issuer"], "long", h["value"], h["shares"],
                    h.get("shares_type"), title)
-        if h["call_val"]:
-            yield cusip, h["issuer"], "call", h["call_val"], 0, None, title
-        if h["put_val"]:
-            yield cusip, h["issuer"], "put", h["put_val"], 0, None, title
+        for b, pc in (("call", "call"), ("put", "put")):
+            if h[b + "_val"] or h.get(b + "_sh"):
+                yield (cusip, h["issuer"], pc, h[b + "_val"], h.get(b + "_sh", 0),
+                       h.get(b + "_type"), title)
 
 
 def pick_listing(data):

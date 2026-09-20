@@ -85,6 +85,16 @@ put program in 5 of 8 quarters. Six of the nine additions have never held a semi
 position in any quarter. Long:put went **2.9:1 at Q1 → 124:1 at Q2**
 ($47.0bn ex-corporate long vs $0.377bn puts).
 
+> **CORRECTED 2026-08-21.** Reading that as Elliott taking "the short seat" on
+> semis was wrong, and the error was one of scope: the semis leg is filtered to
+> semis tickers, so it saw the SMH line alone. Elliott's actual Q2 put book is
+> **11 rows and $8,307,782,650 of notional** — QQQ $2.56bn, IGV $1.43bn, XLI
+> $959m, XLY $833m, XLP $800m, GDX $690m, IHI $618m, SMH $164m, XME $96m, RSP
+> $84m, IWM $75m. That is a **broad index-and-sector hedge program in which semis
+> is 2.0%**, not a semis view. The 124:1 long:put ratio *within semis* stands as
+> computed; the sentence built on it did not. Everything else in ② holds —
+> Situational Awareness did vacate, Duquesne did not exit.
+
 **③ A metals rotation axis that did not exist before.** Five opposed pairs on one
 asset class, all created by the expansion: WPM (First Eagle +$1.60bn vs Horizon
 Kinetics −$189m), FNV (HK +$161m vs FE −$1.10bn), NEM (Kopernik +$5m vs FE
@@ -110,6 +120,18 @@ differently and both must be reported.
   written, and option values are NOTIONAL, not premium or delta. Put notional is
   summed as positive ($77.671bn at Q2) — it is not capital and does not offset
   common one-for-one.
+- **No strike, no expiry, ever.** The complete Form 13F tag vocabulary is eleven
+  tags — cusip, nameOfIssuer, titleOfClass, value, sshPrnamt, sshPrnamtType,
+  putCall, investmentDiscretion, and the three votingAuthority legs. There is no
+  strike, expiry, exercise price or maturity field, and the CUSIP on an option row
+  is the UNDERLYING's, not an OCC contract symbol. Contract terms are therefore
+  not merely missing from our parse — they are absent from the filing, and no
+  amount of joining will produce them. `options_chain_snapshots` carries real
+  strikes and expiries but is market-wide open interest, not filer-attributed; it
+  can narrow a hypothesis and can never settle one.
+- **Option SIZE is now known** (fixed 2026-08-21, see §5): each option row states
+  sshPrnamt, the underlying share count, so contracts = sshPrnamt / 100 and
+  value / sshPrnamt recovers the underlying's mark. Size, not terms.
 - **45-day lag.** Q2 marks are 2026-06-30, filed August, read later still.
 - **corporate_strategic is not a view.** Alphabet/Amazon/NVIDIA are 21.5% of the
   book and mark balance-sheet stakes. Never pool them into a consensus.
@@ -175,6 +197,30 @@ It now also reads `value_usd` rather than raw `value`. Regression-tested.
 cross-thesis**. Corporate filers are near-irrelevant to disagreement — removing
 all three costs 3 pairs. Breadth is still thin: only 12 of 82 have ≥2 filers on
 both sides.
+
+**Option share counts were being discarded, and option direction was therefore
+mark-contaminated** (fixed 2026-08-21). The parser emitted a hardcoded 0 shares
+for every put and call — 450 rows, the whole corpus — above a comment asserting
+the filing "never said". It does say: Duquesne's Q2 Tesla call states sshPrnamt
+126,000 / type SH against value 52,996, i.e. **1,260 contracts at an implied
+$420.60**. Recovered from EDGAR for all 450 rows across 71 filings,
+**767,505,100 underlying shares**, each filing gated on its stored `value`
+still matching so a re-parse could not attach one filing's sizes to another's
+rows. Every recovered row's value/shares lands on a plausible period close,
+which independently validates the set.
+
+The consequence was larger than the missing column. Both direction paths fell
+back to VALUE for options because shares were zero — and value moves with the
+mark, so a position held untouched through a rally read as "added". Measured
+across all 232 consecutive option position-pairs: **84 were mis-badged, 36.2%.**
+76 were untouched positions reported as added or trimmed; **8 were sign
+inversions**, where the contract count moved opposite to the notional — Soros SMH
+put (added → **trimmed**, 3,100 → 2,900 contracts), Soros IRM call, Kopernik CMG
+put (100 → 50), Kopernik AZO put (3 → 1), Horizon Kinetics VXX and JDST calls,
+Soros 8QR and HUN calls. Direction now reads off shares whenever both periods
+report them, falling back to value otherwise. Headline effect is small because a
+corrected row usually goes flat and stops voting: **convergences 1,115 → 1,111,
+opposed pairs 82 → 80.**
 
 ---
 
