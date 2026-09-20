@@ -41,6 +41,28 @@ DRAFTS_DIR = Path("abelard_common/corrections/drafts")
 
 # A dividend is compared to the cent; anything finer is vendor rounding.
 DIV_TOLERANCE = 0.005
+# And so is a PRICE. A US equity close is penny-denominated, so two vendors
+# reporting the same session cannot genuinely differ by less than a cent — below
+# that, at least one is serving a derived or differently-rounded value and the
+# gap is a convention, not a fact in dispute.
+#
+# CROSS_VENDOR_EPS alone is RELATIVE and sized for Yahoo's float32 noise (1e-6),
+# which is far tighter than the convention gap between these two vendors. Every
+# one of the 67 draft rows standing on 2026-09-19 was Yahoo exactly half a cent
+# above Tiingo — 67 of 67, same sign, magnitude 0.004973..0.005017, the spread
+# being float32 noise on Yahoo's side. That is one rounding convention, not 67
+# broken sessions, and signing them would have written a vendor preference into
+# the store as 67 human-attested facts while the sweep minted more every night.
+#
+# HALF a cent, not a whole one. Rounding a penny-denominated close to the
+# nearest cent can move it by at most 0.005 — that is what nearest-cent means —
+# so half a cent is the largest gap convention alone can explain, and a genuine
+# disagreement starts at a full penny. A tolerance of 0.01 would have sat ON
+# that boundary and swallowed real one-cent errors, because 50.01 - 50.00 is
+# 0.009999999999990905 in binary floating point and compares UNDER 0.01. The
+# extra 1e-4 clears Yahoo's float32 noise, measured at most 1.7e-5 off the half
+# cent across all 67 rows.
+PRICE_TOLERANCE = 0.0051
 # A split ratio is exact arithmetic (2:1, 3:2); this is float noise only.
 SPLIT_TOLERANCE = 1e-4
 # A hole must be this many sessions old before it is filled. Today's absence is
@@ -84,6 +106,26 @@ class Comparison:
         return " | ".join(bits) or "{} sessions agree".format(self.agreements)
 
 
+def _prices_agree(theirs: float, ours: float) -> bool:
+    """Do two vendors say the same thing about one session's close?
+
+    Two gates, and a session passes on either:
+
+      * RELATIVE (``CROSS_VENDOR_EPS``) — absorbs Yahoo's float32-widened
+        closes, and is the only gate that means anything on a high-priced name.
+      * ABSOLUTE (``PRICE_TOLERANCE``) — a sub-penny gap on a penny-denominated
+        close is a rounding convention, not a disputed fact.
+
+    The absolute gate is what the relative one cannot express: half a cent is
+    3.0e-4 of a $16.69 close and 1.0e-5 of a $478.71 one, so a single relative
+    epsilon either passes real errors on cheap names or flags convention on
+    expensive ones. It cannot do both, and it was doing neither.
+    """
+    if abs(theirs - ours) < PRICE_TOLERANCE:
+        return True
+    return abs(theirs / ours - 1.0) <= CROSS_VENDOR_EPS
+
+
 def compare_series(
     held: dict[str, float],
     held_status: dict[str, str],
@@ -108,7 +150,7 @@ def compare_series(
         if status != "ok":
             continue                      # already quarantined; not a fact to check
         c.sessions_compared += 1
-        if ours and abs(bar.raw_close / ours - 1.0) <= CROSS_VENDOR_EPS:
+        if ours and _prices_agree(bar.raw_close, ours):
             c.agreements += 1
         else:
             c.price_disagreements.append((date, bar.raw_close, ours))
