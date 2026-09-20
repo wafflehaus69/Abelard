@@ -79,6 +79,45 @@ def _adj(con: sqlite3.Connection, instrument_id: str, date: str) -> float | None
     return row[0] if row else None
 
 
+def effective_close(con: sqlite3.Connection, instrument_id: str,
+                    date: str) -> float | None:
+    """The raw close this session is actually known by, or None.
+
+    ``prices_raw`` is insert-only, so a session the primary returned with no
+    price keeps its ``vendor_null`` row forever — that row is the record that
+    the primary had nothing, and it must stay. G3 fills such a hole from a
+    second sourced vendor, but because the slot is already occupied the fill
+    cannot be written into ``prices_raw`` and lands in ``fills`` instead. The
+    comment at that insert calls it "an overlay the view honours".
+
+    NOTHING HONOURED IT. ``fills`` was written and never read by any query in
+    the package, so a filled hole stayed invisible and the substrate could not
+    heal. On 2026-09-19 that left 5,688 sessions across 2026-09-03..18 looking
+    permanently empty while the vendor served every one of them on request, and
+    the nightly SPX reconciliation reported 0.0% coverage for sixteen straight
+    days. This function is the honouring.
+
+    Precedence, strongest evidence first:
+      1. ``prices_raw`` with status ``ok`` or ``filled`` — what a vendor said
+         about the session directly, a fill that found an empty slot included.
+      2. ``fills`` — the attributed overlay for a slot a ``vendor_null`` holds.
+
+    A ``quarantined`` row is deliberately NOT a source: it is a session under
+    suspicion, and resolving it is a human's job, not a fallback's.
+    """
+    row = con.execute(
+        "SELECT close FROM prices_raw WHERE instrument_id=? AND date=?"
+        " AND status IN ('ok','filled') AND close IS NOT NULL",
+        (instrument_id, date)).fetchone()
+    if row and row[0]:
+        return row[0]
+    row = con.execute(
+        "SELECT filled_close FROM fills WHERE instrument_id=? AND date=?"
+        " AND filled_close IS NOT NULL",
+        (instrument_id, date)).fetchone()
+    return row[0] if row and row[0] else None
+
+
 def _price_return(con: sqlite3.Connection, instrument_id: str,
                   date: str, prior: str) -> float | None:
     """A PRICE return for one session — not a total return.
@@ -93,14 +132,14 @@ def _price_return(con: sqlite3.Connection, instrument_id: str,
     So the rebuild runs on ``prices_raw`` — true traded prices — with any split
     falling inside the window divided back out, since a raw series steps at a
     split by construction.
+
+    Reads the EFFECTIVE close (see ``effective_close``), not ``status='ok'``
+    alone: a filled hole is a real traded price with attribution, and ignoring
+    it made a transient vendor gap look like a permanent one.
     """
-    a = con.execute(
-        "SELECT close FROM prices_raw WHERE instrument_id=? AND date=? AND status='ok'",
-        (instrument_id, date)).fetchone()
-    b = con.execute(
-        "SELECT close FROM prices_raw WHERE instrument_id=? AND date=? AND status='ok'",
-        (instrument_id, prior)).fetchone()
-    if not a or not b or not a[0] or not b[0] or b[0] <= 0:
+    a = effective_close(con, instrument_id, date)
+    b = effective_close(con, instrument_id, prior)
+    if not a or not b or b <= 0:
         return None
     ratio = 1.0
     for r in con.execute(
@@ -110,7 +149,7 @@ def _price_return(con: sqlite3.Connection, instrument_id: str,
     ):
         if r[0]:
             ratio *= r[0]
-    return (a[0] / b[0]) * ratio - 1.0
+    return (a / b) * ratio - 1.0
 
 
 def _benchmark_return(con: sqlite3.Connection, benchmark: str,
