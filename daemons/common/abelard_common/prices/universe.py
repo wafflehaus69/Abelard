@@ -421,6 +421,48 @@ def assign_instrument_ids(
     return merged, raw_to_key
 
 
+def residual_lines(
+    rows: Sequence[Constituent],
+    merged: dict[str, Constituent],
+    raw_to_key: dict[str, str],
+) -> set[tuple[str, str]]:
+    """(instrument_id, index_code) pairs that are holdings RESIDUE, not members.
+
+    A fund's holdings file can carry a line for a security it no longer really
+    holds. HOLX on 2026-09-18: 2,843,388 shares of an acquired company marked at
+    $0.01, market value $28,433.88, weight 0.00% -- while every one of the 503
+    real S&P members weighed at least 0.01%. Wikipedia never listed it. As a
+    "member" it was fetched every night, 404'd every night, and was the last
+    thing keeping the nightly's exit code at 1.
+
+    A line is residue when BOTH hold:
+      * its weight is exactly zero, and
+      * another source covers the same index today and does not list it.
+
+    The second clause is what makes the rule safe. Weights arrive rounded to two
+    decimals; in a 2,000-name fund (IWM, currently off) a real small-cap can
+    round to 0.00. When the ETF file is an index's ONLY source there is nothing
+    to corroborate against, so nothing is dropped. A missing weight (None, as
+    every Wikipedia row has) is never zero.
+    """
+    def iid(c: Constituent) -> str:
+        return instrument_id(merged[raw_to_key[c.ticker]])
+
+    listed_by: dict[tuple[str, str], set[str]] = {}
+    index_sources: dict[str, set[str]] = {}
+    for c in rows:
+        listed_by.setdefault((iid(c), c.index_code), set()).add(c.source)
+        index_sources.setdefault(c.index_code, set()).add(c.source)
+    out: set[tuple[str, str]] = set()
+    for c in rows:
+        if c.weight is None or c.weight != 0:
+            continue
+        key = (iid(c), c.index_code)
+        if len(index_sources[c.index_code]) >= 2 and listed_by[key] == {c.source}:
+            out.add(key)
+    return out
+
+
 def instrument_id(c: Constituent) -> str:
     if not c.cik:
         # Never a silent drop. Provisional, flagged, and reported nightly.
@@ -450,6 +492,7 @@ class SyncReport:
     historical_names: int = 0
     disagreements: list[tuple[str, str, str, str]] = field(default_factory=list)
     departures: list[tuple[str, str]] = field(default_factory=list)
+    residual: list[str] = field(default_factory=list)
 
     def render(self) -> str:
         out = ["universe sync as_of {}".format(self.as_of),
@@ -464,6 +507,10 @@ class SyncReport:
         for t, a, b, c in self.disagreements[:20]:
             out.append("     {:<7} {} says {!r} | {} says {!r}".format(t, a, b, "", c)
                        .replace("|  says", "|"))
+        out.append("  residual lines excluded (zero weight, uncorroborated): {}"
+                   .format(len(self.residual)))
+        if self.residual:
+            out.append("     " + " ".join(sorted(self.residual)[:25]))
         out.append("  index departures recorded: {}".format(len(self.departures)))
         out.append("  index weights stored: {}".format(self.weights))
         out.append("  historical membership: {} as-of rows over {} departed names "
@@ -513,8 +560,23 @@ def sync(
         if c.class_code and c.class_code.isdigit() and c.class_code != "0"
     }
 
+    residual = residual_lines(rows, merged, raw_to_key)
+    # An instrument is skipped as an identity only when EVERY index it appears
+    # in treats it as residue; a name residual in one index and a member of
+    # another keeps its identity row.
+    appears_in: dict[str, set[str]] = {}
+    for c in rows:
+        appears_in.setdefault(instrument_id(merged[raw_to_key[c.ticker]]),
+                              set()).add(c.index_code)
+    residual_iids = {iid for iid, idxs in appears_in.items()
+                     if all((iid, idx) in residual for idx in idxs)}
+    for iid, idx in sorted(residual):
+        rep.residual.append("{} ({})".format(iid, idx))
+
     for ticker, c in sorted(merged.items()):
         iid = instrument_id(c)
+        if iid in residual_iids:
+            continue
         provisional = 1 if not c.cik else 0
         if provisional:
             rep.provisional.append(ticker)
@@ -540,6 +602,8 @@ def sync(
     seen: set[tuple[str, str, str]] = set()
     for c in rows:
         iid = instrument_id(merged[raw_to_key[c.ticker]])
+        if (iid, c.index_code) in residual:
+            continue          # not a member; absent from `seen`, so it departs below
         key = (iid, c.index_code, c.source)
         if key in seen:
             continue
@@ -555,6 +619,8 @@ def sync(
         if c.weight is None:
             continue
         iid = instrument_id(merged[raw_to_key[c.ticker]])
+        if (iid, c.index_code) in residual:
+            continue
         try:
             con.execute(
                 "INSERT INTO index_weights (instrument_id, index_code, as_of,"
