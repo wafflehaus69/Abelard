@@ -178,6 +178,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | A1 (below) | ClaudeCode, recording Mando | 2026-09-04 | Rulings on D1, D2, D3 as given in session |
 | **v1.1** — [`docs/M0_AMENDMENT_v1.1.md`](docs/M0_AMENDMENT_v1.1.md) | Architect | 2026-09-04 | **Operative.** Formalizes and extends A1; adds A2 strata, A3 rug direction + snooping guard, A4 BOOST era split, A5 per-era fee model, A6 H3 costing gate, A7 quarantine standard |
 | MR-2 (below) | ClaudeCode, recording Mando | 2026-09-21 | D5 bankroll; price-reference pool rule; BigQuery access + what metadata already settles |
+| MR-3 (below) | ClaudeCode, recording Mando / Architect | 2026-09-21 | BigQuery spend ceiling + Transactions rule; price reference vs fill; realized-fee cost model ratified; owner wallets; H3 discovery spec adopted |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
 Builder-recorded Mando rulings therefore use the **MR-** prefix from here on; the A1 block
@@ -381,3 +382,61 @@ grounds: cost, and the quarantine.
 *Correction to `recon/bigquery_gate0_probe.sql`.* It assumed lowercase table names. The real
 tables are `Accounts`, `Blocks`, `Transactions`, `Instructions`, `Token Transfers`, `Tokens`
 — capitalized, and one containing a space. Fixed in the file.
+
+---
+
+### MR-3 — Relayed orders (Mando / Architect, 2026-09-21)
+
+Recorded by ClaudeCode in the session they were relayed.
+
+**MR-3.1 — BigQuery spend ceiling. RULED.**
+
+* Stay inside the **free 1 TiB of query processing this month.**
+* **Confirm before running** any single query whose estimate exceeds **50 GB**.
+* **No query touches `Transactions` unclustered.** `Transactions` is clustered on `signature`
+  only, so the rule's working form is: `Transactions` is read only with a `signature` filter
+  derived from a `program_id`-filtered `Instructions` query, never by date alone. Builder's
+  note: clustering pruning is weak under large join or `IN` lists, so the preferred design
+  avoids `Transactions` entirely wherever `Instructions` suffices. Fee work does: realized
+  fees come from PumpSwap swap events, which are self-CPI rows in `Instructions` under
+  PumpSwap's own `program_id`.
+* Budgeting caveat (MR-2.3): a dry run on a clustered table reports the unclustered upper
+  bound. The 50 GB confirm rule is applied to that dry-run figure, conservatively, until
+  real bytes-billed on a first small query gives a measured ratio.
+
+**MR-3.2 — Price reference vs fill. RULED: they are different.** Resolves the question MR-2.2
+left open.
+
+* **Price reference** = **volume-weighted** price across the pools that qualify under the
+  MR-2.2 X% volume-share rule. Used for marks, returns, the H3 "≥ 5×" winner test, and
+  anything else that asks "what was the price".
+* **Fill** = the **single deepest qualifying pool at the entry block**. A $20 ticket does not
+  split across routes, and the backtest pays what Mando would actually pay, not an average.
+  Exit fill follows §5 as written (worse of next-block price and depth-implied price), in
+  that same pool, unless it dropped out of the qualifying set by then. **That case is not
+  yet ruled** and must not be defaulted: builder flags it for v1.2.
+* "Deepest" needs a definition before it is computed. Builder's proposal for v1.2: quote-side
+  reserves at the entry block. Not assumed until ruled.
+
+**MR-3.3 — Cost model pricing. RATIFIED for v1.2.** §5 fees are priced from **fees actually
+charged in historical swap events**, with config history used only to date era boundaries.
+Architect's note carried in: at a median 104 bps per leg when a creator fee is set (cap 300),
+fees alone can be **2–6% round trip before slippage on a hot token**, and hot tokens are
+where creator fees are set. That is a hurdle the expectancy has to clear, not a reason to
+stop.
+
+**MR-3.4 — Owner wallets.** The wallets Mando offered are **his own**. They are excluded from
+every cohort, every universe statistic, and the repo (H3 spec §0). They live only in
+`barrel/private/`, which is **gitignored before any file exists there**
+(`barrel/.gitignore`, verified with `git check-ignore`). No owner address appears in any
+committed file, query result, or log.
+
+**MR-3.5 — H3 wallet discovery. ADOPTED:** `docs/H3_WALLET_DISCOVERY_v1.0.md` (Architect,
+2026-09-21), committed verbatim. It replaces §6 H3's cohort construction and A6's costing
+path with a winners-side funnel and its own cost gate. The builder's review is in
+`docs/H3_WALLET_DISCOVERY_REVIEW.md`. **One contradiction in it needs a ruling before
+anything runs** (review item 1).
+
+**Still blocked:** no scanning query can run until Mando supplies the **GCP billing project
+ID**. It was relayed as "yours to give", which is Mando's to supply. The builder cannot
+discover it: the connector exposes no project listing.

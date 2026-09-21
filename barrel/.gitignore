@@ -1,0 +1,5 @@
+# Owner wallets (Mando's) and anything derived from them — H3 Wallet Discovery
+# Spec v1.0 §0: they exist only in the personal-history replay, never in the repo.
+# Ignored BEFORE any such file exists, so the first write cannot be committed by
+# accident. Verify with: git check-ignore -v barrel/private/anything
+private/
