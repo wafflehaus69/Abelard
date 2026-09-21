@@ -118,7 +118,7 @@ def member_ttm_at(series, q, window=WINDOW):
 
 
 def frontier_split(membership, members, as_of=None,
-                   floor=None, max_wait_days=FRONTIER_MAX_WAIT_DAYS):
+                   floor=None, max_wait_days=FRONTIER_MAX_WAIT_DAYS, value_at=None):
     """({published quarters}, [partial rows]) for a matched-membership series.
 
     A quarter is PARTIAL while the members who reported it cover less than
@@ -143,13 +143,19 @@ def frontier_split(membership, members, as_of=None,
     from datetime import date, timedelta
     floor = FRONTIER_COVERAGE_FLOOR if floor is None else floor
     as_of = as_of or date.today()
+    # How much a member weighs at a quarter. Discrete quarterly flows (the
+    # default) are summed over the trailing window; a caller whose maps are
+    # already TTMs or stocks passes a direct lookup instead.
+    if value_at is None:
+        def value_at(t, q):
+            return member_ttm_at(members.get(t) or {}, q)
     qs = sorted(membership, key=_cq_sort)
     if len(qs) < 2:
         return set(qs), []
     accepted, partial = [qs[0]], []
     for q in qs[1:]:
         ref = accepted[-1]
-        base = {t: member_ttm_at(members.get(t) or {}, ref) for t in membership[ref]}
+        base = {t: value_at(t, ref) for t in membership[ref]}
         base = {t: v for t, v in base.items() if v}
         denom = sum(base.values())
         reported = set(membership[q])
@@ -173,6 +179,30 @@ def frontier_split(membership, members, as_of=None,
                              + timedelta(days=max_wait_days)).isoformat(),
         })
     return set(accepted), partial
+
+
+def membership_floor(membership, floor=None):
+    """The membership-floor verdict for a matched sum's LATEST point.
+
+    A separate guard from the frontier gate, deliberately. The gate is about
+    TIMING: it holds a quarter not yet fully reported and releases it when the
+    filings land. The floor is about IDENTITY: a one-member "sum" is that
+    member's own number wearing an aggregate's label, however complete its
+    reporting. So the floor REFUSES the figure rather than trimming it — a bucket
+    genuinely reduced to one name says so, instead of freezing on its last good
+    quarter.
+
+    Latest point only, the same rule buckets have always used: history keeps its
+    one-name early quarters, each labelled with its member count.
+    """
+    floor = MIN_BUCKET_MEMBERS if floor is None else floor
+    if not membership:
+        return {"status": STATE_INSUFFICIENT_MEMBERSHIP, "members": 0,
+                "min_members": floor, "quarter": None}
+    q = max(membership, key=_cq_sort)
+    n = len(membership[q])
+    return {"status": "OK" if n >= floor else STATE_INSUFFICIENT_MEMBERSHIP,
+            "members": n, "min_members": floor, "quarter": q}
 
 
 def _trim(values, membership, published):
@@ -314,7 +344,7 @@ class ConstantPanel:
 
 def constant_membership_panel(member_maps, min_members=MIN_BUCKET_MEMBERS,
                               min_quarters=MIN_PANEL_QUARTERS,
-                              coverage_floor=COVERAGE_FLOOR):
+                              coverage_floor=COVERAGE_FLOOR, as_of=None):
     """Pick the (member set, trailing window) a LEVEL may honestly be drawn over.
 
     Matched membership makes a *comparison* safe: both sides of a YoY are taken
@@ -338,6 +368,23 @@ def constant_membership_panel(member_maps, min_members=MIN_BUCKET_MEMBERS,
     quarters = sorted({q for m in member_maps.values() for q in m}, key=_cq_sort)
     if not quarters:
         return ConstantPanel(None, None, None, 0.0, [])
+    # The window may only END where the membership has actually reached.
+    #
+    # This used `quarters[-1]` — the newest quarter ANY member reached — and
+    # every candidate window had to end there. On 2026-09-12 Oracle alone reached
+    # calendar 2026Q3, so every window's common membership was ORCL, below the
+    # two-member floor, and the panel came back empty: the front-page composite
+    # read "no constant-membership panel" for nine days, and the hyperscaler
+    # bucket's level line vanished with it. Same defect as the matched sums, in a
+    # function that gate did not reach — found by rendering the Brief after the
+    # first fix deployed.
+    membership = {q: sorted(t for t, m in member_maps.items() if q in m) for q in quarters}
+    published, _held = frontier_split(
+        membership, member_maps, as_of=as_of,
+        value_at=lambda t, q: abs(member_maps[t][q]) if q in member_maps[t] else None)
+    quarters = [q for q in quarters if q in published]
+    member_maps = {t: {q: v for q, v in m.items() if q in published}
+                   for t, m in member_maps.items()}
     end = quarters[-1]
     at_end = {t: m[end] for t, m in member_maps.items() if end in m}
     denom = sum(abs(v) for v in at_end.values())
@@ -542,7 +589,12 @@ def build(roster, indexed_by_cik, include_leases=False, as_of=None):
         all_members.update(bucket_members.get(b, {}))
     total = full_panel_trend(all_members, as_of=as_of)
     total_obs, total_state = [], phases.STATE_INSUFFICIENT
-    if len(total.yoy) >= phases.N_CONFIRM + 1:
+    # CD-FRONTIER-CLOSE F3. Buckets have always refused a one-member latest
+    # point; the TOTAL never did, and that asymmetry is how a one-name "panel"
+    # reached the front page on 2026-09-12. The same floor now applies to both.
+    if membership_floor(total.membership)["status"] != "OK":
+        total_state = STATE_INSUFFICIENT_MEMBERSHIP
+    elif len(total.yoy) >= phases.N_CONFIRM + 1:
         total_obs = phases.classify(total.yoy, "total:panel", series_key="total:panel")
         cur = phases.current(total_obs)
         total_state = cur.state if cur else phases.STATE_INSUFFICIENT
@@ -562,10 +614,10 @@ def build(roster, indexed_by_cik, include_leases=False, as_of=None):
 
     # Constant-membership panels — the only basis on which a LEVEL is plotted.
     const_capex = constant_membership_panel(
-        {t: ttm_by_quarter(m) for t, m in all_members.items()})
+        {t: ttm_by_quarter(m) for t, m in all_members.items()}, as_of=as_of)
     const_issuance = constant_membership_panel(
-        {t: ttm_by_quarter(m) for t, m in issuance_members.items()})
-    const_commitments = constant_membership_panel(commitment_members)
+        {t: ttm_by_quarter(m) for t, m in issuance_members.items()}, as_of=as_of)
+    const_commitments = constant_membership_panel(commitment_members, as_of=as_of)
 
     # THE JAWS must be a matched pair. The capex panel is chosen for capex
     # coverage and the issuance panel for issuance coverage, and they do not
@@ -579,7 +631,7 @@ def build(roster, indexed_by_cik, include_leases=False, as_of=None):
         jc = {t: ttm_by_quarter(all_members[t]) for t in jaws_names}
         ji = {t: ttm_by_quarter(issuance_members[t]) for t in jaws_names}
         shared = {t: {q: v for q, v in jc[t].items() if q in ji[t]} for t in jaws_names}
-        cp = constant_membership_panel(shared)
+        cp = constant_membership_panel(shared, as_of=as_of)
         if cp:
             jaws_capex = cp
             jaws_issuance = ConstantPanel(
@@ -588,7 +640,8 @@ def build(roster, indexed_by_cik, include_leases=False, as_of=None):
                 cp.coverage, [])
     const_buckets = {}
     for b, mem in bucket_members.items():
-        cp = constant_membership_panel({t: ttm_by_quarter(m) for t, m in mem.items()})
+        cp = constant_membership_panel({t: ttm_by_quarter(m) for t, m in mem.items()},
+                                       as_of=as_of)
         if cp:
             const_buckets[b] = cp
 

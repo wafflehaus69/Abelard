@@ -162,6 +162,7 @@ def _supplier_section(legs, bucket_trends, as_of=None):
             "ttm": ttm[qs[-1]] if qs else None,
             "latest_quarter": qs[-1] if qs else None,
             "partial_frontier": dc_partial,
+            "floor": trend.membership_floor(membership),
         }
         hyper = bucket_trends.get("hyperscaler")
         if hyper and qs:
@@ -332,6 +333,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
             "breadth": t["breadth"].get(b, {}),
             "observations": [_obs_json(o) for o in t["bucket_obs"].get(b, [])],
             "partial_frontier": list(bt.partial),
+            "floor": trend.membership_floor(bt.membership),
         }
 
     tt = t["total_trend"]
@@ -350,6 +352,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
                        for q in sorted(tt.ttm, key=trend._cq_sort)],
         "observations": [_obs_json(o) for o in t["total_obs"]],
         "partial_frontier": list(tt.partial),
+        "floor": trend.membership_floor(tt.membership),
     }
 
     # --- View 0 companions. Published, not recomputed by any renderer. ---
@@ -360,6 +363,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
     panel = {
         "issuance_ttm": _ser(t["issuance_ttm"], t["issuance_membership"], "value"),
         "issuance_partial": list(t.get("issuance_partial") or []),
+        "issuance_floor": trend.membership_floor(t["issuance_membership"]),
         "issuance_membership_latest": (
             t["issuance_membership"][max(t["issuance_membership"], key=trend._cq_sort)]
             if t["issuance_membership"] else []),
@@ -782,7 +786,14 @@ def thesis_line(snap, band=CROSSCHECK_BAND):
         return "rising" if ch > 0.02 else ("falling" if ch < -0.02 else "flat")
 
     capex_dir = _dir(total.get("ttm_series"), "ttm")
-    credit_dir = _dir(panel.get("issuance_ttm"), "value")
+    # F3: the credit leg is a matched sum with a floor. Below it, the latest
+    # figure is one issuer's borrowing, and a direction read off it is that
+    # issuer's direction, not the leg's.
+    iflo = panel.get("issuance_floor") or {}
+    credit_dir = (_dir(panel.get("issuance_ttm"), "value")
+                  if iflo.get("status", "OK") == "OK" else
+                  "withheld — {} of the {} issuers the floor requires report it".format(
+                      iflo.get("members", 0), iflo.get("min_members")))
     # B5 refused the cross-basis commitments TOTAL, so this sentence must not
     # give it a direction. "Forward commitments are rising" is precisely the
     # claim that was withheld one screen away, and a Brief that contradicts its
