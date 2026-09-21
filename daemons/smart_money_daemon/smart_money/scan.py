@@ -41,9 +41,13 @@ def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
     counts = {"house_new_filings": 0, "senate_new_filings": 0}
 
     # House: refresh current-year index, ingest new DocIDs (dedup resume-safe).
+    # max_age_days=0 is what makes "refresh" true: the current year's zip is
+    # re-downloaded on EVERY run. Without it the index was read from a cache that
+    # merely existed, frozen at 2026-07-22, and this leg reported OK with zero new
+    # filings for two months. The file is ~60 KB; a nightly fetch is nothing.
     year = dt.date.today().year
     try:
-        entries = house_ingest.fetch_year_zip(year, raw_dir, ua)
+        entries = house_ingest.fetch_year_zip(year, raw_dir, ua, max_age_days=0)
         new_house = 0
         if entries:
             for filing in entries:

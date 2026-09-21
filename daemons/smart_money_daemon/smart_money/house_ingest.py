@@ -109,9 +109,32 @@ def _get(url, ua):
     return requests.get(url, headers={"User-Agent": ua}, timeout=120)
 
 
-def fetch_year_zip(year, raw_dir, ua):
-    """Returns parsed index entries or None when the zip does not exist."""
+def fetch_year_zip(year, raw_dir, ua, max_age_days=None):
+    """Returns parsed index entries or None when the zip does not exist.
+
+    `max_age_days` forces a re-download when the cached zip is older than that.
+    REQUIRED for the nightly scan. The cache-if-exists rule is right for a
+    closed year and wrong for the current one: the Clerk republishes this same
+    zip all year as PTRs arrive, so a cache that merely EXISTS freezes the index.
+    That is exactly what happened: the scan's 2026FD.zip was written 2026-07-22
+    and re-read every night after, and scan.py reported `[OK] house_clerk` with
+    zero new filings for two months while the published index kept growing
+    (52,265 bytes cached against 59,694 live on 2026-09-20). The comment above
+    the call site said "refresh current-year index"; nothing refreshed it.
+
+    The annual-FD sibling (house_fd_ingest.fetch_year_index) found and fixed
+    the identical bug for itself; this is the same rule, back-ported.
+    """
     zpath = raw_dir / "{}FD.zip".format(year)
+    stale = False
+    if max_age_days is not None and zpath.exists():
+        age = time.time() - zpath.stat().st_mtime
+        stale = age > max_age_days * 86400
+    if stale:
+        try:
+            zpath.unlink()
+        except OSError:
+            stale = False          # keep the cached copy rather than lose the index
     if not zpath.exists():
         r = _get(ZIP_URL.format(year=year), ua)
         if r.status_code == 404:
