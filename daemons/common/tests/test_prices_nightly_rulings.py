@@ -211,6 +211,85 @@ def test_only_settled_unfilled_holes_are_selected(con):
         "09-10 is already filled, 09-21 is today and not settled: %r" % got)
 
 
+# ------------------------------------ 5. the primary, used as the filler --
+
+from abelard_common.prices.vendor import VendorSchemaError, VendorUnknownSymbol  # noqa: E402
+
+
+class FakePrimary:
+    """Stands in for YahooVendor. Records the spans it is asked for."""
+
+    def __init__(self, bars=None, raise_for=None):
+        self.bars = bars or {}
+        self.raise_for = raise_for or {}
+        self.calls = []
+
+    def fetch(self, symbol, start, end):
+        self.calls.append((symbol, start, end))
+        if symbol in self.raise_for:
+            raise self.raise_for[symbol]
+        return VendorSeries(
+            symbol=symbol,
+            bars=[R.Bar(d, c, c, c, c, 1) for d, c in sorted(self.bars.get(symbol, {}).items())
+                  if start <= d <= end],
+            splits=[], dividends=[], vendor_adjclose={}, fetched_at=RUN)
+
+
+def _hole(con, iid, ticker, date):
+    inst(con, iid, ticker)
+    con.execute("INSERT INTO ticker_aliases (instrument_id, ticker, notation, valid_from,"
+                " valid_to, source) VALUES (?,?,'vendor','2026-09-01',NULL,'test')",
+                (iid, ticker))
+    raw(con, iid, date, None, "vendor_null")
+
+
+def test_one_bad_name_no_longer_aborts_the_whole_fill(con):
+    """THE regression. 2026-09-21, first nightly fill: a VendorSchemaError on
+    FISV escaped the loop and every hole after it went unattempted."""
+    _hole(con, "0000000001.0", "AAA", "2026-09-17")
+    _hole(con, "0000798354.0", "FISV", "2025-11-12")
+    _hole(con, "0000000003.0", "ZZZ", "2026-09-17")
+    fake = FakePrimary(
+        bars={"AAA": {"2026-09-17": 50.0}, "ZZZ": {"2026-09-17": 70.0}},
+        raise_for={"FISV": VendorSchemaError("FISV: timestamp/close/adjclose absent")})
+    res = V.fill_holes(con, V.YahooAsFiller(fake), "2026-09-21",
+                       run_asof=RUN, enforce_quota=False)
+    assert sorted(f[0] for f in res.filled) == ["0000000001.0", "0000000003.0"], (
+        "names on both sides of the bad one must still fill")
+    assert any("FISV" in e for e in res.errors), res.errors
+
+
+def test_an_unknown_symbol_is_unfillable_not_an_error(con):
+    _hole(con, "0000000001.0", "GONE", "2026-09-17")
+    fake = FakePrimary(raise_for={"GONE": VendorUnknownSymbol("GONE: 404")})
+    res = V.fill_holes(con, V.YahooAsFiller(fake), "2026-09-21",
+                       run_asof=RUN, enforce_quota=False)
+    assert res.unfillable == [("0000000001.0", "2026-09-17")] and not res.errors
+
+
+def test_a_lone_quiet_day_is_asked_for_with_room_either_side(con):
+    """A one-day span with no trading reads as schema drift to the parser. The
+    request is padded; the day itself simply has no bar -> unfillable, honestly."""
+    _hole(con, "0000798354.0", "FISV", "2025-11-12")
+    fake = FakePrimary(bars={"FISV": {"2025-11-10": 190.0, "2025-11-13": 188.0}})
+    res = V.fill_holes(con, V.YahooAsFiller(fake), "2026-09-21",
+                       run_asof=RUN, enforce_quota=False)
+    (_sym, lo, hi), = fake.calls
+    assert lo < "2025-11-12" < hi, "the span must be padded, got %s..%s" % (lo, hi)
+    assert res.unfillable == [("0000798354.0", "2025-11-12")] and not res.filled
+    assert not res.errors
+
+
+def test_padding_never_fills_a_day_outside_the_hole(con):
+    """The bars fetched for padding must be filtered away, not written."""
+    _hole(con, "0000000001.0", "AAA", "2026-09-17")
+    fake = FakePrimary(bars={"AAA": {"2026-09-15": 10.0, "2026-09-17": 50.0,
+                                     "2026-09-18": 99.0}})
+    res = V.fill_holes(con, V.YahooAsFiller(fake), "2026-09-21",
+                       run_asof=RUN, enforce_quota=False)
+    assert res.filled == [("0000000001.0", "2026-09-17", 50.0)]
+
+
 def test_a_friday_hole_is_fillable_on_monday(con):
     """The old age gate counted TRADING sessions and read Fri->Mon as one, so a
     three-day-settled Friday waited another night."""

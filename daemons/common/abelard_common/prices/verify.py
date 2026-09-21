@@ -23,6 +23,7 @@ different authority (automatic vs human), different code.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sqlite3
 import time
@@ -32,6 +33,7 @@ from typing import Sequence
 
 from . import reconstruct as R
 from .schema import PriceStoreError
+from .vendor import VendorError, VendorUnknownSymbol
 from .vendor_tiingo import (CROSS_VENDOR_EPS, TiingoBar, TiingoError,
                             TiingoUnknownSymbol, TiingoVendor, check_quota,
                             vendor_symbol)
@@ -441,14 +443,41 @@ class YahooAsFiller:
     """
 
     source = "yahoo_v8"
+    # Calendar days asked for on EACH side of the hole span, then filtered away.
+    PAD_DAYS = 10
 
     def __init__(self, vendor):
         self._v = vendor
 
     def daily(self, symbol: str, start: str, end: str) -> list[TiingoBar]:
-        series = self._v.fetch(symbol, start, end)
+        """Bars for ``[start, end]``, speaking the FILLER contract.
+
+        Two things the primary does not do on its own:
+
+        * It raises its own exception types, and the fill loop catches only the
+          filler's. Untranslated, one bad name aborted the whole run: on
+          2026-09-21 the first nightly fill hit a VendorSchemaError on FISV and
+          every hole after it went unattempted. VendorUnknownSymbol now means
+          what TiingoUnknownSymbol means (this vendor has nothing -> unfillable);
+          any other VendorError is a per-name error, and the run continues.
+        * A span with no trading in it comes back without the arrays the
+          parser requires, which reads as schema drift. Once the loop stopped
+          re-requesting already-filled holes, FISV's lone 2025-11-12 hole was
+          asked for as a one-day span and hit exactly that. So the request is
+          padded and filtered back: a missing day is then a missing BAR --
+          honestly unfillable -- while real schema drift still raises.
+        """
+        pad = dt.timedelta(days=self.PAD_DAYS)
+        lo = (dt.date.fromisoformat(start) - pad).isoformat()
+        hi = (dt.date.fromisoformat(end) + pad).isoformat()
+        try:
+            series = self._v.fetch(symbol, lo, hi)
+        except VendorUnknownSymbol as exc:
+            raise TiingoUnknownSymbol(str(exc)) from exc
+        except VendorError as exc:
+            raise TiingoError(str(exc)) from exc
         return [TiingoBar(b.date, b.close, b.close, 1.0, 0.0, b.volume)
-                for b in series.bars]
+                for b in series.bars if start <= b.date <= end]
 
 
 def fill_holes(
