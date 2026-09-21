@@ -3,3 +3,7 @@
 # Ignored BEFORE any such file exists, so the first write cannot be committed by
 # accident. Verify with: git check-ignore -v barrel/private/anything
 private/
+
+# Data-source credentials (Dune API key etc.). Created by Mando, never by the
+# builder; read from the environment, never printed or logged.
+.env

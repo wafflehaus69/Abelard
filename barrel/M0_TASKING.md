@@ -181,6 +181,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-3 (below) | ClaudeCode, recording Mando / Architect | 2026-09-21 | BigQuery spend ceiling + Transactions rule; price reference vs fill; realized-fee cost model ratified; owner wallets; H3 discovery spec adopted |
 | MR-4 (below) + [`docs/H3_AMENDMENT_v1.1.md`](docs/H3_AMENDMENT_v1.1.md) | Architect; ClaudeCode recording | 2026-09-21 | M0-wide rulings arising from the H3 review; project ID; standing ceiling unchanged |
 | Execution record, orders 2–4 → [`docs/A1_BIGQUERY_FITNESS.md`](docs/A1_BIGQUERY_FITNESS.md) | ClaudeCode | 2026-09-21 | A1 step 1 PASS; BigQuery **unfit** for swap-level data; D1 returned for ruling; work stopped per order 5 |
+| MR-5 (below) | Architect, relayed by Mando; ClaudeCode recording | 2026-09-21 | Spend guardrail; D1 → Dune free-tier test first; options 2/3 rejected; BigQuery scope; E34; August 2025 DEGRADED |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
 Builder-recorded Mando rulings therefore use the **MR-** prefix from here on; the A1 block
@@ -495,3 +496,52 @@ Full report: `docs/A1_BIGQUERY_FITNESS.md`. In brief:
   fee-leg samples were version-0 transactions only.
 * **Stopped per order 5.** D1 is returned to Mando. The builder recommends Dune, gated on the
   same routed-swap test that disqualified BigQuery.
+
+---
+
+### MR-5 — Relayed rulings and orders (Architect via Mando, 2026-09-21)
+
+**MR-5.0 — Guardrail. Before any spend, request authorization.** This binds every money
+decision from here on, including buying a Dune month, paid BigQuery scanning, and any
+other vendor. Free-tier consumption is not spend, but it is reported: credits consumed are
+stated after every test.
+
+**MR-5.1 — D1, re-ruled.** Dune is the candidate, **tested before paying**. The E34
+round-trip runs on Dune's **free tier** first. Analyst ($75/mo) is bought only if the test
+passes, and only after authorization under MR-5.0. Two months of Analyst ($150) sit inside
+the cap already recommended.
+
+**MR-5.2 — BigQuery options 2 ($900+) and 3 (~$400) are rejected.**
+
+**MR-5.3 — BigQuery scope.** It is kept for block coverage, freshness, top-level census
+counts, and cross-checking Dune's totals. **No billing account is attached**, because the
+sandbox covers those uses. (Builder's note: whether billing is currently attached to
+`project-1602caf0-d9ea-4ac6-b0b` is not visible from the connector, so Mando should confirm
+in the GCP console.)
+
+**MR-5.4 — Fallback candidates if Dune fails:** archival RPC providers (Helius, Triton's Old
+Faithful archive) and SonarX (which absorbed Flipside). These are flagged as hypotheses,
+with coverage and pricing unknown, and each gets the same round-trip before a dollar is spent.
+
+**MR-5.5 — Doctrine: [E34]**, committed to `doctrine/ENGINEERING.md` on `main` (`01e9b27`):
+*a source is admitted by a known-transaction round-trip, never by its samples.*
+
+**MR-5.6 — August 2025 is a labelled DEGRADED span, not a hole.** Partial-day block loss
+under 15% is not a "hole" under A1. The span is **2025-08-06, 07, 10, 11** (dataset
+missing 10.2 / 5.5 / 8.0 / 10.6% of blocks, verified against the chain), with 2025-08-05
+(0.9%) recorded alongside for completeness. Binding treatment:
+
+* Every token that **graduates** inside the span, or has **any entry, exit or scored trade**
+  inside it, carries the flag `DEGRADED_2025_08`.
+* Every H1–H4 result is reported **with and without** flagged tokens.
+* A day's loss of **15% or more** would still be a hole under A1 and would stop the census.
+  None is observed.
+* Which blocks are missing is not yet known at the block level, only per-day totals. If the
+  chosen source is not BigQuery, this span must be re-checked against that source
+  independently, because the loss belongs to BigQuery's ingestion, not to the chain.
+
+**Orders in effect:** (1) this record; (2) the Dune free-tier round-trip, reporting
+pass/fail per item and credits consumed; (3) if it passes, project the credit burn for
+Gate 0 and the derived table on Analyst, then stop, and Mando buys the month; (4) if it
+fails, report and test the next candidate the same way, **no building**; (5) re-run the fee
+samples with the version-1 fix before v1.2.
