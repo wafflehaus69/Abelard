@@ -1,0 +1,42 @@
+BARREL M0 — PumpSwap event decode — 2026-09-21T23:22:30+00:00
+IDL: pump_amm.json  target swaps: 250
+
+transactions fetched      : 419
+  with no Buy/Sell event  : 241  (pool admin, GetFees, failed routes)
+  rpc failures            : 27
+  tx versions fetched     : {'0': 220, 'legacy': 138, '1': 61}  (a sample with no version-1 txs cannot speak for current flow)
+swap events decoded       : 188  (85 buy / 103 sell)
+
+== event versions seen (body length / absent tail) ==
+   103 x SellEvent  425 bytes  complete vs current IDL
+    57 x BuyEvent   488 bytes  complete vs current IDL
+    28 x BuyEvent   473 bytes  complete vs current IDL
+
+== fee legs: configured rate (bps field in the event) ==
+leg                 present  nonzero   configured bps (value: count)
+lp_fee                  188      188   20: 100, 25: 78, 2: 10
+protocol_fee            188      188   5: 178, 93: 10
+coin_creator_fee        188      109   0: 79, 75: 45, 5: 17, 95: 17, 30: 10, 50: 6, 90: 2, 45: 2
+cashback                188        1   0: 187, 5: 1
+buyback_fee             188      188   5000: 188
+holder_rewards          188        3   0: 185, 95: 2, 100: 1
+
+== conservation: gross - net == lp + protocol + creator ==
+  holds: 187   fails: 1   unknown variant (refused): {}
+  WARNING: conservation failed — additive-leg model is wrong for these; their costs are EXCLUDED below, not estimated.
+
+== trader cost, bps of the trader's gross side (conservation-verified swaps only) ==
+leg                    n     p10  median     p90     max
+lp_fee               187    19.8    20.0    25.0    29.6
+protocol_fee         187     5.0     5.0     5.0    93.0
+coin_creator_fee     187     0.0     5.0    93.9    98.8
+TOTAL per leg        187    29.9    30.0   120.0   138.1
+  split: creator fee charged  n=109  median 99.1 bps  max 138.1
+         no creator fee       n= 78  median 30.0 bps  max 30.0
+  Round trip = entry leg + exit leg, so roughly double these, before slippage.
+
+distinct coin_creator pubkeys in sample: 42
+coin_creator_fee_basis_points spread   : {0: 79, 75: 45, 5: 17, 95: 17, 30: 10, 50: 6, 90: 2, 45: 2, 15: 2, 100: 2, 80: 2, 23: 2, 55: 1, 65: 1}
+
+NOTE: current era only. Per-era history needs the same decode run over
+      BigQuery `Instructions` (program_id-clustered), blocked on a billing project.

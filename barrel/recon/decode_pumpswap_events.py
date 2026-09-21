@@ -279,6 +279,7 @@ def main() -> None:
 
     sigs = rpc("getSignaturesForAddress", [PUMPSWAP, {"limit": min(1000, want * 3)}])
     events, tx_seen, tx_no_event, rpc_fail = [], 0, 0, 0
+    versions: collections.Counter = collections.Counter()   # tx version of every fetched tx
     for s in sigs:
         if len(events) >= want:
             break
@@ -292,7 +293,10 @@ def main() -> None:
             rpc_fail += 1
             continue
         tx_seen += 1
+        versions[str(tx.get("version"))] += 1
         got = decode_swaps(tx, layouts)
+        for g in got:
+            g["tx_version"] = tx.get("version")
         if not got:
             tx_no_event += 1
         events.extend(got)
@@ -301,6 +305,8 @@ def main() -> None:
     print(f"transactions fetched      : {tx_seen}")
     print(f"  with no Buy/Sell event  : {tx_no_event}  (pool admin, GetFees, failed routes)")
     print(f"  rpc failures            : {rpc_fail}")
+    print(f"  tx versions fetched     : {dict(versions)}  "
+          "(a sample with no version-1 txs cannot speak for current flow)")
     print(f"swap events decoded       : {len(events)}  "
           f"({sum(e['event']=='BuyEvent' for e in events)} buy / {sum(e['event']=='SellEvent' for e in events)} sell)\n")
     if not events:
@@ -378,8 +384,10 @@ def main() -> None:
     creators = {e["decoded"].get("coin_creator") for e in events}
     print(f"distinct coin_creator pubkeys in sample: {len(creators)}")
     print(f"coin_creator_fee_basis_points spread   : {dict(cc.most_common())}")
-    print("\nNOTE: current era only. Per-era history needs the same decode run over")
-    print("      BigQuery `Instructions` (program_id-clustered), blocked on a billing project.")
+    ev_versions = collections.Counter(str(e.get("tx_version")) for e in events)
+    print(f"swap events by tx version: {dict(ev_versions)}")
+    print("\nNOTE: current era only. Per-era history needs an archival source that carries")
+    print("      inner instructions and program logs; BigQuery public Solana does not (A1 report).")
 
 
 if __name__ == "__main__":

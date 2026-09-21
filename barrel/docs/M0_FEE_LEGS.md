@@ -277,3 +277,40 @@ with this caveat attached. See `A1_BIGQUERY_FITNESS.md` §4.
 Also verified on chain: PumpSwap emits its swap events as `Program data:` **log lines**, not
 as self-CPIs. The decoder's in-frame check on log events is therefore the only thing standing
 between a hostile program in a route and a forged event.
+
+---
+
+# Part 3 — re-run including version-1 transactions (2026-09-21, MR-5 order 5)
+
+**Reproduce:** `python barrel/recon/decode_pumpswap_events.py 250` · raw output
+`recon/out/fee_legs_v1_2026-09-21.txt`
+
+This replaces the version-0-only caveat on Part 2. The decoder now requests version-1
+transactions and tallies the version of every transaction it fetches, so the claim that
+current flow is covered can be checked rather than assumed.
+
+| | Part 2 (version-0 only) | Part 3 (all versions) |
+|---|---|---|
+| Transactions fetched | 312, with 72 silently dropped (23%) | **419**: 220 v0, 138 legacy, **61 v1 (15%)**, 27 dropped for rate limits (6%) |
+| Conservation holds | 168 / 171 | **187 / 188** |
+| Per leg, no creator fee | 30 bps (flat) | **30.0 bps (flat)**, n = 78 |
+| Per leg, creator fee charged | median 104 bps | **median 99.1 bps, max 138**, n = 109 |
+
+**The flat 30 bps is stable across every sample and both transaction-version regimes. It is
+the number §5 can rely on for tokens without a creator fee.** The creator-fee leg moved
+between samples (median 104 → 119 → 99 bps across three runs), which is the expected
+behaviour of a per-token setting drawn from whichever tokens were hot at the moment.
+
+Still true, and still binding:
+
+* **Creator-fee prevalence is not estimable from live snapshots.** It was 30%, 73%, 56% and
+  58% in four samples. It is a property of the token mix and must be measured per token over
+  the window.
+* **This is the current era only.** The schedule history (Part 2) indicates per-token creator
+  fees are configurable only since 2026-09-09, so these figures must not be projected back
+  over the M0 window. The window's own realized fees need an archival source that carries
+  program logs. BigQuery does not (`A1_BIGQUERY_FITNESS.md`), and Dune is under test.
+* **Limit of this run:** it counts transaction versions *fetched*, but the process was
+  started before the per-version *event* breakdown was added, so how many of the 188 swap
+  events came from the 61 version-1 transactions is not reported. Every fetched transaction
+  went through the same decoder, so version-1 swaps are in the sample. Their share is not.
