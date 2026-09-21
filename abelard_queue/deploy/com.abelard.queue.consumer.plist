@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.abelard.queue.consumer</string>
+  <key>WorkingDirectory</key><string>/Users/wafflehaus/Code/abelard-live/abelard_queue</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-c</string>
+    <string>set -a; . /Users/wafflehaus/Code/abelard-live/abelard_queue/.env; set +a; exec /Users/wafflehaus/Code/abelard-live/abelard_queue/.venv/bin/abelard-queue run</string>
+  </array>
+  <key>StandardOutPath</key><string>/Users/wafflehaus/abelard-queue-logs/consumer.out</string>
+  <key>StandardErrorPath</key><string>/Users/wafflehaus/abelard-queue-logs/consumer.err</string>
+  <key>StartInterval</key><integer>900</integer>
+</dict></plist>
