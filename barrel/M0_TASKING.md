@@ -179,6 +179,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | **v1.1** — [`docs/M0_AMENDMENT_v1.1.md`](docs/M0_AMENDMENT_v1.1.md) | Architect | 2026-09-04 | **Operative.** Formalizes and extends A1; adds A2 strata, A3 rug direction + snooping guard, A4 BOOST era split, A5 per-era fee model, A6 H3 costing gate, A7 quarantine standard |
 | MR-2 (below) | ClaudeCode, recording Mando | 2026-09-21 | D5 bankroll; price-reference pool rule; BigQuery access + what metadata already settles |
 | MR-3 (below) | ClaudeCode, recording Mando / Architect | 2026-09-21 | BigQuery spend ceiling + Transactions rule; price reference vs fill; realized-fee cost model ratified; owner wallets; H3 discovery spec adopted |
+| MR-4 (below) + [`docs/H3_AMENDMENT_v1.1.md`](docs/H3_AMENDMENT_v1.1.md) | Architect; ClaudeCode recording | 2026-09-21 | M0-wide rulings arising from the H3 review; project ID; standing ceiling unchanged |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
 Builder-recorded Mando rulings therefore use the **MR-** prefix from here on; the A1 block
@@ -440,3 +441,33 @@ anything runs** (review item 1).
 **Still blocked:** no scanning query can run until Mando supplies the **GCP billing project
 ID**. It was relayed as "yours to give", which is Mando's to supply. The builder cannot
 discover it: the connector exposes no project listing.
+
+---
+
+### MR-4 — M0-wide rulings from the H3 amendment (Architect, 2026-09-21)
+
+`docs/H3_AMENDMENT_v1.1.md` is H3-specific, but five of its rulings bind all of M0. They are
+restated here so this file stays the single place M0's rules can be read from.
+
+1. **Calibration slice — standing rule.** The calibration slice is excluded from the
+   evaluation of **every** hypothesis, not only the one whose threshold was set on it.
+   Thresholds set there so far or pending: rug X/Y/D, routing X, depth floor F, cohort cut.
+2. **Routing, completing MR-3.2.** "Deepest" = quote-side reserves at the entry block. Exit:
+   in the entry pool if it still qualifies; otherwise the deepest pool qualifying at the exit
+   block; if none qualifies, mark to zero.
+3. **Depth floor, semantic definition.** A position is marked at zero when its exit-adjusted
+   value is below F% of its spot-marked value. Gate 0 reports the distribution of that ratio;
+   F is set in v1.2. Provisional F = 20%, cost trial only.
+4. **FIFO lot accounting**, M0-wide, so backtest and the M1 tax ledger agree.
+5. **The derived trade table is the M0 data foundation**, not an H3 optimisation. Every
+   H1–H4 query reads it. It is the seed of M1's live store. Minimum schema: signature, slot,
+   block_timestamp, in-slot tx index, program, pool, mint, side, wallet, gross/net amounts,
+   each fee leg, era label, stratum label.
+
+**Project ID supplied by Mando:** `project-1602caf0-d9ea-4ac6-b0b`.
+
+**Not yet ruled** (H3 amendment, Mando decisions 2–4): dataset-creation permission, paid-scan
+authorization, budget alert. **Until they are ruled, MR-3.1 stands unmodified**: free 1 TiB
+this month, confirm-before-run above 50 GB on the dry-run figure, no unclustered
+`Transactions`, no dataset created. The Architect's conditional supersession of MR-3.1 takes
+effect only when Mando rules decision 3.
