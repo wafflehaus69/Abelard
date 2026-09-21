@@ -1014,8 +1014,18 @@ def _addr_not_available(exc):
     return isinstance(exc, OSError) and exc.errno == errno.EADDRNOTAVAIL
 
 
+def _log(msg):
+    """To stderr, flushed. Under launchd stdout is block-buffered, so a print()
+    sits in the buffer — found live: the server's startup line never reached
+    dashboard.out.log. A retry message that only appears if the process exits
+    cleanly is useless in exactly the case it exists for; stderr is where the
+    original Errno 49 traceback surfaced, so that is where these go."""
+    import sys
+    print(msg, file=sys.stderr, flush=True)
+
+
 def bind_with_retry(make_server, address, deadline_s=BIND_RETRY_SECONDS,
-                    sleep=None, clock=None, log=print):
+                    sleep=None, clock=None, log=_log):
     """`make_server(address)`, retried on EADDRNOTAVAIL until `deadline_s`.
 
     Returns the bound server. `sleep` and `clock` are injectable so the policy
@@ -1080,5 +1090,5 @@ def serve(db_path=None, port=PORT, host=HOST_DEFAULT):
             pass
 
     srv = bind_with_retry(lambda addr: ThreadingHTTPServer(addr, Handler), (host, port))
-    print("[capex-dashboard] http://{}:{}  (read-only, db={})".format(host, port, db_path))
+    _log("[capex-dashboard] http://{}:{}  (read-only, db={})".format(host, port, db_path))
     srv.serve_forever()

@@ -96,3 +96,20 @@ def test_any_other_bind_error_is_raised_immediately():
 def test_the_default_bind_is_still_loopback():
     """The launcher is what exposes it, on the Tailscale address only."""
     assert dashboard.HOST_DEFAULT == "127.0.0.1"
+
+
+def test_retry_messages_are_flushed_to_stderr(capsys):
+    """Under launchd stdout is block-buffered: the startup print never reached the
+    log. A retry message that only appears on a clean exit is useless exactly when
+    it is needed, so these go to stderr, flushed."""
+    clock, seen = Clock(), []
+
+    def make(addr):
+        seen.append(addr)
+        if len(seen) < 2:
+            raise _not_available()
+        return "server"
+
+    dashboard.bind_with_retry(make, ADDR, sleep=clock.sleep, clock=clock.now)
+    out, err = capsys.readouterr()
+    assert "not assignable yet" in err and out == ""
