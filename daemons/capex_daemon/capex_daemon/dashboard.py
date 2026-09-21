@@ -332,6 +332,7 @@ def view_aggregate(snap):
             out.append("<div class='warn'><b>{}</b>: matched membership fell to {} member(s), "
                        "below the {}-member floor — no state published.</div>".format(
                            _esc(b), bk.get("member_count"), bk.get("min_members")))
+    out.append(_partial_frontier_block(snap))
     return _page("The aggregate", "/", "".join(out))
 
 
@@ -585,6 +586,7 @@ def view_buckets(snap):
             out.append("<p class='note'><b>Composition events:</b> " + " · ".join(
                 "{} {} {}".format(_esc(e["quarter"]), _esc(e["ticker"]), _esc(e["change"]))
                 for e in ce[-8:]) + "</p>")
+    out.insert(2, _partial_frontier_block(snap))
     return _page("Buckets", "/buckets", "".join(out))
 
 
@@ -723,6 +725,42 @@ def view_suppliers(snap):
                    "on the buildout, and because a named refusal is worth more than a silent "
                    "omission.</p>")
     return _page("Suppliers", "/suppliers", "".join(out))
+
+
+def _partial_frontier_block(snap):
+    """Quarters an aggregate is holding back, stated beside it — never inside it.
+
+    Live 2026-09-21: ORCL's fiscal quarter reached calendar 2026Q3 six weeks
+    before the calendar-year filers, and every matched sum published it as the
+    panel's latest point with ONE member — "$75.66B and falling", four phantom
+    hyperscaler exits, a 367% cross-check. The quarter is real; it is just not
+    the aggregate's yet. So it is shown here, labelled as partial, and the
+    series above stops at the last quarter its membership has actually reached.
+    """
+    rows = snapshot.partial_frontier_rows(snap)
+    if not rows:
+        return ""
+    out = ["<div class='note' style='border-left:3px solid #8a6d1a;padding-left:10px'>"
+           "<b>Partially reported — held out of the aggregate.</b> Each series below "
+           "stops at the last quarter its members have actually reached. A later "
+           "quarter joins once its reporters cover {:.0f}% of the prior quarter's "
+           "dollars, or {} days after quarter end, whichever comes first.<br>".format(
+               100 * trend.FRONTIER_COVERAGE_FLOOR, trend.FRONTIER_MAX_WAIT_DAYS)]
+    for r in rows:
+        waiting = ", ".join(r.get("missing") or []) or "—"
+        out.append(
+            "<b>{}</b> stands at {}. <b>{}</b> is partial: {} of {} members ({}), "
+            "{:.0f}% of {}'s dollars{}. Waiting on {}. Joins by {} at the latest.<br>"
+            .format(_esc(r["series"]), _esc(r.get("latest") or "—"), _esc(r["q"]),
+                    r["member_count"], r["prior_member_count"],
+                    _esc(", ".join(r.get("members") or [])), 100 * r["coverage"],
+                    _esc(r["prior_q"]),
+                    "" if r.get("ttm") is None else
+                    " — {} alone would read {}".format(
+                        _esc(", ".join(r.get("members") or [])), _money(r["ttm"])),
+                    _esc(waiting), _esc(r.get("publishes_by") or "—")))
+    out.append("</div>")
+    return "".join(out)
 
 
 def _commitment_deltas_block(snap):

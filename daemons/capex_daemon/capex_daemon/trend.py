@@ -52,6 +52,149 @@ def _contiguous(quarters):
     return idx[-1] - idx[0] == len(quarters) - 1
 
 
+def _cq_from_index(i):
+    return "{}Q{}".format((i - 1) // 4, (i - 1) % 4 + 1)
+
+
+def _quarter_end(q):
+    from datetime import date
+    y, n = _cq_sort(q)
+    return date(y, n * 3, {1: 31, 2: 30, 3: 30, 4: 31}[n])
+
+
+# --- the aggregate frontier ------------------------------------------------
+#
+# An aggregate's newest point is the newest quarter its MEMBERSHIP has reached,
+# not the newest quarter ANY member has reached.
+#
+# Measured live 2026-09-21. Oracle's fiscal quarter ended 2026-08-31, so its
+# 10-Q aligns to calendar 2026Q3 about six weeks before the calendar-year
+# filers report Q3. Every matched-membership sum published 2026Q3 as its
+# latest point anyway, with ONE member:
+#
+#     total panel   2026Q2 $614.18B  22 members   ->  2026Q3 $75.66B  1 member
+#     hyperscaler   INSUFFICIENT-MEMBERSHIP (5 names reduced to ORCL)
+#     cross-check   2026Q3 367.2%  ($277.8B of NVDA over ORCL alone)
+#     composition   "2026Q3 AMZN, GOOGL, META, MSFT left" — four phantom exits
+#     A3            demand frontier moved to 2026Q3, silencing NVDA's early read
+#
+# and the thesis line read "Panel capex TTM $75.66B is falling". It stood for
+# nine days. It recurs every quarter ORCL files, since its quarters end in
+# Aug, Nov, Feb and May.
+#
+# THE GATE. A trailing quarter joins the published series only once the members
+# who have reported it account for at least `FRONTIER_COVERAGE_FLOOR` of the
+# PRIOR quarter's dollars. Measured over the same prior quarter so growth cannot
+# masquerade as coverage, and arrivals cannot lower it.
+#
+# Ruled by Mando 2026-09-21: the floor is COVERAGE_FLOOR, the 0.95 already
+# ratified for choosing constant-membership windows, reused here. The live knee
+# is sharp — every published quarter pair since 2025 covers 100%, the partial
+# frontier covers 9.1% — so any floor from roughly 0.10 to 0.99 trims the same
+# single quarter.
+# (FRONTIER_COVERAGE_FLOOR is bound to COVERAGE_FLOOR where that is defined,
+# below — an alias, deliberately never a second literal.)
+
+# THE ESCAPE, so a real departure cannot freeze a frontier forever. Coverage
+# also dips when a member genuinely LEAVES — measured, hyperscaler 2017Q1 at 78%
+# was Amazon dropping out of the concept — and a gate with no end would hold
+# that aggregate on its last complete quarter permanently.
+#
+# 90 days is not fitted. It is the latest regular deadline for any periodic
+# report: Form 10-K for a non-accelerated filer is due 90 days after fiscal year
+# end (10-Q deadlines are 40-45 days; large-accelerated 10-Ks, 60). Past it, a
+# missing member is not "not yet filed" but behind on filing, and the quarter
+# publishes without it, the missing names listed.
+FRONTIER_MAX_WAIT_DAYS = 90
+
+
+def member_ttm_at(series, q, window=WINDOW):
+    """One member's trailing sum over the `window` quarters ending at `q`, or None."""
+    i = _cq_index(q)
+    win = [_cq_from_index(k) for k in range(i - window + 1, i + 1)]
+    if not all(w in series for w in win):
+        return None
+    return sum(series[w] for w in win)
+
+
+def frontier_split(membership, members, as_of=None,
+                   floor=None, max_wait_days=FRONTIER_MAX_WAIT_DAYS):
+    """({published quarters}, [partial rows]) for a matched-membership series.
+
+    A quarter is PARTIAL while the members who reported it cover less than
+    `floor` of the dollars of the last ACCEPTED quarter AND it is still inside
+    `max_wait_days` of its calendar end.
+
+    **Measured against the last accepted quarter, never the one before it.** The
+    first cut walked back comparing each quarter with its immediate predecessor,
+    and a test caught it: with ORCL alone at both 2026Q3 and 2026Q4, Q4 was
+    judged against Q3 — itself partial — and ORCL covers 100% of ORCL, so the
+    one-member tail published anyway. A held quarter can never be the reference
+    that legitimises its successor.
+
+    **Once one quarter is held, the whole tail is held**, so the published
+    series is always a prefix and never has a hole in it.
+
+    Only recent quarters can ever be held: anything more than `max_wait_days`
+    past its end is accepted outright. That is what keeps a genuine historical
+    departure — Amazon's 2017Q1 exit covered 78% of the prior quarter — in
+    history, where it is already published as a composition change.
+    """
+    from datetime import date, timedelta
+    floor = FRONTIER_COVERAGE_FLOOR if floor is None else floor
+    as_of = as_of or date.today()
+    qs = sorted(membership, key=_cq_sort)
+    if len(qs) < 2:
+        return set(qs), []
+    accepted, partial = [qs[0]], []
+    for q in qs[1:]:
+        ref = accepted[-1]
+        base = {t: member_ttm_at(members.get(t) or {}, ref) for t in membership[ref]}
+        base = {t: v for t, v in base.items() if v}
+        denom = sum(base.values())
+        reported = set(membership[q])
+        num = sum(v for t, v in base.items() if t in reported)
+        coverage = (num / denom) if denom > 0 else 1.0
+        waited = (as_of - _quarter_end(q)).days
+        if not partial and (coverage >= floor or waited >= max_wait_days):
+            accepted.append(q)
+            continue
+        missing = sorted(t for t in base if t not in reported)
+        partial.append({
+            "q": q,
+            "prior_q": ref,
+            "members": sorted(reported),
+            "member_count": len(reported),
+            "prior_member_count": len(membership[ref]),
+            "coverage": coverage,
+            "missing": missing,
+            "missing_share": {t: base[t] / denom for t in missing} if denom else {},
+            "publishes_by": (_quarter_end(q)
+                             + timedelta(days=max_wait_days)).isoformat(),
+        })
+    return set(accepted), partial
+
+
+def _trim(values, membership, published):
+    return ({q: v for q, v in values.items() if q in published},
+            {q: m for q, m in membership.items() if q in published})
+
+
+def matched_ttm_published(members, as_of=None):
+    """`matched_ttm_series`, gated at the aggregate frontier.
+
+    Returns (ttm, membership, partial). Every matched SUM the snapshot publishes
+    goes through the gate; the raw function stays for callers that genuinely
+    want every quarter any member reached.
+    """
+    ttm, membership = matched_ttm_series(members)
+    published, partial = frontier_split(membership, members, as_of=as_of)
+    for row in partial:
+        row["ttm"] = ttm.get(row["q"])
+    ttm, membership = _trim(ttm, membership, published)
+    return ttm, membership, partial
+
+
 def issuer_calendar_series(indexed, include_leases=False, cik=None):
     """{calendar_quarter: value} for one issuer, or None when capex is unresolved."""
     r = tagmap.resolve(indexed, tagmap.CAPEX, cik=cik)
@@ -143,6 +286,10 @@ MIN_PANEL_QUARTERS = 6
 # while stopping short of it buys 1.4pp for fifteen fewer quarters. Any floor
 # between roughly 0.66 and 0.98 selects the same window.
 COVERAGE_FLOOR = 0.95
+
+# Ruled by Mando 2026-09-21: the aggregate-frontier gate reuses this floor.
+# An alias rather than a copy, so the two can never drift apart.
+FRONTIER_COVERAGE_FLOOR = COVERAGE_FLOOR
 
 
 class ConstantPanel:
@@ -261,21 +408,28 @@ def breadth_series(issuer_obs, tickers=None):
 
 
 class BucketTrend:
-    def __init__(self, bucket, yoy, membership, ttm, composition_events):
+    def __init__(self, bucket, yoy, membership, ttm, composition_events, partial=None):
         self.bucket = bucket
         self.yoy = yoy
         self.membership = membership
         self.ttm = ttm
         self.composition_events = composition_events
+        # Trailing quarters held OUT of the series above because too few members
+        # have reported them yet. Published beside it, never inside it.
+        self.partial = partial or []
 
     def __repr__(self):
         return "BucketTrend({} n_quarters={})".format(self.bucket, len(self.yoy))
 
 
-def bucket_trend(bucket, members):
+def bucket_trend(bucket, members, as_of=None):
     """Matched-membership bucket-sum YoY plus composition events.
 
-    `members` is {ticker: {quarter: value}}.
+    `members` is {ticker: {quarter: value}}. Gated at the aggregate frontier:
+    see `frontier_split`. Trailing quarters too few members have reached are
+    returned in `.partial` and are absent from `.yoy`, `.ttm`, `.membership`
+    and the composition events, so the ladder never classifies them and no
+    reader mistakes them for the aggregate's latest point.
     """
     quarters = sorted({q for m in members.values() for q in m}, key=_cq_sort)
     yoy, membership, ttm, events = {}, {}, {}, []
@@ -303,16 +457,33 @@ def bucket_trend(bucket, members):
             for t in sorted(prev_common - common):
                 events.append((bucket, q, t, CHANGE_LEFT))
         prev_common = common
-    return BucketTrend(bucket, yoy, membership, ttm, events)
+
+    published, partial = frontier_split(membership, members, as_of=as_of)
+    for row in partial:
+        row["ttm"] = ttm.get(row["q"])
+        row["yoy"] = yoy.get(row["q"])
+    held = {row["q"] for row in partial}
+    # The composition events at a partial quarter are not events. Every member
+    # that has not reported YET reads as having LEFT — live, that published
+    # "2026Q3 AMZN, GOOGL, META, MSFT left" when all four were simply calendar
+    # filers who report Q3 in late October.
+    events = [e for e in events if e[1] not in held]
+    yoy = {q: v for q, v in yoy.items() if q in published}
+    ttm, membership = _trim(ttm, membership, published)
+    return BucketTrend(bucket, yoy, membership, ttm, events, partial)
 
 
-def full_panel_trend(all_members):
+def full_panel_trend(all_members, as_of=None):
     """Total panel across the aggregated buckets, same matched-membership rule."""
-    return bucket_trend("total", all_members)
+    return bucket_trend("total", all_members, as_of=as_of)
 
 
-def build(roster, indexed_by_cik, include_leases=False):
+def build(roster, indexed_by_cik, include_leases=False, as_of=None):
     """Everything P3 owns, for one scan.
+
+    `as_of` is the date the frontier gate measures its wait against. The
+    snapshot passes the scan's own timestamp so a rebuild is reproducible;
+    None means today.
 
     Returns per-issuer series and states, bucket trends and their states, the
     total-panel trend and state, and breadth per bucket.
@@ -351,7 +522,7 @@ def build(roster, indexed_by_cik, include_leases=False):
 
     bucket_trends, bucket_states, bucket_obs = {}, {}, {}
     for bucket, members in bucket_members.items():
-        bt = bucket_trend(bucket, members)
+        bt = bucket_trend(bucket, members, as_of=as_of)
         bucket_trends[bucket] = bt
         cls = "bucketsum:{}".format(bucket)
         if phases.band_for(cls) is None or len(bt.yoy) < phases.N_CONFIRM + 1:
@@ -369,7 +540,7 @@ def build(roster, indexed_by_cik, include_leases=False):
     all_members = {}
     for b in AGGREGATED_BUCKETS:
         all_members.update(bucket_members.get(b, {}))
-    total = full_panel_trend(all_members)
+    total = full_panel_trend(all_members, as_of=as_of)
     total_obs, total_state = [], phases.STATE_INSUFFICIENT
     if len(total.yoy) >= phases.N_CONFIRM + 1:
         total_obs = phases.classify(total.yoy, "total:panel", series_key="total:panel")
@@ -383,7 +554,9 @@ def build(roster, indexed_by_cik, include_leases=False):
         breadth_by_bucket[bucket] = phases.breadth(names)
 
     # --- View 0 companions: levels, credit, commitments, breadth history ---
-    issuance_ttm, issuance_membership = matched_ttm_series(issuance_members)
+    # The credit leg is a matched sum too, so it takes the same gate.
+    issuance_ttm, issuance_membership, issuance_partial = matched_ttm_published(
+        issuance_members, as_of=as_of)
     commitments_stock, commitments_membership = matched_stock_series(commitment_members)
     panel_breadth = breadth_series(issuer_obs, tickers=set(all_members))
 
@@ -432,6 +605,7 @@ def build(roster, indexed_by_cik, include_leases=False):
         "breadth": breadth_by_bucket,
         "issuance_ttm": issuance_ttm,
         "issuance_membership": issuance_membership,
+        "issuance_partial": issuance_partial,
         "commitments_stock": commitments_stock,
         "commitments_membership": commitments_membership,
         "panel_breadth_series": panel_breadth,

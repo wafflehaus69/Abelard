@@ -12,6 +12,7 @@ reader cannot audit is a figure they have to trust blindly.
 """
 import json
 import time
+from datetime import datetime, timezone
 
 from . import commitments, config, disclosure, divergence, normalize, phases, trend
 
@@ -87,7 +88,7 @@ def _frontier_pair(capex_ttm, capex_membership, iss_ttm, iss_membership,
     }
 
 
-def _supplier_section(legs, bucket_trends):
+def _supplier_section(legs, bucket_trends, as_of=None):
     """CD-3 — the supplier cross-check, published beside the panel, never in it.
 
     A supplier's datacenter revenue and a hyperscaler's capex are largely the
@@ -150,7 +151,9 @@ def _supplier_section(legs, bucket_trends):
             members[tick] = leg.quarters
 
     if len(members) >= 1:
-        ttm, membership = trend.matched_ttm_series(members)
+        # Gated like every other matched sum: NVDA alone at 2026Q3 is NVDA, not
+        # the supplier leg. Its early read is published by A3, one name at a time.
+        ttm, membership, dc_partial = trend.matched_ttm_published(members, as_of=as_of)
         qs = sorted(ttm, key=trend._cq_sort)
         out["combined"] = {
             "members": sorted(members),
@@ -158,6 +161,7 @@ def _supplier_section(legs, bucket_trends):
                            for q in qs],
             "ttm": ttm[qs[-1]] if qs else None,
             "latest_quarter": qs[-1] if qs else None,
+            "partial_frontier": dc_partial,
         }
         hyper = bucket_trends.get("hyperscaler")
         if hyper and qs:
@@ -241,7 +245,10 @@ def _growth(prior, latest):
 def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
     """Assemble the whole published view-model for one scan."""
     now_unix = int(now_unix if now_unix is not None else time.time())
-    t = trend.build(roster, indexed_by_cik)
+    # The frontier gate measures its wait against the SCAN's timestamp, not the
+    # wall clock at render time, so rebuilding the same data reproduces it.
+    as_of = datetime.fromtimestamp(now_unix, timezone.utc).date()
+    t = trend.build(roster, indexed_by_cik, as_of=as_of)
 
     issuers = {}
     for cik, e in roster.items():
@@ -324,6 +331,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
                 for (_, q, tk, ch) in bt.composition_events[-12:]],
             "breadth": t["breadth"].get(b, {}),
             "observations": [_obs_json(o) for o in t["bucket_obs"].get(b, [])],
+            "partial_frontier": list(bt.partial),
         }
 
     tt = t["total_trend"]
@@ -341,6 +349,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
                         "members": len(tt.membership.get(q, []))}
                        for q in sorted(tt.ttm, key=trend._cq_sort)],
         "observations": [_obs_json(o) for o in t["total_obs"]],
+        "partial_frontier": list(tt.partial),
     }
 
     # --- View 0 companions. Published, not recomputed by any renderer. ---
@@ -350,6 +359,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
 
     panel = {
         "issuance_ttm": _ser(t["issuance_ttm"], t["issuance_membership"], "value"),
+        "issuance_partial": list(t.get("issuance_partial") or []),
         "issuance_membership_latest": (
             t["issuance_membership"][max(t["issuance_membership"], key=trend._cq_sort)]
             if t["issuance_membership"] else []),
@@ -470,7 +480,7 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
         all_trans += phases.transitions(obs, "bucket:{}".format(b))
     all_trans += phases.transitions(t["total_obs"], "total:panel")
 
-    suppliers = _supplier_section(supplier_legs, t["bucket_trends"])
+    suppliers = _supplier_section(supplier_legs, t["bucket_trends"], as_of=as_of)
     # A supplier's DATACENTER REVENUE phase is the one with thesis meaning, so
     # it joins the transition record on the same footing as an issuer's capex.
     all_trans += suppliers.pop("dc_transitions", [])
@@ -817,10 +827,56 @@ def thesis_line(snap, band=CROSSCHECK_BAND):
                else "nothing is refused at panel level")
 
     return ("Panel capex TTM {} is {} and reads {}; credit issuance is {}; "
-            "{}. {}. Hyperscalers: {}. {}.".format(
+            "{}. {}. Hyperscalers: {}. {}. {}.".format(
                 _money_plain(total.get("ttm")), capex_dir, total.get("state"),
                 credit_dir, comm_clause, cc_clause[0].upper() + cc_clause[1:],
-                census_clause, refused[0].upper() + refused[1:]))
+                census_clause, refused[0].upper() + refused[1:],
+                frontier_clause(total)))
+
+
+def partial_frontier_rows(snap):
+    """Every aggregate currently holding a quarter back, for the renderers.
+
+    One list, built here, so the dashboard and the PDF cannot describe the same
+    held quarter differently.
+    """
+    out = []
+
+    def add(series, latest, rows):
+        for r in rows or []:
+            out.append(dict(r, series=series, latest=latest))
+
+    total = snap.get("total") or {}
+    add("TOTAL PANEL", total.get("latest_quarter"), total.get("partial_frontier"))
+    for b, bk in sorted((snap.get("buckets") or {}).items()):
+        add("bucket:" + b, bk.get("latest_quarter"), bk.get("partial_frontier"))
+    panel = snap.get("panel") or {}
+    iss = panel.get("issuance_ttm") or []
+    add("credit issuance", iss[-1]["q"] if iss else None, panel.get("issuance_partial"))
+    comb = ((snap.get("suppliers") or {}).get("combined") or {})
+    add("supplier DC revenue", comb.get("latest_quarter"), comb.get("partial_frontier"))
+    return out
+
+
+def frontier_clause(total):
+    """The aggregate frontier, stated every day in the same position.
+
+    Always present, never omitted when empty, so a reader of the daily line
+    sees the clause change rather than having to notice it appear. When a
+    quarter is held back it names the quarter, how many members have reported
+    it, and what share of the prior quarter's dollars they are — the three facts
+    that make "the panel stands at 2026Q2" legible rather than stale-looking.
+    """
+    partial = (total or {}).get("partial_frontier") or []
+    latest = (total or {}).get("latest_quarter")
+    if not partial:
+        return "The panel stands at {}; no later quarter is partially reported".format(
+            latest or "—")
+    row = partial[-1]
+    return ("The panel stands at {}; {} is partial — {} of {} members have reported, "
+            "{:.0f}% of {}'s dollars".format(
+                latest or "—", row["q"], row["member_count"],
+                row["prior_member_count"], 100 * row["coverage"], row["prior_q"]))
 
 
 def _money_plain(v):

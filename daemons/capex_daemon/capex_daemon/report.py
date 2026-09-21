@@ -695,7 +695,33 @@ def sec_aggregate(snap, styles):
                 "<b>{}</b>: matched membership fell to {} member(s), below the {}-member "
                 "floor — no state published.".format(
                     _x(b), bk.get("member_count"), bk.get("min_members")), styles))
+    out.extend(_partial_frontier_flow(snap, styles))
     return out
+
+
+def _partial_frontier_flow(snap, styles):
+    """The dashboard's partial-frontier block, from the same rows."""
+    rows = snapshot.partial_frontier_rows(snap)
+    if not rows:
+        return []
+    lines = ["<b>Partially reported — held out of the aggregate.</b> Each series "
+             "stops at the last quarter its members have actually reached. A later "
+             "quarter joins once its reporters cover {:.0f}% of the prior quarter's "
+             "dollars, or {} days after quarter end, whichever comes first.".format(
+                 100 * trend.FRONTIER_COVERAGE_FLOOR, trend.FRONTIER_MAX_WAIT_DAYS)]
+    for r in rows:
+        lines.append(
+            "<b>{}</b> stands at {}. <b>{}</b> is partial: {} of {} members ({}), "
+            "{:.0f}% of {}'s dollars{}. Waiting on {}. Joins by {} at the latest.".format(
+                _x(r["series"]), _x(r.get("latest") or "—"), _x(r["q"]),
+                r["member_count"], r["prior_member_count"],
+                _x(", ".join(r.get("members") or [])), 100 * r["coverage"],
+                _x(r["prior_q"]),
+                "" if r.get("ttm") is None else " — {} alone would read {}".format(
+                    _x(", ".join(r.get("members") or [])), _x(_money(r["ttm"]))),
+                _x(", ".join(r.get("missing") or []) or "—"),
+                _x(r.get("publishes_by") or "—")))
+    return [_spacer(4), _warn("<br/>".join(lines), styles)]
 
 
 def sec_hayes(snap, styles):
