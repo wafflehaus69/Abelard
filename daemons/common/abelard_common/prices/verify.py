@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Sequence
 
 from . import reconstruct as R
-from .calendar import sessions_between
 from .schema import PriceStoreError
 from .vendor_tiingo import (CROSS_VENDOR_EPS, TiingoBar, TiingoError,
                             TiingoUnknownSymbol, TiingoVendor, check_quota,
@@ -65,9 +64,6 @@ DIV_TOLERANCE = 0.005
 PRICE_TOLERANCE = 0.0051
 # A split ratio is exact arithmetic (2:1, 3:2); this is float noise only.
 SPLIT_TOLERANCE = 1e-4
-# A hole must be this many sessions old before it is filled. Today's absence is
-# usually a session that has not settled, not a hole.
-FILL_MIN_AGE_SESSIONS = 2
 
 
 @dataclass
@@ -403,19 +399,32 @@ class FillResult:
 def fillable_holes(
     con: sqlite3.Connection,
     as_of: str,
-    min_age_sessions: int = FILL_MIN_AGE_SESSIONS,
 ) -> dict[str, list[str]]:
-    """instrument_id -> vendor_null dates old enough to fill.
+    """instrument_id -> vendor_null dates that are settled and not yet filled.
 
-    Today's absence is usually a session that has not settled rather than a
-    hole, so a gap must age before it is treated as one.
+    SETTLED means strictly before ``as_of`` -- the same definition the writer and
+    the reconciler use (``calendar.is_vendor_settled``). It replaced an age of
+    two TRADING sessions, which read Friday-to-Monday as one session and so held
+    a three-day-settled Friday back for another night, and which disagreed with
+    the writer about what "settled" is. Since the writer now records nothing at
+    all for a session the vendor has not delivered, a vendor_null is settled by
+    construction; the check stays so that an as-of in the past cannot reach
+    forward.
+
+    NOT YET FILLED, because the fill is an overlay: a vendor_null row stays in
+    prices_raw forever, and without this every run re-selected every hole ever
+    filled. The first nightly-shaped run reported "filled 6153 holes" when
+    nearly all of them already were -- a counter incrementing on no-ops, and
+    ~518 wasted vendor requests, every night.
     """
     out: dict[str, list[str]] = {}
     for r in con.execute(
-        "SELECT instrument_id, date FROM prices_raw WHERE status='vendor_null'"
-        " ORDER BY instrument_id, date"):
-        if len(sessions_between(r["date"], as_of)) < min_age_sessions:
-            continue
+        "SELECT p.instrument_id, p.date FROM prices_raw p"
+        " WHERE p.status='vendor_null' AND p.date < ?"
+        "   AND NOT EXISTS (SELECT 1 FROM fills f"
+        "                   WHERE f.instrument_id = p.instrument_id"
+        "                     AND f.date = p.date)"
+        " ORDER BY p.instrument_id, p.date", (as_of,)):
         out.setdefault(r["instrument_id"], []).append(r["date"])
     return out
 

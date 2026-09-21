@@ -97,9 +97,15 @@ def test_runner_flags_are_flags_the_cli_declares():
 def test_the_metered_leg_runs_last():
     """A quota refusal must not cost the store its nightly append."""
     order = [c[0] for c in _runner_invocations()]
-    assert order[0] == "nightly"
     assert order[-1] == "verify"
     assert order.index("reference") < order.index("reconcile")
+    # The append precedes every leg that READS prices, so each sees tonight's
+    # session. (This used to assert order[0] == "nightly". Since 2026-09-21
+    # universe-sync runs ahead of it -- it reads no prices, it sets tonight's
+    # targets, so a name joining the index today is fetched tonight.)
+    readers = ("fill-holes", "reference", "reconcile", "verify")
+    assert all(order.index("nightly") < order.index(r) for r in readers if r in order)
+    assert order.index("universe-sync") < order.index("nightly")
 
 
 def test_runner_sets_an_absolute_store_path():
