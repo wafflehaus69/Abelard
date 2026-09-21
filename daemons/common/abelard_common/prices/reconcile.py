@@ -152,12 +152,49 @@ def _price_return(con: sqlite3.Connection, instrument_id: str,
     return (a / b) * ratio - 1.0
 
 
+def _benchmark_distribution(con: sqlite3.Connection, benchmark: str,
+                            date: str, prior: str) -> float:
+    """Per-share cash the benchmark ITSELF paid with an ex-date in (prior, date].
+
+    Read from wherever the benchmark lives: ``corporate_actions`` when it is a
+    held instrument, ``reference_dividends`` when it is a reference series. One
+    amount per ex-date, so a payout declared by two sources is not counted twice.
+    """
+    per_date: dict[str, float] = {}
+    for d, amount in con.execute(
+        "SELECT effective_date, amount FROM corporate_actions WHERE instrument_id=?"
+        " AND kind='dividend' AND amount IS NOT NULL"
+        " AND effective_date > ? AND effective_date <= ?",
+        (benchmark, prior, date),
+    ):
+        per_date[d] = max(per_date.get(d, 0.0), amount)
+    for d, amount in con.execute(
+        "SELECT ex_date, amount FROM reference_dividends WHERE series_id=?"
+        " AND ex_date > ? AND ex_date <= ?",
+        (benchmark, prior, date),
+    ):
+        per_date[d] = max(per_date.get(d, 0.0), amount)
+    return sum(per_date.values())
+
+
 def _benchmark_return(con: sqlite3.Connection, benchmark: str,
                       date: str, prior: str) -> float | None:
-    """The ETF's own price return, from whichever store holds it."""
+    """The ETF's return with its OWN distribution added back on its ex-date.
+
+    The rebuild is a constituent PRICE return, and on an ordinary day the ETF's
+    price return matches it. On the ETF's own ex-dividend date it does not: the
+    fund's price drops by the quarterly payout while no constituent does. On
+    2026-09-15 IVV paid $2.203; its price return was -0.7325% against -0.4495%
+    for the S&P 500 itself, and a panel that matched the index to 0.8bp failed
+    the check at +27.5bp -- a guaranteed false failure four times a year. So the
+    payout is added back, and only the benchmark's: constituents stay price
+    returns, exactly as ``_price_return`` requires.
+    """
+    dist = _benchmark_distribution(con, benchmark, date, prior)
     r = _price_return(con, benchmark, date, prior)
     if r is not None:
-        return r
+        base = effective_close(con, benchmark, prior)
+        return r + (dist / base if dist and base else 0.0)
     rows = {}
     for d in (date, prior):
         row = con.execute(
@@ -168,7 +205,7 @@ def _benchmark_return(con: sqlite3.Connection, benchmark: str,
             rows[d] = row[0]
     if len(rows) < 2 or not rows[prior]:
         return None
-    return rows[date] / rows[prior] - 1.0
+    return (rows[date] + dist) / rows[prior] - 1.0
 
 
 def latest_weight_asof(con: sqlite3.Connection, index_code: str,
@@ -227,11 +264,17 @@ def reconcile_session(
     caller gets it from ``calendar.previous_session`` so a holiday does not
     silently become a two-day return on one side of the comparison.
     """
-    w_asof = latest_weight_asof(con, index_code, date)
+    # The weights in force at the PRIOR close. The session's return, close to
+    # close, is earned by the basket held going into it; a holdings file dated
+    # the session itself describes the basket AFTER that day's trading, which on
+    # a rebalance day is a different basket. 2026-09-18, a rebalance Friday:
+    # +9.3bp against IVV with the same-day file, +6.6bp with the pre-rebalance
+    # one. Off-by-one, and it only shows on the days the basket changes.
+    w_asof = latest_weight_asof(con, index_code, prior)
     if w_asof is None:
         return Reconciliation(date, index_code, benchmark, None, None, None, 0, 0,
                               0.0, tolerance_bp, "insufficient",
-                              "no index_weights on or before {}".format(date))
+                              "no index_weights on or before {}".format(prior))
 
     weights = list(con.execute(
         "SELECT instrument_id, weight FROM index_weights"

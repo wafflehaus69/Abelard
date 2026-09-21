@@ -254,6 +254,26 @@ CREATE TABLE IF NOT EXISTS reference_series (
     PRIMARY KEY (series_id, date, source)
 );
 
+-- A reference series' OWN cash distributions, as the vendor declares them.
+-- The reconciliation compares a constituent PRICE-return rebuild against the
+-- ETF's return, and on the ETF's ex-dividend date its price drops by the
+-- quarterly payout while no constituent does: IVV paid $2.203 on 2026-09-15,
+-- its price return was -0.7325% against -0.4495% for the index itself, and the
+-- check failed at +27.5bp on a panel that matched the index to 0.8bp. The
+-- series used to discard these; the reconciler adds them back.
+--
+-- Additive, so SCHEMA_VERSION is NOT bumped: a reader on older code does not
+-- know the table and is unaffected, whereas a bumped stamp would make it refuse
+-- the whole store as a newer shape.
+CREATE TABLE IF NOT EXISTS reference_dividends (
+    series_id  TEXT NOT NULL,
+    ex_date    TEXT NOT NULL,
+    amount     REAL NOT NULL,
+    source     TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (series_id, ex_date, source)
+);
+
 CREATE TABLE IF NOT EXISTS price_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

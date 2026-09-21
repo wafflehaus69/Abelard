@@ -60,12 +60,14 @@ class ReferenceError(PriceStoreError):
 @dataclass
 class ReferenceReport:
     written: int = 0
+    dividends: int = 0
     rolls: list[tuple[str, str]] = field(default_factory=list)
     divergences: list[tuple[str, str, float, float, float]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def render(self) -> str:
-        out = ["[reference] rows written: {}".format(self.written)]
+        out = ["[reference] rows written: {}".format(self.written),
+               "[reference] distributions recorded: {}".format(self.dividends)]
         out.append("[reference] contract rolls detected: {}".format(len(self.rolls)))
         for d, c in self.rolls[-5:]:
             out.append("     {} -> {}".format(d, c))
@@ -151,6 +153,15 @@ def sync_yahoo(
             _write(con, series_id, b.date, b.close, "yahoo_v8", s.fetched_at,
                    c, roll, "ok" if b.close is not None else "vendor_null")
             rep.written += 1
+        # The response already carried the series' own distributions; they
+        # were discarded, which left the reconciler comparing against an ETF
+        # price that drops by its payout four times a year. Kept now.
+        for d in s.dividends:
+            con.execute(
+                "INSERT OR REPLACE INTO reference_dividends (series_id, ex_date,"
+                " amount, source, fetched_at) VALUES (?,?,?,'yahoo_v8',?)",
+                (series_id, d.ex_date, d.amount, s.fetched_at))
+            rep.dividends += 1
     con.commit()
     return rep
 
