@@ -868,3 +868,67 @@ perfectly — a single workstream was writing to it — and still broke, because
 thing reading it was a set of daemons that had never agreed to follow that
 author's branch. The unit of isolation for a writer is a worktree; the unit of
 isolation for a *service* is a ref.
+
+## E34 — A page that renders a secret is a Mando-only surface
+
+Ruled by Mando 2026-09-02, from the PS-1B gate-G1 exposure.
+
+*Numbering.* This rule was ruled and committed as **E33** on the
+`ps-1-price-substrate` branch on 2026-09-02. The service-root rule above was
+ruled independently on `main` the next day and also numbered E33, neither side
+having seen the other. At the merge of the branch into `main` (2026-09-21) this
+one became E34: the other E33 is fixed in an immutable commit title on `main`
+and is the number already in use for it, while this one's citations were few
+and editable. Chronologically this rule came first. `DOCKET.md` entries written
+before the merge say E33 and mean this rule.
+
+**Incident.** Mando asked for the Tiingo free-tier ceiling, which the API does
+not expose: `/account/usage`, `/api/usage`, `/tiingo/utilities/usage` and
+`/account/limits` all return 301 or 404, and a normal call carries no
+rate-limit headers. ClaudeCode therefore opened the account area in Mando's
+logged-in browser and read the usage page. Reaching it went through
+`/account/api/token`, **which renders the API token in plaintext**, so the token
+entered the session transcript.
+
+Everything around it was handled correctly, which is why the failure is
+instructive rather than merely careless. The token was read in place on WSL via
+`set -a; . .env`, piped host-to-host so it never entered an argv, never written
+to a log, never echoed, and verified only by length, prefix and a live
+`api/test`. Shell history on the receiving host was checked and clean. **The
+transfer was clean. The read was not.**
+
+**Rule.** A surface that renders a secret — an account page showing a token or
+key, a password manager view, a billing page showing a full card number — is
+Mando-only. Where a number an agent needs lives behind such a surface, the agent
+**asks Mando to read it aloud** rather than loading the page. This holds even
+when the agent has legitimate access, even when the target datum is not itself
+secret, and even when the page is the only place the datum exists.
+
+**Why this is a rule and not a technique.** The obvious mitigations all fail:
+
+* *Navigate straight to the deeper page.* The token page was a waypoint, not the
+  destination. Which pages a site renders a secret on is not knowable in
+  advance, and finding out costs the exposure you were avoiding.
+* *Read the page but do not quote the secret.* Extraction returns the whole
+  page; the secret is in context the moment it loads, and context is transcript.
+  Declining to repeat it does not unsee it.
+* *Redact after the fact.* There is no after the fact. The exposure completes at
+  load.
+
+Every technical control here sits downstream of an action already taken. The
+only control that acts before the exposure is not going.
+
+**Corollary — rotation is not proof of revocation.** Tiingo's rotation control
+states it will "create a new token and immediately invalidate the current one".
+Measured after Mando rotated: the new token authenticated (HTTP 200) **and so
+did the old one** (HTTP 200), from a clean host, minutes later. An exposed
+credential is not retired because a vendor's UI says it is. Test the old value
+against a live endpoint and treat it as live until it returns 401 or 403 —
+E32's shape (authored is not activated; verify at the registry) applied to
+revocation rather than to scheduling.
+
+**Corollary — this is why gate inputs name their reader.** PS-1B's gate table
+assigned G1 to Mando. Executing it on his behalf, however helpfully, converted a
+human-only read into an agent read. When a gate says Mando, the answer comes
+from Mando; an agent that can obtain it anyway has found a way around the gate,
+not a way through it.

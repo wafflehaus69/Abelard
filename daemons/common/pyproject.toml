@@ -1,11 +1,18 @@
 [project]
 name = "abelard-common"
 version = "0.1.0"
-description = "Shared mechanical primitives for the OpenClaw daemons: the four-layer ticker noise filter, company-name alias resolver, read-only 4chan fetch, a retry/redaction HTTP client, and the canonical DaemonError contract. Logic only; each consuming daemon owns its seed data files."
+description = "Shared mechanical primitives for the OpenClaw daemons: the four-layer ticker noise filter, company-name alias resolver, read-only 4chan fetch, a retry/redaction HTTP client, the canonical DaemonError contract, and the PS-1 price substrate (one writer, many readers). Logic only; each consuming daemon owns its seed data files."
 requires-python = ">=3.12"
 dependencies = [
     "requests>=2.31",
 ]
+
+# PS-1B D.1. The library takes explicit paths and never reads the environment;
+# this entry point is the layer that does (ABELARD_PRICES_DB_PATH,
+# EDGAR_CONTACT, TIINGO_API_TOKEN), which is why it lives here and not in the
+# package's public API.
+[project.scripts]
+abelard-prices = "abelard_common.prices.cli:main"
 
 [project.optional-dependencies]
 dev = [

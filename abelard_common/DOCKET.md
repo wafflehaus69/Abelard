@@ -1,0 +1,1313 @@
+# PS-1 — Build Docket
+
+Append-only. One entry per phase, written as the phase closes. Newest at the
+bottom. Nothing here is edited after it is written; a correction is a new entry
+that says what it corrects.
+
+Order: **PS-1 — Price Substrate Hoist into `abelard_common`** (Abelard, 2026-09-02)
+Amendment sheet: post-Phase-0, 2026-09-02.
+Worktree: `Abelard-ps1` on branch `ps-1-price-substrate` (E18, one writer per tree).
+
+---
+
+## Phase 0 — Recon · CLOSED 2026-09-02 · accepted
+
+Report: `abelard_common/recon/PS-1-P0.md` (untracked in the `main` checkout).
+
+Established: one vendor (`yahoo_v8`, `smart_money/prices.py:21`); no raw close
+from any available vendor (Stooq behind a JS proof-of-work challenge, Finnhub
+candle/split both HTTP 403); **the vendor publishes its own corporate actions**
+via `&events=div,split` at one-day granularity; universe is 516 for v1 and
+~2,470 full; CIK resolves 98.9%; FRED `DCOILWTICO` lags ~5 business days.
+
+Five rulings taken (Mando, 2026-09-02): ship SPX+NDX; top-level report path;
+explicit-path state convention; 21:00 slot; `prices.py:194` line item struck.
+
+**Corrections logged against my own P0 findings:**
+
+1. **iShares was reported BLOCKED. It is not.** I tested the deprecated
+   `.ajax?fileType=csv` endpoint. The live path is
+   `…/{product}/latest-holdings.csv` and it works cold — no key, no cookies, no
+   Referer. Corrected in place in P0.4(iii). Mando caught this.
+2. **`abelard_common` was reported stateless. It is not.** `alert_queue.py` is
+   SQLite-backed with `SCHEMA_VERSION`, a `_SCHEMA` script and WAL. My grep used
+   a case-sensitive `DB_PATH` and missed its `db_path`. Corrected in P0.7 — see
+   the Phase 1 entry for what changed as a result.
+
+---
+
+## Phase 1 — Schema · CLOSED 2026-09-02 · awaiting Mando disk-review
+
+**Delivered**
+
+| Artifact | Path |
+|---|---|
+| Package | `daemons/common/abelard_common/prices/__init__.py` |
+| Migration (all DDL, version-stamped) | `daemons/common/abelard_common/prices/schema.py` |
+| Contract tests | `daemons/common/tests/test_prices_schema.py` |
+| This docket | `abelard_common/DOCKET.md` |
+
+`SCHEMA_VERSION = 1`, stamped into `price_meta` at creation. One migration file,
+every statement `IF NOT EXISTS`, so re-opening is a no-op. `migrate()` refuses to
+run against a store stamped newer than the code.
+
+**Tables** — the order's ten, plus four the amendment sheet and P0 require:
+
+- `instruments`, `ticker_aliases`, `index_membership`, `classification`
+- `prices_raw`, `adjustment_events`, `adjustment_factors`, `adjusted_view`
+- `freshness`, `reference_series`
+- **`corporate_actions`** (new; amendment A1 — vendor-declared, distinct from the
+  inferred `adjustment_events`)
+- **`vendor_adjusted`** (new; the dividend-factor section requires `vendor_adjclose`
+  be kept for comparison only — a separate table, not a `prices_raw` column, so
+  it cannot be joined into analytics by accident)
+- **`run_telemetry`** (new; cost/telemetry-before-persistence)
+- `price_meta`
+
+**Enforcement lives in DDL, not in the writer.** Thirteen triggers: `prices_raw`
+insert-only; `index_membership`, `classification`, `corporate_actions` and
+`adjustment_events` as-of append-only; `adjustment_factors` versions immutable.
+`adjusted_view` is deliberately left writable — it is derived and rebuilding it
+on a re-version is the normal path.
+
+**Build finding — a real hole, found and closed.**
+
+The first test run was 32 pass / 1 fail, and the failure was the one that
+mattered: `INSERT OR REPLACE` on `prices_raw` succeeded despite the delete
+trigger. SQLite fires delete triggers during REPLACE conflict resolution **only
+when `recursive_triggers` is ON**, which is a per-connection pragma. So a caller
+opening the file with a bare `sqlite3.connect()` would have walked straight
+through the insert-only guarantee and silently restated a fact — which is
+exactly the upsert path this substrate exists to remove.
+
+Closed two ways: `PRAGMA recursive_triggers=ON` in `connect()`, and a
+`BEFORE INSERT` trigger (`trg_prices_raw_no_replace`) that fires on the insert
+itself and therefore holds **for every connection, however opened**. Pinned by
+`test_replace_is_blocked_on_a_bare_connection_too`, which opens the file with a
+bare `sqlite3.connect()` and asserts the fact survives.
+
+**Consequence of the P0.7 correction.** `alert_queue`'s docstring states the
+house discipline exactly: *"the constructor takes an explicit `db_path` (no env
+resolution here — call sites own that)"*. Mando's ruling 3 matches it, so the
+ruling stands — but my P0.7 wording put a `resolve_db_path()` env helper inside
+the library. That would have broken the precedent. **`ABELARD_PRICES_DB_PATH` is
+read by the Phase 2 CLI, never by this package.** `connect()` takes a path.
+
+**Tests: 34 new, 113 total in `abelard_common`, all passing.** Not shape tests —
+each pins a rule against a defect CR-R0 measured in the layer being replaced:
+insert-only vs. the 92%-of-names vintage fragmentation; REPLACE-blocked vs. the
+old upsert; dual-class non-collision vs. A3's nightly fact-change; `vendor_null`
+rows recorded vs. silently dropped nulls; two sources disagreeing and both kept
+vs. a resolved-away classification conflict.
+
+**Not built, by design.** No writer, no fetch, no analytics, no CLI, no plist —
+Phases 2–4. Nothing was run against Basilic. No commit.
+
+**Open, carried into Phase 2**
+
+- **Reference-series ruling still outstanding** (Yahoo `CL=F` + `roll_flag` with
+  FRED as validator, vs FRED only). The schema serves either: `reference_series`
+  carries nullable `contract` and `roll_flag`, so no migration is needed once the
+  ruling lands. P0 addendum AD.2 recommends dropping the `|return| > 4%`
+  component — it missed the one real roll in the sample (−0.88%) and would fire
+  on genuine moves.
+- **A3 rule 3** (ordinal class fallback for the Berkshire case) is built as
+  specified — `class_source='ordinal'` — but still wants Abelard's confirm.
+- The Phase 0 report is untracked in the `main` checkout while this branch holds
+  the build. Whether it joins the branch at commit time is Mando's call.
+
+---
+
+## Phase 2 — Writer · CLOSED 2026-09-02 · awaiting Mando disk-review
+
+**Delivered**
+
+| Module | Lines | What |
+|---|---:|---|
+| `prices/reconstruct.py` | ~380 | Pure functions: raw reconstruction, factor series, corruption detector |
+| `prices/vendor.py` | ~200 | Yahoo v8 adapter; always `events=div,split`; fail-loud on schema drift |
+| `prices/writer.py` | ~430 | `ingest_series` + nightly / backfill / refetch / status; telemetry |
+| `prices/universe.py` | ~450 | Three-source adapter, identity resolution, as-of membership |
+| `prices/cli.py` | ~140 | `abelard-prices`, five subcommands, exit-code alerting contract |
+| tests ×4 | ~1,100 | 159 passing (79 pre-existing + 80 new) |
+
+`HttpClient` is **reused, not reimplemented** — the house has logged the
+duplicate-HttpClient debt three times and a fourth copy is not the contribution
+to make here. `universe.py` parses HTML with stdlib `html.parser` rather than
+adding `lxml`, because `abelard_common` declares only `requests`.
+
+**Verified end to end on live data.** `universe-sync` → 519 instruments in 1 s;
+`backfill --limit 6 --since 2021-01-04` → 6 names × 1,423 sessions in 2 s;
+`status` → clean, exit 0. Then 8,538 rows checked for phantom returns: worst
+single-session move across the six names is **+17.43%**, all genuine; dividend
+drift lands in the right order (ABBV 1.244 > ABT 1.115 > AAPL 1.030, matching
+their yields); 5 vendor-null sessions **recorded, not dropped**; 0 quarantined.
+
+### Three build findings, two of them real bugs I shipped and caught
+
+**1. The detector was pointed at the wrong series.** First draft ran the
+step-detector on the *reconstructed raw* series, on the reasoning that
+reconstruction should remove a split's step. That is backwards: raw is the true
+traded price, so a split is a genuine 4-for-1 step there — the vendor's
+*adjusted* close is the series that must be smooth. The AAPL control caught it:
+a perfectly clean 2020 4:1 was flagged as corruption and eight good sessions
+quarantined. Moved to the vendor series; AAPL now flags nothing and MNST still
+flags seven.
+
+**2. The adjusted view was missing its split component.** `adjustment_factors`
+initially carried only the CRSP dividend factor, so `adjusted_view` inherited
+raw's split step — a −75% phantom return on every split date, which is the exact
+defect this substrate exists to remove. The factor is
+`dividend_cumulative(d) / split_factor(d)`. Pinned by a test asserting our
+adjusted closes differ from the vendor's `adjclose` by a **constant** (0 spread
+across AAPL's window), i.e. identical returns.
+
+**3. Ticker notation bit for real, as P0.4(v) predicted.** iShares serves
+`BRKB`, Wikipedia serves `BRK.B`; keyed on the raw string they became two
+instruments and the second had no CIK. Fixed with a reverse index over the SEC
+file's own tickers — `BRKB` resolves because SEC lists `BRK-B`, whose concat
+form is `BRKB`. That is lookup, not string surgery: nothing is transformed
+unless SEC vouches for the result, so `CMCSA` and `GOOGL` stay themselves.
+Instrument count fell 521 → 519 and the provisional list fell to one name
+(`HOLX`, genuinely delisted, correctly flagged rather than dropped).
+
+A fourth, smaller: a first draft compared only *non-quarantined* offered closes
+against held facts, so a vendor restating history while also tripping the
+detector would have slipped past the fact gate. The comparison is now asymmetric
+on purpose — held side facts only, offered side everything.
+
+### Amendment items
+
+* **A1/A2 implemented as amended.** Declared layer primary (`corporate_actions`
+  from the events block, on the nightly, zero extra requests); raw
+  reconstruction; residual boundary detector re-aimed; rotation demoted to a
+  verification sweep. Item 4 (dollar-volume continuity) **dropped per AD.1**.
+* **Detector tuning corrected.** A surviving step is not a clean 2.0 — MNST's is
+  0.4895, because the stock also moved −2.1% that session. Matching now divides
+  the declared ratio out and asks whether the *residual* is a plausible session
+  move. A tight tolerance on the ratio itself mislabelled every real case.
+* **Quarantine is span-based, and extends when the split date itself is
+  discontinuous.** A uniformly mis-scaled stretch contains no step at all and
+  would otherwise sail through as fact — the MNST shape exactly. On the real
+  fixture: 27 sessions quarantined, only the clean post-split window kept.
+
+### MNST / MRNA re-derived (order 2.4), hand-verified
+
+Vendor responses captured as committed fixtures so these stay reproducible after
+Yahoo repairs or further mangles its own series.
+
+| | declared | anomalies | quarantined | facts kept |
+|---|---|---:|---:|---|
+| **AAPL** (control, clean 4:1) | 1 split 2020-08-31 | **0** | 0 | all 14 |
+| **MNST** | 1 split 2026-08-11 | 7, all `vendor_corruption` | 27 | 10 (2026-08-12 →) |
+| **MRNA** | none | 1, `unknown` | 2 | 12 |
+
+MRNA's +177% session is flagged `unknown` and quarantined — **not** relabelled a
+split. Inventing a corporate action the vendor never declared would be the same
+class of fabrication as caching a view as a fact. 5-row hand checks for all
+three are in `tests/test_prices_reconstruct.py`.
+
+### NOT delivered, and why
+
+* **`reference_series` has no writer.** FRED and Yahoo reference adapters are
+  not built, because the reference-series ruling is still open. The table takes
+  either answer (nullable `contract`, `roll_flag`), so this is a writer to add,
+  not a migration. **This is the one Phase 2 sub-item outstanding.**
+* Nothing deployed, nothing run on Basilic, no plist, no commit. The stop point
+  is before the first `refetch` rotation runs there.
+
+### Open
+
+* **Reference-series ruling** (§AD.2). Blocks only the reference writer.
+* **"Moore rule"** — the order's 2.4 says "hand-verified (5-row check, Moore
+  rule)". `grep -rniE moore` across the monorepo returns only a politician's
+  surname in SM scorecards; there is no such rule on disk. The 5-row checks are
+  done; whatever "Moore rule" adds, I could not apply what I could not find.
+* **A3 rule 3** (ordinal fallback) is built and exercised, still wants Abelard's
+  confirm.
+* `pyproject.toml` is unchanged — the `abelard-prices` console entry point is
+  not declared yet. Deliberate: packaging belongs with the Phase 4 deploy.
+
+---
+
+## Phase 2H — Pre-deploy hardening · CLOSED 2026-09-02 · awaiting Mando disk-review
+
+Abelard's seven items, 2026-09-02. Items 1-4 (before deploy) and 7 (the WTI
+ruling) are built; 5 and 6 are scoped below with what verification found.
+
+**New modules:** `prices/calendar.py`, `prices/reconcile.py`, `prices/reference.py`.
+**Schema -> v2:** `corrections`, `index_weights`, `reconciliation`.
+**Tests: 32 new, 188 total, all passing.**
+
+### 1. Index-level reconciliation — BUILT
+
+`reconcile.py` rebuilds the cap-weighted index return from IVV's own published
+weights × our adjusted closes and compares it to the ETF's actual return, ~10 bp
+tolerance. Weights come free — they were already in the holdings file we parse
+for membership, and are now captured into `index_weights` (504 rows, summing to
+99.88%).
+
+Two design points worth recording. The rebuilt return is **renormalised over the
+members we actually hold**, with coverage reported separately, so "did our names
+move as the index did" and "do we hold the whole index" stay separate questions.
+And below 80% weight coverage the check reports **`insufficient`, never `pass`** —
+an empty panel must not read as a clean bill of health (E1).
+
+**Live result, 2026-09-01 vs 2026-08-31: PASS at −2.6 bp against IVV and −3.8 bp
+against SPY**, 502 of 504 members, 99.7% of index weight.
+
+Getting there took two corrections, both found by running it rather than by
+reading it:
+
+* **Weights were stamped with the sync date, not the fund's.** The holdings file
+  carries its own "Fund Holdings as of"; weights describe the fund on *that*
+  date, and a reconciliation of a past session needs the weights in force then.
+  Stamping them "today" made every historical reconciliation report
+  `INSUFFICIENT`. Compounding it, the file writes `"Aug 31, 2026"` — abbreviated
+  — and the date parser only knew full month names, so it failed silently and
+  fell back to the sync date. Two bugs chained into one wrong answer that looked
+  like a coverage problem.
+* **The comparison was not like-for-like.** The rebuild ran on `adjusted_view`
+  (a TOTAL return) against an ETF PRICE return. On 2026-09-01 **17 S&P names went
+  ex-dividend** and the wedge was **12.8 bp — larger than the whole 10 bp
+  tolerance**. The rebuild now runs on `prices_raw` with any split inside the
+  window divided back out. Same session, like-for-like: **−2.6 bp**.
+
+A third thing the check caught on its own, which is the best evidence it works:
+**2026-08-28 came back `vendor_null` for 464 of 517 names**. The reconciliation
+refused to produce a number and reported `INSUFFICIENT` rather than passing on a
+hollow panel — exactly the systemic-failure shape it exists for.
+
+### 2. Exchange calendar — BUILT, and the DST concern was right
+
+`calendar.py`: NYSE holidays computed from observed rules (fixed horizon, fails
+loud past it), sessions-not-days arithmetic, and exchange-timezone dating.
+
+**The DST hazard is real and I had it wrong.** Measured against the live
+endpoint: equity bars are stamped 13:30/14:30 UTC, but **`CL=F` is stamped
+04:00/05:00 UTC — midnight exchange-local**. Dating in UTC (as the first
+implementation did) lands on the right date only because New York is behind UTC;
+any venue ahead of it would be off by one on every bar, silently. Now converted
+in `meta.exchangeTimezoneName`.
+
+A second trap found while testing: **`meta.gmtoffset` is unusable for this.** It
+reports the offset in force *now*, not per bar — fetching November 2021 in
+September returns `gmtoffset=-14400` (EDT) for bars that traded in EST. The
+timezone name plus `zoneinfo` handles the transition; the offset does not. Both
+are pinned.
+
+Freshness now counts sessions: over Thanksgiving a current name reads 2 sessions
+behind rather than 5 days stale.
+
+### 3. Human correction path — BUILT
+
+`corrections`: append-only, Mando-authored, carries a reason, references the row.
+`held_raw_closes` consults it, so an authorised correction **releases the fact
+gate**; `prices_raw` is never touched, so what the vendor originally said stays
+on the record. A correction can also rescue a quarantined session — adjudicating
+what the detector could not is exactly what the human path is for.
+
+### 4. Survivorship — BUILT, and the source is not where the order said
+
+The S&P page's changes table has **moved to its own article**,
+`Historical components of the S&P 500` (the same restructuring that split the NDX
+pages). The main list page has exactly two tables — constituents and a navbox.
+
+Parsed: 407 changes back to 1976, and it corroborates CR-R0 independently
+(2026-08-18 RDDT in / AVB out; 2026-08-05 FERG in / EA out — the exact names the
+workbook carried as stale).
+
+**The gap quantified: 104 distinct names left the S&P 500 since 2021-01-04.**
+Backfilling current members only would have run every 2021-2025 handoff test on
+503 survivors while missing roughly a sixth of the period's universe. Departed
+names now get an instrument row, aliases, `present=1` as of the floor and
+`present=0` at their removal date — 204 as-of rows over 103 names. They drop out
+of the nightly automatically (`_targets` reads the latest as-of row) while their
+history stays queryable.
+
+### 7. WTI — BUILT to the ruling
+
+`reference.py`: Yahoo `CL=F` daily as the working series with a roll flag from
+`meta.shortName`; `^VIX`, SPY, IVV, RSP, XLE alongside; FRED `VIXCLS` /
+`DCOILWTICO` as validators. Weekly reconciliation compares them where sessions
+overlap, **exempting roll days** (the front month legitimately steps; spot does
+not) and attributing any other divergence to the Yahoo series — FRED is slow, not
+wrong. The `|return| > 4%` component is **absent by design**, with a test
+asserting no return-based roll threshold exists. First live run: 138 Yahoo rows,
+19,495 FRED rows, **0 divergences**.
+
+### A third real bug, found by running it
+
+**An in-progress session is not a fact.** A run interrupted mid-universe stored
+2026-09-02 intraday prices; the re-run the same afternoon fired `fact_change` on
+**~240 names**. The prices were not wrong — the session had not finished
+happening. Insert-only and a live session are simply incompatible.
+
+`is_final_session()` now gates every bar: a session is committed only once it has
+closed and settled (17:00 exchange-local). The 21:00 nightly still commits the
+day it runs; any earlier run stops at yesterday. Re-run clean: **0 fact changes.**
+
+This is the kind of defect that only appears when the thing is actually run, and
+it would have produced a nightly alert storm on day one at Basilic.
+
+### 5. Second vendor (Tiingo) — VERIFICATION BLOCKED, not built
+
+`api.tiingo.com` is reachable (HTTP 200 on the unauthenticated test endpoint) and
+the docs page returns 200, **but the limits are rendered client-side and are not
+scrapeable** — I could not verify the current free-tier ceiling, which is what
+the item asks for. Verifying it requires an account key, and **creating accounts
+is outside what I do**. Mando registers; I then verify limits and wire the
+adapter. The rotation sweep is designed to take a second opinion when it exists —
+`reconcile`'s structure and `vendor_adjusted` already anticipate it.
+
+### 6. SEC split corroboration — SCOPED, not built
+
+Deliberately deferred as "soon after". The shape is settled: for each declared
+split, read `dei:EntityCommonStockSharesOutstanding` from the issuer's next 10-Q
+and check for a jump of the declared ratio, lagged a quarter. The Capex daemon's
+iXBRL parser is the tool and the CIK is already the instrument key, so this is a
+join rather than new infrastructure. It is the only **non-vendor** evidence
+available for a split, which makes it worth more than its cost.
+
+### Open
+
+* Reference `--since` on a cold start detects **0 rolls** — correct, since a roll
+  is a *change* and there is no prior contract on the first run. It arms itself
+  after one nightly. Worth knowing before someone reads the first log as a bug.
+* Observed sustained throughput on the full 519-name backfill is materially
+  slower than the isolated-request timing in P0.2 (~0.9 s). Real number to be
+  recorded from the completed run before the Basilic slot is finalised.
+* `pyproject.toml` still declares no console entry point; packaging stays with
+  the Phase 4 deploy.
+
+### Measured throughput (supersedes the P0.2 estimate)
+
+Full 519-name backfill over a 21-session window: **518 requests in 263 s ≈ 0.51 s
+per name**, faster than P0.2's isolated-request timing of ~0.9 s. Outcome:
+515 ok, 2 quarantined, 1 `vendor_error` (`HOLX`, 404 — delisted), 1 no-rows,
+**0 fact changes**. A 5-year window costs more per request; the 21-session figure
+is the nightly-append shape, and it puts the v1 nightly comfortably inside its
+21:00 slot.
+
+One more fix this run forced: a `404` from the vendor raised `NotFound`, which
+was outside the caught set and **aborted the entire 519-name run** on the first
+delisted ticker. Now `VendorUnknownSymbol`, counted per name and surfaced in
+`status` — the same lesson the old `price_backfill` had already learned and that
+I had not carried across.
+
+---
+
+## Item 5 — second vendor (Tiingo) · VERIFIED 2026-09-02 · adapter not yet built
+
+Mando registered and wrote the token to `/home/wafflehouse/.openclaw/prices/.env`
+on **WSL Ubuntu (Orban)**, mode 600, single key `TIINGO_API_TOKEN`. The value was
+never printed and never left that machine; every probe below ran inside WSL.
+
+**Auth, verified two ways.** Both `?token=` and `Authorization: Token <t>` are
+accepted (a bogus token returns `"Invalid token."` on each, a missing one
+`"Please supply a token"`). Use the header: a token in a query string reaches
+logs, and while `http_client.redact_url` scrubs it, a header never gets there.
+
+**Limits are NOT machine-readable.** `/account/usage`, `/api/usage`,
+`/tiingo/utilities/usage`, `/account/limits` are all 301/404, and a normal call
+returns **no rate-limit headers at all**. So the free-tier ceiling can only be
+read from the account web page — or measured by deliberately exhausting it, which
+is not a thing to do on day one. **Mando to read it off the account page.** The
+number that matters is unique symbols per month: the v1 rotation touches ~519
+distinct names over a 30-day cycle, which sits right on the historical free-tier
+ceiling. If it does not fit, the rotation takes a subset and the sweep lengthens.
+
+### MNST: the corruption is Yahoo's, proven against an independent vendor
+
+This is what a second vendor is for, and it paid immediately.
+
+```
+date        tiingo    yahoo    ratio   verdict
+2026-07-17    97.50    97.50  1.0000   match
+2026-07-20    95.45    47.72  2.0002   YAHOO HALVED
+2026-07-21    94.46    47.23  2.0000   YAHOO HALVED
+2026-07-22    95.67    47.83  2.0002   YAHOO HALVED
+2026-07-23    93.56    93.56  1.0000   match
+2026-07-31    96.38    48.19  2.0000   YAHOO HALVED
+2026-08-06    94.16    47.08  2.0000   YAHOO HALVED
+2026-08-11    45.53    45.53  1.0000   match  (split effective)
+```
+
+Five disagreements in the compared window, plus 2026-08-10 (Tiingo 91.43 vs
+Yahoo 45.72) from the wider fixture — **six, and every one an exact factor of
+2.0000**. Tiingo's series is smooth in both raw and adjusted terms and carries
+`splitFactor = 2.0` on 2026-08-11, the same effective date Yahoo declares.
+
+So: Yahoo declared its 2:1 correctly and then applied it to six pre-split
+sessions and not the other fifteen. The detector was right, the quarantine was
+right, and **the decision not to repair was right** — there was no way to know
+from inside one vendor which side of each flip was true. Now there is.
+
+### P0.1 is superseded on one point
+
+P0.1 concluded "there is no raw close, and no parameter selects one", and A2 was
+built on deriving raw by un-splitting Yahoo's adjusted close. **Tiingo returns
+raw `close` directly**, alongside `adjClose`, `adjOpen/High/Low`, `adjVolume`,
+and **per-row `splitFactor` and `divCash`** — i.e. prices and the corporate-action
+feed in one response, with no reconstruction step to get wrong.
+
+That was true of Yahoo only after a derivation; it is true of Tiingo natively.
+The finding stands for the vendors P0 could reach at the time, and is corrected
+here rather than edited in place.
+
+**This raises a question above my pay grade and I am not deciding it:** Tiingo
+now looks like a candidate for *primary*, not merely verifier. Against that —
+Yahoo needs no key, has no quota, and the whole reconstruction path is built and
+tested against it; Tiingo's ceiling is unknown and a personal license is a
+single point of failure. My read is Yahoo stays primary and Tiingo verifies,
+because a free unmetered source is the right thing to depend on nightly and the
+metered one is the right thing to check it with. **Abelard's call.**
+
+### Immediate consequence: MNST becomes repairable
+
+Item 3 (human corrections) and item 5 (second vendor) compose. The six sessions
+now have an independently sourced true value, so they can be entered as
+`corrections` rows — Mando-authored, reason recorded, evidence citable — and
+MNST comes out of quarantine without `prices_raw` being touched. That is exactly
+the exit the correction path was built for. **Not done: it needs Mando's
+authorship, since a correction is by construction a human act.**
+
+---
+
+## Ruling — Mando, 2026-09-02
+
+**Yahoo stays primary; Tiingo verifies.** Recorded here rather than left in chat.
+The reasoning that led to it: a free, unmetered source is the right thing to
+depend on nightly, and the metered one is the right thing to check it with.
+Tiingo's raw-close shape is better, but a personal license is a single point of
+failure and its ceiling is still unread.
+
+## MNST / MRNA adjudicated · corrections applied 2026-09-02
+
+New module `prices/corrections.py`, CLI verb `abelard-prices correct <file>`
+(dry-run by default, `--apply` to write), staged artifact at
+`abelard_common/corrections/2026-09-02_mnst_mrna.json`. **196 tests passing.**
+
+Two kinds of row, and the distinction is load-bearing:
+
+* **`corrected`** — the held value is wrong; a named source says what is right.
+* **`confirmed`** — the held value is RIGHT and an independent source was
+  checked. Quarantine is a statement of *ignorance*, not of error: the detector
+  could not adjudicate the window, so it refused to call any of it fact. Most
+  sessions inside a quarantined span are fine, and a confirmation is how they
+  are released — with the record showing they were adjudicated rather than
+  merely aged out.
+
+```
+ticker  date               held    becomes    kind
+MNST    2026-08-03       187.10      93.55    corrected   Yahoo left it unadjusted; reconstruction doubled it
+MNST    2026-08-04       188.36      94.18    corrected
+MNST    2026-08-05       188.92      94.46    corrected
+MNST    2026-08-06        94.16      94.16    confirmed   Yahoo HAD applied the split here
+MNST    2026-08-07       180.72      90.36    corrected
+MNST    2026-08-10       (null)      91.43    corrected   Yahoo returned no price at all; Tiingo has it
+MNST    2026-08-11        45.53      45.53    confirmed   the 2:1 effective date
+MRNA    2026-08-18        62.96      62.96    confirmed
+MRNA    2026-08-19       174.38     174.38    confirmed   REAL EVENT, not corruption
+```
+
+**MNST**: `adjusted_view` 14 -> 21 sessions, worst single-day move now
+**-4.04%**. The oscillation is gone. `prices_raw` is byte-for-byte unchanged —
+every original value and status still on the record.
+
+**MRNA**: the detector flagged the +177% session `unknown` and refused to invent
+a split to explain it. Tiingo settles it: same close to the cent, `splitFactor
+1.0`, and **189,338,177 shares against 4,304,996 the prior session — a 44x
+volume spike**. A real market event. Two vendors and the tape agree, so the
+adjudication is *confirm*, not correct. **Note for CR-1: MRNA's adjusted series
+legitimately contains a +177% session**, and it will dominate any vol or
+correlation statistic for that name. That is data, not a defect.
+
+### A bug the dry run caught before anything was written
+
+The first plan flagged all four confirmations as value changes. Cause: I
+compared cross-vendor values at `reconstruct.FACT_EPS` (1e-9). That constant
+compares a value against **itself** across two fetches of the same vendor, where
+equality is exact. Across vendors it is wrong: Yahoo serves float32-precision
+closes widened to float64 (`94.16000366210938`) while Tiingo quotes to the cent.
+Now 1e-6 relative — a hundredth of a cent on a $100 share — with the reason in
+the docstring so the two tolerances are not later "unified".
+
+This is exactly what dry-run-and-diff (E9) is for: the error surfaced in a plan
+nobody had to undo.
+
+### Standing
+
+The correction path is now proven end to end: a human authors a file, the plan
+is read, `--apply` writes an append-only overlay, and the view is rebuilt while
+the facts stay put. `authored_by` is `mando`; the authorisation is quoted in the
+artifact.
+
+---
+
+## Phase 3 — analytics.py · CLOSED 2026-09-02 · awaiting Mando disk-review
+
+`prices/analytics.py` + `tests/test_prices_analytics.py`. **31 new tests, 227
+total, all passing.** Pure functions; the single I/O boundary is `load_panel`,
+kept at the top and marked, so every statistic can be reproduced from a literal
+dict in a test rather than from a store that has to be built first.
+
+**Stdlib only.** `abelard_common` declares one runtime dependency (`requests`),
+and a shared library should not grow numpy so one consumer can compute a
+five-point regression. Everything here is small by construction. CR-1 can reach
+for numpy on the 500x500 matrices; these are the primitives underneath.
+
+### The MA ladder, verified before it was written
+
+Mando's formula was checked against both pins BEFORE a line of it was
+implemented, so the module was written against a confirmed target rather than
+retro-fitted to make a test pass:
+
+```
+FBRX  0, 20.2%, 69.2%, 126.6%, 136.9%  ->  slope x 10 = 15.208  (pinned 15.2)
+MRNA  0, 22.8%, 49.7%, 62.3%, 190.4%   ->  slope x 10 = 16.812  (pinned 16.8)
+```
+
+Both tests assert from the **ladder values, not from prices**, per the order.
+That keeps the scoring formula pinned independently of the moving-average
+construction: if a later change to how MAs are computed breaks a ladder, the
+ladder test fails and the score test does not, and the failure says which half
+moved. A third test asserts the two pins are not accidentally equal — a formula
+returning a constant would satisfy either one alone.
+
+`momentum_ma_ladder` returns the ladder **and** the score, deliberately. The
+score alone hides shape: a steady climb and a single terminal spike can produce
+the same slope, and MRNA's real ladder — flat through MA30, then +190% at the
+last rung — is exactly the latter. There is a test pinning that two utterly
+different shapes score within 1.0 of each other, so nobody later "simplifies"
+the return value to a scalar.
+
+### Scale calibration, from real 5y series
+
+Run against the six names backfilled to 2021:
+
+```
+name    MA200   MA100    MA50    MA30    Last   score   63skip5
+ABT     +0.0%   -8.9%   -2.3%   +3.6%   +3.9%    0.81   +34.95%
+AAPL    +0.0%   +6.6%  +10.8%  +11.6%  +14.9%    1.40    +0.92%
+ACGL    +0.0%   +0.8%   +4.0%   +4.1%   +2.8%    0.36    +5.44%
+A       +0.0%   -0.0%   +7.6%  +11.9%  +14.6%    1.64   +34.75%
+ABBV    +0.0%   +2.8%  +12.2%  +13.4%  +16.5%    1.75   +25.60%
+ABNB    +0.0%   +7.3%  +15.8%  +22.8%  +31.0%    3.10   +43.58%
+```
+
+**Ordinary large caps score 0.3 to 3.1**; the pinned FBRX and MRNA sit at 15.2
+and 16.8. So a score in the teens is not a strong name, it is an extreme one —
+worth knowing before anyone reads 1.75 as weak. ABT is the useful case: its
+ladder is non-monotonic (down at MA100, up thereafter) and still scores
+positive, which is the shape-versus-score point above, in live data.
+
+### Constraints encoded, not just noted
+
+* **Momentum is descriptive.** Handoff §2-E and §3.3: a basket selected on
+  momentum is just a momentum portfolio, and the prototype's name-level version
+  lost three straight months when the leverage cycle turned. Nothing in this
+  module filters, ranks-and-cuts or selects on a momentum value, and the module
+  docstring says so as a constraint on callers, not as a caveat.
+* **Leave-one-out is the primary basket.** A name inside its own benchmark
+  manufactures agreement in proportion to its own weight — with 20 members, a
+  floor of about 1/20 of its own variance, which looks like signal and is
+  arithmetic. `ew_basket_returns(leave_out=...)` and `loo_basket_for_each`.
+* **Composition is disclosed** (E14). `basket_composition` reports how many
+  members actually contributed to each session, because an equal-weight average
+  over a varying membership is not comparable across time unless you can see
+  the membership.
+* **`aligned_returns` returns the dates alongside the series.** Intersecting is
+  the honest default for a correlation input and also how a panel silently
+  dates itself to its stalest member — CR-R0 §R1.5, where intersecting 497
+  names truncated the window to 2026-07-23 with nothing on screen saying so.
+  There is a test for the pathological case where two names do not overlap at
+  all and the caller gets an empty date list rather than a plausible number.
+* **Missing data returns None, never a number.** 199 sessions is not a 200-day
+  average. A partial mean labelled MA200 is the exact species of quiet
+  wrongness this substrate exists against.
+
+### Open
+
+* MRNA's adjusted series legitimately contains the +177% session (two vendors,
+  volume 44x). Any Phase 3 statistic touching MRNA will be dominated by it.
+  Real data, flagged so a correct number is not mistaken for a defect.
+* `analytics.py` is Phase 3 and postdates the four-commit plan; it wants its own
+  commit rather than being folded into one of them.
+
+---
+
+# ORDER PS-1B — received 2026-09-02
+
+**Not started.** The order's prerequisite is the five PS-1 commits reviewed and
+authorized; G4 is marked "needed by: all". HEAD is `eb4eac1`, index empty,
+nothing committed. No PS-1B phase has begun, including 3.1.
+
+## Gate register
+
+| Gate | Needed by | Status 2026-09-02 |
+|---|---|---|
+| G1 Tiingo unique-symbols/month ceiling | 2V | **PENDING (Mando).** Not machine-readable: `/account/usage`, `/api/usage`, `/tiingo/utilities/usage`, `/account/limits` all 301/404, and a normal call returns no rate-limit headers. Account page only. |
+| G2 Tiingo token on Basilic, mode 600, by Mando's hand | Deploy | **PENDING (Mando).** Token currently exists only at `/home/wafflehouse/.openclaw/prices/.env` on WSL Ubuntu (Orban). |
+| G3 Hole-fill policy | 2V | **PENDING (Mando confirm/override).** Abelard default: a `vendor_null` is a first-write and may be filled from a sourced vendor automatically with attribution; a HELD value changes only by human correction; the two paths never share code. |
+| G4 Five PS-1 commits authorized | all | **PENDING (Mando).** Five messages prepared and PowerShell-verified; 24 files; nothing staged. |
+
+## Phase 3.1's premise, verified before the gate (read-only; no build)
+
+Abelard reports a defect in `analytics.py`, which is code committed to this
+branch's plan and about to be authorized. It is real, and it is not marginal.
+
+`dated_log_returns` computes `log(c[d_i] / c[d_{i-1}])` over adjacent **rows**.
+Where a session is missing — `vendor_null`, quarantined, or excluded from
+`adjusted_view` — the two adjacent rows are not adjacent sessions, and a
+multi-session return is emitted keyed to a single date. `ew_basket_returns` then
+averages it against genuine single-session returns; `basket_composition` counts
+it as one member-session; `moving_average` takes the last N **rows**, so a
+window with k holes spans N+k sessions and is still labelled MA200.
+
+Measured against the live store:
+
+```
+names with >=1 hole inside their own span : 464 of 517
+MNST 2026-08-27 -> 2026-08-31 spans 2 SESSIONS,
+     emitted as one return of -1.67%
+basket composition on 2026-08-31 claims 3 members,
+     one of which is a 2-session return
+```
+
+**464 of 517 names, right now.** Every one is the 2026-08-28 mass vendor-null,
+so the defect and 2V.5's remediation target are the same event seen from two
+ends: refilling 08-28 removes ~463 of the 464 holes. 3.1 is still required —
+holes recur, and quarantine creates them by design — but the present count is
+dominated by one remediable outage, which matters for sequencing: doing 2V.5
+first would make 3.1's test data thin, and doing 3.1 first gives 2V.5 a correct
+yardstick.
+
+**Consequence for the review that gates this order:** commit 5 (`analytics.py`)
+carries a known defect. That is a normal thing for history to record and 3.1
+fixes it — but Mando should decide knowingly rather than discover it after.
+Either order is defensible; it is his call, not mine to assume.
+
+---
+
+## PS-1B gates — resolved 2026-09-02
+
+**G4 AUTHORIZED.** Five commits landed on `ps-1-price-substrate`:
+`563ad24` schema, `594fcf6` writer, `075fa99` hardening, `7802e67` corrections,
+`2af8a97` analytics. Working tree clean. Not pushed.
+
+**G3 CONFIRMED** as Abelard's default. A `vendor_null` session is a FIRST WRITE
+and may be filled from a sourced vendor automatically, with `source` attribution
+and evidence. A HELD value changes only by human correction. The two paths never
+share code.
+
+**G2 DONE.** Token placed on Basilic at `~/.openclaw/prices/.env`, mode 600,
+`~/.openclaw/prices/logs/` created. Transferred WSL -> Basilic through a pipe so
+the value never entered an argv, a log, or shell history (verified: 0 matches in
+`~/.bash_history`). Confirmed authenticating from Basilic itself, not merely
+present: `api/test` 200 and a real MNST fetch 200.
+
+**G1 READ — and the ceiling is NOT what the order assumed.**
+
+There is no unique-symbols-per-month cap. The free tier meters three things:
+
+```
+Hourly Requests      50 requests/hour      <- the binding constraint
+Daily Requests    1,000 requests/day
+Bandwidth             2.00 GB/month
+```
+
+So the rotation sizing changes shape. N = 519/30 = **18 names/night** sits far
+inside all three: 18 of 50 hourly, 18 of 1,000 daily, and at roughly a quarter
+megabyte per full-history response about 135 MB/month against a 2 GB allowance.
+
+The constraint the code must enforce is therefore **requests per hour**, not
+unique symbols. 2V.1 says "refuse to start a rotation that would exceed the
+ceiling" — that check should count requests in a rolling hour and a rolling day,
+and track month-to-date bytes, because those are the meters that exist. A
+unique-symbol counter would guard a limit Tiingo does not impose while leaving
+the one it does impose unguarded.
+
+Headroom is large enough that the full 519-name universe could be swept in a
+single night across ~11 hours of pacing if that were ever wanted. It is not
+wanted — a 30-day rotation is the design — but it means the ceiling is not a
+constraint on this build.
+
+### Security event — token exposed in transcript, rotation recommended
+
+Reading the usage page required loading `/account/api/token` first, and **that
+page renders the token in plaintext**, so it entered the session transcript. It
+had until then been handled without ever being printed: read in place on WSL,
+piped to Basilic, verified only by length and prefix.
+
+The exposure is not from the transfer; it is from the account page itself. The
+right response is rotation, which is a one-click action on that page and which
+**only Mando should perform** — it is a security action on his account.
+
+Rotation invalidates the copy now on Basilic, so the sequence is: rotate, then
+re-place. Re-placing is mechanical and can be done the same piped way.
+
+---
+
+## PS-1B item 1 — token re-placed 2026-09-02
+
+New token piped WSL -> Basilic, `~/.openclaw/prices/.env`, mode 600. Verified:
+new token `api/test` **200 from Basilic**; the value differs from the one it
+replaced; the old prefix returns **0 matches** in either host's `.env`.
+
+**Two findings that go beyond the check requested.**
+
+1. **Rotation did not revoke.** Tiingo's control states it will "create a new
+   token and immediately invalidate the current one". Tested from a clean host
+   minutes after Mando rotated: the new token returns 200 **and so does the
+   old** one. The exposed credential is still live. This is E33's corollary in
+   the first instance that produced it — rotation is not proof of revocation,
+   and the only proof is a 401/403 from the endpoint. **Mando to re-check, and
+   escalate to Tiingo if it stays live.**
+2. **The old value is in WSL's `~/.bash_history`.** Basilic's history was clean
+   (checked at placement); Orban's WSL history was not checked then and holds
+   it. Given (1), that file currently contains a working credential. Not
+   scrubbed — a shell history is personal and deleting from it is Mando's call.
+   The line is removable with
+   `grep -v '<prefix>' ~/.bash_history > /tmp/h && mv /tmp/h ~/.bash_history`.
+
+## PS-1B item 2 — 2V.1 amended (recorded, not yet built)
+
+Mando's amendment, verbatim in effect: replace the unique-symbol counter with
+three rolling counters in telemetry — **requests/hour (50), requests/day
+(1,000), bytes/month (2 GB)** — and refuse a rotation that would breach any.
+**Hard floor: pace at >= 72 s between requests inside the sweep**, so a
+pathological retry loop cannot reach 50/hour. N stays 18/night; the headroom is
+real but the 30-day rotation is the design and does not change.
+
+72 s x 18 names = 21.6 minutes per sweep, which sits inside the 21:00 slot with
+the nightly append ahead of it. Built in 2V, not here.
+
+## Phase 3.1 — analytics session-awareness · CLOSED 2026-09-02
+
+**227 tests passing.** `analytics.py` 336 -> 461 lines; every function that
+spans time now takes `sessions` from `calendar.py`.
+
+* `dated_log_returns(closes, sessions)` returns **`(returns, gaps)`**. A return
+  is emitted only between consecutive sessions; a bridged span is appended to
+  `gaps` and never produced. Callers wanting only returns write `[0]`, and the
+  explicitness is the point.
+* `moving_average(closes, window, sessions, as_of)` and
+  `ma_ladder(closes, sessions, as_of)` refuse unless every one of the last
+  `window` **sessions** is held. A 200-row mean over a holed series spans 200+k
+  sessions and is a longer average wearing a shorter label.
+* `ladder_status()` reports which rungs failed and why.
+* `ew_basket_returns` / `basket_composition` / `loo_basket_for_each` count only
+  consecutive-session returns.
+* `momentum_return_63_skip_5` was not in the order's list but carries the same
+  defect and is fixed with it: both endpoints must be held sessions, because
+  sliding to the nearest held row silently changes the window being measured.
+
+**Measured against the live store, before and after:**
+
+```
+before : 464 of 517 names silently bridged a hole (all the 2026-08-28 outage)
+after  : 464 gaps COUNTED and returned; 0 bridged
+MNST   : gap ('2026-08-27','2026-08-31') reported; 19 returns emitted, was 20
+basket : composition on 2026-08-31 is now empty, not "3 members" with one bridged
+```
+
+### A design flaw the tests caught
+
+First `ladder_status` returned at the first failing rung. But the windows nest —
+MA30's sessions are a subset of MA200's — so a hole near the right edge fails
+every rung, and an early return always reported `MA200` and never revealed how
+recent the hole was. That is the diagnostic that matters: it distinguishes "wait
+for history" from "fill a hole". Now every rung is tested and the **shortest**
+failing window is reported.
+
+### The order's MRNA requirement could not be met as written, and why
+
+The order requires MRNA's real series to "reproduce 16.8 via the
+ladder-from-prices path". It does not, and the reason is worth more than the
+test would have been.
+
+Computed from real adjusted closes, MRNA's ladder as of **2026-08-31** is
+`[0.0, 22.8%, 49.7%, 62.3%, 168.2%]`. The first four rungs match Mando's pinned
+ladder **exactly** — three independent values to a tenth of a percent, which is
+not coincidence and which dates the pin to 2026-08-31. The fifth does not:
+pinned 190.4% against computed 168.2%.
+
+That gap resolves cleanly. His Last rung implies a price of **151.97**; the
+2026-08-31 close is **140.34**, the 2026-09-01 close is **154.27** and 09-02 is
+**150.81**. So the pinned ladder pairs **moving averages computed to the prior
+close with a live intraday Last** — exactly what reading the number off a screen
+produces, and not reproducible from closes.
+
+The score is also violently as-of sensitive because the last rung dominates:
+across three weeks of real MRNA data it ranges **2.65 to 21.96**. Pinning
+16.8-from-prices would have produced a test that failed on most days and passed
+by luck on a few.
+
+So the pin is split, which is stronger than the order asked for:
+
+* **16.8 stays pinned on the LADDER** — date-independent, formula-only.
+* **The prices->ladder path is pinned against a frozen fixture**
+  (`fixtures/mrna_ladder_20260831.json`, 314 real sessions) asserting the three
+  MA rungs reproduce exactly and the Last rung is the close. Deterministic, and
+  it exercises the full real path.
+
+**Decision embedded, worth Mando's eye:** `ma_ladder` uses the **close** at
+`as_of`. A stored, versioned system must, or the same as-of yields a different
+number on every recomputation. The cost is that a live dashboard reading will
+differ from this intraday — here by 7.7% on the last rung, worth about 1.8
+points of score. If Mando wants the screen number reproduced, that is a
+`Last = live quote` variant and a separate, explicitly non-reproducible output.
+
+## Doctrine — E33 added to ENGINEERING.md
+
+*Renumbered **E34** at the 2026-09-21 merge into `main`, where a different E33
+(service roots) had been ruled independently the next day. This entry is left as
+written; E34 carries the numbering note.*
+
+"A page that renders a secret is a Mando-only surface." Full entry in
+`doctrine/ENGINEERING.md`, with corollaries on rotation-is-not-revocation and on
+gates naming their reader.
+
+**Still unresolved: the "Moore rule".** Order PS-1 §2.4 requires hand
+verification "(5-row check, Moore rule)" and Mando has now asked that E33 be
+added "with the Moore-rule entry". `grep -rniE moore` across the monorepo
+returns only a politician's surname in SM scorecards. There is no such rule on
+disk and it has not been stated in session. The 5-row checks are done; the Moore
+rule cannot be written by someone who has never been told it.
+
+---
+
+## Phase 2V — Tiingo verification adapter · 2026-09-02
+
+**251 tests passing.** New: `vendor_tiingo.py`, `verify.py`, schema v3 with a
+real v2→v3 migration, `verify` and `fill-holes` CLI verbs.
+
+### Schema v3 needed a migration, not just new tables
+
+Adding `'filled'` to `prices_raw`'s status CHECK cannot be done with ALTER
+TABLE, and `CREATE TABLE IF NOT EXISTS` would have left an existing store
+carrying the v2 constraint while `price_meta` claimed v3 — code and table
+disagreeing about what is legal, which is the class of silent wrongness this
+store exists to prevent.
+
+So `migrate()` rebuilds the table: triggers off, rename, recreate, copy, assert
+the row count on both sides, drop the shadow, triggers back — inside one
+transaction with foreign keys off, and it rolls back to v2 rather than land
+half-migrated. Exercised against a real 8,538-row store: **rows preserved,
+checksum identical, shadow dropped, all three insert-only triggers restored and
+still enforcing, and `'filled'` accepted while a bogus status is still refused.**
+
+### 2V.3's two clauses conflicted, and the overlay is the resolution
+
+The order says a disagreeing session is "quarantined (row status, fact
+untouched)". Those cannot both hold here: `prices_raw` is insert-only, which is
+*why* "fact untouched" is true, so a row's status cannot be edited afterwards.
+Quarantine at INGEST is stamped before the write; quarantine AFTER the fact has
+to be an overlay — so it is one, on the pattern corrections already established.
+New `quarantine` table, append-only; a release is a new row with `released=1`,
+never a delete, so the record of what was doubted survives the doubt being
+resolved.
+
+### Fill and correct are separate code, on purpose
+
+G3 draws the line at "has this date ever had a value". A hole is an absence and
+filling it invents nothing; a held value is a claim and changing it revises the
+record. A single function with `overwrite=True` would put one bad call between
+those two. Different tables (`fills` vs `corrections`), different authority
+(automatic vs human), different code. There is a test asserting a fill leaves a
+held value alone even when the verifier disagrees about it.
+
+Two shapes of hole, each getting the mechanism that fits: where the primary
+returned a session with no price, the `vendor_null` row already occupies the
+slot and stays as the record that the primary had nothing, with the fill as an
+overlay; where the primary never returned the session at all, the fill is a
+plain insert with `status='filled'`. `fills` carries the evidence either way.
+**A correction outranks a fill** — human adjudication over automatic first
+write — and there is a test.
+
+### 2V.1 as amended: the meters the vendor actually keeps
+
+`vendor_calls` logs every request; `check_quota` counts rolling
+requests/hour (50), requests/day (1,000) and bytes/month (2 GB) and refuses
+**before the first request**, against the whole plan — a sweep that dies at
+request 43 of 60 has spent the quota and left the store half-verified. Pace
+floor 72 s. Tests cover each meter and assert that a refused sweep makes **not
+one** request.
+
+Header auth only. The hygiene test walks the package **by AST** rather than by
+grep, because a line-based check flags `TiingoVendor(token=...)` — a Python
+keyword argument, perfectly safe — and a test that cries wolf gets disabled. It
+looks for a `token` key in a params dict and for `token=` inside a URL literal.
+I verified it actually fails by putting a token in the params dict, then
+restored: a hygiene test nobody has seen fail is a decoration.
+
+### 2V.5 — the transient-fault hypothesis is REFUTED
+
+The order's first move on 2026-08-28 is to refetch from Yahoo on the theory that
+the 464 nulls were a transient fault. Re-probed four days later, on names that
+were actually null:
+
+```
+A ABBV ABNB ABT ACGL ACN ADBE ADM ADP ADSK AEE AEP  ->  0 of 12 resolved
+```
+
+Still null. (AAPL, MSFT and SPY do have 2026-08-28 — but they were never among
+the nulls, so they are not evidence.) The session is a **coverage gap in the
+primary, not a transient fault**, and Yahoo will not fix it by being asked
+again.
+
+**And the remediation does not fit in one pass.** 464 names against a 50/hour
+meter is **9.3 hours** of metered fetching; the daily meter is not the
+constraint, the hourly one is. `check_quota` correctly refuses the single pass.
+Index weight with a real 2026-08-28 close is **46.0%** against the 80% the
+reconciliation requires, so 08-28 stays `INSUFFICIENT` until the gap closes.
+
+This is a scheduling decision for Mando, not something to force:
+
+* **(a) Schedule the backfill** — ~10 hours of metered fetching, one time, e.g.
+  45-name chunks hourly overnight. Moves 08-28 to a PASS/FAIL number.
+* **(b) Let the rotation absorb it** — the nightly sweep already records
+  `holes_vendor_has` as a by-product, so 08-28 closes over the 30-day cycle at
+  no extra cost. Slower, free, and 08-28 stays INSUFFICIENT meanwhile.
+* **(c) Accept it** — one session in five years, flagged and visible.
+
+My read is **(b)**: the meter exists to stop exactly the kind of burst (a)
+requires, the session is already correctly reported as insufficient rather than
+quietly wrong, and nothing downstream is blocked by one gap that the system
+already knows about. But it is a call about how much a single session is worth,
+which is Mando's.
+
+### Deferred
+
+**2V.6 (SEC split corroboration)** is not built. The order marks it low priority
+and "may defer to a later order if 2V.1–2V.5 run long" — they did. The shape is
+settled and unchanged: per declared split, read
+`dei:EntityCommonStockSharesOutstanding` from the next 10-Q via the Capex iXBRL
+parser and check for a ratio jump, lagged a quarter, stored as
+`sec_corroborated`. It is the only non-vendor evidence available for a split,
+which is why it is worth doing even at low priority.
+
+### Note on the "Moore rule"
+
+Mando ruled 2026-09-02: disregard, a vestige or an error. Recorded so the
+phantom requirement in PS-1 §2.4 does not resurface as a gap in a later audit.
+
+### The fill path, exercised live
+
+Four holes filled from Tiingo at the 72 s pace floor, against the real store:
+
+```
+before: tiingo quota: 0/50 hour · 0/1000 day · 0.00/2147 MB month
+   ABT    2026-08-28    112.47  from tiingo
+   APD    2026-08-28    308.09  from tiingo
+   SWKS   2026-08-28     65.79  from tiingo
+   HWM    2026-08-28    264.85  from tiingo
+after : tiingo quota: 4/50 hour · 4/1000 day
+
+the primary's record is untouched:
+   ABT  prices_raw status=vendor_null close=None      (x4)
+filled session now in the analytics view:
+   ABT  adjusted_view 2026-08-28 = 112.47             (x4)
+```
+
+Note what this settles: **Tiingo has the session Yahoo does not have at all.**
+2026-08-28 is a coverage gap in the primary, and the verifier can close it — the
+remaining question is only how fast the meter allows, not whether the data
+exists.
+
+---
+
+## Ruling — 08-28 remediation, Mando 2026-09-02
+
+**(b): let the rotation absorb it.** With the reasoning stated: *"correlation
+isn't time sensitive — there's no urgency behind it. I'm perfectly fine with a
+24 hour lag."*
+
+So 2026-08-28 closes over the 30-day rotation as a by-product of the sweep,
+which already records `holes_vendor_has` per name. No scheduled 10-hour backfill,
+no burst against a meter that exists to prevent bursts. The session stays
+`INSUFFICIENT` in the reconciliation until enough weight is covered, which is
+the correct report rather than a silent wrong one.
+
+### The lag tolerance has wider consequences, and they are all slack
+
+Recorded because it relaxes constraints elsewhere and a later reader should not
+re-tighten them by accident:
+
+* A missed nightly is not an incident. The append already requests
+  `last_date_held -> today` as a span, so one skipped run is closed by the next
+  in a single call. That was built for the one-session-per-night crawl; it also
+  means the 21:00 slot has no hard edge.
+* The rotation may pace generously. 72 s between requests, 18 names, ~22
+  minutes — none of that is under time pressure.
+* Phase D's 3-to-5-night coexistence window has no clock on it.
+
+### A change the remark suggested, tested, and NOT made
+
+If a 24-hour lag is acceptable, the session-finality gate could move from 17:00
+same-day to T-1 — only committing a session after it has been settled for a full
+day. That would eliminate the risk of committing a close the vendor later
+revises, which under insert-only would surface as a fail-loud fact change.
+
+**Measured before proposing it.** Eight names whose 2026-09-01 closes were
+committed on 2026-09-02, refetched a day later:
+
+```
+A AAPL ABBV ABNB ABT ACGL ACN ADBE  ->  0 of 8 changed
+```
+
+A settled close is stable. The 17:00 gate is not producing fact-change risk in
+practice, so **the change is not made**: adding a session of lag to defend
+against a revision I cannot demonstrate would be a cost paid for a hypothesis.
+Recorded as tested-and-declined rather than never-considered, so it does not get
+re-proposed from first principles later.
+
+---
+
+## Phase D (partial) — deploy artifacts authored, not installed · 2026-09-02
+
+**D.1, D.2 and D.6 are done. D.3, D.4 and D.5 are blocked on a push.** 260 tests
+passing (251 + 9 new deploy tests).
+
+### What was written
+
+* `daemons/common/pyproject.toml` — `abelard-prices` console entry.
+* `daemons/common/scripts/run_prices.sh` — four legs, worst exit code returned.
+* `daemons/common/deploy/com.abelard.prices.plist` — 21:00, `RunAtLoad` false,
+  `ExitTimeOut` 3600. **Reference copy. Not loaded.**
+* `BASILIC_MANUAL.md` §14, `capex_daemon/OPERATIONS.md` (D.6 cold-start note).
+* `tests/test_prices_deploy.py` — 9 tests over the artifacts themselves.
+
+### The leg order is load-bearing
+
+`nightly` → `reference` → `reconcile` → `verify`. Verify is last because it is
+the only metered leg and the only one a quota can refuse; if it ran first, a
+refusal would cost the store its nightly append. Reconcile needs the session and
+the benchmark, so it follows both. There is a test asserting this order, because
+it reads like a preference and is not one.
+
+### The plist would not have loaded
+
+The explanatory comment was written with `--` in it, which is illegal inside an
+XML comment. `plutil` and launchd would both have refused the file — a job that
+never fires, silently, on a machine nobody is watching. Found by parsing it here
+rather than by discovering an empty log tomorrow morning.
+
+Hence `test_prices_deploy.py`: it parses the plist with `plistlib` (the same
+rules launchd applies), and it checks that every verb and flag the runner names
+is one the CLI actually declares. Negative-checked both ways — a `--` in the
+comment and a `verifyy` typo each fail it — because a deploy test nobody has
+seen fail is a decoration.
+
+### BASILIC_MANUAL §13 says news-watch is installed. Basilic says otherwise.
+
+`launchctl list` on Basilic, 2026-09-02 20:55 EDT:
+
+```
+com.abelard.efd-probe · fdu · smart-money-brief · queue-digest · capex-dash
+qwen-serve · smart-money-dash · qwen-ui · capex · smart-money
+```
+
+**No `com.abelard.news-watch`.** §13 records it as installed 2026-08-24 with a
+supervised first run costing $0.5339. The run happened — by hand. The job was
+never loaded. That is E32 exactly, and CR-R0 R4.3 called it. Recorded in §14
+rather than edited out of §13, because the gap between what a document claims
+and what a host reports is the finding, not a typo.
+
+It also matters here: news-watch's slot is **21:30**, not the 21:00 I had first
+written into the plist comment from memory. A ~35-minute prices run would overlap
+its start by ~5 minutes *if it is ever loaded*. They share no store and no
+writer, and the overlapping leg is verify, so it is tolerable — but it is now
+written down instead of waiting to be rediscovered.
+
+### D.3 onward are blocked, and the block is Mando's to clear
+
+D.3 says "on Basilic by hand, in the foreground". The code is not on Basilic.
+
+```
+Basilic HEAD   5887f7c  (main, 11 commits past this branch's fork point)
+this branch    ps-1-price-substrate, 8 commits, unpushed
+remote has     origin/main, origin/fdu-pa1-recon
+```
+
+The merge is clean — **zero overlap** between the files this branch touches and
+the files main touched since the fork; main's 11 commits are all capex CD-GAP2A.
+`git merge-tree` reports no conflicts.
+
+But pushing is authorization I do not have, and the house pattern (§8) is that
+Mando commits and pushes, then Basilic pulls. So D.3–D.5 stop here.
+
+**Also note the store must be built before the plist is loaded.** Loading it onto
+an empty database would make the first `nightly` see no history, and every one of
+516 names would look like a first write. D.3's manual backfill is not a
+formality; it is the thing that makes D.4 legible.
+
+---
+
+## Phase D.3 — the first full backfill, and what it caught · 2026-09-03
+
+```
+names=519  requests=518  ok=470  quarantined=48  vendor_error=1  in 264s
+```
+
+**0.51 s/name.** Store: 722,509 rows, 518 names, 2021-01-04 to 2026-09-02, 68 MB.
+`ok` 687,942 rows over 500 names; `vendor_null` 466 over 464 (the known
+2026-08-28 Yahoo gap, absorbing by rotation per Mando's ruling (b)).
+
+And **48 names quarantined — 9.2% of the panel — every one of them a false
+positive.** The five-year backfill is what surfaced it; no shorter window had.
+
+### Rule 1 had no floor on the ratio it was matching
+
+`detect_anomalies` builds `targets = {ratio, 1/ratio}` per declared split and
+tests **every session** against them, `_ratio_matches` allowing a ±25% residual
+so an ordinary session move can ride on top of a scale error. That tolerance is
+right for MNST's 2:1. It is catastrophic for a ratio near 1.0.
+
+Yahoo encodes a **spinoff** as a split whose ratio is near 1.0 — DHR/Veralto
+1.128, GE HealthCare 1.281, GE Vernova 1.253. Target 1/1.128 = 0.8865 with a
+±25% window spans `[0.709, 1.108]`, which **contains a flat day**. Measured on
+DHR's real series:
+
+```
+sessions  match_inverse  match_direct
+1421      1420           1418
+```
+
+Every session bar one. Hence the whole five-year history condemned, for 18
+index-heavy names: BDX CMCSA DHR DTE FDX GE HON IBM IP J LEN LH MMM MRK O SPGI
+TRI ZBH. Their loss would have gutted the correlation work this substrate
+exists to feed.
+
+The data was never wrong. GE 12.95 → 100.60 is an 8:1 reverse split raising the
+raw price; DHR 248.10 → 213.74 is a spinoff lowering it. Both are exactly what
+an unadjusted close should do.
+
+**Fix:** a declared ratio is eligible only if a step of that size could not be an
+ordinary trading day — the same floor Rule 2 uses. Keeps MNST's 2.0, AAPL's and
+NVDA's 4.0, GE's 0.125 reverse split; drops the whole 0.95–1.33 spinoff band,
+which never carried evidence. GE is the instructive case: it has all three
+shapes, and it was the two spinoffs that condemned it, not the reverse split.
+
+### Rule 2 said 40% and meant 28.6%
+
+`abs(math.log(ratio)) > math.log(1.40)` reads as `|return| > 40%` and is not:
+`1/1.40 = 0.714`, so the **downside** trigger sat at −28.6%. That is the other
+24 names — NFLX's −35% on 2022-04-20, DG's −32%, EW's −31%, DXCM, ARM, APP,
+HOOD, RDDT, MRNA — real moves, two good sessions quarantined apiece.
+
+A return is `ratio − 1`. The test is now arithmetic. MRNA's +177% is still
+caught; NFLX's crash is not.
+
+### Tests
+
+Six added, negative-checked: four fail against the old detector, and the two
+that pass in both versions are the ones asserting the gate does **not** blind
+Rule 1 to MNST or to a reverse split — guards against over-correcting, which
+is why they are supposed to pass either way. 266 passing.
+
+### The store is being rebuilt, not repaired
+
+`prices_raw` is insert-only, so a row's status cannot be restated — which is the
+property that makes the store trustworthy and also means a detector bug cannot
+be patched in place. The store holds nothing human-authored (`corrections`,
+`fills`, `quarantine`, `verification`, `vendor_calls` all zero); it is entirely
+derived from Yahoo and reproduces in 264 seconds. Deleted and re-backfilled.
+
+**D.4 was held for this.** Loading the plist against that store would have
+installed a nightly whose adjusted view was missing IBM, GE, MRK, MMM, HON and
+CMCSA.
+
+### D.3 after the fix — the store as it now stands on Basilic
+
+```
+names=519  requests=518  ok=502  quarantined=16  vendor_error=1  in 264s
+```
+
+| status | rows | names |
+|---|---|---|
+| `ok` | 720,320 | 518 |
+| `quarantined` | 1,723 | 16 |
+| `vendor_null` | 466 | 464 |
+
+Quarantined fell **48 names → 16**, 34,101 rows → 1,723 (0.24% of the store).
+All eighteen formerly-condemned names are whole again — GE, IBM, MRK, MMM, HON,
+CMCSA, DHR, SPGI, FDX, BDX each carry a full 1,422 `ok` rows and one
+`vendor_null`, the 2026-08-28 gap.
+
+What remains is what should: MNST's 1,406 rows (real corruption, adjudicated in
+2V), CVNA's 2022–23 squeeze, and fourteen names with a single genuine >40%
+session — GL's short-report crash, CNC −40%, ALNY +50%, PDD +56%, ARM +48%,
+HOOD +50%, MRNA +177%. Those are labelled `unknown`, which is a flag for a human
+and not a claim of corruption.
+
+Detections split cleanly: **7 `vendor_corruption`, all MNST**, showing the 2V
+signature exactly — 0.4895/1.9559, 0.4935/1.9413, 0.4984/1.9193, 0.5039, each an
+exact factor of 2 with the session's own move on top. **20 `unknown` over 15
+names.**
+
+**Reconciliation, 2026-09-02: PASS.** Rebuilt +0.4952% against actual +0.4521%,
+**+4.3bp** on a 10bp band, 503/504 members, 100.0% weight. The four earlier
+sessions report `INSUFFICIENT`: iShares serves only *latest* holdings, so there
+are no `index_weights` dated on or before them. That is the no-pass-without-
+coverage rule working, not a failure — but it does mean **historical
+reconciliation needs a historical weights source**, which the store does not
+have. Recorded as a known limit, not a defect.
+
+`HOLX` is `last=never` — delisted, 404 from the vendor, no CIK, provisional.
+Counted and not fatal, as designed since Phase 2.
+
+Verified **on Basilic**, not inferred from the dev box: 267 tests on Python
+3.14.7 arm64, and the numbers above are the host's own.
+
+### One more thing the verification turned up
+
+`status` counted vendor-corruption *detections* and printed them as
+"fact-change events" — so the first clean backfill reported seven revised facts
+when the true count was zero. `RunReport.fact_changes` is the real thing, a held
+value differing from what the vendor now offers, and `StatusReport` had borrowed
+the name for something else. A held fact changing is the most serious line this
+store can print; the phrase now means only that. Behaviour unchanged — an
+unadjudicated corruption still holds the nightly's exit code at 1.
+
+**D.3 complete. Holding at the D.4 gate.**
+
+---
+
+## MNST — Mando's ruling, 2026-09-03
+
+**Source-override mechanism, per Abelard, as PS-1C — after two watched nights.**
+
+Until PS-1C lands, MNST stays quarantined and out of the panel. The store is
+already doing this correctly (1,406 rows quarantined); the ruling is that the
+remedy is a *mechanism* — one instrument sourced from the verifier instead of
+the primary — and not 1,400 hand-reviewed correction rows. Sequenced behind
+D.4/D.5 so the nightly is proven before a new write path is added to it.
+
+**The nine corrections applied 2026-09-03 stand.** They are verified against
+Tiingo to the cent and they are on the record; they simply do not scale to the
+problem, which is the finding, not a defect in them.
+
+### Pre-registered: the first nightly exits 1, and that is correct
+
+Three MNST detections (2026-07-20, 07-23, 07-31) are unadjudicated and will stay
+so until PS-1C. `is_clean` is false while any unadjudicated corruption stands, so
+`status` returns 1 and `run_prices.sh` returns 1 as the night's worst leg.
+
+**Recorded in advance so it cannot be read as a failure of the deploy.** The
+first clean-exit night is a PS-1C deliverable, not a D.4 one. What D.4 is
+watching for is everything else: the append landing, `is_final_session` holding,
+the roll flag armed, reconciliation passing, telemetry written.
+
+### What made the size of this visible
+
+2V worked a 21-session window and concluded Yahoo had missed 15 pre-split
+sessions. Against five years the count is **1,400 of 1,410**, so the shape of
+the fault was right and the scale was off by two orders of magnitude. The
+five-year backfill is the only thing that could have shown it — the same way it
+was the only thing that showed the spinoff defect.
+
+And the substrate was checked before the vendor was blamed: **CRWD (4:1), IBKR
+(4:1) and NVDA (4:1 and 10:1) each reconcile at ratio 1.0 across all 1,410
+sessions.** Reconstruction is correct. MNST is uniquely broken in the primary.

@@ -1,0 +1,43 @@
+{
+  "authored_by": "mando",
+  "source": "tiingo_daily",
+  "authorized": "2026-09-02, in session: 'Yahoo stays primary, Tiingo verifies. go ahead and stage the rows'",
+  "note": "Adjudication of the two names PS-1's detector quarantined. Values are Tiingo raw closes, fetched 2026-09-02 from /tiingo/daily/<t>/prices. prices_raw is never touched; these rows are the overlay the view honours.",
+  "rows": [
+    {"ticker": "MNST", "date": "2026-08-03", "corrected_close": 93.55, "kind": "corrected",
+     "reason": "Yahoo left this pre-split session unadjusted, so reconstruction doubled an already-raw price. Tiingo raw close 93.55, splitFactor 1.0.",
+     "evidence": {"held_reconstructed": 187.10, "yahoo_close": 93.55, "tiingo_close": 93.55, "ratio_held_to_true": 2.0}},
+
+    {"ticker": "MNST", "date": "2026-08-04", "corrected_close": 94.18, "kind": "corrected",
+     "reason": "Same as 2026-08-03: unadjusted by Yahoo, doubled by reconstruction. Tiingo raw close 94.18.",
+     "evidence": {"held_reconstructed": 188.36, "yahoo_close": 94.18, "tiingo_close": 94.18, "ratio_held_to_true": 2.0}},
+
+    {"ticker": "MNST", "date": "2026-08-05", "corrected_close": 94.46, "kind": "corrected",
+     "reason": "Same as 2026-08-03. Tiingo raw close 94.46.",
+     "evidence": {"held_reconstructed": 188.92, "yahoo_close": 94.46, "tiingo_close": 94.46, "ratio_held_to_true": 2.0}},
+
+    {"ticker": "MNST", "date": "2026-08-06", "corrected_close": 94.16, "kind": "confirmed",
+     "reason": "Yahoo HAD applied the 2:1 to this session, so reconstruction recovered the true raw price. Tiingo agrees exactly; released from quarantine unchanged.",
+     "evidence": {"held_reconstructed": 94.16, "yahoo_close": 47.08, "tiingo_close": 94.16}},
+
+    {"ticker": "MNST", "date": "2026-08-07", "corrected_close": 90.36, "kind": "corrected",
+     "reason": "Unadjusted by Yahoo, doubled by reconstruction. Tiingo raw close 90.36.",
+     "evidence": {"held_reconstructed": 180.72, "yahoo_close": 90.36, "tiingo_close": 90.36, "ratio_held_to_true": 2.0}},
+
+    {"ticker": "MNST", "date": "2026-08-10", "corrected_close": 91.43, "kind": "corrected",
+     "reason": "Yahoo returned no price for this session at all (recorded vendor_null). Tiingo has it: raw close 91.43 on 5,972,174 shares. This fills a hole rather than replacing a wrong number.",
+     "evidence": {"held_reconstructed": null, "held_status": "vendor_null", "tiingo_close": 91.43, "tiingo_volume": 5972174}},
+
+    {"ticker": "MNST", "date": "2026-08-11", "corrected_close": 45.53, "kind": "confirmed",
+     "reason": "The 2:1 effective date. Post-split, so no reconstruction factor applied and the held value is already true. Tiingo agrees exactly and carries splitFactor 2.0 on the same date.",
+     "evidence": {"held_reconstructed": 45.53, "yahoo_close": 45.53, "tiingo_close": 45.53, "tiingo_split_factor": 2.0}},
+
+    {"ticker": "MRNA", "date": "2026-08-18", "corrected_close": 62.96, "kind": "confirmed",
+     "reason": "Quarantined as the session before an unexplained +177% move. Tiingo agrees exactly; the session itself was never in doubt.",
+     "evidence": {"held_reconstructed": 62.96, "tiingo_close": 62.96}},
+
+    {"ticker": "MRNA", "date": "2026-08-19", "corrected_close": 174.38, "kind": "confirmed",
+     "reason": "The +177% session. Two independent vendors agree to the cent, Tiingo reports splitFactor 1.0 (no corporate action), and volume was 189,338,177 shares against 4,304,996 the prior session - a 44x spike. This is a real market event, not vendor corruption. The detector was right to flag it 'unknown' rather than invent a split; the adjudication is that no correction is needed.",
+     "evidence": {"held_reconstructed": 174.38, "tiingo_close": 174.38, "tiingo_split_factor": 1.0, "volume": 189338177, "prior_volume": 4304996, "volume_ratio": 44.0}}
+  ]
+}
