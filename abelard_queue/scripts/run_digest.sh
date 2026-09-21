@@ -13,7 +13,11 @@
 #
 # Exit 2 means the queue is NOT empty. That is information, not breakage: a
 # scheduled digest exiting 0 with a full queue is the silence it exists to end.
-cd ~/Code/Abelard/abelard_queue || exit 3
+# Relative to THIS file, never to a named checkout (E33: a launcher must stay
+# inside the tree it was started from). This used to cd into ~/Code/Abelard,
+# the development checkout, so a plist pointed at the pinned live root would
+# still have run whatever branch was checked out there.
+cd "$(dirname "$0")/.." || exit 3
 LOG=~/.openclaw/abelard_queue/logs/digest.log
 mkdir -p ~/.openclaw/abelard_queue/logs
 echo ">>> digest $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $LOG

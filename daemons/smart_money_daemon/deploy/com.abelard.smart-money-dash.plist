@@ -10,7 +10,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon/scripts/run_dash.sh</string>
+    <string>/Users/wafflehaus/Code/abelard-live/daemons/smart_money_daemon/scripts/run_dash.sh</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -19,7 +19,7 @@
   <key>ThrottleInterval</key>
   <integer>10</integer>
   <key>WorkingDirectory</key>
-  <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon</string>
+  <string>/Users/wafflehaus/Code/abelard-live/daemons/smart_money_daemon</string>
   <key>StandardOutPath</key>
   <string>/Users/wafflehaus/.openclaw/smart_money/logs/dashboard.out.log</string>
   <key>StandardErrorPath</key>

@@ -13,12 +13,12 @@
   <key>Label</key><string>com.abelard.efd-probe</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon/.venv/bin/python</string>
+    <string>/Users/wafflehaus/Code/abelard-live/daemons/smart_money_daemon/.venv/bin/python</string>
     <string>-m</string><string>smart_money.waf_probe</string>
     <string>--rider</string><string>--max-jitter</string><string>900</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon</string>
+  <string>/Users/wafflehaus/Code/abelard-live/daemons/smart_money_daemon</string>
   <key>StartCalendarInterval</key>
   <array>
     <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>5</integer></dict>

@@ -39,7 +39,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>/Users/wafflehaus/Code/Abelard/daemons/common/scripts/run_prices.sh</string>
+    <string>/Users/wafflehaus/Code/abelard-live/daemons/common/scripts/run_prices.sh</string>
   </array>
   <key>RunAtLoad</key>
   <false/>
@@ -51,7 +51,7 @@
     <integer>0</integer>
   </dict>
   <key>WorkingDirectory</key>
-  <string>/Users/wafflehaus/Code/Abelard/daemons/common</string>
+  <string>/Users/wafflehaus/Code/abelard-live/daemons/common</string>
   <key>StandardOutPath</key>
   <string>/Users/wafflehaus/.openclaw/prices/logs/launchd.out.log</string>
   <key>StandardErrorPath</key>

@@ -9,7 +9,9 @@
 # Slot 21:30 America/New_York: ahead of Smart Money's 22:30 scan, its 23:15
 # brief and capex's 23:40, so the evening block runs in order and nothing
 # overlaps. A cycle takes minutes, not tens of minutes.
-cd ~/Code/Abelard/daemons/news_watch_daemon || exit 2
+# Relative to THIS file, never to a named checkout (E33: a launcher must stay
+# inside the tree it was started from).
+cd "$(dirname "$0")/.." || exit 2
 LOG=~/.openclaw/news_watch/logs/nightly.log
 mkdir -p ~/.openclaw/news_watch/logs
 echo ">>> news-watch run $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $LOG

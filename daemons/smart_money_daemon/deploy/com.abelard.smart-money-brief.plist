@@ -11,7 +11,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon/scripts/run_brief.sh</string>
+    <string>/Users/wafflehaus/Code/abelard-live/daemons/smart_money_daemon/scripts/run_brief.sh</string>
   </array>
   <key>RunAtLoad</key>
   <false/>
@@ -23,7 +23,7 @@
     <integer>15</integer>
   </dict>
   <key>WorkingDirectory</key>
-  <string>/Users/wafflehaus/Code/Abelard/daemons/smart_money_daemon</string>
+  <string>/Users/wafflehaus/Code/abelard-live/daemons/smart_money_daemon</string>
   <key>StandardOutPath</key>
   <string>/Users/wafflehaus/.openclaw/smart_money/logs/brief.out.log</string>
   <key>StandardErrorPath</key>
