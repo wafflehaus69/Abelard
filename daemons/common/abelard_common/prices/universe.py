@@ -330,8 +330,18 @@ def fetch_sec_map(client: HttpClient) -> dict[str, tuple[str, str, str]]:
 
 def normalise(ticker: str) -> dict[str, str]:
     """One ticker in every notation in play. Resolution is by lookup elsewhere;
-    this only renders the forms so an alias row exists for each."""
-    t = ticker.strip().upper()
+    this only renders the forms so an alias row exists for each.
+
+    A SPACE is a share-class separator too. The build met 'BRK.B' (Wikipedia)
+    and 'BRKB' (iShares); by 2026-09-17 the iShares file said 'BRK B' and 'BF B'.
+    Neither dash, dot nor concat form of a string with a space in it matches the
+    SEC file, so both fell through to NOCIK provisionals, and the
+    CIK-keyed instruments were marked departed from the iShares side. Berkshire
+    had not left the S&P 500; its 1.4% weight had moved onto an instrument with
+    no price history. Folding internal whitespace to the dash lets the existing
+    lookup vouch for the result, exactly as it does for the other notations.
+    """
+    t = "-".join(ticker.strip().upper().split())
     dot = t.replace("-", ".")
     dash = t.replace(".", "-")
     return {"dot": dot, "dash": dash, "concat": t.replace(".", "").replace("-", ""),
