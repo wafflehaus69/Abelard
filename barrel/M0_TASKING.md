@@ -180,6 +180,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-2 (below) | ClaudeCode, recording Mando | 2026-09-21 | D5 bankroll; price-reference pool rule; BigQuery access + what metadata already settles |
 | MR-3 (below) | ClaudeCode, recording Mando / Architect | 2026-09-21 | BigQuery spend ceiling + Transactions rule; price reference vs fill; realized-fee cost model ratified; owner wallets; H3 discovery spec adopted |
 | MR-4 (below) + [`docs/H3_AMENDMENT_v1.1.md`](docs/H3_AMENDMENT_v1.1.md) | Architect; ClaudeCode recording | 2026-09-21 | M0-wide rulings arising from the H3 review; project ID; standing ceiling unchanged |
+| Execution record, orders 2–4 → [`docs/A1_BIGQUERY_FITNESS.md`](docs/A1_BIGQUERY_FITNESS.md) | ClaudeCode | 2026-09-21 | A1 step 1 PASS; BigQuery **unfit** for swap-level data; D1 returned for ruling; work stopped per order 5 |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
 Builder-recorded Mando rulings therefore use the **MR-** prefix from here on; the A1 block
@@ -471,3 +472,26 @@ authorization, budget alert. **Until they are ruled, MR-3.1 stands unmodified**:
 this month, confirm-before-run above 50 GB on the dry-run figure, no unclustered
 `Transactions`, no dataset created. The Architect's conditional supersession of MR-3.1 takes
 effect only when Mando rules decision 3.
+
+---
+
+### Execution record — H3 amendment orders 2–4 (ClaudeCode, 2026-09-21)
+
+Full report: `docs/A1_BIGQUERY_FITNESS.md`. In brief:
+
+* **Order 1 done:** `docs/H3_WALLET_DISCOVERY_v1.1.md`.
+* **Order 2 — A1 step 1: PASS.** Freshness is 0 minutes behind head. No missing days, and
+  every week is ≤ 3.65% on a strict upper bound. **Flag:** the dataset is missing 5.5–10.6% of
+  blocks on 2025-08-06/07/10/11, verified against the chain. Whether partial-day loss counts
+  as a "multi-day hole" awaits a ruling.
+* **Orders 3–4 — BigQuery is unfit as the swap-level source.** `Instructions` holds only
+  top-level instructions, so routed swaps are absent. `log_messages` is empty, so swap events
+  are absent. `Token Transfers` omits inner transfers. Complete data exists only in
+  `Transactions` balances, at ~248 GB/day, which projects to ~150 TiB / ~$900+ for the
+  window, against MR-3.1's unclustered rule and the $150 recommendation. The derived trade
+  table (R4 / MR-4.5) cannot be built here within any budget ruled so far.
+* **Overturned and corrected:** MR-2.3 (dry runs are *not* an unclustered upper bound);
+  MR-3.3's named *source* (events are not in `Instructions`; the principle stands);
+  fee-leg samples were version-0 transactions only.
+* **Stopped per order 5.** D1 is returned to Mando. The builder recommends Dune, gated on the
+  same routed-swap test that disqualified BigQuery.

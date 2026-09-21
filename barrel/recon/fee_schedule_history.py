@@ -132,7 +132,7 @@ def main() -> None:
     for s in reversed(ok):                       # oldest first
         try:
             tx = m.rpc("getTransaction",
-                       [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}],
+                       [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}],
                        tries=5)
         except m.RpcError:
             rpc_fail += 1

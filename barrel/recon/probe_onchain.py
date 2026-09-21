@@ -136,7 +136,7 @@ def probe_token_program_mix(sample: int = 20) -> dict[str, int]:
         try:
             tx = rpc(
                 "getTransaction",
-                [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}],
+                [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}],
                 tries=3,
             )
         except RpcError:

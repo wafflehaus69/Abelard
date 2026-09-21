@@ -286,7 +286,7 @@ def main() -> None:
             continue
         try:
             tx = rpc("getTransaction",
-                     [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}],
+                     [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}],
                      tries=3)
         except RpcError:
             rpc_fail += 1

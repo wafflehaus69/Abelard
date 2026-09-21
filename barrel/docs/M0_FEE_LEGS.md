@@ -264,3 +264,16 @@ as the cross-check that dates the era boundaries. Blocked on a billing project I
 - The 2025-09-02 layout (gap 2): needs the IDL as it stood that day, or a byte-level read.
 - One zero-fee `buy` swap, unexplained. **Not** the BOOST buy-and-burn — per the IDL that
   is its own instruction emitting `BoostBuyAndBurnEvent`.
+
+## Caveat added 2026-09-21, after publication
+
+**Every Part 2 figure was drawn from version-0 transactions only.** The scripts requested
+`maxSupportedTransactionVersion: 0`, mainnet now carries version-1 transactions, and those
+requests failed on them. They were logged as "RPC failures" (72 of 312 fetches in the
+200-swap run). That's a silent exclusion of a whole transaction version, and it may not be
+random with respect to who trades. Fixed in all scripts, and the figures above stand only
+with this caveat attached. See `A1_BIGQUERY_FITNESS.md` §4.
+
+Also verified on chain: PumpSwap emits its swap events as `Program data:` **log lines**, not
+as self-CPIs. The decoder's in-frame check on log events is therefore the only thing standing
+between a hostile program in a route and a forged event.
