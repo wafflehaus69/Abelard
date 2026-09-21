@@ -101,3 +101,56 @@ removed.
 The calendar filers report Q3 by early November. Once their 10-Qs land, coverage
 passes 95% and 2026Q3 joins every aggregate without anyone touching it. Worst
 case, 2026-12-29.
+
+---
+
+## Retro-note (E15 form — a dated finding, not a permanent state)
+
+**2026-09-21.** Brief outputs from **2026-09-12 → 2026-09-21** carried the
+defective headline ("Panel capex TTM $75.66B is falling") and an **empty
+front-page composite** ("no constant-membership panel"). **No alerts were
+emitted**: the real queue holds zero capex rows, ever, and the corrective
+deploy left `phase_events` at 397 → 397 and the queue at 190 → 190 with its
+file untouched. **No automated consumer read them**: nothing on Basilic
+references the Brief and no capex brief or email job is loaded. The live
+dashboard served the same defect to anyone who opened it in that window.
+Closed by `ea5413e` (headline) and the F3 batch (composite).
+
+---
+
+## F3 — the guard audit
+
+The asymmetry that leaked: **buckets refused a one-member latest point, the
+total had no floor at all**, and the constant panel had a floor but chose its
+window end by arrival. Each guard was reasonable where it stood; nobody could
+see they were uneven because they were never written down together. They are
+now — `capex_daemon/guards.py` — and `tests/test_guards.py` builds a real
+snapshot and fails if any published path lacks a declared guard.
+
+| series | kind | floor | frontier | enforcement, or why no floor |
+|---|---|---|---|---|
+| total | matched sum | 2 | gated | state INSUFFICIENT-MEMBERSHIP — **new; it had none** |
+| buckets.* | matched sum | 2 | gated | state INSUFFICIENT-MEMBERSHIP, since CD-PH1 |
+| credit leg | matched sum | 2 | gated | published floor verdict — **new**; thesis withholds a one-issuer direction |
+| supplier DC combined | matched sum | 2 | gated | published floor verdict — **new** |
+| forward commitments | refused | — | — | mixed basis: REFUSED on every surface (B5); per-issuer stocks shown instead |
+| constant panels (capex, issuance, commitments, buckets, jaws ×2) | constant level | 2 | gated | min_members + COVERAGE_FLOOR; window end **newly gated** |
+| credit ratio | derived | — | gated | ratio of two floored, gated series; member counts on every row |
+| frontier pair | derived | — | gated | built from the gated total and credit series |
+| supplier cross-check | derived | — | gated | ratio of two floored, gated series; own warning on a falling denominator |
+| breadth | census | — | — | a count of names, not a sum of dollars — one name reads as 1 |
+| issuers.* / supplier legs / A3 rows | single name | — | — | one name's own series, labelled as such |
+
+**The live defect the audit found.** `constant_membership_panel` ended every
+candidate window at the newest quarter ANY member reached. On 2026-09-12 that
+was ORCL's lone 2026Q3, so common membership was one name, below the floor,
+and the panel came back empty — the front-page composite, and the hyperscaler
+bucket's level line, since that date. The first fix gated the matched sums and
+missed it; it surfaced by **rendering the Brief after deploying**, not from a
+test. Verified the new test discriminates: identical inputs with the escape
+forced open reproduce `0 names`; gated they give `5 names, 11 quarters, 100%`.
+
+**Two guards, on purpose.** The frontier gate is about *timing* and trims a
+quarter until its filings land. The membership floor is about *identity* and
+refuses a one-name "sum" outright, so a bucket genuinely reduced to one member
+says so instead of freezing on its last good quarter.

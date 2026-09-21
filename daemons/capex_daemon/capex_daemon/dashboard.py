@@ -986,6 +986,64 @@ def _stale_banner(snap, last_scan_unix=None):
                 age, _esc(stamp)))
 
 
+# CD-FRONTIER-CLOSE F5 — the DASH3 pre-ruling, activated by an observed case.
+#
+# Observed on Basilic ~2026-09-19: the server crashed at startup with
+#   OSError: [Errno 49] Can't assign requested address
+# The Tailscale address run_dash.sh resolved was not yet (or momentarily not)
+# assignable. launchd's KeepAlive restarted it and it recovered, but a crash is
+# the wrong response to a transient: every one is a gap in service and a line of
+# stack trace that looks like a real failure.
+#
+# So the server retries the bind itself, with backoff, for a bounded time.
+#
+#   * ONLY on EADDRNOTAVAIL — the observed case. Any other bind error is raised
+#     immediately: retrying a real misconfiguration just delays the evidence.
+#   * The ADDRESS NEVER CHANGES between attempts. This is not a fallback: it
+#     does not widen to 0.0.0.0, loopback or any other interface. The
+#     Tailscale-only posture is the point of run_dash.sh and is untouched.
+#   * Bounded. After BIND_RETRY_SECONDS it raises, the process exits, and
+#     KeepAlive stays the outer net, exactly as before.
+BIND_RETRY_SECONDS = 180
+BIND_BACKOFF_START = 1.0
+BIND_BACKOFF_MAX = 30.0
+
+
+def _addr_not_available(exc):
+    import errno
+    return isinstance(exc, OSError) and exc.errno == errno.EADDRNOTAVAIL
+
+
+def bind_with_retry(make_server, address, deadline_s=BIND_RETRY_SECONDS,
+                    sleep=None, clock=None, log=print):
+    """`make_server(address)`, retried on EADDRNOTAVAIL until `deadline_s`.
+
+    Returns the bound server. `sleep` and `clock` are injectable so the policy
+    is testable without waiting three minutes.
+    """
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    start = clock()
+    wait, attempt = BIND_BACKOFF_START, 0
+    while True:
+        attempt += 1
+        try:
+            return make_server(address)
+        except OSError as exc:
+            if not _addr_not_available(exc):
+                raise
+            elapsed = clock() - start
+            if elapsed + wait > deadline_s:
+                log("[capex-dashboard] {} still not assignable after {:.0f}s and {} "
+                    "attempts — giving up; KeepAlive will restart".format(
+                        address[0], elapsed, attempt))
+                raise
+            log("[capex-dashboard] {} not assignable yet (attempt {}): {} — retrying "
+                "in {:.0f}s".format(address[0], attempt, exc, wait))
+            sleep(wait)
+            wait = min(wait * 2, BIND_BACKOFF_MAX)
+
+
 def serve(db_path=None, port=PORT, host=HOST_DEFAULT):
     db_path = db_path or config.DB_PATH_DEFAULT
 
@@ -1021,6 +1079,6 @@ def serve(db_path=None, port=PORT, host=HOST_DEFAULT):
         def log_message(self, *a):
             pass
 
-    srv = ThreadingHTTPServer((host, port), Handler)
+    srv = bind_with_retry(lambda addr: ThreadingHTTPServer(addr, Handler), (host, port))
     print("[capex-dashboard] http://{}:{}  (read-only, db={})".format(host, port, db_path))
     srv.serve_forever()
