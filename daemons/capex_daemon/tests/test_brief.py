@@ -101,8 +101,9 @@ def test_no_band_is_registered_and_the_clause_does_not_pretend_one_is():
     """The first cut of this shipped CROSSCHECK_BAND = (0.44, 0.48) with a
     comment claiming it came from CD-3b. CD-3b measured the dcrev:supplier
     DEAD-BAND (9pp) — a band on quarter-to-quarter moves in the ladder, not a
-    registered range for the ratio's LEVEL. Two invented numbers were about to
-    be labelled "pre-registered" on the front page of a daily read."""
+    registered range for the ratio's LEVEL. 44-48% was the range the two-name
+    cross-check was OBSERVED to hold in CD-3, which GAP2 P3 asks to be
+    re-registered or retired; until it rules, it is not a pre-registration."""
     assert snapshot.CROSSCHECK_BAND is None
     snap = _fake_snapshot()
     snap["suppliers"]["crosscheck"]["latest_ratio"] = 0.538

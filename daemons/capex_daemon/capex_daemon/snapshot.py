@@ -739,9 +739,14 @@ def commitment_alerts_and_quarantine(snap, prior_keys=()):
 
 
 # B2 — the cross-check band. UNSET, and the comment that used to sit here was
-# wrong: it claimed "from CD-3b" and named 44-48%, and CD-3-VERIFY registers no
-# such band. I invented two numbers and labelled them "pre-registered" on what
-# is meant to become the front page of a daily read.
+# wrong: it claimed "from CD-3b" and named 44-48% as though it were registered.
+#
+# 44-48% is the range the two-name (NVDA+AMD) cross-check was OBSERVED to hold
+# for five quarters, reported in CD-3. GAP2 P3 names it a band to be
+# "re-registered or explicitly retired" — open. It is a description of history,
+# not a registration, and must not be printed as "pre-registered" until P3
+# rules. (Corrected 2026-09-21: an earlier version of this comment said the
+# numbers were invented. They were not; they were observed.)
 #
 # CD-3b measured the dcrev:supplier DEAD-BAND (9pp, for the classifier). That is
 # a different quantity: a band on quarter-to-quarter MOVES in the phase ladder,

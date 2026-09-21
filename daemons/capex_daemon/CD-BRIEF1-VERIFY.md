@@ -157,13 +157,20 @@ Live output:
 > pre-registered band. Hyperscalers: 2 ACCELERATING, 2 PLATEAU, 1 DECELERATING.
 > The panel commitment total is REFUSED-MIXED-BASIS.
 
-**Defect 1 — an invented band, labelled "pre-registered".** The first cut
+**Defect 1 — an observed range, labelled "pre-registered".** The first cut
 shipped `CROSSCHECK_BAND = (0.44, 0.48)` with a comment claiming it came from
 CD-3b. CD-3b measured the `dcrev:supplier` **dead-band** at 9pp — a band on
 quarter-to-quarter *moves* in the ladder, not a registered range for the ratio's
-*level*. I invented two numbers and was about to print them as "pre-registered"
-on the front page of a document meant to be read daily and trusted
-structurally. Now `None`; the clause reports the level against its own prior
+*level* — and nothing on disk registers 44–48% as a band.
+
+> **Corrected 2026-09-21.** This paragraph originally said *"I invented two
+> numbers."* That was also wrong. 44–48% is the range the two-name (NVDA+AMD)
+> cross-check was **observed** to hold for five quarters, reported in CD-3
+> ("has held 44–48% for five straight quarters"). GAP2 P3 then named it a band
+> to be **re-registered or explicitly retired** — a ruling still open. So it was
+> neither invented nor registered: it was a description of history, and the
+> error was printing it as a pre-registration on the front page of a document
+> meant to be read daily and trusted structurally. P3 decides its status. Now `None`; the clause reports the level against its own prior
 quarter and says plainly that no band is registered. The machinery stays, so
 registering one later needs no new code — which is what "pre-registered" has to
 mean to be worth anything.
