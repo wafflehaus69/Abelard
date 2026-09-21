@@ -1,5 +1,15 @@
 # BARREL M0 — A5 fee legs, measured
 
+> **SUPERSEDED IN PART — 2026-09-21.** The balance-delta method below was replaced by
+> decoding PumpSwap's own swap events, which name every fee leg. The "unidentified variable
+> leg" is **identified: it is `coin_creator_fee`.** See **Part 2** at the end of this file.
+> Part 1 is kept unedited because its two method defects are the reason Part 2 exists.
+> **One Part 1 claim is now contradicted:** its explanation for zero-leg sells ("PumpSwap
+> can take its fee on the output token") is wrong — every fee in the events is quote-
+> denominated in both directions. The zero-leg sells were a blind spot of the balance-delta
+> probe, not base-token fees.
+
+
 **Workstream:** BARREL-M0-RECON · **Builder:** ClaudeCode · **Date:** 2026-09-04
 **Serves:** Amendment v1.1 §A5 ("resolved against the live fee program, not the README")
 **Closes:** R6's README-versus-reporting conflict, **for the current era only**
@@ -137,3 +147,120 @@ through an aggregator like anyone else's, which means the realistic entry is not
 model's entry. Worth an explicit decision in v1.2: either model the routed fill, or
 pre-register single-pool execution as a stated simplification with its direction of bias
 declared.
+
+
+---
+
+# Part 2 — fee legs read from PumpSwap's own events (2026-09-21)
+
+**Reproduce:** `python barrel/recon/decode_pumpswap_events.py 200` ·
+`python barrel/recon/fee_schedule_history.py`
+**IDLs:** pinned in `recon/idl/` with sha256 in `PROVENANCE.json` (fetched 2026-09-21).
+
+## Method
+
+PumpSwap emits an Anchor `BuyEvent` / `SellEvent` on every swap carrying each fee leg by
+name with its configured rate. Reading it is a lookup, not an inference. It also works on
+routed swaps, so Part 1's single-hop filter, and the 22–30% of flow it discarded, are no
+longer needed.
+
+Three safeguards, each added because the naive version would have been wrong:
+
+1. **Truncation-tolerant decoding.** Older swaps emit shorter events. Fields past the end of
+   the bytes are recorded **absent**, never zero ([E1]).
+2. **Forgery resistance.** A `Program data:` log line can be printed by *any* program in a
+   transaction; on a routed swap a hostile program could print a fake `BuyEvent`. Log-path
+   events are now accepted only inside a PumpSwap invocation frame; the self-CPI path is
+   unforgeable by construction. The first version read every log line. No forgery was
+   observed, but that is an absence of evidence, and §0 assumes the data is adversarial.
+3. **Conservation, not field names, decides what the trader pays.** See below.
+
+## Result — which legs the trader pays
+
+| Leg | Trader pays it? | Evidence |
+|---|---|---|
+| `lp_fee` | **yes** | conservation |
+| `protocol_fee` | **yes** | conservation |
+| `coin_creator_fee` | **yes** | conservation |
+| `buyback_fee` | no — 50% carve-out *of* protocol fee | `buyback_basis_points = 5000` in GlobalConfig; realizes 2.5 bps against a 5 bps protocol fee |
+| `holder_rewards`, `cashback` | no — carve-outs / rebates | conservation excludes them |
+
+The conservation identity `gross − net = lp + protocol + creator` held on **168 of 171**
+swaps (3 failures excluded, not estimated), and **40 of 40** after the forgery fix.
+
+**A field-naming trap worth recording.** In the `buy` variant `user_quote_amount_in` is what
+the user paid and `quote_amount_in` is what reached the pool; in `buy_exact_quote_in` the
+**same two names mean the opposite.** Read naively, 43 of 63 buys failed conservation. The
+decoder now maps each variant explicitly and **refuses** an unknown variant rather than
+guessing.
+
+## Result — current-era trader cost, per leg (n=168, 2026-09-21)
+
+| | n | median | p90 |
+|---|---|---|---|
+| no creator fee | 44 | **30 bps** (flat) | 30 bps |
+| creator fee charged | 124 | **104 bps** | — |
+| all | 168 | 79 bps | 125 bps |
+
+Round trip is two legs, before slippage. Configured creator rates seen: 5–250 bps;
+GlobalConfig caps them at **300 bps per leg** (`max_configurable_creator_fee_bps`).
+Max values of 2,500 bps in the raw output are **dust swaps** (a 4-lamport trade paying a
+1-lamport rounded fee) and are irrelevant at a $20 ticket.
+
+**Prevalence is NOT estimated here and must not be.** The share of swaps carrying a
+creator fee was **30% in one sample and 73% in another** taken minutes apart. A few seconds
+of flow is dominated by whichever tokens are hot, so prevalence is a property of the token
+mix, not of the protocol. It has to be measured per token over the window.
+
+## Result — the fee schedule has a history, and it moves the M0 window
+
+Every schedule change is an admin transaction that emits a dated event. The current admin's
+full history — 6,422 signatures, **75 successful**, 2025-02-19 → 2026-09-16 — decodes to:
+
+| Date (UTC) | Event | Change |
+|---|---|---|
+| 2025-03-17 | UpdateFeeConfig | lp 20 / protocol 5; **no creator field in this event version** |
+| 2025-05-12 | UpdateFeeConfig | lp 20 / protocol 5 / **creator 5** — first appearance of a creator leg |
+| 2025-07-18 | UpdateFeeConfig | unchanged rates; creator-authority field added |
+| 2025-09-02 | UpdateFeeConfig ×2 | **undecodable** — values ~10¹⁹ bps, i.e. a different layout at that time. Recorded as unknown, NOT as fees |
+| 2025-11-14 | ReservedFeeRecipients | recipient change only |
+| **2026-09-09** | UpdateCreatorFeeConfig | **creator fee becomes configurable, max 100 bps** |
+| **2026-09-12** | UpdateCreatorFeeConfig | max raised to **300 bps** |
+
+**If this holds, it is the most consequential cost-model finding so far:** per-token
+creator fees of 30–250 bps exist only since **2026-09-09** — twelve days — and essentially
+none of the M0 window is priced like today. The current-era sample in the table above would
+**overstate** window-era costs badly if used as the §5 constant.
+
+**Why it is marked provisional, not established:**
+
+1. **Admin handovers.** Control passed from `8LWu7QM2…` to the current admin on 2025-02-24
+   and *again* on 2025-08-28, so it returned to `8LWu7QM2…` in between. Changes signed by
+   that key are missing. No `CreateConfigEvent` is in this history either, so the
+   **launch-day regime is unobserved.**
+2. **Two undecodable events on 2025-09-02.** Something changed that day; what, is unknown.
+3. **Tiering lives in a second program.** Every swap calls `get_fees` on the pump fee
+   program (`pfeeUxB6…`), whose `FeeConfig` holds **fee tiers keyed on market cap**, each
+   setting its own lp / protocol / creator bps, plus `flat_fees` and `exotic_flat_fees`.
+   That explains what GlobalConfig alone does not (lp 25 vs the global 20; an lp 2 /
+   protocol 93 tier). Its own admin history (`UpsertFeeTiersEvent`, `UpdateFeeConfigEvent`,
+   `SetExoticFlatFeesEvent`) is **not yet read.**
+
+## What this means for §5
+
+The fee a trader paid is a function of **era × market cap at the moment of the swap × the
+token's own creator setting**. Reconstructing that from config history is a model, and
+[E6] warns what models of an aggregation layer do. The ground truth is the **realized fee
+in each historical swap event**, which already bakes all three in.
+
+**Recommendation for v1.2:** price §5 fees from realized swap events decoded out of BigQuery
+`Instructions` (clustered on `program_id`, so affordable), and use the config history only
+as the cross-check that dates the era boundaries. Blocked on a billing project ID.
+
+## Open
+
+- `8LWu7QM2…` admin history (closes gap 1).
+- Pump fee program tier history (closes gap 3).
+- The 2025-09-02 layout (gap 2): needs the IDL as it stood that day, or a byte-level read.
+- One zero-fee `buy` swap, unexplained. **Not** the BOOST buy-and-burn — per the IDL that
+  is its own instruction emitting `BoostBuyAndBurnEvent`.

@@ -1,0 +1,287 @@
+{
+ "generated_utc": "2026-09-21T16:12:50+00:00",
+ "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+ "global_config": "ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw",
+ "signatures_total": 6422,
+ "signatures_ok": 75,
+ "rpc_failures": 0,
+ "events": [
+  {
+   "event": "UpdateAdminEvent",
+   "fields": {
+    "timestamp": 1740409897,
+    "admin": "8LWu7QM2dGR1G8nKDHthckea57bkCzXyBTAKPJUBDHo8",
+    "new_admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF"
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 322803398,
+   "blockTime": 1740409897,
+   "signature": "5My61gYQiyygTULRMYa8S9CZkmphxweRJvRQHhvDjHYrJpA8i2gyAjBJ4zTSM42eXfyp4jFvRddJ7SayhkdGhZAH"
+  },
+  {
+   "event": "UpdateFeeConfigEvent",
+   "fields": {
+    "timestamp": 1742230634,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "lp_fee_basis_points": 20,
+    "protocol_fee_basis_points": 5,
+    "protocol_fee_recipients": [
+     "62qc2CNXwrYqQScmEdiZFFAnJR262PxWEuNQtxfafNgV",
+     "7VtfL8fvgNfhz17qKRMjzQEXgbdpnHHHQRh54R9jP2RJ",
+     "7hTckgnGnLQR6sdH7YkqFTAA7VwTfYFaZ6EhEsU3saCX",
+     "9rPYyANsfQZw3DnDmKE3YCQF5E8oD89UXoHn9JFEhJUz",
+     "AVmoTthdrX6tKt4nDjco2D775W2YK3sDhxPcMmzUAmTY",
+     "FWsW1xNtWscwNmKv6wVsU1iTzRN6wmmk3MjxRP5tT7hz",
+     "G5UZAVbAf46s7cKWoyKu8kYTip9DGTpbLZ2qa9Aq69dP",
+     "JCRGumoE9Qi5BBgULTgdgTLjSgkCMSbF62ZZfGs84JeU"
+    ]
+   },
+   "absent": [
+    "coin_creator_fee_basis_points",
+    "admin_set_coin_creator_authority"
+   ],
+   "trailing": 0,
+   "slot": 327392763,
+   "blockTime": 1742230634,
+   "signature": "5bUKG589Tv599e7bApvAPmn34ea6k7oUnNnnALKT7PxEiaGd5WXJsEt6JnKTpXrWrdAa51nbuGvCeWfQZbtTjP2X"
+  },
+  {
+   "event": "UpdateFeeConfigEvent",
+   "fields": {
+    "timestamp": 1747050873,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "lp_fee_basis_points": 20,
+    "protocol_fee_basis_points": 5,
+    "protocol_fee_recipients": [
+     "62qc2CNXwrYqQScmEdiZFFAnJR262PxWEuNQtxfafNgV",
+     "7VtfL8fvgNfhz17qKRMjzQEXgbdpnHHHQRh54R9jP2RJ",
+     "7hTckgnGnLQR6sdH7YkqFTAA7VwTfYFaZ6EhEsU3saCX",
+     "9rPYyANsfQZw3DnDmKE3YCQF5E8oD89UXoHn9JFEhJUz",
+     "AVmoTthdrX6tKt4nDjco2D775W2YK3sDhxPcMmzUAmTY",
+     "FWsW1xNtWscwNmKv6wVsU1iTzRN6wmmk3MjxRP5tT7hz",
+     "G5UZAVbAf46s7cKWoyKu8kYTip9DGTpbLZ2qa9Aq69dP",
+     "JCRGumoE9Qi5BBgULTgdgTLjSgkCMSbF62ZZfGs84JeU"
+    ],
+    "coin_creator_fee_basis_points": 5
+   },
+   "absent": [
+    "admin_set_coin_creator_authority"
+   ],
+   "trailing": 0,
+   "slot": 339519141,
+   "blockTime": 1747050873,
+   "signature": "5yyAvWCBD4xWW43p35YMqZ3wuaTMMu3BdqNGbjWJz4yjcayLU8UCScf83kAnTL9wmXHSVCgCKoMVzVMLimR7bnoU"
+  },
+  {
+   "event": "UpdateFeeConfigEvent",
+   "fields": {
+    "timestamp": 1752856366,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "lp_fee_basis_points": 20,
+    "protocol_fee_basis_points": 5,
+    "protocol_fee_recipients": [
+     "62qc2CNXwrYqQScmEdiZFFAnJR262PxWEuNQtxfafNgV",
+     "7VtfL8fvgNfhz17qKRMjzQEXgbdpnHHHQRh54R9jP2RJ",
+     "7hTckgnGnLQR6sdH7YkqFTAA7VwTfYFaZ6EhEsU3saCX",
+     "9rPYyANsfQZw3DnDmKE3YCQF5E8oD89UXoHn9JFEhJUz",
+     "AVmoTthdrX6tKt4nDjco2D775W2YK3sDhxPcMmzUAmTY",
+     "FWsW1xNtWscwNmKv6wVsU1iTzRN6wmmk3MjxRP5tT7hz",
+     "G5UZAVbAf46s7cKWoyKu8kYTip9DGTpbLZ2qa9Aq69dP",
+     "JCRGumoE9Qi5BBgULTgdgTLjSgkCMSbF62ZZfGs84JeU"
+    ],
+    "coin_creator_fee_basis_points": 5,
+    "admin_set_coin_creator_authority": "UqN2p5bAzBqYdHXcgB6WLtuVrdvmy9JSAtgqZb3CMKw"
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 354155234,
+   "blockTime": 1752856366,
+   "signature": "2TyRFFkNwtnm54HWXVLsSm6KqPoV9mAAPHopPMQgDgGwMV5te9cf7TCTPZuqgQKtFeiyrVywnMwgaAUJ1sge6QDS"
+  },
+  {
+   "event": "UpdateAdminEvent",
+   "fields": {
+    "timestamp": 1756400776,
+    "admin": "8LWu7QM2dGR1G8nKDHthckea57bkCzXyBTAKPJUBDHo8",
+    "new_admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF"
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 363114345,
+   "blockTime": 1756400776,
+   "signature": "aEfdwcpinX7K3p79CyQZCvn8uTB6tE5ELkLmz3BVR2TGd2JmfaWRrCJ66Y48jcR6moPGpGMrmQ6MALK4SJaDniT"
+  },
+  {
+   "event": "UpdateAdminEvent",
+   "fields": {
+    "timestamp": 1756400778,
+    "admin": "8LWu7QM2dGR1G8nKDHthckea57bkCzXyBTAKPJUBDHo8",
+    "new_admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF"
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 363114348,
+   "blockTime": 1756400778,
+   "signature": "5znbB15FkXFNFaQQAdRwwWkVCA5PifLDLoRA8iG3gWTYazsxwk9EZpADAqPqMwmvpTW26PVe5tbwsRwKKwTgGeUo"
+  },
+  {
+   "event": "UpdateFeeConfigEvent",
+   "fields": {
+    "timestamp": 1756823492,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "lp_fee_basis_points": 13874910892081322607,
+    "protocol_fee_basis_points": 11026831378192583081
+   },
+   "absent": [
+    "protocol_fee_recipients",
+    "coin_creator_fee_basis_points",
+    "admin_set_coin_creator_authority"
+   ],
+   "trailing": 84,
+   "slot": 364183887,
+   "blockTime": 1756823492,
+   "signature": "5teCNA5AUZdvJ4nrsurmUQCmaCoXViaSDDXYyzpddUv3VfD4Rz63AmwFP9X939FwHHg9NbKyZnpjsJnE17xAxd5A"
+  },
+  {
+   "event": "UpdateFeeConfigEvent",
+   "fields": {
+    "timestamp": 1756824925,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "lp_fee_basis_points": 9367056756673225793,
+    "protocol_fee_basis_points": 11043219265694144484,
+    "protocol_fee_recipients": [
+     "4jvkKsfmp3qUSvmYPLGGCrJrRFo3suJNXWFZVpX5Uf8T",
+     "11112CCZE4XgpRmt6WdeDijTDdv1iNZabkBeiA68Re",
+     "7XeYi3PBh72Fd6fWMDzdc5ewokchSGfG5L7oqRTYrtP1",
+     "11111Z1U6qf3ic72Xn1DrDum22dMQRtTsoJhd1YYNB",
+     "1111vgy18jotoCpLiXNNZZDpBS8A76zeaxtuHqZ9sD",
+     "11113yztZepiYZu9Z1xfHN9BKyByqPuWtP9Wusss2F",
+     "1111CvzZFcHsBGWvWu5Mt3nCFr9nAVpUNg63ZMXXNs",
+     "LaaR2o9EVTCwV8nzdytg7LBcSB7JdeneNZWzDgAmck7"
+    ],
+    "coin_creator_fee_basis_points": 7321894219965005824,
+    "admin_set_coin_creator_authority": "H2B7Dz2XEcnC1ggiy3XFiJEiXHN2dkjxzKEpjPjcAdCT"
+   },
+   "absent": [],
+   "trailing": 148,
+   "slot": 364187501,
+   "blockTime": 1756824925,
+   "signature": "3tirmq3FSGtZfjHhoAzEvZCdKye37myqQ4msyz8AaNzkGLwLRckr1dD7xU6hE9voHhm1PdHtiz6UwrjyGrB22i5j"
+  },
+  {
+   "event": "ReservedFeeRecipientsEvent",
+   "fields": {
+    "timestamp": 1763154589,
+    "reserved_fee_recipient": "GesfTA3X2arioaHp8bbKdjG9vJtskViWACZoYvxp4twS",
+    "reserved_fee_recipients": [
+     "4budycTjhs9fD6xw62VBducVTNgMgJJ5BgtKq7mAZwn6",
+     "8SBKzEQU4nLSzcwF4a74F2iaUDQyTfjGndn6qUWBnrpR",
+     "4UQeTP1T39KZ9Sfxzo3WR5skgsaP6NZa87BAkuazLEKH",
+     "8sNeir4QsLsJdYpc9RZacohhK1Y5FLU3nC5LXgYB4aa6",
+     "Fh9HmeLNUMVCvejxCtCL2DbYaRyBFVJ5xrWkLnMH6fdk",
+     "463MEnMeGyJekNZFQSTUABBEbLnvMTALbT6ZmsxAbAdq",
+     "6AUH3WEHucYZyC61hqpqYUWVto5qA5hjHuNQ32GNnNxA"
+    ]
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 380101134,
+   "blockTime": 1763154589,
+   "signature": "2zAT37GfKaWkSFezXMGfYnFcgtPdioL1JCAcadm8GwJBzEJnybZmNptbVAYFWeKjgHuuVdFz9rP5SD8214NNPZJC"
+  },
+  {
+   "event": "ReservedFeeRecipientsEvent",
+   "fields": {
+    "timestamp": 1763154598,
+    "reserved_fee_recipient": "GesfTA3X2arioaHp8bbKdjG9vJtskViWACZoYvxp4twS",
+    "reserved_fee_recipients": [
+     "4budycTjhs9fD6xw62VBducVTNgMgJJ5BgtKq7mAZwn6",
+     "8SBKzEQU4nLSzcwF4a74F2iaUDQyTfjGndn6qUWBnrpR",
+     "4UQeTP1T39KZ9Sfxzo3WR5skgsaP6NZa87BAkuazLEKH",
+     "8sNeir4QsLsJdYpc9RZacohhK1Y5FLU3nC5LXgYB4aa6",
+     "Fh9HmeLNUMVCvejxCtCL2DbYaRyBFVJ5xrWkLnMH6fdk",
+     "463MEnMeGyJekNZFQSTUABBEbLnvMTALbT6ZmsxAbAdq",
+     "6AUH3WEHucYZyC61hqpqYUWVto5qA5hjHuNQ32GNnNxA"
+    ]
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 380101156,
+   "blockTime": 1763154598,
+   "signature": "2Ny4c9KgRDCkcNyybWB2fTqYc8MrHdVRJKyZVWXaeJX4eTy6TecUa9QqGbhHyV3LoHLRgZJFtypVihPKjXx4d4T9"
+  },
+  {
+   "event": "ExtendAccountEvent",
+   "fields": {
+    "timestamp": -9199710622166645190,
+    "account": "EeQUWYWmzC9Z6AA1rZAaGBDtTHAa8NFNHRdA71NZa2uX",
+    "user": "9ucbgkUDgDFFCRTiTq4qWbGTfP2e6mhTn22945U1qWzb",
+    "current_size": 1005,
+    "new_size": 1777392082
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 416251256,
+   "blockTime": 1777392082,
+   "signature": "PgBhdehbVwsptSytw3JZ35aztEQ7hwErWHg7SqiigwBgxkRHSr1EtTjryK3axACJ82qivijYtTBAhmTw5uHY7DU"
+  },
+  {
+   "event": "ExtendAccountEvent",
+   "fields": {
+    "timestamp": 1777392239,
+    "account": "ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw",
+    "user": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "current_size": 643,
+    "new_size": 907
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 416251660,
+   "blockTime": 1777392239,
+   "signature": "4SyotCoCHGKTNbiR5w4HDkRDP9Nvj7X88wo2zLqQQ2BgEp8RASD97jgZFWvP87FFFbakyzHbaf3iNnKQHsEEdHpQ"
+  },
+  {
+   "event": "SetBoostAuthorityEvent",
+   "fields": {
+    "timestamp": 1784643796,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "old_boost_authority": "11111111111111111111111111111111",
+    "new_boost_authority": "HTVZVEQMBsNanubDPTs3CxDAEGNFQHJY8c1441iy2S5r"
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 434319990,
+   "blockTime": 1784643796,
+   "signature": "3ua1Qkxth2okpv8Sg8gGzNDobVhcuJC3Y78JTBvBaB2b2MhxP9unPESqrfZY5QeYoUHLWmWoyNJbUZ8ptiZoL9rv"
+  },
+  {
+   "event": "UpdateCreatorFeeConfigEvent",
+   "fields": {
+    "timestamp": 1788982325,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "creator_fee_configurable": true,
+    "max_configurable_creator_fee_bps": 100
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 445691266,
+   "blockTime": 1788982325,
+   "signature": "3ULbKDUPuEVADdBEnmmY8owHD1SzjrsDnULe2Qk6nmfLmeDBq8gYrCw9n68TTpRRdTkGBpoFGAoYTPQzsCfJgqH3"
+  },
+  {
+   "event": "UpdateCreatorFeeConfigEvent",
+   "fields": {
+    "timestamp": 1789226682,
+    "admin": "FFWtrEQ4B4PKQoVuHYzZq8FabGkVatYzDpEVHsK5rrhF",
+    "creator_fee_configurable": true,
+    "max_configurable_creator_fee_bps": 300
+   },
+   "absent": [],
+   "trailing": 0,
+   "slot": 446462883,
+   "blockTime": 1789226682,
+   "signature": "hAhUMuycDunyffQi1kNA6mhDctE7NsckyTE16akeqzn77yYQCDzjBKLt4gfvVYLDrzsxSBZMQUPk2VJxFtnr8Mp"
+  }
+ ]
+}

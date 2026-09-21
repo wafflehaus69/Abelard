@@ -1,0 +1,15 @@
+{
+  "source": "https://github.com/pump-fun/pump-public-docs/tree/main/idl",
+  "fetched_utc": "2026-09-21T15:43:57+00:00",
+  "note": "Pinned copies. The upstream IDL is revised as fields are added; decoders in barrel/recon must be re-verified against a fresh fetch, not assumed current.",
+  "files": {
+    "pump_amm.json": {
+      "sha256": "2091433899b07d003d98118ae6cd3c628960fd393b40710b6e15bce6d0e7f2d1",
+      "bytes": 160724
+    },
+    "pump_fees.json": {
+      "sha256": "d87b52305fd6b2ec487d4ba1e08a49990c23fa9b8b76092b2097df0164fa3859",
+      "bytes": 133206
+    }
+  }
+}
