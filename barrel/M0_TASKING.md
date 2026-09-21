@@ -177,6 +177,11 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 |---|---|---|---|
 | A1 (below) | ClaudeCode, recording Mando | 2026-09-04 | Rulings on D1, D2, D3 as given in session |
 | **v1.1** — [`docs/M0_AMENDMENT_v1.1.md`](docs/M0_AMENDMENT_v1.1.md) | Architect | 2026-09-04 | **Operative.** Formalizes and extends A1; adds A2 strata, A3 rug direction + snooping guard, A4 BOOST era split, A5 per-era fee model, A6 H3 costing gate, A7 quarantine standard |
+| MR-2 (below) | ClaudeCode, recording Mando | 2026-09-21 | D5 bankroll; price-reference pool rule; BigQuery access + what metadata already settles |
+
+*Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
+Builder-recorded Mando rulings therefore use the **MR-** prefix from here on; the A1 block
+below is MR-1 under that scheme and is not renamed, so that references to it stay valid.
 
 **A1 below is superseded by v1.1 where they overlap** and is retained because it is the
 contemporaneous record of what Mando actually ruled, before the Architect formalized it.
@@ -273,3 +278,106 @@ no spec constant ships without an observed distribution behind it.
 
 **Still unruled:** D4 (BOOST as a pre-registered era split vs. a §7 tercile) and D5
 (§12 bankroll confirmation, and the "Mando's list" wallet set for the H3 cohort variant).
+
+---
+
+### MR-2 — Rulings and access (Mando, 2026-09-21)
+
+Recorded by ClaudeCode in the session they were given. v1.1 remains operative; this block
+adds to it and supersedes nothing in it.
+
+**MR-2.1 — D5 bankroll. RULED: $2,000.** §8's ruin and drawdown simulation uses a $2,000
+bankroll at $20/ticket. The placeholder becomes the pre-registered value. D5's second half —
+the "Mando's list" wallet set for the H3 cohort variant — is offered and pending receipt.
+
+**MR-2.2 — Price reference under routing. RULED (direction), threshold not yet set.**
+Put to Mando: 22–30% of sampled PumpSwap swaps were routed or multi-hop
+(`docs/M0_FEE_LEGS.md`), while §5 models a fill against a single constant-product pool.
+Mando's ruling, verbatim: *"pools need to hit a certain % of volume for price action. it's
+possible for this to be quite fluid."*
+
+Builder's reading, **to be confirmed by Mando or the Architect before v1.2 freezes it**:
+
+* A token's price-setting venue set is **every pool carrying at least X% of that token's
+  volume** over a trailing window, not one fixed pool.
+* The set is **recomputed through time**, because pool shares migrate — "fluid" is part of
+  the rule, not a caveat on it. A pool can enter and leave the set within a token's life.
+* Entry and exit marks come from the qualifying set; pools below X% are ignored for price
+  but their volume is still counted in the denominator.
+
+What is **not** ruled and must not be invented by the builder:
+
+* **X.** Per [E8] the threshold is measured before it is mandated: Gate 0 outputs the
+  distribution of per-pool volume share per token, and X is pre-registered in v1.2 from the
+  **v1.1 A3 calibration slice** (first 20% of weeks in stratum P), under the same snooping
+  guard as the rug thresholds.
+* **The trailing window length** for "share of volume". Same treatment as X.
+* **Whether the rule sets the mark or the fill.** "Price action" most naturally reads as the
+  *price reference* — the mark entries and exits are measured against. The *fill model*
+  (what Mando's $20 actually pays) is a separate question: an aggregator splits a small order
+  across the same qualifying pools, so the two may coincide, but that is an assumption until
+  ruled.
+
+**MR-2.3 — BigQuery access. CONNECTED 2026-09-21.** The connector reaches
+`bigquery-public-data.crypto_solana_mainnet_us`. Every result below came from **table
+metadata only — zero bytes scanned, zero cost.** No scanning query has run: a billing
+project ID is needed first, and it has not been supplied.
+
+*Freshness (v1.1 A1 step 1) — provisionally PASS.* Every table was last modified
+2026-09-21 between 15:37 and 15:40 UTC, and every table has an active streaming buffer
+opened in that same minute. The dataset is being written live, not backfilled. Two
+cautions keep this at *provisional*: last-modified time is not `MAX(block_timestamp)`, and
+freshness at head says nothing about holes inside the window. Both need the scanning query.
+
+*`Accounts` (v1.1 A1 step 2) — FAILS as an as-of source, on its schema alone.* This was
+the one reason the dataset was preferred over Dune, so it is recorded carefully:
+
+* It has **no mint-authority or freeze-authority column.** S1/S2 cannot be a lookup.
+* It holds **169,239,290 rows across its whole history**, far too few to be a per-slot
+  snapshot of a chain whose pump.fun venue alone creates mints by the thousand daily.
+* Its own column documentation settles it: `state` is *"the state of the account at the
+  time the data was requested from the node,"* keyed by a separate `retrieval_timestamp`.
+  That is neither latest-state nor as-of-slot — it is **as-of-whenever-it-was-fetched.**
+  v1.1 warned that a latest-state table mistaken for as-of is worse than useless. This one
+  is the same hazard in a less obvious form, because its rows carry a `block_slot` that
+  invites exactly that mistake.
+
+**Consequence:** R8's reconstruction burden is **not** lifted. S1–S7 as-of state must be
+rebuilt from instruction history. The dataset can support that — `Instructions` carries
+parsed SPL instructions with named parameters (`initializeMint2`, `setAuthority`), and
+`Token Transfers` carries per-transfer Token-2022 `fee` — so this is a cost problem, not an
+availability problem.
+
+*Scale and cost, from metadata:*
+
+| Table | Logical size | Partitioning | Clustering | Avg per partition |
+|---|---|---|---|---|
+| `Transactions` | 885 TiB | DAY, partition filter **required** | `signature` | ~447 GB |
+| `Instructions` | 879 TiB | DAY, partition filter **required** | **`program_id`** | ~444 GB |
+| `Token Transfers` | 41 TiB | DAY, partition filter **required** | none | ~21 GB |
+| `Accounts` | 0.1 TiB | MONTH | none | ~2 GB |
+| `Blocks` | 0.1 TiB | MONTH | none | ~1 GB |
+
+Three consequences, each binding on the pipeline:
+
+1. **One unclustered day of `Transactions` is ~40% of the free monthly allowance**
+   (1 TiB). A full-history scan of either large table is ~$5,500. The "free" framing in
+   MR-1 was already corrected; this puts a number on it.
+2. **`Instructions` clustered on `program_id` is what makes M0 affordable at all.**
+   Filtering on PumpSwap's or pump.fun's program id reads only those clusters, not the day.
+   Caveat, and it matters for budgeting: **a dry run reports the unclustered upper bound**,
+   so dry-run estimates on `Instructions` will overstate. Real cost must be measured from
+   bytes billed on a small live query, then extrapolated — never read off the dry run.
+3. **`Transactions` is clustered on `signature`, not program**, so "all PumpSwap
+   transactions for a day" cannot be pruned there directly. The affordable shape is:
+   select from `Instructions` by `program_id`, and touch `Transactions` only for the
+   pre/post token balances that fee and holder work need, with the smallest column set.
+
+*A7 quarantine applies to a specific table.* `Tokens` stores `name`, `symbol` and `uri` —
+precisely the metadata §1 quarantines. Queries against `Tokens` name their columns
+explicitly and never select those three. `SELECT *` is now forbidden on two independent
+grounds: cost, and the quarantine.
+
+*Correction to `recon/bigquery_gate0_probe.sql`.* It assumed lowercase table names. The real
+tables are `Accounts`, `Blocks`, `Transactions`, `Instructions`, `Token Transfers`, `Tokens`
+— capitalized, and one containing a space. Fixed in the file.

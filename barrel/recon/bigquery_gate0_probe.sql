@@ -4,6 +4,16 @@
 -- Answers three questions and nothing else: freshness, window coverage, and whether the
 -- `accounts` table actually answers R8 (as-of authority state).
 --
+-- Table names corrected 2026-09-21 from live metadata: the tables are `Accounts`,
+-- `Blocks`, `Transactions`, `Instructions`, `Token Transfers`, `Tokens` — capitalized,
+-- one with a space. The first version of this file assumed lowercase and would have
+-- failed on every query. `Transactions`, `Instructions` and `Token Transfers` REQUIRE
+-- a partition filter on block_timestamp (DAY partitions); `Blocks` and `Accounts` are
+-- MONTH-partitioned, so a one-day filter there still reads the whole month (~1-2 GB).
+--
+-- `Tokens` holds name/symbol/uri — quarantined metadata (M0_TASKING §1, v1.1 A7).
+-- Never select those columns. Never SELECT * anywhere in this dataset.
+--
 -- ============================================================================
 -- READ THIS BEFORE RUNNING ANYTHING
 -- ============================================================================
@@ -56,7 +66,7 @@ ORDER BY size_bytes DESC;
 -- ---------------------------------------------------------------------------
 SELECT table_name, ordinal_position, column_name, data_type
 FROM `bigquery-public-data.crypto_solana_mainnet_us.INFORMATION_SCHEMA.COLUMNS`
-WHERE table_name IN ('accounts', 'transactions', 'blocks', 'token_transfers')
+WHERE table_name IN ('Accounts', 'Transactions', 'Instructions', 'Blocks', 'Token Transfers')
 ORDER BY table_name, ordinal_position;
 
 
@@ -69,7 +79,7 @@ ORDER BY table_name, ordinal_position;
 SELECT
   MAX(block_timestamp)                                          AS newest_block,
   TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), MAX(block_timestamp), HOUR) AS hours_behind_head
-FROM `bigquery-public-data.crypto_solana_mainnet_us.blocks`
+FROM `bigquery-public-data.crypto_solana_mainnet_us.Blocks`
 WHERE block_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY);
 
 
@@ -96,7 +106,7 @@ WITH weekly AS (
     COUNT(*)                                 AS blocks_in_week,
     MIN(block_timestamp)                     AS first_seen,
     MAX(block_timestamp)                     AS last_seen
-  FROM `bigquery-public-data.crypto_solana_mainnet_us.blocks`
+  FROM `bigquery-public-data.crypto_solana_mainnet_us.Blocks`
   WHERE block_timestamp >= TIMESTAMP('2025-03-20')
   GROUP BY week
 )
@@ -105,14 +115,18 @@ SELECT
   blocks_in_week,
   first_seen,
   last_seen,
-  -- trailing median is the honest baseline: chain throughput drifts, so a fixed
-  -- expected count would flag drift as a gap ([E8] — measure, don't mandate).
+  -- trailing baseline, because chain throughput drifts and a fixed expected count
+  -- would flag drift as a gap ([E8] — measure, don't mandate). Trailing MEAN, not
+  -- median: BigQuery's PERCENTILE_CONT accepts no ROWS frame, so the median version
+  -- this file first shipped would have errored. A mean is pulled down by a prior
+  -- hole, which makes this check slightly LESS sensitive right after a gap — noted
+  -- so a clean result immediately after a flagged week is read with that in mind.
   ROUND(
     100 * blocks_in_week / NULLIF(
-      PERCENTILE_CONT(blocks_in_week, 0.5)
+      AVG(blocks_in_week)
         OVER (ORDER BY week ROWS BETWEEN 8 PRECEDING AND 1 PRECEDING), 0),
     1
-  ) AS pct_of_trailing_median
+  ) AS pct_of_trailing_mean
 FROM weekly
 ORDER BY week;
 
@@ -131,24 +145,26 @@ ORDER BY week;
 -- exclusion — and that disqualifies the dataset as a UNIVERSE source however
 -- fresh it looks.
 --
--- Column name for program ids is a guess until STEP 2 has run; fix it from the
--- real schema before running, do not run this blind.
--- DRY RUN FIRST — one day of Solana transactions is large.
+-- Schema confirmed 2026-09-21: `Instructions` carries `program_id` directly and is
+-- CLUSTERED on it, so this reads only the three programs' clusters for one day.
+-- COST CAVEAT: a dry run on a clustered table reports the UNCLUSTERED upper bound
+-- (~444 GB for an average day). Real bytes billed will be far lower. Do not read
+-- the dry run as the price — run once and read bytes billed from the job.
 -- ---------------------------------------------------------------------------
--- SELECT
---   program_id,
---   COUNT(*) AS tx_count
--- FROM `bigquery-public-data.crypto_solana_mainnet_us.transactions`,
---   UNNEST(<instructions column from STEP 2>) AS ix
--- WHERE block_timestamp >= TIMESTAMP('2026-09-01')
---   AND block_timestamp <  TIMESTAMP('2026-09-02')
---   AND ix.program_id IN (
---     'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',  -- PumpSwap AMM
---     '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',  -- pump.fun bonding curve
---     '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8'  -- Raydium AMM v4
---   )
--- GROUP BY program_id
--- ORDER BY tx_count DESC;
+SELECT
+  program_id,
+  COUNT(DISTINCT tx_signature) AS tx_count,
+  COUNT(*)                     AS instruction_count
+FROM `bigquery-public-data.crypto_solana_mainnet_us.Instructions`
+WHERE block_timestamp >= TIMESTAMP('2026-09-01')
+  AND block_timestamp <  TIMESTAMP('2026-09-02')
+  AND program_id IN (
+    'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',  -- PumpSwap AMM
+    '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P',  -- pump.fun bonding curve
+    '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8'  -- Raydium AMM v4
+  )
+GROUP BY program_id
+ORDER BY tx_count DESC;
 
 
 -- ============================================================================
