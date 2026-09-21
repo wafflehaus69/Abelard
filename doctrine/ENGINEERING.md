@@ -932,3 +932,76 @@ assigned G1 to Mando. Executing it on his behalf, however helpfully, converted a
 human-only read into an agent read. When a gate says Mando, the answer comes
 from Mando; an agent that can obtain it anyway has found a way around the gate,
 not a way through it.
+
+## E35 — A panel's frontier is defined by coverage, not by arrival
+
+Ruled by Mando 2026-09-21 (ORDER CD-FRONTIER-CLOSE F4); drafted by ClaudeCode
+from the originating incident.
+
+Incident: from 2026-09-12 to 2026-09-21 every matched-membership aggregate in
+the Capex Daemon published Oracle's lone calendar 2026Q3 as its latest point.
+Oracle's fiscal quarter ended Aug 31, which aligns to calendar Q3 about six
+weeks before the calendar-year filers report it. The daily thesis line read
+"Panel capex TTM $75.66B is falling" against $614.18B the quarter before; the
+panel's YoY was Oracle's own +176%; the hyperscaler bucket went dark;
+composition events reported Amazon, Alphabet, Meta and Microsoft as having
+LEFT; the supplier cross-check read 367.2%; NVIDIA's genuine one-quarter-ahead
+read was silenced because the demand frontier had moved; and the
+constant-membership panel behind the front-page composite came back empty,
+because its window had to end at the same one-member quarter. No alert fired
+and no automated consumer read the output. It recurs every quarter Oracle
+files.
+
+Rule: **the newest quarter any member has reached is that member's quarter,
+not the panel's.** An aggregate advances to a quarter only when the members
+that have reported it cover `COVERAGE_FLOOR` (0.95) of the dollars of the last
+quarter the aggregate accepted, with a time-limited escape — 90 days past
+quarter end, the latest regular deadline for any periodic report — so a genuine
+departure cannot freeze it. Quarters held back are published BESIDE the series,
+naming who has reported and who is still due, and never inside it: they are not
+classified, cannot set a state, and cannot alert.
+
+Corollaries.
+
+*Measure against the last accepted quarter, never the adjacent one.* The first
+implementation compared each trailing quarter with its immediate predecessor.
+With one member alone at two consecutive quarters, the later was judged against
+the earlier — itself partial — at 100% coverage, and the one-member tail
+published anyway. A held quarter must never be the reference that legitimises
+its successor; once one is held, the whole tail is held.
+
+*A fix must reach every reader of the frontier.* The first fix gated the matched
+sums and missed the constant-membership panel, which chose its window end by the
+same arrival rule in a different function. It surfaced by rendering the
+deployed artifact, not from a test. Enumerate the consumers of a definition
+before declaring the definition fixed.
+
+*Guards on sibling series must be declared together.* The frontier leaked
+partly through an asymmetry: buckets refused a one-member latest point, the
+total had no floor at all. Each guard was reasonable where it stood and the
+unevenness was invisible, because the guards were never written down in one
+place. They are now one table, and a test fails if a published series has none.
+
+*Timing and identity are different guards.* A frontier gate is about timing —
+it holds a quarter until its filings land, then releases it. A membership floor
+is about identity — a one-member "sum" is that member wearing an aggregate's
+label, however complete its reporting — and it refuses rather than holds, so an
+aggregate genuinely reduced to one name says so instead of freezing.
+
+**Lineage — the fourth fiscal-calendar bite.** As Mando counts them: (1) the
+day-one pre-flag of fiscal offsets (not yet recorded on disk); (2) Tesla's
+annual series read as deceleration against a +113% half-year cut ([E17]);
+(3) calendar-keying, where summing issuers on raw period-ends left ONE usable
+hyperscaler observation (CD-1-SPEC §11.4); (4) this frontier. CD-1-SPEC §11.4
+separately counts discrete-quarter normalization and SEC `frame` labels as
+earlier appearances; the two counts are different cuts of one trap and both
+stand. The common shape: a fiscal calendar is invisible inside any one issuer's
+series and decides the answer the moment anything sums or compares across
+issuers.
+
+**Relation to [E31].** E31 gates ALERTS on a frontier; this defines the frontier
+of the SERIES. They are different frontiers, and E31's is still arrival-based
+(the newest quarter any classified series reached, less one quarter of
+lookback). That is safe today because no member leads the panel by more than a
+quarter, not by construction — recorded here as the one remaining
+arrival-defined frontier.
