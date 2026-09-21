@@ -189,6 +189,36 @@ def is_final_session(day: str, now_epoch: float | None = None,
     return now.hour >= SESSION_FINAL_HOUR
 
 
+def exchange_today(now_epoch: float | None = None,
+                   tz_name: str = DEFAULT_TZ) -> str:
+    """Today's date in the exchange's timezone, the same way is_final_session
+    computes it, so the two can never disagree about which day "today" is."""
+    now = dt.datetime.now(_tz(tz_name)) if now_epoch is None else \
+        dt.datetime.fromtimestamp(now_epoch, _tz(tz_name))
+    return now.date().isoformat()
+
+
+def is_vendor_settled(day: str, now_epoch: float | None = None,
+                      tz_name: str = DEFAULT_TZ) -> bool:
+    """Has the VENDOR had a full day to deliver ``day``?
+
+    ``is_final_session`` answers a question about the EXCHANGE: has the session
+    closed and settled, so that a price we hold for it is final? It is a clock,
+    and at the 21:00 nightly it says yes for today. It cannot answer the other
+    question, which belongs to the vendor: if we were given NO price, is that the
+    truth or just "not yet"? The vendor settles on its own schedule. On every
+    session from 2026-09-03 to 2026-09-18 the 21:00 nightly got a null close for
+    517 of 518 names, and a fetch of the same sessions a day later got all 518.
+
+    So a missing price is only believed once the session is strictly in the
+    past. Before that, absence is "not yet" and nothing is written; after it,
+    absence is "nothing" and is recorded as ``vendor_null``. One definition,
+    shared by the writer and by the reconciler's choice of session, so neither
+    can call a session settled that the other is still waiting on.
+    """
+    return day < exchange_today(now_epoch, tz_name)
+
+
 def _tz(tz_name: str):
     try:
         return ZoneInfo(tz_name)

@@ -32,7 +32,7 @@ from dataclasses import dataclass, field, replace
 from typing import Callable, Iterable, Sequence
 
 from . import reconstruct as R
-from .calendar import is_final_session, sessions_behind
+from .calendar import is_final_session, is_vendor_settled, sessions_behind
 from .schema import PriceStoreError
 from .vendor import VendorError, VendorSeries, YahooVendor
 
@@ -301,6 +301,24 @@ def ingest_series(
     # unfinished. Observed during the build across ~240 names.
     series = replace(series, bars=[b for b in series.bars
                                    if is_final_session(b.date, now_epoch)])
+
+    # Never record "not yet" as "nothing". The clock gate above passes today's
+    # session at 21:00, but the vendor has usually not delivered it by then, so
+    # the bar arrives with a null close. Written, that null became a
+    # vendor_null row, and because this table is insert-only and a duplicate
+    # insert is swallowed below, the first write won forever: the next night's
+    # good close for the same session had nowhere to go. 5,688 sessions across
+    # 2026-09-03..18 were lost that way while the vendor served every one of
+    # them on request.
+    #
+    # So a null for a session the vendor has not had a full day to settle is
+    # dropped here and nothing is written. The slot stays empty, last_date_held
+    # does not advance past it, and the next night's span asks again. A null
+    # for a PAST session is kept and becomes vendor_null, which now means only
+    # what it says: the session is settled and the vendor genuinely had nothing.
+    series = replace(series, bars=[b for b in series.bars
+                                   if b.close is not None
+                                   or is_vendor_settled(b.date, now_epoch)])
     res.rows_returned = sum(1 for b in series.bars if b.close is not None)
     if not series.bars:
         res.status = "no_rows"
@@ -619,6 +637,15 @@ def status(con: sqlite3.Connection) -> StatusReport:
     latest = row[0] if row else None
     lagging: list[tuple[str, str, str | None]] = []
     if latest:
+        # Only a CURRENT member can lag. A name that has left every index is no
+        # longer fetched, so it falls behind by construction; counting it pinned
+        # the nightly's exit code at 1 from the first departure onward, for the
+        # life of the store -- the same failure the vendor-corruption count below
+        # already had to be cured of. The 2026-09-21 quarterly rebalance retired
+        # BLDR, TAP and TTD; unscoped, all three would have paged every night
+        # from the Wednesday after. Their history stays in the store; whether a
+        # reader wants it is the reader's decision, not a staleness alarm.
+        current = {iid for iid, _symbol in _targets(con)}
         # SESSIONS behind, not days. Over Thanksgiving a perfectly current name
         # is four calendar days stale and zero sessions behind; a day-counting
         # ledger pages somebody every holiday and is learned to be ignored.
@@ -627,6 +654,8 @@ def status(con: sqlite3.Connection) -> StatusReport:
             " FROM freshness f JOIN instruments i USING (instrument_id)"
             " ORDER BY f.last_date_held"
         ):
+            if r["instrument_id"] not in current:
+                continue
             if sessions_behind(r["last_date_held"], latest) > 1:
                 lagging.append(
                     (r["instrument_id"], r["ticker"] or "?", r["last_date_held"]))

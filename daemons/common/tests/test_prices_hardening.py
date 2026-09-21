@@ -127,6 +127,17 @@ def test_status_uses_sessions(con):
     """A name last seen on the Friday before a long weekend is not stale."""
     a = _inst(con, "0000000001.0", "AAA")
     b = _inst(con, "0000000002.0", "BBB")
+    # Both must be CURRENT members: status() only counts lag for names still in
+    # an index, since a departed name stops being fetched and would otherwise
+    # lag forever (see test_prices_settledness). This test is about SESSIONS
+    # versus days, so it holds membership fixed and varies only the dates.
+    for iid, tk in ((a, "AAA"), (b, "BBB")):
+        con.execute(
+            "INSERT INTO ticker_aliases (instrument_id, ticker, notation,"
+            " valid_from, valid_to, source) VALUES (?,?,'vendor',?,NULL,'test')",
+            (iid, tk, "2026-09-01"))
+        con.execute("INSERT INTO index_membership VALUES (?,?,?,1,'test')",
+                    (iid, "SPX", "2026-09-01"))
     con.executemany(
         "INSERT INTO freshness (instrument_id, last_date_held) VALUES (?,?)",
         [(a, "2026-11-30"), (b, "2026-11-25")])

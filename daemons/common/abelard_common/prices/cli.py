@@ -151,11 +151,13 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.cmd == "reconcile":
             from .calendar import previous_session
-            date = args.date or (con.execute(
-                "SELECT MAX(last_date_held) FROM freshness").fetchone() or [None])[0]
+            date, note = (args.date, "") if args.date else \
+                reconcile.default_target(con)
             if not date:
                 _echo("[prices] nothing held yet; nothing to reconcile")
                 return 2
+            if note:
+                _echo("[reconcile] " + note)
             recs = reconcile.run(con, date, previous_session(date),
                                  tolerance_bp=args.tolerance_bp)
             for r in recs:

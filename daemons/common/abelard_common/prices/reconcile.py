@@ -179,6 +179,40 @@ def latest_weight_asof(con: sqlite3.Connection, index_code: str,
     return row[0] if row and row[0] else None
 
 
+def default_target(con: sqlite3.Connection,
+                   now_epoch: float | None = None) -> tuple[str | None, str]:
+    """The session the nightly reconciles, plus a note when it is not the newest
+    session any name holds.
+
+    It used to be ``MAX(last_date_held)`` and nothing else. That aggregate is
+    set by the single FASTEST name: on every night of the 2026-09 outage one
+    name (HUBB) had today's close at 21:00 while the other 517 did not, so the
+    target was a session almost nobody held, and the check reported
+    INSUFFICIENT every night about a session that was merely still arriving.
+
+    The writer no longer records a not-yet-delivered session at all, so "most
+    names absent from today" is now the normal, honest state at 21:00, and must
+    not read as a failure. When the newest held session is one the vendor has
+    not had a full day to settle, it is reported UNSETTLED and the previous
+    session, which has, is reconciled as the session of record. The check still
+    runs every night; it is one session behind, which is the true price of not
+    believing an unfinished answer. A PAST session is never excused: once a
+    session is settled, missing weight is INSUFFICIENT, loudly, exactly as
+    before.
+    """
+    from .calendar import is_vendor_settled, previous_session
+    row = con.execute("SELECT MAX(last_date_held) FROM freshness").fetchone()
+    newest = row[0] if row and row[0] else None
+    if newest is None:
+        return None, ""
+    if is_vendor_settled(newest, now_epoch):
+        return newest, ""
+    prior = previous_session(newest)
+    return prior, (
+        "{} UNSETTLED: the vendor has not had a full day to deliver it; "
+        "reconciling {} as the session of record".format(newest, prior))
+
+
 def reconcile_session(
     con: sqlite3.Connection,
     date: str,
