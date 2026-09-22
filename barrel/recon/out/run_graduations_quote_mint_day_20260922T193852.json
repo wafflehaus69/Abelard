@@ -1,0 +1,23 @@
+{
+ "file": "barrel/recon/sql/graduations_quote_mint_day.sql",
+ "label": "1.2 quote_mint",
+ "execution_id": "01M35A1ETJGC50RC42QS69JMQ9",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.170520336,
+ "submitted_at": "2026-09-22T19:38:46.48345Z",
+ "rows": [
+  {
+   "first_seen": "2026-09-01 00:04:11.000 UTC",
+   "last_seen": "2026-09-01 23:59:03.000 UTC",
+   "migrations": 1154,
+   "quote_mint": "11111111111111111111111111111111"
+  },
+  {
+   "first_seen": "2026-09-01 00:02:02.000 UTC",
+   "last_seen": "2026-09-01 23:30:22.000 UTC",
+   "migrations": 55,
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  }
+ ],
+ "error": null
+}

@@ -1,0 +1,56 @@
+[
+ {
+  "kind": "SOL",
+  "mint": "GfYX7XWmhcsF1PdoL6LZq5JuBmueK7bW4nwxtisDFGW8",
+  "curve_owner_is_pump": true,
+  "curve_complete": true,
+  "real_token_reserves": 0,
+  "pool_owner_is_pumpswap": true,
+  "PASS": true
+ },
+ {
+  "kind": "SOL",
+  "mint": "FBmPBhgQvzaEvcdWDThNCnP7j83hu9cFtGW3tDj6pump",
+  "curve_owner_is_pump": true,
+  "curve_complete": true,
+  "real_token_reserves": 0,
+  "pool_owner_is_pumpswap": true,
+  "PASS": true
+ },
+ {
+  "kind": "SOL",
+  "mint": "BNr9ReNanVCCW6VX8J8CcRkPp4AyeEeYXMiYs6T4TdPm",
+  "curve_owner_is_pump": true,
+  "curve_complete": true,
+  "real_token_reserves": 0,
+  "pool_owner_is_pumpswap": true,
+  "PASS": true
+ },
+ {
+  "kind": "USDC",
+  "mint": "5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC",
+  "curve_owner_is_pump": true,
+  "curve_complete": true,
+  "real_token_reserves": 0,
+  "pool_owner_is_pumpswap": true,
+  "PASS": true
+ },
+ {
+  "kind": "USDC",
+  "mint": "3V2ksJNCwTN1LtCg8HSQDcABo6UCMiXwDmut5EZJpump",
+  "curve_owner_is_pump": true,
+  "curve_complete": true,
+  "real_token_reserves": 0,
+  "pool_owner_is_pumpswap": true,
+  "PASS": true
+ },
+ {
+  "kind": "USDC",
+  "mint": "ATNSDN7n7YYpQGyvziV9ZLdfd5LMfMutVNaisoZVpump",
+  "curve_owner_is_pump": true,
+  "curve_complete": true,
+  "real_token_reserves": 0,
+  "pool_owner_is_pumpswap": true,
+  "PASS": true
+ }
+]

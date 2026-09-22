@@ -1,0 +1,17 @@
+{
+ "file": "barrel/recon/sql/graduations_day_raw.sql",
+ "label": "1.2 raw",
+ "execution_id": "01M359YVACEVRDFJYMPN684BNF",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.9185,
+ "submitted_at": "2026-09-22T19:37:20.973571Z",
+ "rows": [
+  {
+   "inner_calls": 417,
+   "migrate_calls": 667,
+   "outer_calls": 250,
+   "txs": 667
+  }
+ ],
+ "error": null
+}

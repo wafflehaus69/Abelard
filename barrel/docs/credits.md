@@ -1,7 +1,7 @@
 # BARREL — Dune free-tier credit ledger
 
 Every execution, credits as Dune reports them (`execution_cost_credits`), cumulative.
-Allowance: **2,500 / month (free)**. Reserve per readiness §1.1: 15%. Regenerate with `recon/credits_ledger.py`.
+Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. **Authoritative balance is `POST /v1/usage` (`recon/dune_usage.py`); this table undercounts probes run before it existed.** Reserve per readiness §1.1: 15%. Regenerate with `recon/credits_ledger.py`.
 
 | # | source | execution_id | credits | cumulative |
 |---|---|---|---|---|
@@ -24,7 +24,14 @@ Allowance: **2,500 / month (free)**. Reserve per readiness §1.1: 15%. Regenerat
 | 17 | dune_decoded_check2.json:sanity_0901 | `01M33BW7J0FA…` | 0.751 | 27.74 |
 | 18 | dune_quote_mix.json | `01M33BYNKA1E…` | 0.523 | 28.26 |
 | 19 | dune_probe_columns.json:evt_block_date | `(not saved)…` | 0.065 | 28.32 |
+| 20 | barrel/recon/sql/graduations_day.sql (1.2 decoded) | `01M359YM4Y7Y…` | 0.669 | 28.99 |
+| 21 | barrel/recon/sql/graduations_day_raw.sql (1.2 raw) | `01M359YVACEV…` | 0.918 | 29.91 |
+| 22 | barrel/recon/sql/graduations_quote_mint_day.sql (1.2 quote_mint) | `01M35A1ETJGC…` | 0.171 | 30.08 |
+| 23 | barrel/recon/sql/migration_instructions_day.sql (1.2 instr names) | `01M35A1P78YM…` | 0.834 | 30.91 |
+| 24 | barrel/recon/sql/graduations_quote_confirm_day.sql (1.2 quote confirm + samples) | `01M35A5JE99Y…` | 0.000 | 47.40 |
+| 25 | barrel/recon/sql/graduations_quote_confirm_day.sql (1.2 quote confirm + samples) | `01M35A62113J…` | 0.784 | 48.18 |
 
-**Total consumed: 28.32 credits. Remaining: 2472. Usable after 15% reserve: 2101.**
+**Total consumed: 48.18 credits. Remaining: 2452. Usable after 15% reserve: 2084.**
 
 _Generated 2026-09-22T19:35:40+00:00_
+_API says used: 48.180 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

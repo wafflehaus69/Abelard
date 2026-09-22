@@ -1,0 +1,51 @@
+{
+ "file": "barrel/recon/sql/graduations_quote_confirm_day.sql",
+ "label": "1.2 quote confirm + samples",
+ "execution_id": "01M35A62113J98PSBKDEAEJ5CQ",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.783648326,
+ "submitted_at": "2026-09-22T19:41:17.21824Z",
+ "rows": [
+  {
+   "evt_quote": "11111111111111111111111111111111",
+   "n": 1154,
+   "pool_quote": "So11111111111111111111111111111111111111112",
+   "sample_curves": [
+    "GSPSxykn9ocxrT7WubpjVXdnVKwET2ZRx4FWUezUKRjm",
+    "9SRxKrUvHdwnsprahJL68ctLHpRzbhj8fDZL1vzRBPqT",
+    "4evWdVPpSnq9iRwfPBwrxwJRQm3Dq8ELgAHesFrFDHsy"
+   ],
+   "sample_mints": [
+    "GfYX7XWmhcsF1PdoL6LZq5JuBmueK7bW4nwxtisDFGW8",
+    "FBmPBhgQvzaEvcdWDThNCnP7j83hu9cFtGW3tDj6pump",
+    "BNr9ReNanVCCW6VX8J8CcRkPp4AyeEeYXMiYs6T4TdPm"
+   ],
+   "sample_pools": [
+    "GCg7VGVMq38g7T8vxZ7qMzVkTPeWiKpwTPWvTz9L8tck",
+    "GThiQvNXQm4C4p2azLXQWNtyVM6wBgsauyug27TeGvei",
+    "7BHMubkbX71SoYdNM4HRy7MrbvSi6oJvMcH1Epwu8Csu"
+   ]
+  },
+  {
+   "evt_quote": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "n": 55,
+   "pool_quote": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "sample_curves": [
+    "4Hn4LjrChtqaSabmHoQoaPvyghzP9D8AjKCbyGYT76VB",
+    "GCz52z9HLv4C6R1GzNmhiGMkzweGscNKSf24adgwMKN6",
+    "4oddvedGRrqRb7jyrXmpGVu3k6WofEUQNKhKt31RYR29"
+   ],
+   "sample_mints": [
+    "5xczFwu1UcM2H66dn9VGTPHEyXEHYyC97DeWcrev19xC",
+    "3V2ksJNCwTN1LtCg8HSQDcABo6UCMiXwDmut5EZJpump",
+    "ATNSDN7n7YYpQGyvziV9ZLdfd5LMfMutVNaisoZVpump"
+   ],
+   "sample_pools": [
+    "DGDZ7bpMogjUDeHN28ZYzF3jP6p9UzEgFhK7rxGSAS1x",
+    "6biFetzg82T2Q5ptWeco4FAXakMfkQKPxgC8mnAsvd8o",
+    "9CVSTSSaA9iuKoT4ZujNGdKSM9KSnjrGGMuh5RaJDEs"
+   ]
+  }
+ ],
+ "error": null
+}

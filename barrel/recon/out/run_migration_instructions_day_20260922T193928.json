@@ -1,0 +1,29 @@
+{
+ "file": "barrel/recon/sql/migration_instructions_day.sql",
+ "label": "1.2 instr names",
+ "execution_id": "01M35A1P78YMS7AN0DTV3XEMAE",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.833970589,
+ "submitted_at": "2026-09-22T19:38:54.057584Z",
+ "rows": [
+  {
+   "calls": 3182,
+   "inner_calls": 3182,
+   "instruction": "migrate_bonding_curve_creator",
+   "txs": 3182
+  },
+  {
+   "calls": 2026,
+   "inner_calls": 630,
+   "instruction": "migrate_v2",
+   "txs": 2026
+  },
+  {
+   "calls": 667,
+   "inner_calls": 417,
+   "instruction": "migrate",
+   "txs": 667
+  }
+ ],
+ "error": null
+}

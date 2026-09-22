@@ -1,0 +1,20 @@
+{
+ "file": "barrel/recon/sql/graduations_day.sql",
+ "label": "1.2 decoded",
+ "execution_id": "01M359YM4Y7YE8PN6Q42SRG9WN",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.668736843,
+ "submitted_at": "2026-09-22T19:37:13.631016Z",
+ "rows": [
+  {
+   "day": "2026-09-01",
+   "distinct_mints": 1209,
+   "distinct_pools": 1209,
+   "emitted_inner": 1209,
+   "migrations": 1209,
+   "other_quoted": 1209,
+   "sol_quoted": 0
+  }
+ ],
+ "error": null
+}

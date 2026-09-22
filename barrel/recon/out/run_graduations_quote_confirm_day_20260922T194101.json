@@ -1,0 +1,17 @@
+{
+ "file": "barrel/recon/sql/graduations_quote_confirm_day.sql",
+ "label": "1.2 quote confirm + samples",
+ "execution_id": "01M35A5JE99YB9H29HFV6MSPXX",
+ "state": "QUERY_STATE_FAILED",
+ "credits": 0.0,
+ "submitted_at": "2026-09-22T19:41:01.257535Z",
+ "rows": null,
+ "error": {
+  "type": "FAILED_TYPE_EXECUTION_FAILED",
+  "message": "line 10:51: mismatched input 'LIMIT'. Expecting: '%', '(', ')', '*', '+', ',', '-', '.', '/', 'AND', 'ASC', 'AT', 'DESC', 'NULLS', 'OR', '[', '||', <predicate> at line 10, position 51 [Execution ID: 01M35A5JE99YB9H29HFV6MSPXX]",
+  "metadata": {
+   "line": 10,
+   "column": 51
+  }
+ }
+}
