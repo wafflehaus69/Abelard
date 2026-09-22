@@ -1,0 +1,21 @@
+{
+ "columns": {},
+ "freshness": {},
+ "decoded": {
+  "rows": null,
+  "error": "no usable time column; not run"
+ },
+ "specimens": {
+  "direct_2026-09-21": "SXW7mNsyArE8TK4GNuGVD4xfhV7YGi2MY5o1YkE9p5bW8wpivpxad7jdg1suyqjw8GbKydsiiM8gwmtfdxLewJw",
+  "routed_2026-09-21": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb",
+  "direct_2026-09-01": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb",
+  "v1_swap": "2qeJU4oyiRqLp7gqWFBfWRwWShSVbUECPM9yo3cq7mU9WcQipj1XYRBAZuFaq4CrjfYGz66ph6s31tiHPKhEmLrP"
+ },
+ "verdict": {
+  "routed": true,
+  "events_logs": true,
+  "events_decoded": false,
+  "transfers": true
+ },
+ "credits_total": 30.040203227000003
+}

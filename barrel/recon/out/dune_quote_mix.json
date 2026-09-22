@@ -1,0 +1,22 @@
+{
+ "id": "01M33BYNKA1E6MKMWPF68YZT4W",
+ "result": {
+  "state": "QUERY_STATE_COMPLETED",
+  "credits": 0.523088236,
+  "rows": [
+   {
+    "events": 13390253,
+    "pools": 4761,
+    "quote_kind": "other",
+    "quote_sum_over_1e9": 288174185605.9527
+   },
+   {
+    "events": 12856171,
+    "pools": 21089,
+    "quote_kind": "SOL",
+    "quote_sum_over_1e9": 4182348.632717183
+   }
+  ],
+  "error": null
+ }
+}

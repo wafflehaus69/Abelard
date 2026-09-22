@@ -1,0 +1,44 @@
+{
+ "ids": {
+  "cols": "01M33BM5GBYG0RCVAA20VBWRXP",
+  "transfers_0921": "01M33BM5WTJVADF8X4HMF08SSN"
+ },
+ "columns": {},
+ "results": {
+  "cols": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.05070335,
+   "rows": [],
+   "error": null
+  },
+  "transfers_0921": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.9625,
+   "rows": [
+    {
+     "amount": "1488440",
+     "mint": "So11111111111111111111111111111111111111111",
+     "tx_id": "SXW7mNsyArE8TK4GNuGVD4xfhV7YGi2MY5o1YkE9p5bW8wpivpxad7jdg1suyqjw8GbKydsiiM8gwmtfdxLewJw"
+    },
+    {
+     "amount": "1488440",
+     "mint": "So11111111111111111111111111111111111111111",
+     "tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb"
+    },
+    {
+     "amount": "1513840",
+     "mint": "So11111111111111111111111111111111111111111",
+     "tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb"
+    },
+    {
+     "amount": "1346200",
+     "mint": "So11111111111111111111111111111111111111111",
+     "tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb"
+    }
+   ],
+   "error": null
+  }
+ },
+ "transfers_0921_pass": false,
+ "credits": 1.01320335
+}

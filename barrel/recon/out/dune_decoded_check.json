@@ -1,0 +1,48 @@
+{
+ "ids": {
+  "specimens": "01M33BSM36RMTX8N408MXQAVNW",
+  "one_day": "01M33BSMG14667F7FWB77W608N"
+ },
+ "results": {
+  "specimens": {
+   "state": "QUERY_STATE_FAILED",
+   "credits": 0,
+   "rows": null,
+   "error": {
+    "type": "FAILED_TYPE_EXECUTION_FAILED",
+    "message": "line 4:44: Column 'ix_name' cannot be resolved at line 4, position 44. Please verify that this column exists using the data explorer. Learn how to use the data explorer here: https://dune.com/docs/app/query-editor/data-explorer/ [Execution ID: 01M33BSM36RMTX8N408MXQAVNW]",
+    "metadata": {
+     "line": 4,
+     "column": 44
+    }
+   }
+  },
+  "one_day": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.568264706,
+   "rows": [
+    {
+     "creator_sol": 9275.393445266,
+     "events": 12073002,
+     "events_with_creator_fee": 3096166,
+     "lp_sol": 364955677.1810268,
+     "protocol_sol": 72993375.94047622,
+     "side": "sell",
+     "txs": 12003387
+    },
+    {
+     "creator_sol": 11101.787744667,
+     "events": 14173422,
+     "events_with_creator_fee": 7782882,
+     "lp_sol": 355381057.0235917,
+     "protocol_sol": 71078078.1370763,
+     "side": "buy",
+     "txs": 14166297
+    }
+   ],
+   "error": null
+  }
+ },
+ "pass": false,
+ "credits": 0.568264706
+}

@@ -182,6 +182,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-4 (below) + [`docs/H3_AMENDMENT_v1.1.md`](docs/H3_AMENDMENT_v1.1.md) | Architect; ClaudeCode recording | 2026-09-21 | M0-wide rulings arising from the H3 review; project ID; standing ceiling unchanged |
 | Execution record, orders 2–4 → [`docs/A1_BIGQUERY_FITNESS.md`](docs/A1_BIGQUERY_FITNESS.md) | ClaudeCode | 2026-09-21 | A1 step 1 PASS; BigQuery **unfit** for swap-level data; D1 returned for ruling; work stopped per order 5 |
 | MR-5 (below) | Architect, relayed by Mando; ClaudeCode recording | 2026-09-21 | Spend guardrail; D1 → Dune free-tier test first; options 2/3 rejected; BigQuery scope; E34; August 2025 DEGRADED |
+| Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
 Builder-recorded Mando rulings therefore use the **MR-** prefix from here on; the A1 block
@@ -545,3 +546,39 @@ pass/fail per item and credits consumed; (3) if it passes, project the credit bu
 Gate 0 and the derived table on Analyst, then stop, and Mando buys the month; (4) if it
 fails, report and test the next candidate the same way, **no building**; (5) re-run the fee
 samples with the version-1 fix before v1.2.
+
+---
+
+### Execution record — MR-5 orders 2–3 (ClaudeCode, 2026-09-22)
+
+Full report: `docs/A1_DUNE_FITNESS.md`.
+
+* **Order 2 — Dune round-trip on the free tier: PASS.** Routed swaps present in
+  `solana.instruction_calls` (0 outer / 6 inner, exact). Swap events present in logs (3/3).
+  Decoded swap events with fee legs by name equal this repo's independent IDL decode of the
+  chain's bytes **field-for-field on all four specimens**, including both events inside a
+  Jupiter-routed swap and a version-1 transaction. Inner SPL transfers row-level PASS on the
+  fully-ingested specimen; the curated `tokens_solana.transfers` lags the raw tables by up
+  to a day (re-check pending). **Credits: ~37 of 2,500. Spend: $0.**
+* **Order 3 — projection delivered.** Free tier cannot hold M0. Export (1 credit / 1,000
+  datapoints) is the largest line, not compute. **Stopped.** Buying Analyst ($75) is
+  Mando's call under MR-5.0; its monthly credit allowance is not documented anywhere the
+  builder can read and should be taken from the purchase screen.
+
+**Two design consequences that need a ruling before v1.2** (builder must not decide them):
+
+1. **MR-4.5 as written cannot be executed on Dune.** Exporting the derived trade table
+   row-level costs ~390,000 credits per day of data. The table must live **inside Dune as
+   a materialized view** (`dune.<user>.result_<name>`), with only aggregates exported.
+   Storage is capped per plan; Analyst's cap is undocumented. This keeps v1.1 A1's "raw tape
+   stays server-side" and R7 intact, but it changes where the M0 data foundation and M1's
+   seed store physically live, from Mando's GCP project to Dune.
+2. **`quote_mint` must enter the universe definition.** On 2026-09-01, 18% of PumpSwap pools
+   (carrying 51% of swap events) are quoted in a mint other than SOL, and pump.fun's own
+   `CreateEvent` carries `quote_mint`, so non-SOL bonding curves exist. Stratum P and the
+   SOL-denominated cost model must be restricted to SOL-quoted pools, or a conversion must
+   be ruled. Summing across mints produced a physically impossible figure (288 billion
+   "SOL" in a day); the builder's error, corrected, and now a rule.
+
+Also recorded: Dune's decoder pins the 473-byte PumpSwap event layout, so the newer
+carve-out fields are absent there; the three additive legs the cost model needs are present.

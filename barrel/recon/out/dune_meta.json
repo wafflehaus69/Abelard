@@ -1,0 +1,178 @@
+{
+ "ids": {
+  "cols_buy": "01M33B9340V2CYZ4MVP3AXY6DD",
+  "cols_migrate": "01M33B93GVJNVKZHVKNHCW8436",
+  "cols_create": "01M33B93XT9G6MJVMRMR15FNS6",
+  "cols_transfers": "01M33B94AVZBGBCCB1HF1HCQ7W",
+  "freshness": "01M33B94QQDMK8Q3STJQQ6FWBG"
+ },
+ "results": {
+  "cols_buy": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.026621771,
+   "rows": [],
+   "error": null
+  },
+  "cols_migrate": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.02642536,
+   "rows": [],
+   "error": null
+  },
+  "cols_create": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.027289953,
+   "rows": [],
+   "error": null
+  },
+  "cols_transfers": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.030616269,
+   "rows": [
+    {
+     "Column": "block_time",
+     "Comment": "",
+     "Extra": "",
+     "Type": "timestamp(3) with time zone"
+    },
+    {
+     "Column": "action",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "amount",
+     "Comment": "",
+     "Extra": "",
+     "Type": "uint256"
+    },
+    {
+     "Column": "from_token_account",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "to_token_account",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "token_mint_address",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "symbol",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "amount_display",
+     "Comment": "",
+     "Extra": "",
+     "Type": "double"
+    },
+    {
+     "Column": "amount_usd",
+     "Comment": "",
+     "Extra": "",
+     "Type": "double"
+    },
+    {
+     "Column": "from_owner",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "to_owner",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "token_version",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "tx_id",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "tx_signer",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "outer_executing_account",
+     "Comment": "",
+     "Extra": "",
+     "Type": "varchar"
+    },
+    {
+     "Column": "block_date",
+     "Comment": "",
+     "Extra": "",
+     "Type": "date"
+    },
+    {
+     "Column": "block_slot",
+     "Comment": "",
+     "Extra": "",
+     "Type": "bigint"
+    },
+    {
+     "Column": "tx_index",
+     "Comment": "",
+     "Extra": "",
+     "Type": "integer"
+    },
+    {
+     "Column": "outer_instruction_index",
+     "Comment": "",
+     "Extra": "",
+     "Type": "integer"
+    },
+    {
+     "Column": "inner_instruction_index",
+     "Comment": "",
+     "Extra": "",
+     "Type": "integer"
+    },
+    {
+     "Column": "unique_instruction_key",
+     "Comment": "",
+     "Extra": "",
+     "Type": "decimal(38,0)"
+    }
+   ],
+   "error": null
+  },
+  "freshness": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 7.710735295,
+   "rows": [
+    {
+     "newest": "2026-09-21",
+     "t": "tokens_solana.transfers"
+    },
+    {
+     "newest": "2026-09-22",
+     "t": "solana.instruction_calls"
+    }
+   ],
+   "error": null
+  }
+ },
+ "credits": 7.821688648
+}

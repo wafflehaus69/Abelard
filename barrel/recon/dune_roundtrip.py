@@ -88,13 +88,19 @@ def chain_truth(sig: str) -> dict:
 
 def find_v1_specimen() -> tuple[str, str] | None:
     """Newest transaction version is a boundary (it broke our own probes). Find one live."""
-    for s in m.rpc("getSignaturesForAddress", [PUMPSWAP, {"limit": 200}]):
+    # The public RPC rate-limits bursts; a 429 here is a pacing problem, not a
+    # missing specimen, so back off and keep looking rather than abort the test.
+    for s in m.rpc("getSignaturesForAddress", [PUMPSWAP, {"limit": 120}]):
         if s.get("err"):
             continue
-        tx = m.rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}], tries=4)
+        try:
+            tx = m.rpc("getTransaction", [s["signature"], {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 1}], tries=3)
+        except m.RpcError:
+            time.sleep(5)
+            continue
         if tx.get("version") == 1:
             return "v1_live", s["signature"]
-        time.sleep(0.3)
+        time.sleep(1.0)
     return None
 
 
@@ -142,7 +148,17 @@ def main() -> None:
     else:
         print("NOTE: no version-1 transaction found in the last 200 PumpSwap sigs; that boundary is UNTESTED.")
 
-    truth = {name: chain_truth(sig) for name, sig in specimens.items()}
+    truth = {}
+    for name, sig in specimens.items():
+        for attempt in range(4):
+            try:
+                truth[name] = chain_truth(sig)
+                break
+            except m.RpcError:
+                time.sleep(8 * (attempt + 1))
+        else:
+            raise SystemExit(f"chain truth for {name} could not be fetched (RPC rate limit); nothing was run on Dune.")
+        time.sleep(1.5)
     sigs = list(specimens.values())
     dates = sorted({t["block_date"] for t in truth.values()})
     date_filter = f"block_date IN ({', '.join(f'DATE {d!r}' for d in dates)})"

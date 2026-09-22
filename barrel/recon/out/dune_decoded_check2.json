@@ -1,0 +1,92 @@
+{
+ "ids": {
+  "specimens": "01M33BW753MEJW71YDBN4YEABX",
+  "sanity_0901": "01M33BW7J0FAS6QEC3XYDBQGK5"
+ },
+ "results": {
+  "specimens": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.778970589,
+   "rows": [
+    {
+     "coin_creator_fee": "6449186",
+     "coin_creator_fee_basis_points": "95",
+     "evt_is_inner": true,
+     "evt_tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb",
+     "lp_fee": "1357724",
+     "protocol_fee": "339431",
+     "quote": "678861665",
+     "side": "sell"
+    },
+    {
+     "coin_creator_fee": "16678057",
+     "coin_creator_fee_basis_points": "30",
+     "evt_is_inner": true,
+     "evt_tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb",
+     "lp_fee": "1111871",
+     "protocol_fee": "51701976",
+     "quote": "5628844100",
+     "side": "buy"
+    },
+    {
+     "coin_creator_fee": "0",
+     "coin_creator_fee_basis_points": "0",
+     "evt_is_inner": true,
+     "evt_tx_id": "SXW7mNsyArE8TK4GNuGVD4xfhV7YGi2MY5o1YkE9p5bW8wpivpxad7jdg1suyqjw8GbKydsiiM8gwmtfdxLewJw",
+     "lp_fee": "10683328475",
+     "protocol_fee": "2136665695",
+     "quote": "4286151383910",
+     "side": "buy"
+    },
+    {
+     "coin_creator_fee": "3194841",
+     "coin_creator_fee_basis_points": "85",
+     "evt_is_inner": true,
+     "evt_tx_id": "2qeJU4oyiRqLp7gqWFBfWRwWShSVbUECPM9yo3cq7mU9WcQipj1XYRBAZuFaq4CrjfYGz66ph6s31tiHPKhEmLrP",
+     "lp_fee": "751728",
+     "protocol_fee": "187932",
+     "quote": "375863552",
+     "side": "sell"
+    },
+    {
+     "coin_creator_fee": "0",
+     "coin_creator_fee_basis_points": "0",
+     "evt_is_inner": true,
+     "evt_tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb",
+     "lp_fee": "28859671414",
+     "protocol_fee": "5771934283",
+     "quote": "11543868565245",
+     "side": "sell"
+    }
+   ],
+   "error": null
+  },
+  "sanity_0901": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.750735295,
+   "rows": [
+    {
+     "creator_sol_clean": 9275.393445266,
+     "events": 12073002,
+     "impossible_rows": 0,
+     "lp_sol_clean": 364955677.1817291,
+     "protocol_sol_clean": 72993375.94061679,
+     "quote_sol_clean": 145982856920.6115,
+     "side": "sell"
+    },
+    {
+     "creator_sol_clean": 11101.787744667,
+     "events": 14173422,
+     "impossible_rows": 0,
+     "lp_sol_clean": 355381057.02979755,
+     "protocol_sol_clean": 71078078.13874546,
+     "quote_sol_clean": 142195511033.97128,
+     "side": "buy"
+    }
+   ],
+   "error": null
+  }
+ },
+ "pass": true,
+ "credits": 1.5297058840000002
+}

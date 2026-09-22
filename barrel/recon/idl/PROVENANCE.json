@@ -10,6 +10,11 @@
     "pump_fees.json": {
       "sha256": "d87b52305fd6b2ec487d4ba1e08a49990c23fa9b8b76092b2097df0164fa3859",
       "bytes": 133206
+    },
+    "pump.json": {
+      "sha256": "ffe966c42f1af41652ee753fe2f1e3f7cd4077d7e6f49faf3138959c8b56064b",
+      "bytes": 268716,
+      "fetched_utc": "2026-09-22T01:30:32+00:00"
     }
   }
 }

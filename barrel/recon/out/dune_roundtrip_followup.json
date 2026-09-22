@@ -1,0 +1,227 @@
+{
+ "specimens": {
+  "direct_2026-09-21": "SXW7mNsyArE8TK4GNuGVD4xfhV7YGi2MY5o1YkE9p5bW8wpivpxad7jdg1suyqjw8GbKydsiiM8gwmtfdxLewJw",
+  "routed_2026-09-21": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb",
+  "direct_2026-09-01": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb",
+  "v1_swap": "2qeJU4oyiRqLp7gqWFBfWRwWShSVbUECPM9yo3cq7mU9WcQipj1XYRBAZuFaq4CrjfYGz66ph6s31tiHPKhEmLrP"
+ },
+ "truth": {
+  "direct_2026-09-21": {
+   "block_date": "2026-09-21",
+   "slot": 449191074,
+   "version": 0,
+   "pumpswap_outer": 1,
+   "pumpswap_inner": 1,
+   "swap_events": 1,
+   "token_transfers_outer": 0,
+   "token_transfers_inner": 4
+  },
+  "routed_2026-09-21": {
+   "block_date": "2026-09-21",
+   "slot": 449191074,
+   "version": 0,
+   "pumpswap_outer": 0,
+   "pumpswap_inner": 6,
+   "swap_events": 2,
+   "token_transfers_outer": 0,
+   "token_transfers_inner": 13
+  },
+  "direct_2026-09-01": {
+   "block_date": "2026-09-01",
+   "slot": 443282249,
+   "version": 0,
+   "pumpswap_outer": 1,
+   "pumpswap_inner": 1,
+   "swap_events": 1,
+   "token_transfers_outer": 0,
+   "token_transfers_inner": 4
+  },
+  "v1_swap": {
+   "block_date": "2026-09-22",
+   "slot": 449226737,
+   "version": 1,
+   "pumpswap_outer": 0,
+   "pumpswap_inner": 2,
+   "swap_events": 1,
+   "token_transfers_outer": 0,
+   "token_transfers_inner": 5
+  }
+ },
+ "instructions": {
+  "status": {
+   "execution_id": "01M33A5110YM2966SAMT2D504T",
+   "query_id": 0,
+   "is_execution_finished": true,
+   "state": "QUERY_STATE_COMPLETED",
+   "submitted_at": "2026-09-22T01:02:14.560868Z",
+   "expires_at": "2026-12-21T01:12:41.597605Z",
+   "execution_started_at": "2026-09-22T01:03:06.26572686Z",
+   "execution_ended_at": "2026-09-22T01:12:41.597598585Z",
+   "result_metadata": {
+    "column_names": [
+     "tx_id",
+     "pumpswap_outer",
+     "pumpswap_inner"
+    ],
+    "column_types": [
+     "varchar",
+     "bigint",
+     "bigint"
+    ],
+    "row_count": 3,
+    "result_set_bytes": 310,
+    "total_row_count": 3,
+    "total_result_set_bytes": 310,
+    "datapoint_count": 9,
+    "pending_time_millis": 51704,
+    "execution_time_millis": 575331
+   },
+   "execution_cost_credits": 14.811911765
+  },
+  "rows": [
+   {
+    "pumpswap_inner": 1,
+    "pumpswap_outer": 1,
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   },
+   {
+    "pumpswap_inner": 1,
+    "pumpswap_outer": 1,
+    "tx_id": "SXW7mNsyArE8TK4GNuGVD4xfhV7YGi2MY5o1YkE9p5bW8wpivpxad7jdg1suyqjw8GbKydsiiM8gwmtfdxLewJw"
+   },
+   {
+    "pumpswap_inner": 6,
+    "pumpswap_outer": 0,
+    "tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb"
+   }
+  ],
+  "error": null
+ },
+ "decoded": {
+  "label": "decoded_events",
+  "status": {
+   "execution_id": "01M33ATQAQBGV3BBG1WD20N3BX",
+   "query_id": 0,
+   "is_execution_finished": true,
+   "state": "QUERY_STATE_FAILED",
+   "submitted_at": "2026-09-22T01:14:05.527714Z",
+   "expires_at": "2026-12-21T01:14:05.673901Z",
+   "execution_cost_credits": 0,
+   "error": {
+    "type": "FAILED_TYPE_EXECUTION_FAILED",
+    "message": "line 3:15: Column 'block_date' cannot be resolved at line 3, position 15. Please verify that this column exists using the data explorer. Learn how to use the data explorer here: https://dune.com/docs/app/query-editor/data-explorer/ [Execution ID: 01M33ATQAQBGV3BBG1WD20N3BX]",
+    "metadata": {
+     "line": 3,
+     "column": 15
+    }
+   }
+  },
+  "rows": null,
+  "error": {
+   "type": "FAILED_TYPE_EXECUTION_FAILED",
+   "message": "line 3:15: Column 'block_date' cannot be resolved at line 3, position 15. Please verify that this column exists using the data explorer. Learn how to use the data explorer here: https://dune.com/docs/app/query-editor/data-explorer/ [Execution ID: 01M33ATQAQBGV3BBG1WD20N3BX]",
+   "metadata": {
+    "line": 3,
+    "column": 15
+   }
+  }
+ },
+ "transfers": {
+  "label": "transfers_rows",
+  "status": {
+   "execution_id": "01M33ATRJ3KD41QMX9WY096JBP",
+   "query_id": 0,
+   "is_execution_finished": true,
+   "state": "QUERY_STATE_COMPLETED",
+   "submitted_at": "2026-09-22T01:14:06.787904Z",
+   "expires_at": "2026-12-21T01:14:31.239838Z",
+   "execution_started_at": "2026-09-22T01:14:08.173774497Z",
+   "execution_ended_at": "2026-09-22T01:14:31.239831743Z",
+   "result_metadata": {
+    "column_names": [
+     "tx_id",
+     "mint",
+     "amount"
+    ],
+    "column_types": [
+     "varchar",
+     "varchar",
+     "varchar"
+    ],
+    "row_count": 11,
+    "result_set_bytes": 1536,
+    "total_row_count": 11,
+    "total_result_set_bytes": 1536,
+    "datapoint_count": 33,
+    "pending_time_millis": 1385,
+    "execution_time_millis": 23066
+   },
+   "execution_cost_credits": 3.771911765
+  },
+  "rows": [
+   {
+    "amount": "2074080",
+    "mint": "So11111111111111111111111111111111111111111",
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   },
+   {
+    "amount": "2039280",
+    "mint": "So11111111111111111111111111111111111111111",
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   },
+   {
+    "amount": "1488440",
+    "mint": "So11111111111111111111111111111111111111111",
+    "tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb"
+   },
+   {
+    "amount": "1488440",
+    "mint": "So11111111111111111111111111111111111111111",
+    "tx_id": "SXW7mNsyArE8TK4GNuGVD4xfhV7YGi2MY5o1YkE9p5bW8wpivpxad7jdg1suyqjw8GbKydsiiM8gwmtfdxLewJw"
+   },
+   {
+    "amount": "11509236959548",
+    "mint": "AYdiBbhgDFJ3tHD5tNAzL3xi2CzYkFgeNWrSVKZRYdwo",
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   },
+   {
+    "amount": "1346200",
+    "mint": "So11111111111111111111111111111111111111111",
+    "tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb"
+   },
+   {
+    "amount": "2885967141",
+    "mint": "AYdiBbhgDFJ3tHD5tNAzL3xi2CzYkFgeNWrSVKZRYdwo",
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   },
+   {
+    "amount": "2885967142",
+    "mint": "AYdiBbhgDFJ3tHD5tNAzL3xi2CzYkFgeNWrSVKZRYdwo",
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   },
+   {
+    "amount": "1513840",
+    "mint": "So11111111111111111111111111111111111111111",
+    "tx_id": "BsVZee9YMzyBXvLDPSxbAY3vT86L9aN5p48Eywiw7SjPUqZyoiLdYTtfTg3q39qNuin3JqvyZodRudmmxFMDwyb"
+   },
+   {
+    "amount": "1157908045",
+    "mint": "So11111111111111111111111111111111111111111",
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   },
+   {
+    "amount": "1157908045",
+    "mint": "So11111111111111111111111111111111111111112",
+    "tx_id": "29crGCun9VjKjtweu6NQEXBQM4Xkog9if9orazySrXqm8AcgB8MozzgJTUnQo22KRNz6Mx7NKhugNNkS5U9dfqnb"
+   }
+  ],
+  "error": null
+ },
+ "verdict": {
+  "routed_swaps": true,
+  "events_in_logs": true,
+  "events_decoded": false,
+  "inner_transfers": false
+ },
+ "credits_total": 24.780367298
+}
