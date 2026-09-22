@@ -53,13 +53,13 @@ SPECIMENS = {
 
 def api_key() -> str:
     key = os.environ.get("DUNE_API_KEY", "").strip()
-    env = pathlib.Path(__file__).resolve().parents[1] / ".env"
+    env = pathlib.Path(__file__).resolve().parents[1] / "private" / "dune.env"
     if not key and env.exists():
         for line in env.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith("DUNE_API_KEY="):
                 key = line.split("=", 1)[1].strip().strip('"').strip("'")
     if not key:
-        raise SystemExit("DUNE_API_KEY not set (barrel/.env or environment). Nothing was run.")
+        raise SystemExit("DUNE_API_KEY not set (barrel/private/dune.env or environment). Nothing was run.")
     return key
 
 

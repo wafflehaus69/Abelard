@@ -1,0 +1,31 @@
+# Dune readiness — status against `DUNE_READINESS_ORDERS.md` §1
+
+Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ blocked (with reason)
+
+| Item | Status | Evidence |
+|---|---|---|
+| 1.1 key in `barrel/private/`, guard extended, guard passes | ✅ | `barrel/private/dune.env`; `recon/leak_guard.py` (live-key + pattern match) |
+| 1.1 queries as `.sql` files in repo | 🟡 | round-trip SQL lives inside `.py` scripts; extracting to `recon/sql/` |
+| 1.1 credit meter with 15% reserve | 🟡 | ledger-based (`credits.md`); API usage endpoint being verified |
+| 1.2 graduation-event query, validated vs chain-side count | ⬜ | |
+| 1.2 stratum/era/DEGRADED labelling | ⬜ | |
+| 1.2 owner-wallet exclusion from `barrel/private/` | ⬜ | wallet file not yet supplied |
+| 1.3 schema frozen | ⬜ | |
+| 1.3 built + validated as plain query, one day | ⬜ | |
+| 1.3 export contract with row counts | ⬜ | |
+| 1.4 census queries | ⬜ | |
+| 1.4 calibration-slice distributions | ⬜ | |
+| 1.4 20-token seeded reconciliation list | ⬜ | |
+| 1.5 S1/S2 as-of, reconciled on 5 tokens | ⬜ | |
+| 1.5 S3/S4 | ⬜ | |
+| 1.5 S6/S7/S7b/S8 | ⬜ | |
+| 1.5 S9/S10 | ⬜ | |
+| 1.5 UNKNOWN path per check | ⬜ | |
+| 1.6 fee pricing from decoded events, per era, SOL-quoted | ⬜ | one-day proportions already confirmed (25.0/5.0 bps) |
+| 1.6 fee samples re-run with v1 fix | ✅ | `M0_FEE_LEGS.md` Part 3 |
+| 1.6 slippage from reserves, validated on 10 swaps | ⬜ | |
+| 1.7 rebalance date chosen, seeded | ⬜ | |
+| 1.7 funnel written, dry-run on 2-day window | ⬜ | |
+| 1.7 projection template | ⬜ | |
+| 1.8 personal-history replay | ❌ | owner wallets not yet in `barrel/private/` |
+| §3 `credits.md` | ✅ | `docs/credits.md` |
