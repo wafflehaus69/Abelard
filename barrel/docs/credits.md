@@ -31,8 +31,13 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 24 | barrel/recon/sql/graduations_quote_confirm_day.sql (1.2 quote confirm + samples) | `01M35A5JE99Y…` | 0.000 | 47.40 |
 | 25 | barrel/recon/sql/graduations_quote_confirm_day.sql (1.2 quote confirm + samples) | `01M35A62113J…` | 0.784 | 48.18 |
 | 26 | barrel/recon/sql/discover_venue_tables.sql (R/N table discovery) | `01M35A9VPEGG…` | 1.351 | 49.53 |
+| 27 | barrel/recon/sql/stratum_r_day.sql (R sample day) | `01M35AF58XRM…` | 1.246 | 56.08 |
+| 28 | barrel/recon/sql/raydium_init2_coverage_day.sql (R init2 coverage) | `01M35AGX2NHH…` | 0.770 | 58.18 |
+| 29 | barrel/recon/sql/stratum_r_diagnostic.sql (R diagnostic) | `01M35AJMKSH1…` | 3.330 | 61.50 |
+| 30 | barrel/recon/sql/universe_day.sql (universe day P/P_alt/R) | `01M35AMPVSGH…` | 1.392 | 62.90 |
+| 31 | barrel/recon/sql/stratum_n_day.sql (N candidate day) | `01M35AN1VBHF…` | 0.633 | 63.53 |
 
-**Total consumed: 49.53 credits. Remaining: 2450. Usable after 15% reserve: 2083.**
+**Total consumed: 63.53 credits. Remaining: 2436. Usable after 15% reserve: 2071.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 49.546 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 62.897 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

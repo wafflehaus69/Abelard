@@ -1,0 +1,25 @@
+{
+ "file": "barrel/recon/sql/universe_day.sql",
+ "label": "universe day P/P_alt/R",
+ "execution_id": "01M35AMPVSGHJW4YSEV3ZK2KC8",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.392351676,
+ "submitted_at": "2026-09-22T19:49:17.306231Z",
+ "rows": [
+  {
+   "degraded": false,
+   "distinct_mints": 1154,
+   "era": "post_boost",
+   "stratum": "P",
+   "tokens": 1154
+  },
+  {
+   "degraded": false,
+   "distinct_mints": 55,
+   "era": "post_boost",
+   "stratum": "P_alt",
+   "tokens": 55
+  }
+ ],
+ "error": null
+}

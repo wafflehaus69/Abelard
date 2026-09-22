@@ -1,0 +1,21 @@
+{
+ "file": "barrel/recon/sql/raydium_init2_coverage_day.sql",
+ "label": "R init2 coverage",
+ "execution_id": "01M35AGX2NHH4B7BEAJEZK4B8E",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.770377992,
+ "submitted_at": "2026-09-22T19:47:12.597952Z",
+ "rows": [
+  {
+   "coin_is_pump": 297,
+   "coin_is_wsol": 372,
+   "first_seen": "2025-02-15 00:01:19.000 UTC",
+   "init2_calls": 2342,
+   "last_seen": "2025-02-15 23:59:33.000 UTC",
+   "pc_is_pump": 309,
+   "pc_is_wsol": 1969,
+   "signers": 1381
+  }
+ ],
+ "error": null
+}

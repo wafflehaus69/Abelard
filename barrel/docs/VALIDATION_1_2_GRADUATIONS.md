@@ -20,3 +20,9 @@
 3. Older on-chain accounts and events carry shorter layouts than the current IDL; decoders stop at end-of-bytes and record absent fields as absent, never zero (the bonding-curve check hit this on the first run).
 
 **Not yet done from 1.2:** the R (pre-2025-03-20 Raydium graduates) and N (Raydium/Meteora native) admission queries, era and DEGRADED labels as columns, and owner-wallet exclusion (wallets not yet supplied).
+
+## Stratum R (pre-2025-03-20, pump.fun → Raydium v4) — validated 2026-09-22
+
+Sample day 2025-02-15: **339** `CompleteEvent`s. Either-side join to `raydium_amm_call_initialize2` within ±3 days matches **339 / 339**, all signed by **one** address, `39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg` (pump.fun's migration authority), median complete→pool lag **98 s**. The official migration places the pump mint on the **pc** side (`account_pcMint`) with WSOL as `account_coinMint`; a coin-side-only join returned 0, which is how this was found. Independent count: BigQuery top-level Raydium v4 inits referencing a `…pump` mint that day = **606 = Dune 297 coin + 309 pc**, exact; the other 267 are third-party pools and are **not** R.
+
+**R admission rule:** `CompleteEvent` for the mint, then `initialize2` with `call_tx_signer = 39azUYFW…`, `account_pcMint = mint`, `account_coinMint = WSOL`, pool time ≥ complete time. Signer is the discriminator; pool creation alone is not.

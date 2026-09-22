@@ -1,0 +1,21 @@
+{
+ "file": "barrel/recon/sql/stratum_r_diagnostic.sql",
+ "label": "R diagnostic",
+ "execution_id": "01M35AJMKSH1MW1Q1T86W3DH37",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 3.329772728,
+ "submitted_at": "2026-09-22T19:48:09.465678Z",
+ "rows": [
+  {
+   "k": "by_signer:39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg",
+   "n": "98",
+   "v": "339"
+  },
+  {
+   "k": "matched_completes",
+   "n": "339",
+   "v": "339"
+  }
+ ],
+ "error": null
+}
