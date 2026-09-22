@@ -11,9 +11,9 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.2 stratum/era/DEGRADED labelling | 🟡 | P / P-alt / R validated; era + DEGRADED columns validated in `universe_day.sql`; N is multi-venue (v4 negligible; CP init; Meteora first-trade proxy, no creation table on Dune) — count measured, rule needs Architect confirmation |
 | 1.2 owner-wallet exclusion from `barrel/private/` | ⬜ | wallet file not yet supplied |
 | 1.3 schema frozen | 🟡 | `DERIVED_TABLE_SCHEMA.md` builder draft, 19 columns = R4 list made concrete; needs Architect sign-off to be frozen |
-| 1.3 built + validated as plain query, one day | ⬜ | |
+| 1.3 built + validated as plain query, one day | ✅ | `derived_trades_day_p.sql`: 12.6M rows, conservation holds on 84% of rows / 9,594 mints, failures concentrated by mint (unnamed leg); `trader_cost = gross − net` adopted |
 | 1.3 export contract with row counts | ⬜ | |
-| 1.4 census queries | ⬜ | |
+| 1.4 census queries | 🟡 | written and run on two sample weeks (`VALIDATION_1_4_CENSUS.md`); the ≥1-swap metric is vacuous (100% both eras) — replacement needs a ruling |
 | 1.4 calibration-slice distributions | ⬜ | |
 | 1.4 20-token seeded reconciliation list | ⬜ | |
 | 1.5 S1/S2 as-of, reconciled on 5 tokens | ⬜ | |

@@ -42,3 +42,11 @@ depend on the Raydium/Meteora table discovery.
 **Export contract (1.3, third bullet) — draft, to be filled with counts:** per-token
 aggregate (one row per mint × era), per-token-day aggregate for the calibration slice only,
 the H1–H4 result grid (~108 rows), and the 20-token reconciliation rows. Row-level never.
+
+## One-day build, validated 2026-09-22 (`recon/sql/derived_trades_day_p.sql`, 2026-09-01, P only)
+
+12,625,517 rows · 13,004 mints · buy variants `buy` 3.74M / `buy_exact_quote_in` 5.24M, sells 3.64M. The variant mapping for `gross_quote`/`net_quote` is confirmed on Dune's rows: conservation (`gross − net = lp + protocol + creator`) holds on **10.57M rows across 9,594 mints (84%) with zero failures**. Failures are **concentrated in 264 + 3,500 mints**, residual *positive* (median ~0.6M lamports on the large cluster): an extra unnamed leg on those coins (holder-rewards / cashback), absent from Dune's pinned 473-byte layout. Not a decoder fault.
+
+**Rule adopted:** `trader_cost = gross_quote − net_quote` is the cost-model quantity — it captures every leg by construction. `lp_fee`/`protocol_fee`/`coin_creator_fee` decompose it where the identity holds and are reported with the identity's pass flag. Column added to the schema as derived, not stored: `cost_identity_ok` (boolean, computed).
+
+Credits for the one-day build as a plain aggregate: **0.885**. Row-level materialization cost is still unmeasured (paid month, day 1).
