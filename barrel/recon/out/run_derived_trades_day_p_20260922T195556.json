@@ -1,0 +1,38 @@
+{
+ "file": "barrel/recon/sql/derived_trades_day_p.sql",
+ "label": "1.3 derived table one day P",
+ "execution_id": "01M35B0GTHD6DQJCSJAEX67W4M",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.884852942,
+ "submitted_at": "2026-09-22T19:55:44.338301Z",
+ "rows": [
+  {
+   "conservation_fail": 963132,
+   "conservation_ok": 4279385,
+   "ix_name": "buy_exact_quote_in",
+   "mints": 5042,
+   "rows": 5242517,
+   "side": "buy",
+   "wallets": 362912
+  },
+  {
+   "conservation_fail": 390544,
+   "conservation_ok": 3354013,
+   "ix_name": "buy",
+   "mints": 4173,
+   "rows": 3744557,
+   "side": "buy",
+   "wallets": 129650
+  },
+  {
+   "conservation_fail": 684128,
+   "conservation_ok": 2954315,
+   "ix_name": "sell",
+   "mints": 13004,
+   "rows": 3638443,
+   "side": "sell",
+   "wallets": 490361
+  }
+ ],
+ "error": null
+}

@@ -1,0 +1,18 @@
+{
+ "file": "barrel/recon/sql/census_week_sample.sql",
+ "label": "1.4 census one week",
+ "execution_id": "01M35B11EA2645FMWZRVDDBQNA",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.343676471,
+ "submitted_at": "2026-09-22T19:56:01.355001Z",
+ "rows": [
+  {
+   "grad_rate_pct": "3.393000000000000",
+   "graduations": 7236,
+   "launches": 213286,
+   "pct_swapped_7d": "100.000000000000000",
+   "wk": "2026-08-31 00:00:00.000 UTC"
+  }
+ ],
+ "error": null
+}

@@ -39,8 +39,10 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 32 | barrel/recon/sql/discover_meteora_tables.sql (meteora discovery) | `01M35AQ6YYFX…` | 4.767 | 69.04 |
 | 33 | barrel/recon/sql/stratum_n_multivenue_day.sql (N multi-venue day) | `01M35AY1FY00…` | 1.197 | 70.27 |
 | 34 | barrel/recon/sql/clmm_poolcreated_probe.sql (CLMM probe) | `01M35AYQE8WW…` | 2.461 | 72.73 |
+| 35 | barrel/recon/sql/derived_trades_day_p.sql (1.3 derived table one day P) | `01M35B0GTHD6…` | 0.885 | 73.62 |
+| 36 | barrel/recon/sql/census_week_sample.sql (1.4 census one week) | `01M35B11EA26…` | 1.344 | 74.96 |
 
-**Total consumed: 72.73 credits. Remaining: 2427. Usable after 15% reserve: 2063.**
+**Total consumed: 74.96 credits. Remaining: 2425. Usable after 15% reserve: 2061.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 70.273 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 74.963 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
