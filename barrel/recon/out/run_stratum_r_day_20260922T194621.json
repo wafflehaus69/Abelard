@@ -1,0 +1,20 @@
+{
+ "file": "barrel/recon/sql/stratum_r_day.sql",
+ "label": "R sample day",
+ "execution_id": "01M35AF58XRMN6ZTNK5Z8YVZGN",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.246392346,
+ "submitted_at": "2026-09-22T19:46:15.453641Z",
+ "rows": [
+  {
+   "a_signer": null,
+   "completes": 339,
+   "completes_with_v4_pool": 0,
+   "distinct_signers": 0,
+   "lag_s_p50": null,
+   "lag_s_p90": null,
+   "pools_wsol_pc": 0
+  }
+ ],
+ "error": null
+}
