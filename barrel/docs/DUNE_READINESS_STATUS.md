@@ -8,7 +8,7 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.1 queries as `.sql` files in repo | 🟡 | new queries live in `recon/sql/` and run via `dune_run_sql.py`; round-trip probes remain inline in their scripts (historical evidence, not pipeline) |
 | 1.1 credit meter with 15% reserve | ✅ | `recon/dune_run_sql.py` reads `POST /v1/usage` (`credits_used`/`credits_included`) before every run; refuses above remaining × 0.85 |
 | 1.2 graduation-event query, validated vs chain-side count | ✅ | `VALIDATION_1_2_GRADUATIONS.md`: Dune raw, BigQuery (250=250 exact), pool join 1,154/1,154, chain 6/6 |
-| 1.2 stratum/era/DEGRADED labelling | 🟡 | P / P-alt / R rules validated (`VALIDATION_1_2_GRADUATIONS.md`); N and the labelled universe query in progress |
+| 1.2 stratum/era/DEGRADED labelling | 🟡 | P / P-alt / R validated; era + DEGRADED columns validated in `universe_day.sql`; N is multi-venue (v4 negligible; CP init; Meteora first-trade proxy, no creation table on Dune) — count measured, rule needs Architect confirmation |
 | 1.2 owner-wallet exclusion from `barrel/private/` | ⬜ | wallet file not yet supplied |
 | 1.3 schema frozen | 🟡 | `DERIVED_TABLE_SCHEMA.md` builder draft, 19 columns = R4 list made concrete; needs Architect sign-off to be frozen |
 | 1.3 built + validated as plain query, one day | ⬜ | |

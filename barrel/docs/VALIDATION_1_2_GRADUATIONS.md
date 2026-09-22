@@ -26,3 +26,9 @@
 Sample day 2025-02-15: **339** `CompleteEvent`s. Either-side join to `raydium_amm_call_initialize2` within ±3 days matches **339 / 339**, all signed by **one** address, `39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg` (pump.fun's migration authority), median complete→pool lag **98 s**. The official migration places the pump mint on the **pc** side (`account_pcMint`) with WSOL as `account_coinMint`; a coin-side-only join returned 0, which is how this was found. Independent count: BigQuery top-level Raydium v4 inits referencing a `…pump` mint that day = **606 = Dune 297 coin + 309 pc**, exact; the other 267 are third-party pools and are **not** R.
 
 **R admission rule:** `CompleteEvent` for the mint, then `initialize2` with `call_tx_signer = 39azUYFW…`, `account_pcMint = mint`, `account_coinMint = WSOL`, pool time ≥ complete time. Signer is the discriminator; pool creation alone is not.
+
+## Labelled universe query and stratum N — status 2026-09-22
+
+`recon/sql/universe_day.sql` on 2026-09-01: **P 1,154 · P_alt 55 · R 0**, era `post_boost`, `degraded = false`. R correctly empty on a post-cutover day. Era and DEGRADED columns are CASE expressions on graduation time and need no external data.
+
+**N is multi-venue.** Raydium v4 saw **2** pool inits on 2026-09-01; the legacy AMM is negligible in the P window. Native pools now appear on Raydium CP-swap, Raydium CLMM, and Meteora. The N rule (venue pool whose base mint has no pump `CreateEvent`, no LaunchLab pool-create, and is not signed by the pump migration authority) is written for v4 in `recon/sql/stratum_n_day.sql` and extends to the other venues once their creation tables are confirmed; Meteora may lack a decoded pool-creation event on Dune, in which case first trade is the pool-birth proxy and is labelled as such.

@@ -1,0 +1,38 @@
+{
+ "file": "barrel/recon/sql/stratum_n_multivenue_day.sql",
+ "label": "N multi-venue day",
+ "execution_id": "01M35AY1FY00P1YMWVNX4M3FZ4",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.196973685,
+ "submitted_at": "2026-09-22T19:54:23.103013Z",
+ "rows": [
+  {
+   "by_migrator": 0,
+   "launchlab_origin": 0,
+   "n_admitted": 52,
+   "not_sol_pair": 36,
+   "pools": 177,
+   "pump_origin": 94,
+   "venue": "meteora_dlmm_firsttrade"
+  },
+  {
+   "by_migrator": 0,
+   "launchlab_origin": 0,
+   "n_admitted": 143,
+   "not_sol_pair": 8,
+   "pools": 152,
+   "pump_origin": 1,
+   "venue": "raydium_cp"
+  },
+  {
+   "by_migrator": 0,
+   "launchlab_origin": 0,
+   "n_admitted": 2,
+   "not_sol_pair": 0,
+   "pools": 2,
+   "pump_origin": 0,
+   "venue": "raydium_v4"
+  }
+ ],
+ "error": null
+}

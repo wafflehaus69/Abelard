@@ -1,0 +1,1759 @@
+{
+ "file": "barrel/recon/sql/discover_meteora_tables.sql",
+ "label": "meteora discovery",
+ "execution_id": "01M35AQ6YYFX4SGCVNAW6ZH2VX",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 4.767205883,
+ "submitted_at": "2026-09-22T19:50:39.327213Z",
+ "rows": [
+  {
+   "table_name": "lb_clmm_call_add_liquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_by_strategy",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_by_strategy2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_by_strategy_one_side",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_by_weight",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_by_weight2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_one_side",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_one_side_precise",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_add_liquidity_one_side_precise2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquidity2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquiditybystrategy",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquiditybystrategy2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquiditybystrategyoneside",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquiditybyweight",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquidityoneside",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquidityonesideprecise",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquidityonesideprecise2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_cancel_limit_order",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claim_fee",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claim_fee2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claim_reward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claim_reward2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claimfee",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claimfee2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claimreward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claimreward2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_bin_array",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_claim_fee_operator_account",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_limit_order_if_empty",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_operator_account",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_position",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_position2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_position_if_empty",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_preset_parameter",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_preset_parameter2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_close_token_badge",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_closeclaimprotocolfeeoperator",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_closeposition",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_closeposition2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_closepositionifempty",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_closepresetparameter",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_closepresetparameter2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_create_operator_account",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_createclaimprotocolfeeoperator",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_decrease_position_length",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_for_idl_type_generation_do_not_call",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_fund_reward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_fundreward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_go_to_a_bin",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_gotoabin",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_increase_oracle_length",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_increase_position_length",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_increase_position_length2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_increaseoraclelength",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_bin_array",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_bin_array_bitmap_extension",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_customizable_permissionless_lb_pair",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_customizable_permissionless_lb_pair2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_lb_pair",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_lb_pair2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_permission_lb_pair",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_position",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_position2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_position_by_operator",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_position_pda",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_preset_parameter",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_reward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initialize_token_badge",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializebinarray",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializebinarraybitmapextension",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializecustomizablepermissionlesslbpair",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializecustomizablepermissionlesslbpair2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializelbpair",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializelbpair2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializepermissionlbpair",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializeposition",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializepositionbyoperator",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializepositionpda",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializepresetparameter",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializepresetparameter2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializepresetparameterv2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializereward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializetokenbadge",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_migratebinarray",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_migrateposition",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_place_limit_order",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_rebalance_liquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_remove_all_liquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_remove_liquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_remove_liquidity2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_remove_liquidity_by_range",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_remove_liquidity_by_range2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_removeallliquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_removeliquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_removeliquidity2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_removeliquiditybyrange",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_removeliquiditybyrange2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_set_activation_point",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_set_pair_status",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_set_pair_status_permissionless",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_set_permissionless_operation_bits",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_set_pre_activation_duration",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_set_pre_activation_swap_address",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setactivationpoint",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setactivationslot",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setlockreleaseslot",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setmaxswappedamount",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setpairstatus",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setpairstatuspermissionless",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setpreactivationduration",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_setpreactivationswapaddress",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap_exact_out",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap_exact_out2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap_with_price_impact",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap_with_price_impact2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swapexactout",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swapexactout2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swapwithpriceimpact",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swapwithpriceimpact2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_togglepairstatus",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_update_base_fee_parameters",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_update_dynamic_fee_parameters",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_update_fees_and_reward2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_update_fees_and_rewards",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_update_position_operator",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_update_reward_duration",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_update_reward_funder",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatebasefeeparameters",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatedynamicfeeparameters",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatefeeowner",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatefeeparameters",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatefeesandreward2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatefeesandrewards",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatepositionoperator",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updaterewardduration",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updaterewardfunder",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatewhitelistedwallet",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_withdraw_ineligible_reward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_withdraw_protocol_fee",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_withdrawineligiblereward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_withdrawprotocolfee",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_zap_protocol_fee",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_addliquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_cancellimitorderevt",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_claimfee",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_claimfee2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_claimreward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_claimreward2",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_closelimitorderevt",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_compositionfee",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_decreasepositionlength",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_dynamicfeeparameterupdate",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_feeparameterupdate",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_fundreward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_gotoabin",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_increaseobservation",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_increasepositionlength",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_initializereward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_lbpaircreate",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_placelimitorderevt",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_positionclose",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_positioncreate",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_rebalancing",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_removeliquidity",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_setpositionpermissionlessoperationbitsevt",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_swap",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_swap2evt",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_updatepositionlockreleasepoint",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_updatepositionlockreleaseslot",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_updatepositionoperator",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_updaterewardduration",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_updaterewardfunder",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_withdrawineligiblereward",
+   "table_schema": "dlmm_solana"
+  },
+  {
+   "table_name": "gamma_call_migrate_meteora_dlmm_to_gamma",
+   "table_schema": "gamma_solana"
+  },
+  {
+   "table_name": "gamma_call_migratemeteoradlmmtogamma",
+   "table_schema": "gamma_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_add_liquidity2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_add_liquidity_by_strategy2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_add_liquidity_one_side_precise2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_claim_fee2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_claim_reward2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_close_position",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_initialize_position",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_initialize_position_pda",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_remove_liquidity2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_remove_liquidity_by_range2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_swap2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_meteora_dlmm_swap_with_price_impact2",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "glam_protocol_call_price_meteora",
+   "table_schema": "glam_solana"
+  },
+  {
+   "table_name": "jupiter_call_meteoraswap",
+   "table_schema": "jupiter_v4_solana"
+  },
+  {
+   "table_name": "jupiter_call_meteoraswap",
+   "table_schema": "jupiter_v5_solana"
+  },
+  {
+   "table_name": "jupiter_call_meteoradlmmswap",
+   "table_schema": "jupiter_v6_solana"
+  },
+  {
+   "table_name": "jupiter_call_meteoraswap",
+   "table_schema": "jupiter_v6_solana"
+  },
+  {
+   "table_name": "amm_call_addbalanceliquidity",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_addimbalanceliquidity",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_bootstrapliquidity",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_claimfee",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_closeconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_createconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_createlockescrow",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_createmintmetadata",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_enableordisablepool",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_getpoolinfo",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initialize",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionedpool",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlessconstantproductpoolwithconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlessconstantproductpoolwithconfig2",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlesspool",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlesspoolwithfeetier",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_lock",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_migratefeeaccount",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_overridecurveparam",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_removebalanceliquidity",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_removeliquiditysingleside",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_setadminfeeaccount",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_setpoolfees",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_setwhitelistedvault",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_swap",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_syncapy",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_transferadmin",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_updateactivationpoint",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_withdrawprotocolfees",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_addliquidity",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_bootstrapliquidity",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_claimfee",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_closeconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_createconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_createlockescrow",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_lock",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_migratefeeaccount",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_overridecurveparam",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_poolcreated",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_poolenabled",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_poolinfo",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_removeliquidity",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_setadminfeeaccount",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_setpoolfees",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_swap",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_transferadmin",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_withdrawprotocolfees",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "cp_amm_call_add_liquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_claim_partner_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_claim_position_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_claim_protocol_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_claim_reward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_close_claim_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_close_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_close_operator_account",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_close_position",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_close_token_badge",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_claim_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_dynamic_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_operator_account",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_position",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_token_badge",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_dummy_ix",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_fund_reward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_customizable_pool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_pool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_pool_with_dynamic_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_reward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_lock_position",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_permanent_lock_position",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_refresh_vesting",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_remove_all_liquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_remove_liquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_set_pool_status",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_split_position",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_split_position2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_swap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_update_pool_fees",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_update_reward_duration",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_update_reward_funder",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_withdraw_ineligible_reward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtaddliquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtclaimpartnerfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtclaimpositionfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtclaimprotocolfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtclaimreward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcloseclaimfeeoperator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcloseconfig",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcloseposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreateclaimfeeoperator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreateconfig",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreatedynamicconfig",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreateposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreatetokenbadge",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtfundreward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtinitializepool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtinitializereward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtliquiditychange",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtlockposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtpermanentlockposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtremoveliquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtsetpoolstatus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtsplitposition2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtswap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtswap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtupdatepoolfees",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtupdaterewardduration",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtupdaterewardfunder",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtwithdrawineligiblereward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_claim_creator_trading_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_claim_partner_pool_creation_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_claim_protocol_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_claim_protocol_pool_creation_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_claim_trading_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_close_claim_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_close_claim_protocol_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_claim_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_claim_protocol_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_locker",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_partner_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_virtual_pool_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_creator_withdraw_surplus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_initialize_virtual_pool_with_spl_token",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_initialize_virtual_pool_with_token2022",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migrate_meteora_damm",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migrate_meteora_damm_claim_lp_token",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migrate_meteora_damm_lock_lp_token",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migration_damm_v2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migration_damm_v2_create_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migration_meteora_damm_create_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_partner_withdraw_surplus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_protocol_withdraw_surplus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_swap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_transfer_pool_creator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_withdraw_leftover",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_withdraw_migration_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtclaimcreatortradingfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtclaimpoolcreationfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtclaimprotocolfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtclaimprotocolliquiditymigrationfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtclaimtradingfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcloseclaimfeeoperator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreateclaimfeeoperator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreateconfig",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreateconfigv2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreatedammv2migrationmetadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreatemeteoramigrationmetadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreatorwithdrawsurplus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcurvecomplete",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtinitializepool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtpartnerclaimpoolcreationfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtpartnermetadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtpartnerwithdrawmigrationfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtpartnerwithdrawsurplus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtprotocolwithdrawsurplus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtswap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtswap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtupdatepoolcreator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtvirtualpoolmetadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtwithdrawleftover",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtwithdrawmigrationfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquiditybyweight",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_addliquidityoneside",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claimfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_claimreward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_closeposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_fundreward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_increaseoraclelength",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializebinarray",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializebinarraybitmapextension",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializelbpair",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializeposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializereward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_removeliquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatefeeowner",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updatefeeparameters",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updaterewardduration",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_updaterewardfunder",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_withdrawprotocolfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_addliquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_claimfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_claimreward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_compositionfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_feeparameterupdate",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_fundreward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_increaseobservation",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_initializereward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_lbpaircreate",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_positionclose",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_positioncreate",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_removeliquidity",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_updaterewardduration",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_updaterewardfunder",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "base_trades_backfill",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "stg_swaps",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v2_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v2_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v3_solana"
+  },
+  {
+   "table_name": "excluded_mints",
+   "table_schema": "meteora_v3_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v3_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v4_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v4_solana"
+  },
+  {
+   "table_name": "vault_call_addstrategy",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_claimrewards",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_deposit",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_depositstrategy",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_enablevault",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_getunlockedamount",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_initialize",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_initializestrategy",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_removestrategy",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_setoperator",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_transferadmin",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_transferfeevault",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_updatelockedprofitdegradation",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_withdraw",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_withdrawdirectlyfromstrategy",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_withdrawstrategy",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_addliquidity",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_claimreward",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_performancefee",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_removeliquidity",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_reportloss",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_strategydeposit",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_strategywithdraw",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_evt_totalamount",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_version_amm"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_version_cpamm"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_version_dlmm"
+  },
+  {
+   "table_name": "bnpl_call_deposittometeora",
+   "table_schema": "rbx_solana"
+  },
+  {
+   "table_name": "bnpl_call_withdrawfrommeteora",
+   "table_schema": "rbx_solana"
+  },
+  {
+   "table_name": "swissborg_mex_proxy_call_swapmeteora",
+   "table_schema": "swissborg_mex_proxy_solana"
+  }
+ ],
+ "error": null
+}

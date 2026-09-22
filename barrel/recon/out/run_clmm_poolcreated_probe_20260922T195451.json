@@ -1,0 +1,16 @@
+{
+ "file": "barrel/recon/sql/clmm_poolcreated_probe.sql",
+ "label": "CLMM probe",
+ "execution_id": "01M35AYQE8WWC1ADB7S0JSHAAF",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 2.46116268,
+ "submitted_at": "2026-09-22T19:54:45.57696Z",
+ "rows": [
+  {
+   "first_day": null,
+   "last_day": null,
+   "rows_sept": 0
+  }
+ ],
+ "error": null
+}
