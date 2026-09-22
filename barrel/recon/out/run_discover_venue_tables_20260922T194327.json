@@ -1,0 +1,643 @@
+{
+ "file": "barrel/recon/sql/discover_venue_tables.sql",
+ "label": "R/N table discovery",
+ "execution_id": "01M35A9VPEGGED1A673B01DBPB",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.351473685,
+ "submitted_at": "2026-09-22T19:43:21.806636Z",
+ "rows": [
+  {
+   "table_name": "base_trades",
+   "table_schema": "dex_solana"
+  },
+  {
+   "table_name": "bot_trades",
+   "table_schema": "dex_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "dex_solana"
+  },
+  {
+   "table_name": "amm_call_createconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_createlockescrow",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_createmintmetadata",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_enableordisablepool",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_getpoolinfo",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initialize",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionedpool",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlessconstantproductpoolwithconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlessconstantproductpoolwithconfig2",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlesspool",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_initializepermissionlesspoolwithfeetier",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_setpoolfees",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_call_swap",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_createconfig",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_createlockescrow",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_poolcreated",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_poolenabled",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_poolinfo",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_setpoolfees",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "amm_evt_swap",
+   "table_schema": "meteora_pools_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_claim_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_dynamic_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_operator_account",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_position",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_create_token_badge",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_customizable_pool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_pool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_pool_with_dynamic_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_initialize_reward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_set_pool_status",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_swap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_call_update_pool_fees",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreateclaimfeeoperator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreateconfig",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreatedynamicconfig",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreateposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtcreatetokenbadge",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtinitializepool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtinitializereward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtsetpoolstatus",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtswap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtswap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "cp_amm_evt_evtupdatepoolfees",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_claim_partner_pool_creation_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_claim_protocol_pool_creation_fee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_claim_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_claim_protocol_fee_operator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_config",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_locker",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_partner_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_create_virtual_pool_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_initialize_virtual_pool_with_spl_token",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_initialize_virtual_pool_with_token2022",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migration_damm_v2_create_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_migration_meteora_damm_create_metadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_swap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_call_transfer_pool_creator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtclaimpoolcreationfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreateclaimfeeoperator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreateconfig",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreateconfigv2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreatedammv2migrationmetadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtcreatemeteoramigrationmetadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtinitializepool",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtpartnerclaimpoolcreationfee",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtswap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtswap2",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtupdatepoolcreator",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "dynamic_bonding_curve_evt_evtvirtualpoolmetadata",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializebinarray",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializebinarraybitmapextension",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializelbpair",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializeposition",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_initializereward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_call_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_initializereward",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_lbpaircreate",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_positioncreate",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "lb_clmm_evt_swap",
+   "table_schema": "meteora_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "base_trades_backfill",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "stg_swaps",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v1_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v2_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v2_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v3_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v3_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_v4_solana"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "meteora_v4_solana"
+  },
+  {
+   "table_name": "vault_call_initialize",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "vault_call_initializestrategy",
+   "table_schema": "meteora_vault_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_version_amm"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_version_cpamm"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "meteora_version_dlmm"
+  },
+  {
+   "table_name": "raydium_amm_call_createconfigaccount",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "raydium_amm_call_initialize",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "raydium_amm_call_initialize2",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "raydium_amm_call_preinitialize",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "raydium_amm_call_swapbasein",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "raydium_amm_call_swapbaseinv2",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "raydium_amm_call_swapbaseout",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "raydium_amm_call_swapbaseoutv2",
+   "table_schema": "raydium_amm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_createammconfig",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_createoperationaccount",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_createpool",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_initializereward",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_swap",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_swaprouterbasein",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_swapv2",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_call_updatepoolstatus",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_evt_createconfigevent",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_evt_createpersonalpositionevent",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_evt_poolcreatedevent",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "amm_v3_evt_swapevent",
+   "table_schema": "raydium_clmm_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_collectfundfee",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_collectprotocolfee",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_createammconfig",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_deposit",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_initialize",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_swapbaseinput",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_swapbaseoutput",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_updateammconfig",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_updatepoolstatus",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_call_withdraw",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_evt_lpchangeevent",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "raydium_cp_swap_evt_swapevent",
+   "table_schema": "raydium_cp_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "raydium_launchlab_v1"
+  },
+  {
+   "table_name": "stg_swaps",
+   "table_schema": "raydium_launchlab_v1"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "raydium_launchlab_v1"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "raydium_launchlab_version_1"
+  },
+  {
+   "table_name": "raydium_launchpad_call_create_config",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_call_create_platform_config",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_call_create_vesting_account",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_call_initialize",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_call_initialize_v2",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_call_initialize_with_token_2022",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_call_migrate_to_cpswap",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_evt_createvestingevent",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_evt_poolcreateevent",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "raydium_launchpad_evt_tradeevent",
+   "table_schema": "raydium_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "raydium_v3"
+  },
+  {
+   "table_name": "base_trades_backfill",
+   "table_schema": "raydium_v3"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "raydium_v3"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "raydium_v4"
+  },
+  {
+   "table_name": "base_trades_backfill",
+   "table_schema": "raydium_v4"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "raydium_v4"
+  },
+  {
+   "table_name": "stg_decoded_swaps",
+   "table_schema": "raydium_v4_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "raydium_v5"
+  },
+  {
+   "table_name": "base_trades_backfill",
+   "table_schema": "raydium_v5"
+  },
+  {
+   "table_name": "trades",
+   "table_schema": "raydium_v5"
+  },
+  {
+   "table_name": "stg_decoded_swaps",
+   "table_schema": "raydium_v5_solana"
+  },
+  {
+   "table_name": "base_trades",
+   "table_schema": "raydium_version_clmm"
+  }
+ ],
+ "error": null
+}

@@ -30,8 +30,9 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 23 | barrel/recon/sql/migration_instructions_day.sql (1.2 instr names) | `01M35A1P78YM…` | 0.834 | 30.91 |
 | 24 | barrel/recon/sql/graduations_quote_confirm_day.sql (1.2 quote confirm + samples) | `01M35A5JE99Y…` | 0.000 | 47.40 |
 | 25 | barrel/recon/sql/graduations_quote_confirm_day.sql (1.2 quote confirm + samples) | `01M35A62113J…` | 0.784 | 48.18 |
+| 26 | barrel/recon/sql/discover_venue_tables.sql (R/N table discovery) | `01M35A9VPEGG…` | 1.351 | 49.53 |
 
-**Total consumed: 48.18 credits. Remaining: 2452. Usable after 15% reserve: 2084.**
+**Total consumed: 49.53 credits. Remaining: 2450. Usable after 15% reserve: 2083.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 48.180 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 49.546 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

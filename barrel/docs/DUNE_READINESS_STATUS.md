@@ -10,7 +10,7 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.2 graduation-event query, validated vs chain-side count | ✅ | `VALIDATION_1_2_GRADUATIONS.md`: Dune raw, BigQuery (250=250 exact), pool join 1,154/1,154, chain 6/6 |
 | 1.2 stratum/era/DEGRADED labelling | 🟡 | P / P-alt rule set and confirmed; R and N admission, era and DEGRADED columns not yet written |
 | 1.2 owner-wallet exclusion from `barrel/private/` | ⬜ | wallet file not yet supplied |
-| 1.3 schema frozen | ⬜ | |
+| 1.3 schema frozen | 🟡 | `DERIVED_TABLE_SCHEMA.md` builder draft, 19 columns = R4 list made concrete; needs Architect sign-off to be frozen |
 | 1.3 built + validated as plain query, one day | ⬜ | |
 | 1.3 export contract with row counts | ⬜ | |
 | 1.4 census queries | ⬜ | |
