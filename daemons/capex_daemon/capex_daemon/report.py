@@ -1051,6 +1051,49 @@ def sec_commitments(snap, styles):
     return out
 
 
+def _sec_cohorts(snap, styles):
+    """P3 — the cross-check on fixed membership, entries dated as breaks."""
+    coh = (snap.get("suppliers") or {}).get("crosscheck_cohorts") or {}
+    cohorts = [c for c in (coh.get("cohorts") or []) if c.get("is_crosscheck")]
+    if not cohorts:
+        return []
+    out = [_P("The same ratio on fixed membership", styles["_h2"])]
+    out.append(_P(
+        "The series above is a <b>matched</b> sum: whoever reports a quarter is in it "
+        "that quarter. That is the right rule for currency and the wrong one for a "
+        "<b>level</b> — and the cross-check is read as a level. Each leg below holds its "
+        "membership fixed for its whole length, so a move in it is a move in the ratio "
+        "and not in the roster.", styles["_note"]))
+    out.append(multi_line_drawing(
+        {c["label"] + " (" + "+".join(c["names"]) + ")":
+         [(r["q"], r["ratio"]) for r in c["series"]] for c in cohorts},
+        "Supplier DC revenue / hyperscaler capex — one line per fixed membership",
+        note="each line is constant membership; they are not continuous with one another",
+        fmt=lambda v: "{:.0f}%".format(100 * v), height=180))
+    for b in (coh.get("breaks") or []):
+        if b["from_label"] == "single-name":
+            continue
+        out.append(_warn(
+            "<b>{} entered at {}.</b> The same quarter reads {:.2f}% without it and "
+            "{:.2f}% with it — a step of {:+.2f}pp that is arithmetic, not demand. The "
+            "published matched series showed it as a rise.".format(
+                _x(b["entrant"]), _x(b["q"]), 100 * b["without"], 100 * b["with"],
+                b["step_pp"]), styles))
+        out.append(_spacer(4))
+    out.append(_table(
+        ("Leg", "Members", "From", "To", "quarters", "latest", "low", "high"),
+        [["<b>{}</b>".format(_x(c["label"])), _x(", ".join(c["names"])),
+          _x(c["from_q"]), _x(c["to_q"]), str(c["quarters"]),
+          "{:.2f}%".format(100 * c["latest_ratio"]),
+          "{:.2f}%".format(100 * c["min_ratio"]),
+          "{:.2f}%".format(100 * c["max_ratio"])] for c in cohorts],
+        [72, 150, 52, 52, 56, 60, 56, 56], styles, right_cols=(4, 5, 6, 7)))
+    out.append(_P(
+        "No band is registered on any of these legs. Registering one is a ruling, not a "
+        "measurement (E8).", styles["_chartnote"]))
+    return out
+
+
 def sec_suppliers(snap, styles):
     sup = snap.get("suppliers") or {}
     legs, cc = sup.get("legs") or {}, sup.get("crosscheck") or {}
@@ -1099,6 +1142,8 @@ def sec_suppliers(snap, styles):
         out.append(_warn("<b>Read the last point with care.</b> {}".format(
             _x(cc["warning"])), styles))
         out.append(_spacer(4))
+
+    out += _sec_cohorts(snap, styles)
 
     out.append(_P("Legs", styles["_h2"]))
     rows = []

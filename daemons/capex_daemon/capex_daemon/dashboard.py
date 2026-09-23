@@ -646,6 +646,7 @@ def view_suppliers(snap):
     if cc.get("warning"):
         out.append("<div class='warn'><b>Read the last point with care.</b> {}</div>".format(
             _esc(cc["warning"])))
+    out.append(_cohort_block(sup.get("crosscheck_cohorts") or {}))
 
     out.append("<h2>Legs</h2><table><tr><th>Supplier</th><th>Status</th>"
                "<th>DC revenue phase</th><th class='num'>DC revenue TTM</th>"
@@ -859,6 +860,54 @@ def _frontier_block(fr):
                        _pct(r["qoq"]), _pct(r["yoy"]),
                        _esc(r["prior_q"]), _esc(r["year_ago_q"])))
     out.append("</table>")
+    return "".join(out)
+
+
+def _cohort_block(coh):
+    """P3 — the cross-check on fixed membership, with entries dated as breaks.
+
+    The matched series above is right for currency and wrong for a level, and
+    the level is what the ratio is read as. Here each leg holds its membership
+    fixed for its whole length, so a move in it is a move in the ratio.
+    """
+    cohorts = [c for c in (coh.get("cohorts") or []) if c.get("is_crosscheck")]
+    if not cohorts:
+        return ""
+    out = ["<h2>The same ratio on fixed membership</h2>",
+           "<p class='note'>The series above is a <b>matched</b> sum: whoever reports a "
+           "quarter is in it that quarter. That is the right rule for currency and the "
+           "wrong one for a <b>level</b> — and the cross-check is read as a level. Each "
+           "leg below holds its membership fixed for its whole length, so a move in it "
+           "is a move in the ratio and not in the roster.</p>"]
+    ser = {c["label"] + " (" + "+".join(c["names"]) + ")":
+           [(r["q"], r["ratio"]) for r in c["series"]] for c in cohorts}
+    out.append(svgcharts.multi_line_chart(
+        ser, "Supplier DC revenue / hyperscaler capex — one line per fixed membership",
+        height=280, fmt=lambda v: "{:.0f}%".format(100 * v),
+        note="each line is constant membership; they are not continuous "
+             "with one another"))
+    for b in (coh.get("breaks") or []):
+        if b["from_label"] == "single-name":
+            continue
+        out.append(
+            "<div class='mapped'><b>{} entered at {}.</b> The same quarter reads "
+            "{:.2f}% without it and {:.2f}% with it — a step of {:+.2f}pp that is "
+            "arithmetic, not demand. The published matched series showed it as a "
+            "rise.</div>".format(_esc(b["entrant"]), _esc(b["q"]),
+                                 100 * b["without"], 100 * b["with"], b["step_pp"]))
+    out.append("<table><tr><th>Leg</th><th>Members</th><th>From</th><th>To</th>"
+               "<th class='num'>quarters</th><th class='num'>latest</th>"
+               "<th class='num'>low</th><th class='num'>high</th></tr>")
+    for c in cohorts:
+        out.append("<tr><td><b>{}</b></td><td>{}</td><td>{}</td><td>{}</td>"
+                   "<td class='num'>{}</td><td class='num'>{:.2f}%</td>"
+                   "<td class='num'>{:.2f}%</td><td class='num'>{:.2f}%</td></tr>".format(
+                       _esc(c["label"]), _esc(", ".join(c["names"])), _esc(c["from_q"]),
+                       _esc(c["to_q"]), c["quarters"], 100 * c["latest_ratio"],
+                       100 * c["min_ratio"], 100 * c["max_ratio"]))
+    out.append("</table>")
+    out.append("<p class='chartnote'>No band is registered on any of these legs. "
+               "Registering one is a ruling, not a measurement (E8).</p>")
     return "".join(out)
 
 

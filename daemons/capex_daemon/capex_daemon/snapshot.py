@@ -188,9 +188,95 @@ def _supplier_section(legs, bucket_trends, as_of=None):
                 "latest_quarter": series[-1]["q"] if series else None,
                 "warning": warn,
             }
+            out["crosscheck_cohorts"] = crosscheck_cohorts(members, hyper)
     out["frontier"] = _supplier_frontier(legs, bucket_trends.get("hyperscaler"))
     out["dc_transitions"] = dc_transitions
     return out
+
+
+# GAP2 P3. A cohort is named for its size, in Mando's words for it.
+COHORT_LABELS = {1: "single-name", 2: "two-name", 3: "three-name",
+                 4: "four-name", 5: "five-name"}
+
+
+def crosscheck_cohorts(member_quarters, hyper):
+    """Constant-membership cross-check legs, with every entry dated as a break.
+
+    The published cross-check is a MATCHED sum: whoever reports a quarter is in
+    it that quarter. That is the right rule for CURRENCY and the wrong one for a
+    LEVEL, and the cross-check is read as a level — "the supplier side is
+    running at X% of hyperscaler capex".
+
+    Live, that has already misled. The published series rose 46.73% -> 51.08%
+    between 2025Q2 and 2025Q3 and read as demand shifting. It was Micron
+    arriving: on the two names that spanned both quarters the ratio FELL, 46.73%
+    -> 45.26%. A reader watching the line saw a 4.35pp rise where the underlying
+    ratio moved -1.47pp.
+
+    So: one series per cohort, each with fixed membership, plus a `breaks` list
+    that dates every entry and measures the step it caused — the same quarter
+    read both ways, which is the only comparison that isolates the entrant.
+
+    Cohorts are built by entry order rather than named, so a fourth supplier
+    admitted next year produces its own leg and its own dated break without a
+    code change.
+    """
+    if hyper is None or not getattr(hyper, "ttm", None):
+        return {}
+    ttms = {t: trend.ttm_by_quarter(q) for t, q in (member_quarters or {}).items() if q}
+    ttms = {t: v for t, v in ttms.items() if v}
+    if not ttms:
+        return {}
+    first = {t: min(v, key=trend._cq_sort) for t, v in ttms.items()}
+    order = sorted(first, key=lambda t: (trend._cq_sort(first[t]), t))
+    hyper_members = getattr(hyper, "membership", {}) or {}
+
+    def leg(names):
+        qs = sorted(set.intersection(*[set(ttms[n]) for n in names]) & set(hyper.ttm),
+                    key=trend._cq_sort)
+        return [{"q": q, "dc": sum(ttms[n][q] for n in names), "capex": hyper.ttm[q],
+                 "ratio": sum(ttms[n][q] for n in names) / hyper.ttm[q],
+                 "capex_members": len(hyper_members.get(q, []))}
+                for q in qs if hyper.ttm[q]]
+
+    cohorts, breaks, prev = [], [], None
+    for k in range(1, len(order) + 1):
+        names = order[:k]
+        ser = leg(names)
+        if not ser:
+            continue
+        ratios = [r["ratio"] for r in ser]
+        coh = {
+            "names": list(names), "size": k,
+            "label": COHORT_LABELS.get(k, "{}-name".format(k)),
+            "is_crosscheck": k >= 2,
+            "series": ser, "from_q": ser[0]["q"], "to_q": ser[-1]["q"],
+            "quarters": len(ser),
+            "latest_ratio": ratios[-1], "min_ratio": min(ratios), "max_ratio": max(ratios),
+            "capex_members_changed": len({r["capex_members"] for r in ser}) > 1,
+        }
+        cohorts.append(coh)
+        if prev is not None:
+            entrant = names[-1]
+            at = {r["q"]: r for r in prev["series"]}
+            overlap = [r for r in ser if r["q"] in at]
+            if overlap:
+                r0 = overlap[0]
+                breaks.append({
+                    "q": r0["q"], "entrant": entrant,
+                    "without": at[r0["q"]]["ratio"], "with": r0["ratio"],
+                    "step_pp": 100 * (r0["ratio"] - at[r0["q"]]["ratio"]),
+                    "from_label": prev["label"], "to_label": coh["label"],
+                    "prior_q_without": (prev["series"][prev["series"].index(at[r0["q"]]) - 1]["ratio"]
+                                        if prev["series"].index(at[r0["q"]]) else None),
+                    "basis": ("the same quarter read both ways — the only "
+                              "comparison that isolates the entrant"),
+                })
+        prev = coh
+    return {"cohorts": cohorts, "breaks": breaks,
+            "entry_order": [{"ticker": t, "first_ttm_quarter": first[t]} for t in order],
+            "basis": ("constant membership per leg. A level compared across a "
+                      "membership change is arithmetic, not economics.")}
 
 
 def _supplier_frontier(legs, hyper):
