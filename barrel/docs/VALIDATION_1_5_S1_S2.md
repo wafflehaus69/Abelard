@@ -22,3 +22,19 @@ A public RPC cannot read account state at a historical slot (R8). The as-of stat
 
 ## S3/S4 groundwork from the same sample
 4 of 5 mints are **Token-2022**, carrying only `metadataPointer` + `tokenMetadata`. Dune's `spl_token_2022_call_transferfeeextension` decodes **no arguments** (call metadata only), so the S4 fee *rate* comes from the chain (`transferFeeConfig` on the mint). A transfer-fee config is set at mint initialisation and cannot be removed, so as-of-entry equals as-of-now for S4; `transferHook`, `permanentDelegate`, `nonTransferable` likewise are initialisation-time extensions and have dedicated decoded call tables (`transferhookextension`, `initializepermanentdelegate`, `initializenontransferablemint`) for the as-of check.
+
+## Differential acceptance test (MR-7) — stratum N, post-entry revocations
+
+Candidates: stratum-N mints (CP-swap inits, Aug 2026) with a `setAuthority` on MintTokens or FreezeAccount **after** pool init + 240 min (`recon/sql/s1s2_differential_candidates.sql`). Seven found. For each: full history from both programs (`s1s2_differential_history.sql`), reconstruction at the entry slot must show the **pre-change authority still set**, reconstruction after must equal **today's chain state** (`s1s2_differential_chain_now.json`). A pass here cannot be produced by reconciliation-to-current-state alone.
+
+| mint | program | init found | entry slot (+240 min) | state at entry (mint / freeze) | post-entry changes | state after | chain now | differential |
+|---|---|---|---|---|---|---|---|---|
+| `p4UmanYq…` | SPL-Token | yes | 437105621 | 3xTeG8… / None | mint→None | None / None | None / None | PASS |
+| `2fEvrJjY…` | SPL-Token | yes | 437478705 | YTnFYa… / None | mint→None | None / None | None / None | PASS |
+| `AWdvQXYA…` | SPL-Token | yes | 437690838 | 2S7Rz7… / None | mint→None | None / None | None / None | PASS |
+| `ALr4PvU7…` | Token-2022 | yes | 437920525 | None / 6tJwEX… | freeze→None | None / None | None / None | PASS |
+| `8qcRRjnN…` | Token-2022 | yes | 437625692 | 51FP99… / 51FP99… | freeze→None, mint→None | None / None | None / None | PASS |
+| `REDUTAE1…` | Token-2022 | NO | 436798154 | None / None | mint→None, freeze→None | None / None | None / None | FAIL |
+| `HUvgiKD7…` | SPL-Token | yes | 439316442 | 5Mk5RT… / 5Mk5RT… | freeze→None, mint→None | None / None | None / None | PASS |
+
+**6/7 PASS**

@@ -1,0 +1,44 @@
+[
+ {
+  "mint": "p4UmanYqdg1ctQVueb5PZFJwmTaqwhs5NnmQSk7aRY9",
+  "program": "SPL-Token",
+  "mintAuthority": null,
+  "freezeAuthority": null
+ },
+ {
+  "mint": "2fEvrJjYrZ5BRygThRstCqvyJizejXXEiBNhcUvP24Qr",
+  "program": "SPL-Token",
+  "mintAuthority": null,
+  "freezeAuthority": null
+ },
+ {
+  "mint": "AWdvQXYATMyGCGtqdZptwfREqrxRMVQNiKn5WFDgmB5E",
+  "program": "SPL-Token",
+  "mintAuthority": null,
+  "freezeAuthority": null
+ },
+ {
+  "mint": "ALr4PvU7JBjKJwriCMdx2BPLeBHP4epfTKgX8GmoUxDG",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null
+ },
+ {
+  "mint": "8qcRRjnNNdLLVaNrQXCbEiD5ZUDDGfjMc3NjE6znB9bD",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null
+ },
+ {
+  "mint": "REDUTAE1gcRYmp8bJVerPu8ALgYFvsmWGbgyS6kJyAD",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null
+ },
+ {
+  "mint": "HUvgiKD7orDFaVj6jUxcVVvEYSx6fm6FYbaj7ZZZN21T",
+  "program": "SPL-Token",
+  "mintAuthority": null,
+  "freezeAuthority": null
+ }
+]

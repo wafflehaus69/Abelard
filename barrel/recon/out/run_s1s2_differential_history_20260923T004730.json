@@ -1,0 +1,182 @@
+{
+ "file": "barrel/recon/sql/s1s2_differential_history.sql",
+ "label": "1.5 S1/S2 differential history",
+ "execution_id": "01M35VP2V489SY4KC4J39A2K4A",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.215205883,
+ "submitted_at": "2026-09-23T00:47:08.132844Z",
+ "rows": [
+  {
+   "atype": "both",
+   "auth": "YTnFYaLfAYafH9GBHBMfju6FaMegh82TwVJjp6ZiRC9",
+   "ev": "initializeMint2",
+   "freeze_auth": "YTnFYaLfAYafH9GBHBMfju6FaMegh82TwVJjp6ZiRC9",
+   "mint": "2fEvrJjYrZ5BRygThRstCqvyJizejXXEiBNhcUvP24Qr",
+   "prog": "spl",
+   "slot": 437129563
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "2fEvrJjYrZ5BRygThRstCqvyJizejXXEiBNhcUvP24Qr",
+   "prog": "spl",
+   "slot": 437445765
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "2fEvrJjYrZ5BRygThRstCqvyJizejXXEiBNhcUvP24Qr",
+   "prog": "spl",
+   "slot": 437521807
+  },
+  {
+   "atype": "both",
+   "auth": "51FP99ZEid2m2KtLvZZdYsLcTvZYRMZQWaEMqVRw5v7M",
+   "ev": "initializeMint",
+   "freeze_auth": "51FP99ZEid2m2KtLvZZdYsLcTvZYRMZQWaEMqVRw5v7M",
+   "mint": "8qcRRjnNNdLLVaNrQXCbEiD5ZUDDGfjMc3NjE6znB9bD",
+   "prog": "t22",
+   "slot": 437588434
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "8qcRRjnNNdLLVaNrQXCbEiD5ZUDDGfjMc3NjE6znB9bD",
+   "prog": "t22",
+   "slot": 438035315
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "8qcRRjnNNdLLVaNrQXCbEiD5ZUDDGfjMc3NjE6znB9bD",
+   "prog": "t22",
+   "slot": 438035418
+  },
+  {
+   "atype": "both",
+   "auth": "6tJwEXqP6wbRj3srL2tvnuV3QP8LGirD558sJQJ5okS6",
+   "ev": "initializeMint",
+   "freeze_auth": "6tJwEXqP6wbRj3srL2tvnuV3QP8LGirD558sJQJ5okS6",
+   "mint": "ALr4PvU7JBjKJwriCMdx2BPLeBHP4epfTKgX8GmoUxDG",
+   "prog": "t22",
+   "slot": 437876764
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "ALr4PvU7JBjKJwriCMdx2BPLeBHP4epfTKgX8GmoUxDG",
+   "prog": "t22",
+   "slot": 437876770
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "ALr4PvU7JBjKJwriCMdx2BPLeBHP4epfTKgX8GmoUxDG",
+   "prog": "t22",
+   "slot": 437952808
+  },
+  {
+   "atype": "both",
+   "auth": "2S7Rz7QvnMHn9PpHfp9vBCVfRYX9ENXpGu6ANDbYc5W5",
+   "ev": "initializeMint",
+   "freeze_auth": null,
+   "mint": "AWdvQXYATMyGCGtqdZptwfREqrxRMVQNiKn5WFDgmB5E",
+   "prog": "spl",
+   "slot": 437452285
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "AWdvQXYATMyGCGtqdZptwfREqrxRMVQNiKn5WFDgmB5E",
+   "prog": "spl",
+   "slot": 437817075
+  },
+  {
+   "atype": "both",
+   "auth": "5Mk5RTp6MrfEC6puwYXW9upsRfF67ptX5mmouUWmLshj",
+   "ev": "initializeMint",
+   "freeze_auth": "5Mk5RTp6MrfEC6puwYXW9upsRfF67ptX5mmouUWmLshj",
+   "mint": "HUvgiKD7orDFaVj6jUxcVVvEYSx6fm6FYbaj7ZZZN21T",
+   "prog": "spl",
+   "slot": 439277617
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "HUvgiKD7orDFaVj6jUxcVVvEYSx6fm6FYbaj7ZZZN21T",
+   "prog": "spl",
+   "slot": 439324476
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "HUvgiKD7orDFaVj6jUxcVVvEYSx6fm6FYbaj7ZZZN21T",
+   "prog": "spl",
+   "slot": 439326479
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "REDUTAE1gcRYmp8bJVerPu8ALgYFvsmWGbgyS6kJyAD",
+   "prog": "t22",
+   "slot": 438795242
+  },
+  {
+   "atype": "{\"AuthorityType\":\"TransferFeeConfig\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "REDUTAE1gcRYmp8bJVerPu8ALgYFvsmWGbgyS6kJyAD",
+   "prog": "t22",
+   "slot": 439026824
+  },
+  {
+   "atype": "both",
+   "auth": "3xTeG8gNdbxMytJ7mmz7vgB5TtuGg9qzNuNdDRfGPcLf",
+   "ev": "initializeMint",
+   "freeze_auth": "3xTeG8gNdbxMytJ7mmz7vgB5TtuGg9qzNuNdDRfGPcLf",
+   "mint": "p4UmanYqdg1ctQVueb5PZFJwmTaqwhs5NnmQSk7aRY9",
+   "prog": "spl",
+   "slot": 437066322
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "p4UmanYqdg1ctQVueb5PZFJwmTaqwhs5NnmQSk7aRY9",
+   "prog": "spl",
+   "slot": 437069449
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "p4UmanYqdg1ctQVueb5PZFJwmTaqwhs5NnmQSk7aRY9",
+   "prog": "spl",
+   "slot": 437243806
+  }
+ ],
+ "error": null
+}

@@ -1,0 +1,99 @@
+{
+ "file": "barrel/recon/sql/s1s2_differential_candidates.sql",
+ "label": "1.5 S1/S2 differential candidates",
+ "execution_id": "01M35VMWRJ33TW33GPDN60MVJH",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.19132353,
+ "submitted_at": "2026-09-23T00:46:29.139117Z",
+ "rows": [
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "5PntZV8wibekE5YiZ6RTNyuibpbtBx5TCtteEkvfT5QhEwjh4Zp9zJ4XAFAyWRiXrnUBiU9PnfGPiQi3wXHLkhv4",
+   "change_slot": 437243806,
+   "init_slot": 437069621,
+   "init_time": "2026-08-04 00:07:04.000 UTC",
+   "mint": "p4UmanYqdg1ctQVueb5PZFJwmTaqwhs5NnmQSk7aRY9",
+   "new_auth": null,
+   "prog": "spl",
+   "slots_after_init": 174185
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "3TTS4sfQFfwi1PWFjF3AkiKXx7hztFnaaM9P7miqXBtvdQxYntvfyNX2LS3Gawp1iUMbEVirLTJ79fctjGBPsJih",
+   "change_slot": 437521807,
+   "init_slot": 437442705,
+   "init_time": "2026-08-05 19:56:38.000 UTC",
+   "mint": "2fEvrJjYrZ5BRygThRstCqvyJizejXXEiBNhcUvP24Qr",
+   "new_auth": null,
+   "prog": "spl",
+   "slots_after_init": 79102
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "46Koj7TCD5bPFHhbsJryFTjytLQhgo23fKYt3C95jvDwwDGC8nfMwEuBMe5idbhrQx7BKZfvGhdfPNdBrPRDnLek",
+   "change_slot": 437817075,
+   "init_slot": 437654838,
+   "init_time": "2026-08-06 20:51:43.000 UTC",
+   "mint": "AWdvQXYATMyGCGtqdZptwfREqrxRMVQNiKn5WFDgmB5E",
+   "new_auth": null,
+   "prog": "spl",
+   "slots_after_init": 162237
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "call_tx_id": "3NVvTzLLVxSiNF5nBLgAkSGTsXDYKCCgXJJqCKAxLWrNPJqW68EiJv6fEdCjBxSffXycbdBhw4KcU353s329gjZe",
+   "change_slot": 437952808,
+   "init_slot": 437884525,
+   "init_time": "2026-08-07 23:46:38.000 UTC",
+   "mint": "ALr4PvU7JBjKJwriCMdx2BPLeBHP4epfTKgX8GmoUxDG",
+   "new_auth": null,
+   "prog": "t22",
+   "slots_after_init": 68283
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "call_tx_id": "4pBQ39BVtaNogBgmZbJWd5U1zzSQThzXz48f6yzhQJNPi1XkgjYuk5xeqWGCwC2rHzZhhttYe2JjZ1aHjQ8bMcSP",
+   "change_slot": 438035315,
+   "init_slot": 437589692,
+   "init_time": "2026-08-06 13:12:38.000 UTC",
+   "mint": "8qcRRjnNNdLLVaNrQXCbEiD5ZUDDGfjMc3NjE6znB9bD",
+   "new_auth": null,
+   "prog": "t22",
+   "slots_after_init": 445623
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "4mutHUn9icMUP6SDcLcfxWcW4EGg18idbojZXcwCu2UTXRPtCXswGi27xwy6x255tdsVU7t1DcwibsA935ikPFi5",
+   "change_slot": 438035418,
+   "init_slot": 437589692,
+   "init_time": "2026-08-06 13:12:38.000 UTC",
+   "mint": "8qcRRjnNNdLLVaNrQXCbEiD5ZUDDGfjMc3NjE6znB9bD",
+   "new_auth": null,
+   "prog": "t22",
+   "slots_after_init": 445726
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "2sWskeMtBeJjp4Z2b5wJqMsh1GnSdMGG3ZcA4HUuAkLvdfcBkqbRigQALCZA2xfqdrdm23jF8szMxkkf1tcH1s2X",
+   "change_slot": 438795242,
+   "init_slot": 436762154,
+   "init_time": "2026-08-02 12:01:31.000 UTC",
+   "mint": "REDUTAE1gcRYmp8bJVerPu8ALgYFvsmWGbgyS6kJyAD",
+   "new_auth": null,
+   "prog": "t22",
+   "slots_after_init": 2033088
+  },
+  {
+   "atype": "{\"AuthorityType\":\"FreezeAccount\"}",
+   "call_tx_id": "4s7pPWm4FQXciT93ZhyD6AcHNGBgRAGHciAPWLavjZjTCGdWt5Mg3xJWn67skwmNEHw7JQyJ21RzvzjhBdC1uv3a",
+   "change_slot": 439324476,
+   "init_slot": 439280442,
+   "init_time": "2026-08-14 18:46:25.000 UTC",
+   "mint": "HUvgiKD7orDFaVj6jUxcVVvEYSx6fm6FYbaj7ZZZN21T",
+   "new_auth": null,
+   "prog": "spl",
+   "slots_after_init": 44034
+  }
+ ],
+ "error": null
+}

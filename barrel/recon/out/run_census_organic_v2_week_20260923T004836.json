@@ -1,0 +1,27 @@
+{
+ "file": "barrel/recon/sql/census_organic_v2_week.sql",
+ "label": "1.4 census organic v1 vs v2",
+ "execution_id": "01M35VQ89ZJ8P5HMBJ2EGVZAP2",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 43.626029412,
+ "submitted_at": "2026-09-23T00:47:46.495654Z",
+ "rows": [
+  {
+   "graduates": 7236,
+   "v1_takers_p50": 419,
+   "v1_tfirst_p50": 0,
+   "v1_tfirst_p90": 1,
+   "v2_first_after_4h": 57,
+   "v2_first_within_15min": 7018,
+   "v2_first_within_60s": 6558,
+   "v2_takers_p10": 3,
+   "v2_takers_p50": 207,
+   "v2_takers_p90": 2079,
+   "v2_tfirst_p10": 0,
+   "v2_tfirst_p50": 1,
+   "v2_tfirst_p90": 42,
+   "v2_zero_organic": 127
+  }
+ ],
+ "error": null
+}
