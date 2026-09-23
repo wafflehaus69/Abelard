@@ -267,6 +267,27 @@ def _issuer_key(r):
     return r["issuer_cik"] or ("TK:" + (r["ticker"] or "?"))
 
 
+# A filing that names no symbol still carries a ticker COLUMN, and filers write
+# their absence in longhand. Measured in the live corpus: 'NONE' 1,724, 'N/A'
+# 479, 'NA' 199, '-' 28, 'None' 5 — and every one of them survives the loader's
+# `ticker IS NOT NULL`. Grouped as if it were a symbol, 153 unrelated issuers
+# rendered as a company called NONE. A placeholder is an ABSENCE, never an
+# identity: it may not name a row, and it may not be a grouping key.
+PLACEHOLDER_TICKERS = frozenset(
+    {"", "-", "--", ".", "N/A", "NA", "N.A.", "NONE", "NULL", "UNKNOWN", "?"})
+
+
+def norm_ticker(value):
+    """A real symbol, or None. Never a placeholder string."""
+    t = (value or "").strip().upper()
+    return t if t and t not in PLACEHOLDER_TICKERS else None
+
+
+def unmapped_label(issuer_cik):
+    """What an issuer with no usable symbol is CALLED. Counted, not named."""
+    return "unmapped (CIK {})".format(issuer_cik) if issuer_cik else "unmapped"
+
+
 def _close_on(con, ticker, on_date):
     """Split/dividend-adjusted close on or before `on_date` (direct read-only
     SELECT, never the write-through prices.eod cache). (close, date) or (None,None)."""
@@ -694,34 +715,98 @@ def q_ownership_pressure(con, target="all", window=90, anchor=None):
     rows = clean_subset(_fetch_f4(con, ("P", "S"), start, anchor, target))
     agg = defaultdict(lambda: {"buyers": set(), "sellers": set(),
                                "buy_shares": 0.0, "sell_shares": 0.0,
-                               "n_buys": 0, "n_sells": 0, "ticker": None})
+                               "buy_value": 0.0, "sell_value": 0.0,
+                               "n_buys": 0, "n_sells": 0, "ticker": None,
+                               "issuer_cik": None})
     for r in rows:
         a = agg[_issuer_key(r)]
-        a["ticker"] = a["ticker"] or r["ticker"]
+        a["ticker"] = a["ticker"] or norm_ticker(r["ticker"])
+        a["issuer_cik"] = a["issuer_cik"] or r["issuer_cik"]
         who = r["reporting_cik"] or r["reporting_person"]
         sh = r["shares"] or 0.0
+        # Dollars are the rankable magnitude. `value` is the filing's own figure
+        # (already value_flag-screened by clean_subset); shares x price is the
+        # fallback when the filer gave a price but no total.
+        val = r["value"]
+        if val is None and r["price"] is not None:
+            val = sh * r["price"]
+        val = float(val or 0.0)
         if r["code"] == "P":
-            a["buyers"].add(who); a["buy_shares"] += sh; a["n_buys"] += 1
+            a["buyers"].add(who); a["buy_shares"] += sh; a["buy_value"] += val
+            a["n_buys"] += 1
         else:
-            a["sellers"].add(who); a["sell_shares"] += sh; a["n_sells"] += 1
+            a["sellers"].add(who); a["sell_shares"] += sh; a["sell_value"] += val
+            a["n_sells"] += 1
+    floats = _shares_outstanding(con, [a["ticker"] for a in agg.values()],
+                                 [a["issuer_cik"] for a in agg.values()])
     out = []
     for key, a in agg.items():
         net = a["buy_shares"] - a["sell_shares"]
+        net_value = a["buy_value"] - a["sell_value"]
+        so = floats.get(a["issuer_cik"]) or floats.get(a["ticker"])
+        pct = (100.0 * net / so) if so else None
+        # Dollars decide WHEN KNOWN. Some regimes carry shares and no price at
+        # all, and calling a 130-share accumulation "flat" because the filing
+        # priced nothing would be a fresh falsehood in place of the old one. The
+        # basis is stated rather than inferred by the reader.
+        has_dollars = bool(a["buy_value"] or a["sell_value"])
+        lead = net_value if has_dollars else net
         out.append({
-            "issuer_cik": key, "ticker": a["ticker"],
+            "issuer_cik": a["issuer_cik"] or key,
+            "ticker": a["ticker"] or unmapped_label(a["issuer_cik"]),
+            "unmapped": a["ticker"] is None,
             "distinct_buyers": len(a["buyers"]), "distinct_sellers": len(a["sellers"]),
+            "buy_value": a["buy_value"], "sell_value": a["sell_value"],
+            "net_value": net_value,
+            "pct_shares_outstanding": None if pct is None else round(pct, 4),
             "buy_shares": a["buy_shares"], "sell_shares": a["sell_shares"],
             "net_shares": net,
-            "direction": "accumulating" if net > 0 else "distributing" if net < 0 else "flat",
+            "direction": ("accumulating" if lead > 0 else
+                          "distributing" if lead < 0 else "flat"),
+            "direction_basis": "dollars" if has_dollars else "shares",
             "n_buys": a["n_buys"], "n_sells": a["n_sells"],
         })
-    out.sort(key=lambda x: -abs(x["net_shares"]))
+    # DOLLARS first, then share of the float where we know it. A raw-share sort
+    # ranks by how cheap a stock is: MGTI's 1.75-BILLION-share line led this board
+    # on a sub-penny price while a $40m purchase sat below it. Share count stays a
+    # COLUMN — it is the thing being counted, just not the thing being compared.
+    out.sort(key=lambda x: (-abs(x["net_value"]),
+                            -abs(x["pct_shares_outstanding"] or 0.0),
+                            -abs(x["net_shares"])))
     return {"as_of": _as_of(), "window_days": window, "anchor": anchor,
             "target": target,
             "basis": "FLOW from discretionary open-market P/S transaction rows; "
                      "reporting-population Section-16 filers; plan_flag=0; "
-                     "amendment-deduped; levels deferred to re-ingest order",
+                     "amendment-deduped; levels deferred to re-ingest order; "
+                     "ranked by net DOLLARS, then by share of shares outstanding "
+                     "where known - never by raw share count. A row whose filings "
+                     "carried no price ranks below every priced row and says so in "
+                     "direction_basis, because an unknown dollar amount cannot be "
+                     "compared to a known one",
+            "unmapped_issuers": sum(1 for r in out if r["unmapped"]),
             "rows": out}
+
+
+def _shares_outstanding(con, tickers, ciks):
+    """{key: shares} for the issuers asked about, keyed by BOTH cik and ticker.
+
+    Read-only against market_cap, which the scan's marketcap leg maintains. A
+    missing float is None and the caller shows no percentage rather than a
+    guessed one."""
+    keys = [k for k in set(list(tickers) + list(ciks)) if k]
+    if not keys:
+        return {}
+    out = {}
+    marks = ",".join("?" * len(keys))
+    for cik, tk, sh in con.execute(
+        "SELECT cik, ticker, shares FROM market_cap WHERE shares IS NOT NULL"
+        " AND (cik IN ({m}) OR ticker IN ({m}))".format(m=marks), keys + keys
+    ):
+        if cik:
+            out[cik] = sh
+        if tk:
+            out[tk] = sh
+    return out
 
 
 # ---------------------------------------------------------------- q_sell_anomaly
@@ -1091,8 +1176,15 @@ def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None,
             if len(distinct) >= floor:
                 order = sorted(distinct.values(), key=lambda r: r["filed_date"])
                 months = sorted({r["tx_date"][:7] for r in seg})
+                # A placeholder is not a symbol (J2). The cluster is still real —
+                # these rows carry an issuer CIK and it is what they were grouped
+                # by — so it is counted, and NAMED for what it is.
+                sym = next((norm_ticker(r["ticker"]) for r in seg
+                            if norm_ticker(r["ticker"])), None)
                 out.append({
-                    "issuer_cik": key, "ticker": seg[0]["ticker"],
+                    "issuer_cik": key,
+                    "ticker": sym or unmapped_label(seg[0]["issuer_cik"]),
+                    "unmapped": sym is None,
                     "n_buyers": len(distinct), "n_buys": len(seg),
                     "window_start": wstart, "event_filed": order[floor - 1]["filed_date"],
                     "span_days": (dt.date.fromisoformat(seg[-1]["tx_date"])
@@ -1107,7 +1199,8 @@ def q_cluster_context(con, window=180, floor=3, window_days=30, anchor=None,
     return {"as_of": _as_of(), "window_days": window, "floor": floor,
             "lookback": ("all" if look in (None, "all") else int(look)),
             "lookback_start": start, "cluster_span_days": window_days,
-            "anchor": anchor, "count": len(out), "rows": out}
+            "anchor": anchor, "count": len(out), "rows": out,
+            "unmapped_clusters": sum(1 for c in out if c["unmapped"])}
 
 
 # ---------------------------------------------------------------- q_ticker_panel
@@ -2631,6 +2724,12 @@ def q_congress_breadth_yoy(con, year=None, prior=None, owner_filter="all",
     base = {"as_of": _as_of(), "year": year, "prior_year": prior,
             "year_members": year_members, "capture": cells,
             "bar": _YOY_BAR, "buckets": _BUCKETS,
+            # Present on EVERY path. The no-data return below used to omit these
+            # three while both consumers indexed them directly, so a corpus with
+            # no both-years cohort raised KeyError out of the breadth view and its
+            # PDF alike. A key a caller must read is part of the contract, not a
+            # property of the happy path.
+            "sub_bar_cells": [], "sub_bar_members": 0, "low_confidence_rows": 0,
             "note": "delta_comparable counts ONLY members who filed in both years; "
                     "delta_total includes roster churn and is not a holdings signal"}
     if year is None or prior is None:

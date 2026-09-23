@@ -235,49 +235,60 @@ def _cell(v):
     return s if len(s) <= 44 else s[:41] + "..."
 
 
-def render_page_brief(out_path, *, title, subtitle, columns, rows, notes=(),
-                      max_rows=200):
-    """Render ANY dashboard page as a PDF: a titled table of that page's own rows.
+def render_page_brief(out_path, *, title, subtitle, columns=None, rows=None,
+                      tables=None, notes=(), max_rows=200):
+    """Render ANY dashboard page as a PDF: that page's own tables, titled.
 
     The Print-brief button used to always emit the front-page brief regardless of what
     the reader was looking at. This renders the CURRENT view instead, from the same query
     the page used, so the PDF matches the screen (same filters, same sort, same order).
-    Wide pages are truncated to `max_rows` and SAY SO rather than silently cutting."""
+    Wide pages are truncated to `max_rows` and SAY SO rather than silently cutting.
+
+    `tables` is [(heading, columns, rows)] for a view that draws more than one table —
+    Clusters' buy and sell boards, the ticker panel. A view whose PDF showed only one of
+    its tables would be as misleading as one showing somebody else's, so every table the
+    screen draws is drawn here. `columns`/`rows` remain the single-table shorthand."""
     from reportlab.lib import colors
     from reportlab.lib.units import inch
     from reportlab.platypus import Table, TableStyle
 
+    if tables is None:
+        tables = [(None, columns or [], rows or [])]
     styles = default_styles()
     story = [_p(title, styles["Title"]),
              _p(subtitle, styles["Sub"])]
     for n in notes:
         story.append(_p(n, styles["Foot"]))
-    shown = rows[:max_rows]
-    if not shown:
-        story += section_box("Rows", _quiet(styles, "No rows on this view"), styles)
-        return build_pdf(out_path, story, title=title)
-    head = [c.replace("_", " ") for c in columns]
-    data = [head] + [[_cell(r.get(c)) for c in columns] for r in shown]
-    # column widths: split the usable width, giving text columns more room
-    usable = 7.2 * inch
-    w = max(0.5 * inch, usable / max(1, len(columns)))
-    tbl = Table(data, colWidths=[w] * len(columns), repeatRows=1)
-    tbl.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeff")),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cccccc")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-         [colors.white, colors.HexColor("#f7f7fa")]),
-    ]))
-    story.append(tbl)
-    if len(rows) > max_rows:
-        story.append(_p("Showing the first {:,} of {:,} rows on this view — truncated "
-                        "for print, not filtered.".format(max_rows, len(rows)),
-                        styles["Foot"]))
+    for heading, cols, trows in tables:
+        if heading:
+            story.append(_p(heading, styles["H2"]))
+        shown = (trows or [])[:max_rows]
+        if not shown:
+            story += section_box(heading or "Rows",
+                                 _quiet(styles, "No rows on this view"), styles)
+            continue
+        head = [c.replace("_", " ") for c in cols]
+        data = [head] + [[_cell(r.get(c)) for c in cols] for r in shown]
+        # column widths: split the usable width, giving text columns more room
+        usable = 7.2 * inch
+        w = max(0.5 * inch, usable / max(1, len(cols)))
+        tbl = Table(data, colWidths=[w] * len(cols), repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eeeeff")),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cccccc")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+             [colors.white, colors.HexColor("#f7f7fa")]),
+        ]))
+        story.append(tbl)
+        if len(trows or []) > max_rows:
+            story.append(_p("Showing the first {:,} of {:,} rows on this view — "
+                            "truncated for print, not filtered.".format(
+                                max_rows, len(trows)), styles["Foot"]))
     return build_pdf(out_path, story, title=title)
 
 

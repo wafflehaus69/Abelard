@@ -110,9 +110,14 @@ def _page(title, body, params):
     # on the querystring so the handler knows which surface the reader is looking at.
     _vpath = params.get("_path") or "/"
     _sep = "&" if qs else "?"
-    printbtn = '<a class="print" href="/brief.pdf{}{}view={}">Print {} (PDF)</a>'.format(
-        qs, _sep, html.escape(_vpath.lstrip("/") or "front"),
-        "page" if _vpath not in ("/", "") else "brief")
+    # Offered only where there is something of THIS view to print. A button that
+    # silently produced the front brief under this view's name is the defect.
+    if _vpath in ("/", "") or _vpath in PRINTABLE_VIEWS:
+        printbtn = '<a class="print" href="/brief.pdf{}{}view={}">Print {} (PDF)</a>'.format(
+            qs, _sep, html.escape(_vpath.lstrip("/") or "front"),
+            "page" if _vpath not in ("/", "") else "brief")
+    else:
+        printbtn = ""
     dark = params.get("theme") == "dark"
     toggle = '<a href="{}">{} mode</a>'.format(
         _qs(params, theme=("light" if dark else "dark")), "Light" if dark else "Dark")
@@ -819,7 +824,12 @@ def view_ticker(con, p):
                 "filers"], t["insider_by_code"]),
         "<h2>Ownership pressure &mdash; last {}d</h2>".format(
             t.get("pressure_window_days") or 180),
-        _table(["net_shares", "distinct_buyers", "distinct_sellers", "direction"],
+        "<p class='muted'>Ranked by net DOLLARS, then by share of shares outstanding "
+        "where the float is known. <b>net_shares</b> is shown but never ranked on: a "
+        "share-count sort ranks by how cheap the stock is, which is how a "
+        "1.75-billion-share sub-penny line outranked a $40m purchase.</p>",
+        _table(["net_value", "pct_shares_outstanding", "net_shares", "distinct_buyers",
+                "distinct_sellers", "direction"],
                t["ownership_pressure"]),
         "<h2>Congressional</h2>",
         _table(["name", "side", "amt_low", "amt_high", "tx_date", "disclosure_date",
@@ -2039,11 +2049,12 @@ def _build_flows_csv(con, p, full):
     return buf.getvalue()
 
 
-def _page_brief_spec(con, p, path):
-    """(title, subtitle, columns, rows, notes) for the CURRENTLY VIEWED page, or None to
-    fall back to the front-page brief. Uses the SAME query + sort the page used, and the
-    SAME column constants the CSV export uses, so the PDF, the screen and the CSV cannot
-    drift apart."""
+def _view_spec(con, p, path):
+    """(title, subtitle, columns, rows, notes) for the CURRENTLY VIEWED page — or a
+    {title, subtitle, tables, notes} dict for a view that draws more than one table, or
+    None when the path has no printable surface. Uses the SAME query + sort the page
+    used, and the SAME column constants the CSV export uses, so the PDF, the screen and
+    the CSV cannot drift apart."""
     def srt(rows, default):
         return _sorted(rows, p["sort"] or default, p["dir"])
 
@@ -2122,7 +2133,119 @@ def _page_brief_spec(con, p, path):
                 ["ticker", "instrument", "holder_count", "house", "senate", "dem", "rep",
                  "ind", "party_unknown", "midpoint_exposure", "yoy_change", "first_year"],
                 srt(res["rows"], "holder_count"), [res["note"]])
+    if path == "/trades":
+        res = q.q_insider_trades(con, side=p["side"], window=p["window"],
+                                 anchor=p["anchor"], plan=p["plan"], smid_only=p["smid"],
+                                 scope=p["scope"], per_page=p["per_page"], page=p["page"],
+                                 full=False, sort=p["sort"], direction=p["dir"])
+        return ("Insider trades - {} - {}d".format(p["side"] or "all", p["window"]),
+                "page {} - scope {} - plan {}".format(
+                    p["page"], p["scope"] or "all", p["plan"] or "all"),
+                _CSV_COLS, res["rows"],
+                ["Form 4 open-market rows. Value-quality markers are carried, not "
+                 "silently dropped."])
+    if path == "/sentinels":
+        _meta, rows = _sentinel_data(con, p)
+        rows = _sorted(rows, p["sort"] or "event_date", p["dir"])
+        rows, _ = _page_slice(rows, p["per_page"], p["page"])
+        return ("Sentinel log", "page {} - source {}".format(
+                    p["page"], p.get("src") or "all"),
+                _SENTINEL_CSV_COLS, rows, [])
+    if path == "/flows":
+        res = q.q_net_flows(con, anchor=p["anchor"], scope=p["scope"])
+        rows = _sorted(res["rows"], p["sort"] or (p["metric"] + "_all"), p["dir"])
+        rows, _ = _page_slice(rows, p["per_page"], p["page"])
+        cols = ["ticker"]
+        for tf, _label in _FLOW_TF:
+            cols += ["persons_" + tf, "value_" + tf, "shares_" + tf]
+        return ("Net flow board", "scope {} - anchor {} - page {}".format(
+                    p["scope"] or "all", p["anchor"], p["page"]),
+                cols, rows, [])
+    if path == "/member":
+        res = q.q_member_fusion(con, member_key=p["member"] or None)
+        rows = _sorted(res["rows"], p["sort"] or "estimate_lo", p["dir"])
+        rows, _ = _page_slice(rows, p["per_page"], p["page"])
+        return ("Member fusion - {}".format(p["member"] or "?"),
+                "{} rows".format(res.get("count") or len(res["rows"])),
+                _FUSION_CSV_COLS, rows, [])
+    if path == "/committees":
+        cid = (p.get("cmte") or "").strip() or None
+        res = q.q_committee_holdings(con, committee_id=cid, min_holders=2 if cid else 1)
+        cols = _CMTE_CSV_COLS if cid else _ROLL_CSV_COLS
+        rows = _sorted(res["rows"], p["sort"] or ("holder_count" if cid
+                                                  else "filers_we_hold"), p["dir"])
+        rows, _ = _page_slice(rows, p["per_page"], p["page"])
+        return ("Committee holdings - {}".format(cid or "all committees"),
+                "{} rows".format(len(rows)), cols, rows, [])
+    if path == "/clusters":
+        cc, buy, _sd, sell = _cluster_data(con, p)
+        buy_rows = _page_slice(_sorted(buy, p["sort"] or "n_buyers", p["dir"]),
+                               p["per_page"], p["page"])[0]
+        sell_rows = _page_slice(_sorted(sell, p["ssort"] or "rate_ratio", p["sdir"]),
+                                p["per_page"], p["spage"])[0]
+        notes = ["CONTEXT, never an alert.",
+                 "Unmapped issuers are counted and shown as 'unmapped (CIK ...)', "
+                 "never grouped under a placeholder symbol."]
+        if cc.get("unmapped_clusters"):
+            notes.append("{} of these clusters name no symbol.".format(
+                cc["unmapped_clusters"]))
+        return {"title": "Buy clusters and sell anomalies",
+                "subtitle": "floor {} buyers - lookback {}".format(
+                    p["floor"], cc.get("lookback")),
+                "tables": [("Buy clusters", _CLUSTER_BUY_COLS, buy_rows),
+                           ("Sell anomalies", _CLUSTER_SELL_COLS, sell_rows)],
+                "notes": notes}
+    if path == "/ticker":
+        sym = (p.get("symbol") or "").strip().upper()
+        if not sym:
+            return None
+        t = q.q_ticker_panel(con, sym)
+        return {"title": "Smart Money - {}".format(sym),
+                "subtitle": "overlay conviction={} watchlist={}".format(
+                    t["overlay"]["conviction"], t["overlay"]["watchlist"]),
+                "tables": [
+                    ("Insider activity by transaction type - all time",
+                     ["code", "what", "cash", "10b5-1", "filings", "shares", "value",
+                      "filers"], t["insider_by_code"]),
+                    ("Ownership pressure - last {}d".format(
+                        t.get("pressure_window_days") or 180),
+                     ["net_value", "pct_shares_outstanding", "net_shares",
+                      "distinct_buyers", "distinct_sellers", "direction"],
+                     t["ownership_pressure"]),
+                    ("Congressional",
+                     ["name", "side", "amt_low", "amt_high", "tx_date",
+                      "disclosure_date", "owner", "note"], t["congress"][:25]),
+                    ("13F principal positions (direction-netted)",
+                     ["filer", "cik", "period", "net_value", "thesis",
+                      "discretionary"], t["thirteenf_net"][:25]),
+                ],
+                "notes": ["13F net = long + call - put; congress amounts are bands.",
+                          "Ownership pressure ranks on dollars, never raw shares."]}
     return None
+
+
+def _page_brief_spec(con, p, path):
+    """The view's printable spec, normalised to {title, subtitle, tables, notes}.
+
+    A view that has no spec returns None, and the PDF handler REFUSES rather than
+    quietly printing the front-page brief. That fallback is what shipped a file named
+    brief_trades.pdf containing the front brief: 8 of the 15 routes had no branch here,
+    and every one of them downloaded under its own name with somebody else's contents."""
+    spec = _view_spec(con, p, path)
+    if spec is None or isinstance(spec, dict):
+        return spec
+    title, subtitle, cols, rows, notes = spec
+    return {"title": title, "subtitle": subtitle, "notes": list(notes),
+            "tables": [(None, cols, rows)]}
+
+
+# Every route either prints ITSELF or is not printable. test_dashboard pins this set
+# against ROUTES so a new view cannot be added with a silent front-brief fallback.
+PRINTABLE_VIEWS = frozenset({
+    "/portfolios", "/insiders", "/oge", "/congress_gaps", "/breadth_yoy",
+    "/disagreements", "/congress", "/trades", "/sentinels", "/flows", "/member",
+    "/committees", "/clusters", "/ticker",
+})
 
 
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
@@ -2304,13 +2427,20 @@ class Handler(BaseHTTPRequestHandler):
         from . import brief
         tmp = os.path.join(tempfile.mkdtemp(), "brief.pdf")
         view = ((qsd or {}).get("view", [""])[0] or "").strip("/")
-        spec = _page_brief_spec(con, p, "/" + view) if view and view != "front" else None
-        if spec:
-            title, subtitle, cols, rows, notes = spec
+        if view and view != "front":
+            spec = _page_brief_spec(con, p, "/" + view)
+            if not spec:
+                # NEVER fall back to the front brief. A download named for this view
+                # and containing another page is a lie the reader cannot see.
+                return self._send(400, _page(
+                    "Nothing to print",
+                    "<p>The <code>{}</code> view has no printable table of its own. "
+                    "The front-page brief is at <a href='/brief.pdf'>/brief.pdf</a>."
+                    "</p>".format(html.escape(view)), p))
             brief.render_page_brief(
-                tmp, title=title,
-                subtitle="{}  -  generated {}".format(subtitle, q._as_of()),
-                columns=cols, rows=rows, notes=notes)
+                tmp, title=spec["title"],
+                subtitle="{}  -  generated {}".format(spec["subtitle"], q._as_of()),
+                tables=spec["tables"], notes=spec["notes"])
         else:
             brief.render_brief(con, tmp, window=p["window"], anchor=p["anchor"],
                                floor=p["floor"])

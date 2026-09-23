@@ -39,7 +39,10 @@ def test_page_spec_uses_the_shared_csv_columns(tmp_path):
                         ("/insiders", dash._INSIDER_CSV_COLS)):
         spec = dash._page_brief_spec(con, p, route)
         assert spec is not None, route
-        assert spec[2] is cols, route
+        # The spec is now {title, subtitle, tables, notes} — a view may draw more
+        # than one table (SM-JAN2 J6). Single-table views carry exactly one.
+        assert len(spec["tables"]) == 1, route
+        assert spec["tables"][0][1] is cols, route
     con.close()
 
 

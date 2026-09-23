@@ -458,7 +458,9 @@ def test_page_brief_spec_covers_the_view():
     try:
         spec = dash._page_brief_spec(ro, dash._params({}), "/breadth_yoy")
         assert spec is not None
-        title, subtitle, cols, brows, notes = spec
+        # {title, subtitle, tables, notes} since SM-JAN2 J6.
+        title, notes = spec["title"], spec["notes"]
+        _heading, cols, brows = spec["tables"][0]
         assert "Breadth change" in title
         assert cols == dash._YOY_CSV_COLS
         assert any("NEVER AN ALERT" in n for n in notes)
