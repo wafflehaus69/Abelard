@@ -724,11 +724,20 @@ def q_ownership_pressure(con, target="all", window=90, anchor=None):
         a["issuer_cik"] = a["issuer_cik"] or r["issuer_cik"]
         who = r["reporting_cik"] or r["reporting_person"]
         sh = r["shares"] or 0.0
-        # Dollars are the rankable magnitude. `value` is the filing's own figure
-        # (already value_flag-screened by clean_subset); shares x price is the
-        # fallback when the filer gave a price but no total.
+        # Dollars are the rankable magnitude. `value` is the filing's own figure,
+        # already value_flag-screened by clean_subset. shares x price fills in
+        # where a filer gave a price but no total (250 such rows) — but ONLY on a
+        # row carrying no value_flag.
+        #
+        # Measured the hard way: the flag fires on rows whose `value` is NULL, so
+        # clean_subset keeps them (there is no untrustworthy total to drop) and
+        # the fallback then MANUFACTURED one from the very price the flag
+        # condemned. MetLife's FINS row is 40,000,000 shares at a "price" of
+        # 40,000,000 (value_denominated) and led the live board at
+        # $1,600,000,000,012,530. A guard that refuses a bad number must not be
+        # bypassed by recomputing it from its own parts.
         val = r["value"]
-        if val is None and r["price"] is not None:
+        if val is None and r["price"] is not None and not r["value_flag"]:
             val = sh * r["price"]
         val = float(val or 0.0)
         if r["code"] == "P":
@@ -740,10 +749,31 @@ def q_ownership_pressure(con, target="all", window=90, anchor=None):
     floats = _shares_outstanding(con, [a["ticker"] for a in agg.values()],
                                  [a["issuer_cik"] for a in agg.values()])
     out = []
+    impossible_floats = []
     for key, a in agg.items():
         net = a["buy_shares"] - a["sell_shares"]
         net_value = a["buy_value"] - a["sell_value"]
-        so = floats.get(a["issuer_cik"]) or floats.get(a["ticker"])
+        so = floats.get(_cik_key(a["issuer_cik"])) or floats.get(a["ticker"])
+        # market_cap's share count is corrupt on 13 of its 662 populated rows, and
+        # the corruption is in the DENOMINATOR, so it does not look wrong — it
+        # looks like enormous conviction. MAIR states 1,000 shares outstanding and
+        # CLBK and PLNT state 100 (PLNT's as of 2015), which read out as 879,052%
+        # and 445,394% of the float. The fallback us-gaap concepts carry almost
+        # all of it: CommonStockSharesOutstanding is impossible on 9 of 31 rows
+        # against 2 of 627 for the dei cover-page tag.
+        #
+        # The refusal needs no threshold. Insiders cannot trade more shares than
+        # exist, so gross volume above the stated float is PROOF the float is
+        # wrong, not proof of a remarkable quarter. Refused floats are counted and
+        # named, because 'we have no float for this issuer' and 'the float we hold
+        # is impossible' are different states and the marketcap leg can only fix
+        # the second if it is told about it.
+        if so and (a["buy_shares"] + a["sell_shares"]) > so:
+            impossible_floats.append({
+                "ticker": a["ticker"] or unmapped_label(a["issuer_cik"]),
+                "issuer_cik": a["issuer_cik"], "stated_shares": so,
+                "gross_shares_traded": a["buy_shares"] + a["sell_shares"]})
+            so = None
         pct = (100.0 * net / so) if so else None
         # Dollars decide WHEN KNOWN. Some regimes carry shares and no price at
         # all, and calling a 130-share accumulation "flat" because the filing
@@ -782,9 +812,24 @@ def q_ownership_pressure(con, target="all", window=90, anchor=None):
                      "where known - never by raw share count. A row whose filings "
                      "carried no price ranks below every priced row and says so in "
                      "direction_basis, because an unknown dollar amount cannot be "
-                     "compared to a known one",
+                     "compared to a known one. A share-of-float figure is shown "
+                     "only where market_cap states a float the issuer's own "
+                     "insider volume does not exceed",
             "unmapped_issuers": sum(1 for r in out if r["unmapped"]),
+            "impossible_floats": sorted(
+                impossible_floats, key=lambda f: f["gross_shares_traded"],
+                reverse=True),
             "rows": out}
+
+
+def _cik_key(value):
+    """CIKs reach us zero-padded from one table and bare from another.
+
+    market_cap stores '0001769628'; form4_transactions stores '1769628'. Keyed
+    raw, the two never meet and every percentage silently reads None — a join
+    that fails looks exactly like data we do not have."""
+    s = str(value or "").strip()
+    return str(int(s)) if s.isdigit() else (s or None)
 
 
 def _shares_outstanding(con, tickers, ciks):
@@ -792,19 +837,22 @@ def _shares_outstanding(con, tickers, ciks):
 
     Read-only against market_cap, which the scan's marketcap leg maintains. A
     missing float is None and the caller shows no percentage rather than a
-    guessed one."""
-    keys = [k for k in set(list(tickers) + list(ciks)) if k]
-    if not keys:
+    guessed one — 662 of its 830 rows carry a share count, so absence is normal
+    and must not be filled in."""
+    want_t = {t for t in tickers if t}
+    want_c = {_cik_key(c) for c in ciks if c}
+    if not want_t and not want_c:
         return {}
     out = {}
-    marks = ",".join("?" * len(keys))
+    # shares = 0 on eight rows (CHYM, SE, GLOO, HLNE, NTSK, SHAK, SPG, VIA). Zero
+    # is not a small float, it is the absence of one, and dividing by it is not a
+    # question worth asking.
     for cik, tk, sh in con.execute(
-        "SELECT cik, ticker, shares FROM market_cap WHERE shares IS NOT NULL"
-        " AND (cik IN ({m}) OR ticker IN ({m}))".format(m=marks), keys + keys
-    ):
-        if cik:
-            out[cik] = sh
-        if tk:
+            "SELECT cik, ticker, shares FROM market_cap WHERE shares > 0"):
+        k = _cik_key(cik)
+        if k and k in want_c:
+            out[k] = sh
+        if tk and tk in want_t:
             out[tk] = sh
     return out
 
@@ -1343,10 +1391,15 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
     spark = [{"date": d, "adj_close": ac} for d, ac in con.execute(
         "SELECT date, adj_close FROM prices WHERE ticker=? AND price_type='eod' "
         "AND date>=? ORDER BY date", (tk, sstart))]
+    _pressure = q_ownership_pressure(con, tk, pressure_window, anchor)
     return {"as_of": _as_of(), "ticker": tk,
             "overlay": {"conviction": conv, "watchlist": watch},
             "insider_by_code": insider,
-            "ownership_pressure": q_ownership_pressure(con, tk, pressure_window, anchor)["rows"],
+            "ownership_pressure": _pressure["rows"],
+            # Carried, not dropped. Taking only ["rows"] left the panel's blank
+            # pct cell with no explanation on exactly the issuers whose float we
+            # had to refuse.
+            "pressure_floats_refused": _pressure["impossible_floats"],
             "pressure_window_days": pressure_window,
             "congress": congress, "thirteenf_net": holdings, "price_sparkline": spark,
             # SM-C3 Phase X: the congressional ANNUAL surface, which this panel never

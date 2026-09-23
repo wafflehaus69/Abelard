@@ -561,6 +561,47 @@ def _build_disagreements_csv(con, p, full):
     return _csv_bytes(_DIS_CSV_COLS, rows, _DIS_CSV_OMIT)
 
 
+def _refused_float_sentences(refused):
+    """One sentence per refused float, shared by the panel and its PDF so the two
+    cannot say different things about the same issuer."""
+    return ["Share of shares outstanding is withheld: {} states {:,.0f} shares "
+            "outstanding in market_cap, and its own insiders traded {:,.0f} in "
+            "this window. The float is wrong, not the trades.".format(
+                f["ticker"], f["stated_shares"], f["gross_shares_traded"])
+            for f in (refused or [])]
+
+
+def _refused_float_note(refused):
+    return "".join("<p class='muted'>{}</p>".format(html.escape(s))
+                   for s in _refused_float_sentences(refused))
+
+
+def _float_coverage_note(press):
+    """Say what the empty pct column MEANS, per issuer class.
+
+    A blank cell has three different causes and a reader cannot tell them apart:
+    market_cap holds no row for the issuer (the common case — it covers 541 of
+    this board's 2,322 issuers and none of the top 10 by dollars), it holds a row
+    with no share count, or it holds a count the issuer's own insider volume
+    proves impossible. The third is a defect in the marketcap leg and is named
+    here so it can be fixed rather than quietly tolerated."""
+    rows = press["rows"]
+    known = sum(1 for r in rows if r["pct_shares_outstanding"] is not None)
+    bad = press.get("impossible_floats") or []
+    bits = ["Share of shares outstanding is known for {} of {} issuers; a blank "
+            "cell means market_cap carries no usable float, never zero "
+            "pressure.".format(known, len(rows))]
+    if bad:
+        bits.append(
+            "{} float(s) REFUSED as impossible — the issuer's own insiders traded "
+            "more shares than market_cap says exist: {}.".format(
+                len(bad), ", ".join(
+                    "{} (states {:,.0f}, traded {:,.0f})".format(
+                        f["ticker"], f["stated_shares"], f["gross_shares_traded"])
+                    for f in bad[:6])))
+    return "<p class='muted'>{}</p>".format(html.escape(" ".join(bits)))
+
+
 def view_front(con, p):
     sent = q.q_sentinel_log(con, window=p["window"] * 2, anchor=p["anchor"])
     conv = q.q_principal_convergence(con)
@@ -587,8 +628,13 @@ def view_front(con, p):
                 "discretionary_long_filers", "survives_discretionary_only"],
                conv["convergences"][:12]),
         "<h2>Ownership pressure — flow (top movers)</h2>",
-        _table(["ticker", "net_shares", "distinct_buyers", "distinct_sellers", "direction"],
+        # The rows arrive sorted on net DOLLARS, so a table leading with
+        # net_shares showed an order the reader could not derive from anything on
+        # screen. The sort key belongs in the first column.
+        _table(["ticker", "net_value", "pct_shares_outstanding", "net_shares",
+                "distinct_buyers", "distinct_sellers", "direction"],
                press["rows"][:15]),
+        _float_coverage_note(press),
         "<h2>Overlay-flagged positioning events ({})</h2>".format(ev["count"]),
         _table(["disclosure_date", "leg", "ticker", "side", "person"], ev["rows"][:15]),
     ]
@@ -831,6 +877,7 @@ def view_ticker(con, p):
         _table(["net_value", "pct_shares_outstanding", "net_shares", "distinct_buyers",
                 "distinct_sellers", "direction"],
                t["ownership_pressure"]),
+        _refused_float_note(t.get("pressure_floats_refused")),
         "<h2>Congressional</h2>",
         _table(["name", "side", "amt_low", "amt_high", "tx_date", "disclosure_date",
                 "owner", "note"],
@@ -2220,7 +2267,9 @@ def _view_spec(con, p, path):
                       "discretionary"], t["thirteenf_net"][:25]),
                 ],
                 "notes": ["13F net = long + call - put; congress amounts are bands.",
-                          "Ownership pressure ranks on dollars, never raw shares."]}
+                          "Ownership pressure ranks on dollars, never raw shares."]
+                         + _refused_float_sentences(
+                             t.get("pressure_floats_refused"))}
     return None
 
 
