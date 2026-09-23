@@ -1,0 +1,38 @@
+{
+ "file": "barrel/recon/sql/s1s2_differential_history_redutae.sql",
+ "label": "1.5 differential re-pull REDUTAE1",
+ "execution_id": "01M35VVV5RDHESYDHZA1KWNVW4",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.814264706,
+ "submitted_at": "2026-09-23T00:50:16.888456Z",
+ "rows": [
+  {
+   "atype": "both",
+   "auth": "bosfzZcJPGpg1oJLUmdKPijNDBYAxayRKgMbfeZnZi4",
+   "ev": "initializeMint",
+   "freeze_auth": null,
+   "mint": "REDUTAE1gcRYmp8bJVerPu8ALgYFvsmWGbgyS6kJyAD",
+   "prog": "t22",
+   "slot": 303808736
+  },
+  {
+   "atype": "{\"AuthorityType\":\"MintTokens\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "REDUTAE1gcRYmp8bJVerPu8ALgYFvsmWGbgyS6kJyAD",
+   "prog": "t22",
+   "slot": 438795242
+  },
+  {
+   "atype": "{\"AuthorityType\":\"TransferFeeConfig\"}",
+   "auth": null,
+   "ev": "setAuthority",
+   "freeze_auth": null,
+   "mint": "REDUTAE1gcRYmp8bJVerPu8ALgYFvsmWGbgyS6kJyAD",
+   "prog": "t22",
+   "slot": 439026824
+  }
+ ],
+ "error": null
+}

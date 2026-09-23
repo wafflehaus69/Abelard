@@ -23,9 +23,9 @@ A public RPC cannot read account state at a historical slot (R8). The as-of stat
 ## S3/S4 groundwork from the same sample
 4 of 5 mints are **Token-2022**, carrying only `metadataPointer` + `tokenMetadata`. Dune's `spl_token_2022_call_transferfeeextension` decodes **no arguments** (call metadata only), so the S4 fee *rate* comes from the chain (`transferFeeConfig` on the mint). A transfer-fee config is set at mint initialisation and cannot be removed, so as-of-entry equals as-of-now for S4; `transferHook`, `permanentDelegate`, `nonTransferable` likewise are initialisation-time extensions and have dedicated decoded call tables (`transferhookextension`, `initializepermanentdelegate`, `initializenontransferablemint`) for the as-of check.
 
-## Differential acceptance test (MR-7) — stratum N, post-entry revocations
+## Differential acceptance test (MR-7) — stratum N, post-entry revocations: **7 / 7 PASS**
 
-Candidates: stratum-N mints (CP-swap inits, Aug 2026) with a `setAuthority` on MintTokens or FreezeAccount **after** pool init + 240 min (`recon/sql/s1s2_differential_candidates.sql`). Seven found. For each: full history from both programs (`s1s2_differential_history.sql`), reconstruction at the entry slot must show the **pre-change authority still set**, reconstruction after must equal **today's chain state** (`s1s2_differential_chain_now.json`). A pass here cannot be produced by reconciliation-to-current-state alone.
+Candidates: stratum-N mints (CP-swap inits, Aug 2026) with a `setAuthority` on MintTokens or FreezeAccount **after** pool init + 240 min (`recon/sql/s1s2_differential_candidates.sql`). Seven found. For each: full history from both programs, reconstruction at the entry slot must show the **pre-change authority still set**, reconstruction after must equal **today's chain state**. A pass here cannot be produced by reconciliation-to-current-state alone.
 
 | mint | program | init found | entry slot (+240 min) | state at entry (mint / freeze) | post-entry changes | state after | chain now | differential |
 |---|---|---|---|---|---|---|---|---|
@@ -34,7 +34,9 @@ Candidates: stratum-N mints (CP-swap inits, Aug 2026) with a `setAuthority` on M
 | `AWdvQXYA…` | SPL-Token | yes | 437690838 | 2S7Rz7… / None | mint→None | None / None | None / None | PASS |
 | `ALr4PvU7…` | Token-2022 | yes | 437920525 | None / 6tJwEX… | freeze→None | None / None | None / None | PASS |
 | `8qcRRjnN…` | Token-2022 | yes | 437625692 | 51FP99… / 51FP99… | freeze→None, mint→None | None / None | None / None | PASS |
-| `REDUTAE1…` | Token-2022 | NO | 436798154 | None / None | mint→None, freeze→None | None / None | None / None | FAIL |
+| `REDUTAE1…` | Token-2022 | yes | 436798154 | bosfzZ… / None | mint→None (+1 other type, logged) | None / None | None / None | PASS |
 | `HUvgiKD7…` | SPL-Token | yes | 439316442 | 5Mk5RT… / 5Mk5RT… | freeze→None, mint→None | None / None | None / None | PASS |
 
-**6/7 PASS**
+**7/7 PASS.** The first pass read 6/7: `REDUTAE1…` had no `initializeMint` inside a June–September history window. The chain's earliest signature put its creation at **2024-11-26**, twenty months before its pool; a re-pull from creation found the init (live mint authority `bosfzZ…` from 2024, revoked at 438795242, after entry) and the case passed. **Lesson, now a rule:** the authority-history window for any mint begins at the **mint's** creation, not the pool's birth, and on stratum N those can be years apart. Creation is taken from the earliest `initializeMint` row across both programs, with the chain's earliest signature as the cross-check when none is found in a bounded window — that is the UNKNOWN path's first step, not its conclusion.
+
+`setAuthority` types other than MintTokens / FreezeAccount (e.g. `TransferFeeConfig` on `REDUTAE1…`) are ignored for S1/S2 and logged; the TransferFeeConfig one is S4's business.

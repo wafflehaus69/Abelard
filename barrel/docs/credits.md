@@ -55,8 +55,9 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 48 | barrel/recon/sql/s1s2_differential_candidates.sql (1.5 S1/S2 differential candidates) | `01M35VMWRJ33…` | 0.191 | 99.34 |
 | 49 | barrel/recon/sql/s1s2_differential_history.sql (1.5 S1/S2 differential history) | `01M35VP2V489…` | 0.215 | 99.56 |
 | 50 | barrel/recon/sql/census_organic_v2_week.sql (1.4 census organic v1 vs v2) | `01M35VQ89ZJ8…` | 43.626 | 143.19 |
+| 51 | barrel/recon/sql/s1s2_differential_history_redutae.sql (1.5 differential re-pull REDUTAE1) | `01M35VVV5RDH…` | 0.814 | 144.01 |
 
-**Total consumed: 143.19 credits. Remaining: 2357. Usable after 15% reserve: 2003.**
+**Total consumed: 144.01 credits. Remaining: 2356. Usable after 15% reserve: 2003.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _API says used: 143.191 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
