@@ -1,0 +1,111 @@
+{
+ "file": "barrel/recon/sql/s1s2_authority_history.sql",
+ "label": "1.5 S1/S2 history 5 mints",
+ "execution_id": "01M35S2M921XVFGAYDG9VNQHXB",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.366205883,
+ "submitted_at": "2026-09-23T00:01:33.475063Z",
+ "rows": [
+  {
+   "authority_type": "both",
+   "call_tx_id": "5XwrZUwybVHyZTJpXbkHVRdCVC9KEhktwbd41Gid5GDjCL9cCb5UpYNZKxb4qLNXqMzcdxLmT6N2M46Sz45NS1gu",
+   "ev": "initializeMint2",
+   "initial_freeze_auth": null,
+   "mint": "7C5mqYVj5P1kXuBvdw7yXjAdb1TWjw8xEVuWZn41pump",
+   "new_or_initial_mint_auth": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+   "prog": "t22",
+   "slot": 442020435
+  },
+  {
+   "authority_type": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "5XwrZUwybVHyZTJpXbkHVRdCVC9KEhktwbd41Gid5GDjCL9cCb5UpYNZKxb4qLNXqMzcdxLmT6N2M46Sz45NS1gu",
+   "ev": "setAuthority",
+   "initial_freeze_auth": null,
+   "mint": "7C5mqYVj5P1kXuBvdw7yXjAdb1TWjw8xEVuWZn41pump",
+   "new_or_initial_mint_auth": null,
+   "prog": "t22",
+   "slot": 442020435
+  },
+  {
+   "authority_type": "both",
+   "call_tx_id": "4gEJo1WKB8PSTWWcerto6hkGxwtjSD6BAqBcKuQEnYxYGKETz9VdMEA4zLK3Af7AsaMpnmMUisJL8AicTiP62eBS",
+   "ev": "initializeMint2",
+   "initial_freeze_auth": null,
+   "mint": "AaTwXAnMckAhL4ucT8i5GQpdN5MWCGuBzwkeNzBpump",
+   "new_or_initial_mint_auth": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+   "prog": "t22",
+   "slot": 443553744
+  },
+  {
+   "authority_type": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "4gEJo1WKB8PSTWWcerto6hkGxwtjSD6BAqBcKuQEnYxYGKETz9VdMEA4zLK3Af7AsaMpnmMUisJL8AicTiP62eBS",
+   "ev": "setAuthority",
+   "initial_freeze_auth": null,
+   "mint": "AaTwXAnMckAhL4ucT8i5GQpdN5MWCGuBzwkeNzBpump",
+   "new_or_initial_mint_auth": null,
+   "prog": "t22",
+   "slot": 443553744
+  },
+  {
+   "authority_type": "both",
+   "call_tx_id": "iSNscux9EfEpe8eJ68y7gbMuCuS7mNH9KMnJDUNfQTdvnnaPGWozJWkhaAPJqYaiTQae2wEydKKTwUFoa96Cmef",
+   "ev": "initializeMint2",
+   "initial_freeze_auth": null,
+   "mint": "AjdE84dGqhbqDYhh8Pm8oCRMCTpUGQ4oDaRBF5vwpump",
+   "new_or_initial_mint_auth": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+   "prog": "t22",
+   "slot": 443439092
+  },
+  {
+   "authority_type": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "iSNscux9EfEpe8eJ68y7gbMuCuS7mNH9KMnJDUNfQTdvnnaPGWozJWkhaAPJqYaiTQae2wEydKKTwUFoa96Cmef",
+   "ev": "setAuthority",
+   "initial_freeze_auth": null,
+   "mint": "AjdE84dGqhbqDYhh8Pm8oCRMCTpUGQ4oDaRBF5vwpump",
+   "new_or_initial_mint_auth": null,
+   "prog": "t22",
+   "slot": 443439092
+  },
+  {
+   "authority_type": "both",
+   "call_tx_id": "3t39LojK7JDmKR3uFM7EintZRKXFJ1tPcxdjzQSs5YJAuCwJuJCY4a83nC3nQ22Afdpeutpg32fcsKrmvzY1JULX",
+   "ev": "initializeMint2",
+   "initial_freeze_auth": null,
+   "mint": "FBmPBhgQvzaEvcdWDThNCnP7j83hu9cFtGW3tDj6pump",
+   "new_or_initial_mint_auth": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+   "prog": "t22",
+   "slot": 443283131
+  },
+  {
+   "authority_type": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "3t39LojK7JDmKR3uFM7EintZRKXFJ1tPcxdjzQSs5YJAuCwJuJCY4a83nC3nQ22Afdpeutpg32fcsKrmvzY1JULX",
+   "ev": "setAuthority",
+   "initial_freeze_auth": null,
+   "mint": "FBmPBhgQvzaEvcdWDThNCnP7j83hu9cFtGW3tDj6pump",
+   "new_or_initial_mint_auth": null,
+   "prog": "t22",
+   "slot": 443283131
+  },
+  {
+   "authority_type": "both",
+   "call_tx_id": "bRNpjaQmFCXyri9dyYfX2tWXnaEibdGdFJ3vKAbQVxmZkKzT4BKPEz4kQxfg4NnTfM68Qz1X34KAfN8MXNY1HKj",
+   "ev": "initializeMint2",
+   "initial_freeze_auth": null,
+   "mint": "GfYX7XWmhcsF1PdoL6LZq5JuBmueK7bW4nwxtisDFGW8",
+   "new_or_initial_mint_auth": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM",
+   "prog": "spl",
+   "slot": 443282872
+  },
+  {
+   "authority_type": "{\"AuthorityType\":\"MintTokens\"}",
+   "call_tx_id": "bRNpjaQmFCXyri9dyYfX2tWXnaEibdGdFJ3vKAbQVxmZkKzT4BKPEz4kQxfg4NnTfM68Qz1X34KAfN8MXNY1HKj",
+   "ev": "setAuthority",
+   "initial_freeze_auth": null,
+   "mint": "GfYX7XWmhcsF1PdoL6LZq5JuBmueK7bW4nwxtisDFGW8",
+   "new_or_initial_mint_auth": null,
+   "prog": "spl",
+   "slot": 443282872
+  }
+ ],
+ "error": null
+}

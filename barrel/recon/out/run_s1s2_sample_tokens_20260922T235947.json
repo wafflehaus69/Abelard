@@ -1,0 +1,56 @@
+{
+ "file": "barrel/recon/sql/s1s2_sample_tokens.sql",
+ "label": "1.5 sample tokens",
+ "execution_id": "01M35RZ7BF29F1DKAW2WE87BGB",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.187794118,
+ "submitted_at": "2026-09-22T23:59:41.935626Z",
+ "rows": [
+  {
+   "create_slot": 443282872,
+   "create_time": "2026-09-01 00:04:07.000 UTC",
+   "grad_slot": 443282887,
+   "grad_time": "2026-09-01 00:04:11.000 UTC",
+   "mint": "GfYX7XWmhcsF1PdoL6LZq5JuBmueK7bW4nwxtisDFGW8",
+   "pool": "GCg7VGVMq38g7T8vxZ7qMzVkTPeWiKpwTPWvTz9L8tck",
+   "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  },
+  {
+   "create_slot": 443283131,
+   "create_time": "2026-09-01 00:05:29.000 UTC",
+   "grad_slot": 443283131,
+   "grad_time": "2026-09-01 00:05:29.000 UTC",
+   "mint": "FBmPBhgQvzaEvcdWDThNCnP7j83hu9cFtGW3tDj6pump",
+   "pool": "GThiQvNXQm4C4p2azLXQWNtyVM6wBgsauyug27TeGvei",
+   "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  },
+  {
+   "create_slot": 443439092,
+   "create_time": "2026-09-01 13:51:14.000 UTC",
+   "grad_slot": 443441123,
+   "grad_time": "2026-09-01 14:01:58.000 UTC",
+   "mint": "AjdE84dGqhbqDYhh8Pm8oCRMCTpUGQ4oDaRBF5vwpump",
+   "pool": "ES5s4n3cp8w7uUu5NnCyzT3SUQ5HXgWoTSeqQ61iRpp",
+   "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  },
+  {
+   "create_slot": 443553744,
+   "create_time": "2026-09-01 23:57:50.000 UTC",
+   "grad_slot": 443553883,
+   "grad_time": "2026-09-01 23:58:34.000 UTC",
+   "mint": "AaTwXAnMckAhL4ucT8i5GQpdN5MWCGuBzwkeNzBpump",
+   "pool": "H5dw5rWiqCYKA1AfFDPBV2X2ekHKYufA8ECvoFyEKvSr",
+   "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  },
+  {
+   "create_slot": 442020435,
+   "create_time": "2026-08-27 04:05:26.000 UTC",
+   "grad_slot": 443553976,
+   "grad_time": "2026-09-01 23:59:03.000 UTC",
+   "mint": "7C5mqYVj5P1kXuBvdw7yXjAdb1TWjw8xEVuWZn41pump",
+   "pool": "CYZkgb4WdR1c2CGTHt1hHKKBYURzYbhpEbm8qcx8ogm9",
+   "token_program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  }
+ ],
+ "error": null
+}

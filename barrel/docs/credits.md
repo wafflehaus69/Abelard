@@ -43,8 +43,11 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 36 | barrel/recon/sql/census_week_sample.sql (1.4 census one week) | `01M35B11EA26…` | 1.344 | 74.96 |
 | 37 | barrel/recon/sql/derived_trades_conservation_by_mint.sql (1.3 conservation by mint) | `01M35B2WRJHC…` | 0.814 | 75.78 |
 | 38 | barrel/recon/sql/census_week_sample_preboost.sql (1.4 census pre-BOOST week) | `01M35B3KJ38M…` | 1.337 | 77.11 |
+| 39 | barrel/recon/sql/discover_spl_token_tables.sql (1.5 spl token discovery) | `01M35RYXD3TQ…` | 1.941 | 79.06 |
+| 40 | barrel/recon/sql/s1s2_sample_tokens.sql (1.5 sample tokens) | `01M35RZ7BF29…` | 0.188 | 79.25 |
+| 41 | barrel/recon/sql/s1s2_authority_history.sql (1.5 S1/S2 history 5 mints) | `01M35S2M921X…` | 0.366 | 82.55 |
 
-**Total consumed: 77.11 credits. Remaining: 2423. Usable after 15% reserve: 2059.**
+**Total consumed: 82.55 credits. Remaining: 2417. Usable after 15% reserve: 2055.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 77.115 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 82.183 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

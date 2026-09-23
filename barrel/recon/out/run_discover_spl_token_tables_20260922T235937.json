@@ -1,0 +1,171 @@
+{
+ "file": "barrel/recon/sql/discover_spl_token_tables.sql",
+ "label": "1.5 spl token discovery",
+ "execution_id": "01M35RYXD3TQK0XSX57N2201ZA",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.941232059,
+ "submitted_at": "2026-09-22T23:59:31.748342Z",
+ "rows": [
+  {
+   "table_name": "spl_token_2022_call_confidentialtransferextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_confidentialtransferfeeextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_cpiguardextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_createnativemint",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_defaultaccountstateextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializeaccount",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializeaccount2",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializeaccount3",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializeimmutableowner",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializemint",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializemint2",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializemintcloseauthority",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializemultisig",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializemultisig2",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializenontransferablemint",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_initializepermanentdelegate",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_interestbearingmintextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_memotransferextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_metadatapointerextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_mintto",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_minttochecked",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_setauthority",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_transferfeeextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_2022_call_transferhookextension",
+   "table_schema": "spl_token_2022_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializeaccount",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializeaccount2",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializeaccount3",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializeimmutableowner",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializemint",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializemint2",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializemultisig",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_initializemultisig2",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_mintto",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_minttochecked",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_setauthority",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "token_2022_initialize_token_metadata_decoded",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "token_2022_initialize_token_metadata_decoded",
+   "table_schema": "tokens_solana__dev_ivan_gro633_u"
+  },
+  {
+   "table_name": "token_2022_initialize_token_metadata_decoded",
+   "table_schema": "tokens_solana__dev_ivan_gro633_v1"
+  },
+  {
+   "table_name": "token_2022_initialize_token_metadata_decoded",
+   "table_schema": "tokens_solana__dev_ivan_gro633_v2"
+  },
+  {
+   "table_name": "token_2022_initialize_token_metadata_decoded",
+   "table_schema": "tokens_solana__dev_ivan_gro633_w"
+  }
+ ],
+ "error": null
+}
