@@ -1,0 +1,82 @@
+[
+ {
+  "tx": "ojF5MdtYRg7KyuFTR2nF18ncQ79JcLvZVSgdvZgpGaMoHzrBp6hGyNZTH4VnChxY8o4k7Vo3MyBHU5mGSAnCkqx",
+  "virtual_quote_reserves": null,
+  "q_in": 588000000,
+  "base_out": 896504509548,
+  "pred_noV": 916811001348.9688,
+  "pred_V": 916811001348.9688,
+  "absent": [
+   "virtual_quote_reserves",
+   "can_boost",
+   "base_supply",
+   "holder_rewards_bps",
+   "holder_rewards"
+  ],
+  "body_len": 447
+ },
+ {
+  "tx": "5hELWcB2PFVTcjBQVRX42saDnwcnXwKoQkXzow6Acoe4LtmqccX5vd9G8sqhTMrqsVrUDbnbyvMhhRpsG7SrDPdw",
+  "virtual_quote_reserves": null,
+  "q_in": 182506138,
+  "base_out": 276352670665,
+  "pred_noV": 280577690057.5625,
+  "pred_V": 280577690057.5625,
+  "absent": [
+   "virtual_quote_reserves",
+   "can_boost",
+   "base_supply",
+   "holder_rewards_bps",
+   "holder_rewards"
+  ],
+  "body_len": 447
+ },
+ {
+  "tx": "VKKLHSF26yZW4e1bzyzu9kqba5M6pmZmC959YWua2J7d9q5KMFunhuQocyGDustW6nRH3Z3DMTBrzdNxfv51AFv",
+  "virtual_quote_reserves": null,
+  "q_in": 300000000,
+  "base_out": 1114398332531,
+  "pred_noV": 1137824828950.5625,
+  "pred_V": 1137824828950.5625,
+  "absent": [
+   "virtual_quote_reserves",
+   "can_boost",
+   "base_supply",
+   "holder_rewards_bps",
+   "holder_rewards"
+  ],
+  "body_len": 447
+ },
+ {
+  "tx": "5BjkpHapuHd1LYPsuFkkYxBugN8jAK1o4PTzqUe9Wm1ghUxJE9KgoKyVvco7iPvaMTfvSPtZrr8SHDQJH7hpri1p",
+  "virtual_quote_reserves": null,
+  "q_in": 51347579,
+  "base_out": 47056969393,
+  "pred_noV": 47086927223.34375,
+  "pred_V": 47086927223.34375,
+  "absent": [
+   "virtual_quote_reserves",
+   "can_boost",
+   "base_supply",
+   "holder_rewards_bps",
+   "holder_rewards"
+  ],
+  "body_len": 432
+ },
+ {
+  "tx": "5Yg2nu7sHn64hj1NjohbznqsftWQPhVCerR7Ue1VPvuH94STDUYkdjWycjcFhmEcXSwqscAQrfWDMjV3GoNQ3tgn",
+  "virtual_quote_reserves": null,
+  "q_in": 210256527,
+  "base_out": 740591562589,
+  "pred_noV": 754276706176.4062,
+  "pred_V": 754276706176.4062,
+  "absent": [
+   "virtual_quote_reserves",
+   "can_boost",
+   "base_supply",
+   "holder_rewards_bps",
+   "holder_rewards"
+  ],
+  "body_len": 447
+ }
+]

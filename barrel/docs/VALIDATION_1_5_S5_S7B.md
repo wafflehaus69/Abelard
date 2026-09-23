@@ -9,3 +9,8 @@
 ## S7b — creator fee-share recipients
 * The pump fee program `pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ` has **no decoded tables on Dune** (2026-09-22). `SharingConfig` state (`shareholders` vec) must be reconstructed from **raw** `solana.instruction_calls` to that program plus its `Program data:` events in `solana.transactions.log_messages`, decoded with the pinned `recon/idl/pump_fees.json` (`CreateFeeSharingConfigEvent`, `UpdateFeeSharesEvent`, `ResetFeeSharingConfigEvent`). As-of-T per MR-4 R7.
 * Feasibility probe: `recon/sql/s7b_pfee_probe.sql` (raw call volume and discriminator count on one day). Build follows in the paid month if the volume makes it a materialization job; the readiness deliverable is the query written and dry-run on one day.
+
+## S7b sizing (2026-09-01, `recon/sql/s7b_pfee_by_discriminator.sql`)
+38.84M `get_fees` calls (one per swap) vs **3,288 `create_fee_sharing_config` + 2,516 `update_fee_shares_v2` + 751 `update_fee_shares`** — ~6.5k sharing-config calls a day. Two discriminators absent from the pinned `pump_fees.json` (`E445A52E…`, 10,193 inner calls; `0A02B65F…`, 3) — logged; the IDL is re-pinned before the window run and any still-unknown discriminator is counted, never dropped.
+
+**Design:** the sharing-config calls (raw `data`, ~6.5k rows/day) are materialised inside Dune with the `tx_id`, slot and mint reference; the `shareholders` vector is Borsh-decoded **per token, on demand, in Python** for the gate sample only, from the exported rows of those tokens — a few hundred KB, not a window-wide export. As-of-T = last config call at or before T (MR-4 R7).

@@ -1,0 +1,83 @@
+{
+ "file": "barrel/recon/sql/s7b_pfee_by_discriminator.sql",
+ "label": "S7b pfee by discriminator",
+ "execution_id": "01M35X12GZY7V1T34P8KA17S6Y",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.117794118,
+ "submitted_at": "2026-09-23T01:10:36.832215Z",
+ "rows": [
+  {
+   "calls": 38844329,
+   "disc_hex": "E7257E55CF5B3F34",
+   "inner_calls": 38844329,
+   "txs": 35438852
+  },
+  {
+   "calls": 10193,
+   "disc_hex": "E445A52E51CB9A1D",
+   "inner_calls": 10193,
+   "txs": 3830
+  },
+  {
+   "calls": 3288,
+   "disc_hex": "C34E564C6F34FBD5",
+   "inner_calls": 0,
+   "txs": 3288
+  },
+  {
+   "calls": 2516,
+   "disc_hex": "6FFB31064E4E6A12",
+   "inner_calls": 0,
+   "txs": 2516
+  },
+  {
+   "calls": 2288,
+   "disc_hex": "8A21CC26CFA19FE2",
+   "inner_calls": 0,
+   "txs": 143
+  },
+  {
+   "calls": 1063,
+   "disc_hex": "F48B10580EFF7A1A",
+   "inner_calls": 0,
+   "txs": 1056
+  },
+  {
+   "calls": 751,
+   "disc_hex": "BD0D8863BBA4ED23",
+   "inner_calls": 0,
+   "txs": 751
+  },
+  {
+   "calls": 424,
+   "disc_hex": "114DF0863ABC3595",
+   "inner_calls": 0,
+   "txs": 212
+  },
+  {
+   "calls": 236,
+   "disc_hex": "DC0ABDA7A9111945",
+   "inner_calls": 0,
+   "txs": 236
+  },
+  {
+   "calls": 57,
+   "disc_hex": "90E03BD34EF8CADC",
+   "inner_calls": 0,
+   "txs": 57
+  },
+  {
+   "calls": 35,
+   "disc_hex": "E115FB85A11EC7E2",
+   "inner_calls": 0,
+   "txs": 35
+  },
+  {
+   "calls": 3,
+   "disc_hex": "0A02B65F107F81BA",
+   "inner_calls": 3,
+   "txs": 3
+  }
+ ],
+ "error": null
+}

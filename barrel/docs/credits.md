@@ -62,8 +62,9 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 55 | barrel/recon/sql/slippage_validate_v2.sql (1.6 slippage v2 + implied virtual reserve) | `01M35WW8GA68…` | 0.410 | 160.22 |
 | 56 | barrel/recon/sql/slippage_preboost_txids.sql (1.6 pre-BOOST tx ids) | `01M35WY2AFY6…` | 0.152 | 160.37 |
 | 57 | barrel/recon/sql/s7b_pfee_probe.sql (S7b pfee raw probe) | `01M35WYHAA1W…` | 1.153 | 161.37 |
+| 58 | barrel/recon/sql/s7b_pfee_by_discriminator.sql (S7b pfee by discriminator) | `01M35X12GZY7…` | 1.118 | 162.64 |
 
-**Total consumed: 161.37 credits. Remaining: 2339. Usable after 15% reserve: 1988.**
+**Total consumed: 162.64 credits. Remaining: 2337. Usable after 15% reserve: 1987.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 161.527 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 162.646 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
