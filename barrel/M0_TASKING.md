@@ -182,6 +182,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-4 (below) + [`docs/H3_AMENDMENT_v1.1.md`](docs/H3_AMENDMENT_v1.1.md) | Architect; ClaudeCode recording | 2026-09-21 | M0-wide rulings arising from the H3 review; project ID; standing ceiling unchanged |
 | Execution record, orders 2–4 → [`docs/A1_BIGQUERY_FITNESS.md`](docs/A1_BIGQUERY_FITNESS.md) | ClaudeCode | 2026-09-21 | A1 step 1 PASS; BigQuery **unfit** for swap-level data; D1 returned for ruling; work stopped per order 5 |
 | MR-5 (below) | Architect, relayed by Mando; ClaudeCode recording | 2026-09-21 | Spend guardrail; D1 → Dune free-tier test first; options 2/3 rejected; BigQuery scope; E34; August 2025 DEGRADED |
+| MR-6 → [`docs/RULINGS_2026-09-22_B.md`](docs/RULINGS_2026-09-22_B.md) | Architect via Mando | 2026-09-22 | Census metric replaced (two distributions); N multi-venue approved with `birth_is_proxy`; schema sign-off conditional (file returned); corrections: BOOST 4.7×, cost = gross − net |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
@@ -582,3 +583,14 @@ Full report: `docs/A1_DUNE_FITNESS.md`.
 
 Also recorded: Dune's decoder pins the 473-byte PumpSwap event layout, so the newer
 carve-out fields are absent there; the three additive legs the cost model needs are present.
+
+---
+
+### MR-6 — Corrections and rulings (Architect via Mando, 2026-09-22)
+
+Full text: `docs/RULINGS_2026-09-22_B.md`. Two **corrections to this document's record**:
+
+1. **BOOST graduation-rate jump is 4.7×**, measured on two sample weeks (0.72% → 3.39%), not the ~8× carried from press reporting in M0_RECON R5.
+2. **Derived-table cost rule: `trader_cost = gross − net`.** Named legs (`lp_fee`, `protocol_fee`, `coin_creator_fee`) are retained for the fee-era analysis and are **not load-bearing for expectancy**. The residual (gross − net − the three named legs), which clusters by mint, is kept as its own column as an unnamed leg, never folded into a named one.
+
+Rulings: the §2 census metric "≥1 swap in 7 days" is **withdrawn** and replaced by two distributions (distinct organic takers in days 0–7; seconds to first organic swap), no threshold. Stratum N approved multi-venue with a `birth_is_proxy` flag; CLMM logged as a known gap with one re-check before v1.2. Schema sign-off is conditional and the file has been returned with a v2 proposal.

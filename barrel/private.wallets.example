@@ -1,0 +1,3 @@
+# Owner wallets (Mando). Copy to barrel/private/owner_wallets.txt — that directory is gitignored.
+# One base58 address per line. Lines starting with # are ignored. Never committed, never logged.
+# Read only by the universe/trade exclusion layer and the personal-history replay (readiness 1.2, 1.8).
