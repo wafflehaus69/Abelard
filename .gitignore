@@ -40,3 +40,9 @@ daemons/news_watch_daemon/tests/fixtures/telegram_real_*.json
 
 # Claude Code machine-local settings (per-host permission grants, not portable)
 .claude/settings.local.json
+
+# Runtime corpus written by the live consensus collector. It is a symlink in
+# ~/Code/abelard-live and a real directory in the dev checkout, and it is 21GB of
+# state, not code. Untracked it made the deploy gate refuse a clean tree, which
+# is the one check that must never be argued with.
+consensus/data
