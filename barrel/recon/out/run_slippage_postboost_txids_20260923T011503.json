@@ -1,0 +1,31 @@
+{
+ "file": "barrel/recon/sql/slippage_postboost_txids.sql",
+ "label": "1.6 post-BOOST tx ids",
+ "execution_id": "01M35X91RKBHWC455VZ4YPFWG1",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.236264706,
+ "submitted_at": "2026-09-23T01:14:58.195893Z",
+ "rows": [
+  {
+   "evt_tx_id": "2wMqqcMhwpnSUvARUKvug5GozeVZ7XH8e5DfyzXeshuVJr5oJQ8udUNHko3Xfv9xXqKSpDKCQ5dwqgttDGJmrfNh",
+   "pool": "48QWfeWd3DyiuAFYNKWcp3DpEF9shh6LXm994BEX4eaq"
+  },
+  {
+   "evt_tx_id": "TwAzUr5dh8QL64sjDQ8ryWBnQKmT1dedNbF22szR21ah6QpFjrzVSLwjDtyTuMAxmkigHimDLbCd5d6ZTw7xV4j",
+   "pool": "6Kt94MW8hQotFaxiFxnpnPrmiPguSwirFueFAnhKZJ8q"
+  },
+  {
+   "evt_tx_id": "46YdWDQBFvN84sQd6hFLQ9L8553cb2VYfaUiSWtaUo36gxarqGUcXGP7aDbiP3PWHd2pNKBgrwi12rq4HzSKKTjK",
+   "pool": "SpgKFMX5Wzsbo56RgLCfMgpDHgEyviMXXFX5v3UYSPE"
+  },
+  {
+   "evt_tx_id": "3eQZYpWAbHorZPuspaUxUWuG81c1VeLctonbYprp2N7h1Xrygt12gqppp1WAzpffAQ6qhojF98WYtYwY6nDjYaWX",
+   "pool": "8KTESR81Bt1oecq1j1VHoK44m6GjPSjXvX7SDBhsuZVU"
+  },
+  {
+   "evt_tx_id": "3cebFKyvyra8hj9M2i2nyLtGRxWJRaPWq9E1BDVn6sBvSDqjiutXiptECYcSZU27936iGXCA146LpCawBPRpC7P7",
+   "pool": "6v161BRMdfKaR2yoFRc15cKJmHWYgPkDfJpB8tYsJKqx"
+  }
+ ],
+ "error": null
+}

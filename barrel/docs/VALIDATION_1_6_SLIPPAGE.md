@@ -1,0 +1,33 @@
+# Readiness 1.6 — slippage from pool reserves, validated on 10 executed buys (2026-09-22)
+
+**Sample:** 5 pre-BOOST buys (2026-06-01) and 5 post-BOOST buys (2026-09-01) on SOL-quoted stratum-P pools, decoded from the chain with the pinned full-layout IDL (`recon/out/slippage_model_test_*.json`). **Result: 10 / 10 reproduce `base_amount_out` to 0.0000%.**
+
+## The fill model (constant product, PumpSwap)
+```
+Q_eff  = pool_quote_token_reserves + virtual_quote_reserves      (virtual = 0 on pools born before BOOST)
+x      = quote_amount_in            for ix_name = 'buy'
+       = user_quote_amount_in       for ix_name = 'buy_exact_quote_in'   (field names swap meaning by variant)
+base_out = pool_base_token_reserves * x / (Q_eff + x)
+```
+* **Reserves in the event are PRE-swap.** Established by arithmetic on two same-slot swaps on one pool: the second's reported base reserve equals the first's minus its `base_out`, exactly.
+* **Fees sit outside the curve.** `lp_fee` stays in the pool (vault rises by `x + lp_fee`); protocol and creator fees leave; **cashback is a rebate outside the curve** — including it in `x` produces a ±0.30% error that vanishes when it is left out.
+* **Virtual quote reserve.** pump.fun's `PUMP_SWAP_README.md`: pricing uses *"the pool's effective quote reserves, which are the raw quote-vault token balance plus `Pool::virtual_quote_reserves`"*, for both buy and sell. Observed **17.585 SOL on all five post-BOOST pools** (BOOST init constant); 0 on all four pre-BOOST pools (read from the Pool account).
+
+| Era | tx | variant | virtual (SOL) | err without V | **err with model** |
+|---|---|---|---|---|---|
+| pre | `ojF5Mdt…` | buy_exact_quote_in | 0 | — | **0.0000%** |
+| pre | `5hELWcB…` | buy_exact_quote_in | 0 | — | **0.0000%** |
+| pre | `VKKLHSF…` (cashback coin) | buy_exact_quote_in | 0 | — | **0.0000%** |
+| pre | `5BjkpHa…` | buy | 0 | — | **0.0000%** |
+| pre | `5Yg2nu7…` (cashback coin) | buy_exact_quote_in | 0 | — | **0.0000%** |
+| post | `2wMqqcM…` | buy_exact_quote_in | 17.585 | 22.93% | **0.0000%** |
+| post | `TwAzUr5…` | buy_exact_quote_in | 17.585 | 13.15% | **0.0000%** |
+| post | `46YdWDQ…` | buy | 17.585 | 0.26% | **0.0000%** |
+| post | `3eQZYpW…` | buy | 17.585 | 1.74% | **0.0000%** |
+| post | `3cebFKy…` | buy_exact_quote_in | 17.585 | 16.21% | **0.0000%** |
+
+## What this means for the $20 fill and the exit
+Entry fill for a $20 ticket: `x` = $20 in lamports at block-time SOL/USD, gross of fees per the fee-era schedule; `base_out` from the model against the pre-swap reserves of the entry block's last event on that pool (deepest qualifying pool, MR-3.2). Exit: the sell side is the same curve inverted (`quote_out = Q_eff * base_in / (B + base_in)`, fees off the output) — **not yet validated on executed sells; that is the next check**, and it must be done before §5's exit-fill rule is coded.
+
+## Limit, and how the backtest handles it
+Dune's decoded `pump_amm_evt_buyevent` pins the 473-byte layout and **does not carry `virtual_quote_reserves`**. Post-BOOST fills therefore cannot be priced from the decoded table alone. Two recoveries: (a) read the Pool account's `virtual_quote_reserves` once per pool (it is set at BOOST init; whether the buy-and-burn changes it over time is checked before it is treated as constant — `BoostBuyAndBurnEvent` carries the field per event, so an as-of path exists via raw logs); (b) the raw-log decode with the pinned full layout. The derived table records `virtual_quote_reserves` as a **derived per-pool value with its source**, not as a stored column (schema stays 20 + 3).

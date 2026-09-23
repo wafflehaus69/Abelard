@@ -1,0 +1,62 @@
+[
+ {
+  "tx": "2wMqqcMhwpnSUvARUKvug5GozeVZ7XH8e5DfyzXeshuVJr5oJQ8udUNHko3Xfv9xXqKSpDKCQ5dwqgttDGJmrfNh",
+  "ix": "buy_exact_quote_in",
+  "V": 17584505492,
+  "err_noV": 22.934471716574258,
+  "err_V": 5.217958789947465e-06,
+  "body_len": 472,
+  "absent": [
+   "holder_rewards_bps",
+   "holder_rewards"
+  ]
+ },
+ {
+  "tx": "TwAzUr5dh8QL64sjDQ8ryWBnQKmT1dedNbF22szR21ah6QpFjrzVSLwjDtyTuMAxmkigHimDLbCd5d6ZTw7xV4j",
+  "ix": "buy_exact_quote_in",
+  "V": 17584506258,
+  "err_noV": 13.153627944269275,
+  "err_V": 2.5264939422541723e-07,
+  "body_len": 472,
+  "absent": [
+   "holder_rewards_bps",
+   "holder_rewards"
+  ]
+ },
+ {
+  "tx": "46YdWDQBFvN84sQd6hFLQ9L8553cb2VYfaUiSWtaUo36gxarqGUcXGP7aDbiP3PWHd2pNKBgrwi12rq4HzSKKTjK",
+  "ix": "buy",
+  "V": 17584505288,
+  "err_noV": 0.25844511074252363,
+  "err_V": 1.0451012220704727e-06,
+  "body_len": 457,
+  "absent": [
+   "holder_rewards_bps",
+   "holder_rewards"
+  ]
+ },
+ {
+  "tx": "3eQZYpWAbHorZPuspaUxUWuG81c1VeLctonbYprp2N7h1Xrygt12gqppp1WAzpffAQ6qhojF98WYtYwY6nDjYaWX",
+  "ix": "buy",
+  "V": 17584505288,
+  "err_noV": 1.7369692666717576,
+  "err_V": 1.575494214340614e-08,
+  "body_len": 457,
+  "absent": [
+   "holder_rewards_bps",
+   "holder_rewards"
+  ]
+ },
+ {
+  "tx": "3cebFKyvyra8hj9M2i2nyLtGRxWJRaPWq9E1BDVn6sBvSDqjiutXiptECYcSZU27936iGXCA146LpCawBPRpC7P7",
+  "ix": "buy_exact_quote_in",
+  "V": 17584505472,
+  "err_noV": 16.206083130971464,
+  "err_V": 2.81336963522692e-07,
+  "body_len": 472,
+  "absent": [
+   "holder_rewards_bps",
+   "holder_rewards"
+  ]
+ }
+]
