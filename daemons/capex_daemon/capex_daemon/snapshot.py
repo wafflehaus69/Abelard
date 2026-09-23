@@ -14,7 +14,8 @@ import json
 import time
 from datetime import datetime, timezone
 
-from . import commitments, config, disclosure, divergence, normalize, phases, trend
+from . import (commitment_basis, commitments, config, disclosure, divergence,
+               normalize, phases, trend)
 
 SNAPSHOT_KEY = "panel_snapshot"
 
@@ -293,6 +294,12 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
             "commitments": {
                 "status": comm.status if comm else "ABSENT",
                 "detail": comm.detail if comm else "",
+                # P2/R1: the class travels with every figure. A commitments
+                # number that arrives without saying what it contains is how
+                # lessor receipts and prepaid rent reached Leg 3.
+                "basis": commitment_basis.basis_for(e.ticker_display).json(),
+                "buildout_row": (commitment_basis.buildout_row(e.ticker_display).json()
+                                 if commitment_basis.buildout_row(e.ticker_display) else None),
                 "latest": (comm.latest.value if comm and comm.latest else None),
                 "concept": comm.concept if comm else None,
                 "points": ([{"end": p.period_end, "value": p.value}
@@ -626,12 +633,21 @@ def commitment_deltas(snap, frontier=None):
     **A stock disclosed on the issuer's own schedule.** Consecutive observations
     are not consecutive quarters, so the gap is published with the delta: a 3.4x
     move over two quarters and over eight are different facts.
+
+    **NOT-A-COMMITMENT never appears here (P2/R1).** Six of the published lines
+    are not forward commitments at all — CORZ's $3.1B is lease payments it
+    *receives*, WULF's is prepaid rent received, KEEL's is note principal — and
+    a delta on one of those is a move in nothing. They are removed, not styled
+    differently. Every surviving row carries its class, and `buildout` says
+    whether it may reach Leg 3, the since-page or an alert.
     """
     out = []
     for tick, iss in sorted((snap.get("issuers") or {}).items()):
         c = iss.get("commitments") or {}
         pts = c.get("points_cq") or []
         if len(pts) < 2 or not c.get("concept"):
+            continue
+        if commitment_basis.is_excluded(tick):
             continue
         prev, cur = pts[-2], pts[-1]
         if frontier and trend._cq_sort(cur["q"]) < trend._cq_sort(frontier):
@@ -649,6 +665,8 @@ def commitment_deltas(snap, frontier=None):
             "from_value": base, "to_value": latest,
             "delta": latest - base,
             "multiple": (latest / base) if base > 0 else None,
+            "basis_class": commitment_basis.class_of(tick),
+            "buildout": commitment_basis.is_buildout(tick),
             "event_key": "commit:{}:{}:{}:{:.0f}".format(
                 tick, prev["q"], cur["q"], latest),
         })
@@ -656,7 +674,7 @@ def commitment_deltas(snap, frontier=None):
 
 
 def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
-                           absolute=None):
+                           absolute=None, only_classes=None):
     """Commitment jumps worth announcing. Empty while every bound is UNSET.
 
     E8 in its literal form: the consumer of an unset constant surfaces the
@@ -675,6 +693,11 @@ def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
         defensible multiple would ever catch.
 
     An arm that is not fully armed simply does not fire; the other still can.
+
+    **Classes gate the arms (P2/R1).** Only SUPPLY, SUPPLY+CAPEX and
+    LEASES-NOT-COMMENCED can alert. Wiring these before the classes existed
+    would have alerted on CORZ's lease receipts and WULF's prepaid rent — the
+    reason B4 was held.
     """
     multiple = COMMITMENT_JUMP_MULTIPLE if multiple is None else multiple
     min_delta = COMMITMENT_JUMP_MIN_DELTA if min_delta is None else min_delta
@@ -684,8 +707,12 @@ def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
         return []
     prior = set(prior_keys or ())
     out = []
+    allowed = (commitment_basis.BUILDOUT_CLASSES if only_classes is None
+               else tuple(only_classes))
     for d in commitment_deltas(snap, frontier=_frontier_quarter(snap)):
         if d["event_key"] in prior:
+            continue
+        if d.get("basis_class") not in allowed:
             continue
         by_multiple = (rel_armed and d["multiple"] is not None
                        and d["multiple"] >= multiple and d["delta"] >= min_delta)
@@ -736,6 +763,24 @@ def commitment_alerts_and_quarantine(snap, prior_keys=()):
     rows = commitment_alert_lines(snap, prior_keys=prior_keys)
     return ([r for r in rows if r.get("alertable", True)],
             [r for r in rows if not r.get("alertable", True)])
+
+
+def commitment_basis_checks_owed(snap, prior_keys=()):
+    """Threshold-sized moves at issuers whose figure has never been read.
+
+    The class gate is right and it has an edge: a newly admitted issuer that
+    starts tagging a commitment concept is UNCLASSIFIED, so a genuine $50B jump
+    there cannot alert. Silently dropping it would rebuild, one layer up, the
+    exact failure P2 found — a number travelling without its meaning, except now
+    the number is a silence.
+
+    So the move is published as WORK, not as a signal: someone must read the
+    filing before it can mean anything. It is not an alert and never enters Leg
+    3, the thesis line or a total.
+    """
+    return commitment_alert_lines(
+        snap, prior_keys=prior_keys,
+        only_classes=(commitment_basis.UNCLASSIFIED,))
 
 
 # B2 — the cross-check band. UNSET, and the comment that used to sit here was
@@ -943,6 +988,8 @@ def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
         "filings": list(filings or ()),
         "commitment_alerts": alertable,
         "commitment_quarantined": quarantined,
+        "commitment_basis_owed": commitment_basis_checks_owed(
+            snap, prior_keys=prior_keys),
         "supplier_frontier": fr,
         "composition_events": comp,
         "ingest_gaps": list(ingest_gaps or ()),
@@ -956,6 +1003,8 @@ SINCE_SECTIONS = (
      "past the ratified threshold"),
     ("commitment_quarantined", "Quarantined — BASIS-SUSPECT, presentation check "
      "queued", "nothing quarantined"),
+    ("commitment_basis_owed", "Commitment moves awaiting a basis check — not "
+     "alerts", "no unclassified issuer moved past the threshold"),
     ("supplier_frontier", "Suppliers ahead of the demand panel", "no supplier is "
      "ahead of the panel"),
     ("composition_events", "Composition changes", "no bucket changed membership"),
