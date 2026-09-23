@@ -31,3 +31,6 @@ Presence is as-of by construction; the **rate is not**: `TransferFeeExtension` (
 * Token-2022 mint with **no raw Token-2022 call referencing it** inside [creation date − 1 d, graduation + 1 d] → UNKNOWN (coverage gap). Strict FAIL, loose PASS, counted.
 * Index-26 calls present but sub-instruction undecodable → S4 UNKNOWN on rate, FAIL on presence in strict.
 * Legacy SPL mint → S3/S4 not applicable, recorded as PASS-by-construction with `token_program = legacy`.
+
+## M0 rule for S4 (MR-7)
+Rate = the rate at initialisation. If **any** TransferFeeExtension (index 26) call referencing the mint exists **after the entry slot**, the row is **FLAG/UNKNOWN** (strict FAIL, loose PASS). The sub-instruction decode of the as-of rate is an M1 refinement. `H2jDWfVq…`'s three index-26 calls all sit in its creation slot, so it is FAIL on rate (500 bps), not UNKNOWN.

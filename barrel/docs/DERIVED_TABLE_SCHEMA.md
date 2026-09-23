@@ -1,4 +1,4 @@
-# Readiness 1.3 — derived trade table schema, **v2 (returned for sign-off, 2026-09-22)**
+# Readiness 1.3 — derived trade table schema — **FROZEN 2026-09-22 (MR-7), 20 + 3 columns**
 
 The Architect's sign-off (MR-6) is conditional: frozen if the columns are the R4 list plus `quote_mint`, a stored `trader_cost = gross − net`, a stored `residual = gross − net − (lp + protocol + creator)` kept as an unnamed leg, and the cost-identity flag. **The v1 draft differed** (it carried `base_amount` and `degraded`, and computed rather than stored the cost columns), so per the ruling this file goes back rather than being frozen by the builder.
 
@@ -29,7 +29,7 @@ Lives inside Dune as a materialized view (`dune.<user>.result_barrel_trades`); o
 | 19 | `residual` | int256 | `trader_cost − (lp + protocol + creator)`, **stored, never folded** | + residual |
 | 20 | `cost_identity_ok` | boolean | `abs(residual) ≤ 1` | + identity flag |
 
-## Additions the builder proposes — need a yes or a no (3)
+## Additions — approved MR-7 (3)
 
 | # | Column | Why | Cost of omitting |
 |---|---|---|---|

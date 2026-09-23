@@ -183,6 +183,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | Execution record, orders 2–4 → [`docs/A1_BIGQUERY_FITNESS.md`](docs/A1_BIGQUERY_FITNESS.md) | ClaudeCode | 2026-09-21 | A1 step 1 PASS; BigQuery **unfit** for swap-level data; D1 returned for ruling; work stopped per order 5 |
 | MR-5 (below) | Architect, relayed by Mando; ClaudeCode recording | 2026-09-21 | Spend guardrail; D1 → Dune free-tier test first; options 2/3 rejected; BigQuery scope; E34; August 2025 DEGRADED |
 | MR-6 → [`docs/RULINGS_2026-09-22_B.md`](docs/RULINGS_2026-09-22_B.md) | Architect via Mando | 2026-09-22 | Census metric replaced (two distributions); N multi-venue approved with `birth_is_proxy`; schema sign-off conditional (file returned); corrections: BOOST 4.7×, cost = gross − net |
+| MR-7 → [`docs/RULINGS_2026-09-22_C.md`](docs/RULINGS_2026-09-22_C.md) | Architect via Mando | 2026-09-22 | Schema **frozen at 20 + 3**; S1/S2 acceptance = differential test (≥5 post-entry revocations on N); organic-v2 alongside v1; S4 M0 rule = rate at init, FLAG/UNKNOWN on post-entry update |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
