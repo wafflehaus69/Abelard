@@ -29,3 +29,7 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.7 projection template | ⬜ | |
 | 1.8 personal-history replay | ❌ | owner wallets not yet in `barrel/private/` |
 | §3 `credits.md` | ✅ | `docs/credits.md` |
+
+
+## Incident 2026-09-23 — runaway query, 840 credits
+`slippage_sell_txids.sql` was submitted with `--expect 8` and billed **840.28 credits** (34% of the free tier) before it could be cancelled: a `pool IN (subquery)` combined with an `OR` on the partition column removed partition pruning and the query scanned the whole sell-event history. The pre-run meter cannot catch this class: the balance was fine, the query itself was unbounded. **Fixes in `recon/dune_run_sql.py`:** in-flight watchdog cancels above max(3×expect, 5) credits using Dune's live `execution_cost_credits`; `--expect > 25` refused without `--confirm`, which is given only after the same pattern has run at one-partition scope. **Rule:** no `IN (subquery)` against a decoded table unless the subquery carries its own partition filter and the outer predicate is a plain AND on the partition column. **Free tier remaining: ~1,489.** §3's target (readiness inside the free tier) is still reachable but no longer comfortable; reported per §3, not worked around.

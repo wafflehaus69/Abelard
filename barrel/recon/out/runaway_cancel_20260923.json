@@ -1,0 +1,48 @@
+{
+ "cancelled_execution": "01M35XCX19RDMKSP97ZA6TBE0N",
+ "cancel_response": {
+  "_http_error": 404,
+  "_body": "{\"error\":\"The requested execution ID (ID 01M35XCX19RDMKSP97ZA6TBE0N) was not found.\"}"
+ },
+ "status_after": {
+  "execution_id": "01M35XCX19RDMKSP97ZA6TBE0N",
+  "query_id": 0,
+  "is_execution_finished": true,
+  "state": "QUERY_STATE_COMPLETED",
+  "submitted_at": "2026-09-23T01:17:04.426304Z",
+  "expires_at": "2026-12-22T01:30:20.977477Z",
+  "execution_started_at": "2026-09-23T01:17:05.520367891Z",
+  "execution_ended_at": "2026-09-23T01:30:20.977470755Z",
+  "result_metadata": {
+   "column_names": [
+    "day",
+    "evt_tx_id",
+    "pool"
+   ],
+   "column_types": [
+    "date",
+    "varchar",
+    "varchar"
+   ],
+   "row_count": 10,
+   "result_set_bytes": 1359,
+   "total_row_count": 10,
+   "total_result_set_bytes": 1359,
+   "datapoint_count": 30,
+   "pending_time_millis": 1094,
+   "execution_time_millis": 795457
+  },
+  "execution_cost_credits": 840.284852942
+ },
+ "usage_after": {
+  "credits_used": 1010.738,
+  "credits_included": 2500,
+  "period": {
+   "start_date": "2026-09-22",
+   "end_date": "2026-10-06"
+  },
+  "bytes_used": 0,
+  "bytes_allowed": 15000000000,
+  "n_periods": 1
+ }
+}

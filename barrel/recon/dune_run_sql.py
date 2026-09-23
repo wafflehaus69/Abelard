@@ -11,7 +11,7 @@ ALLOWANCE = 2500.0; RESERVE = 0.15
 def consumed():
     m = re.search(r"Total consumed: ([\d.]+)", LEDGER.read_text(encoding="utf-8")); return float(m.group(1)) if m else 0.0
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default="")
+    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true")
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
     # Authoritative balance from POST /v1/usage (no credits consumed); ledger is the fallback.
     u = dune_usage.usage()
@@ -23,17 +23,29 @@ def main():
     if a.expect > usable:
         print(f"REFUSED: expect {a.expect} > usable {usable:.1f} ({src}: allowance {allowance:.0f}, used {used:.2f}, reserve {RESERVE:.0%})"); sys.exit(2)
     print(f"meter[{src}]: used {used:.2f} / {allowance:.0f}, usable {usable:.1f}, this run expects {a.expect}")
+    # HARD CAP (added 2026-09-23 after a runaway: expect 8, billed 840). A query is cancelled the
+    # moment Dune's in-flight execution_cost_credits exceeds max(3 x expect, 5). --expect above 25
+    # needs --confirm, which is only given after the same SQL has run at one-partition scope.
+    cap = max(3.0 * a.expect, 5.0)
+    if a.expect > 25 and not a.confirm:
+        print(f"REFUSED: --expect {a.expect} > 25 without --confirm (run the pattern at one-partition scope first)"); sys.exit(2)
     key = rt.api_key(); e = rt.dune("POST", "/sql/execute", key, {"sql": sql, "performance": "medium"})
     eid = e.get("execution_id")
     if not eid: print("submission refused:", e); sys.exit(1)
-    t0 = time.time(); st = {}
+    t0 = time.time(); st = {}; killed = False
     while time.time() - t0 < 900:
         st = rt.dune("GET", f"/execution/{eid}/status", key)
+        spent = float(st.get("execution_cost_credits") or 0)
+        if not st.get("is_execution_finished") and spent > cap:
+            rt.dune("POST", f"/execution/{eid}/cancel", key, {})
+            killed = True
+            print(f"WATCHDOG: cancelled {eid} at {spent:.1f} credits (cap {cap:.1f})")
+            time.sleep(3); st = rt.dune("GET", f"/execution/{eid}/status", key); break
         if st.get("is_execution_finished"): break
-        time.sleep(5)
+        time.sleep(3)
     res = rt.dune("GET", f"/execution/{eid}/results", key) if st.get("is_execution_finished") else {}
     cost = float(st.get("execution_cost_credits") or 0)
-    rec = {"file": a.sql, "label": a.label, "execution_id": eid, "state": st.get("state", "NOT RUN (15 min)"), "credits": cost,
+    rec = {"file": a.sql, "label": a.label, "execution_id": eid, "state": ("CANCELLED BY WATCHDOG" if killed else st.get("state", "NOT RUN (15 min)")), "credits": cost,
            "submitted_at": st.get("submitted_at"), "rows": (res.get("result") or {}).get("rows"), "error": res.get("error")}
     name = pathlib.Path(a.sql).stem + "_" + dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S")
     (OUT / f"run_{name}.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")

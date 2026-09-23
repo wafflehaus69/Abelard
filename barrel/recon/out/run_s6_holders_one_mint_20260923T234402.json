@@ -1,0 +1,29 @@
+{
+ "file": "barrel/recon/sql/s6_holders_one_mint.sql",
+ "label": "S6 holders one mint (retry)",
+ "execution_id": "01M38AED8KKJNFSHF9GJEEE8PE",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 7.569558824,
+ "submitted_at": "2026-09-23T23:43:34.164042Z",
+ "rows": [
+  {
+   "actions": "mint,transfer,burn",
+   "balance": "8.38117412742E11",
+   "owner": "27HFmP7ccLadGswvQfvea4o3juLw75cPF4V6jWpHM3MX",
+   "transfer_rows": 427
+  },
+  {
+   "actions": "mint,transfer,burn",
+   "balance": "7.30143597E8",
+   "owner": "5uH885EKjPYPqLrJeJeJJFW4N7nqdAgCCBrSKZvQey9d",
+   "transfer_rows": 427
+  },
+  {
+   "actions": "mint,transfer,burn",
+   "balance": "1.999160558541364E15",
+   "owner": "CYZkgb4WdR1c2CGTHt1hHKKBYURzYbhpEbm8qcx8ogm9",
+   "transfer_rows": 427
+  }
+ ],
+ "error": null
+}

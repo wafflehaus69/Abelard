@@ -1,0 +1,10 @@
+{
+ "file": "barrel/recon/sql/slippage_sell_txids.sql",
+ "label": "1.6 sell tx ids",
+ "execution_id": "01M35XCX19RDMKSP97ZA6TBE0N",
+ "state": "QUERY_STATE_EXECUTING",
+ "credits": 660.708382353,
+ "submitted_at": "2026-09-23T01:17:04.426304Z",
+ "rows": null,
+ "error": null
+}
