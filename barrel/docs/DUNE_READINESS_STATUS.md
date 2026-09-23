@@ -17,10 +17,10 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.4 calibration-slice distributions | ⬜ | |
 | 1.4 20-token seeded reconciliation list | ⬜ | |
 | 1.5 S1/S2 as-of, reconciled on 5 tokens | ✅ | `VALIDATION_1_5_S1_S2.md`: 5/5 reconciled; method caveat stated (reconstruction + no-change-after-entry, not a historical-slot read); structural PASS on P measured |
-| 1.5 S3/S4 | 🟡 | tables identified; 4/5 sample mints are Token-2022 (benign extensions only); S4 rate from chain (Dune decodes no args) — as-of = now by construction |
+| 1.5 S3/S4 | ✅ | `VALIDATION_1_5_S3_S4.md`: 10/10 reconciled (5 P + 5 N) via raw Token-2022 calls by instruction index; first live FAIL found (N mint, 500 bps transfer fee); S4 *rate* as-of needs sub-instruction decode (next) |
 | 1.5 S6/S7/S7b/S8 | ⬜ | |
 | 1.5 S9/S10 | ⬜ | |
-| 1.5 UNKNOWN path per check | 🟡 | S1/S2 documented; S3–S10 pending |
+| 1.5 UNKNOWN path per check | 🟡 | S1–S4 documented; S5–S10 pending |
 | 1.6 fee pricing from decoded events, per era, SOL-quoted | ⬜ | one-day proportions already confirmed (25.0/5.0 bps) |
 | 1.6 fee samples re-run with v1 fix | ✅ | `M0_FEE_LEGS.md` Part 3 |
 | 1.6 slippage from reserves, validated on 10 swaps | ⬜ | |

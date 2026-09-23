@@ -1,0 +1,17 @@
+{
+ "file": "barrel/recon/sql/s3s4_raw_calls.sql",
+ "label": "1.5 S3/S4 raw calls",
+ "execution_id": "01M35SMXTYHG3BJGGDKJ1CVBPR",
+ "state": "QUERY_STATE_FAILED",
+ "credits": 0.0,
+ "submitted_at": "2026-09-23T00:11:33.086957Z",
+ "rows": null,
+ "error": {
+  "type": "FAILED_TYPE_EXECUTION_FAILED",
+  "message": "line 8:36: Function 'bytearray_substr' not registered at line 8, position 36 [Execution ID: 01M35SMXTYHG3BJGGDKJ1CVBPR]",
+  "metadata": {
+   "line": 8,
+   "column": 36
+  }
+ }
+}

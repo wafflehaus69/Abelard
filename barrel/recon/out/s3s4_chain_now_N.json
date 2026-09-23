@@ -1,0 +1,56 @@
+[
+ {
+  "mint": "B6tBzcGXygwNSn1ghSrLYYYphG9UEQfrHvVAtetScoiw",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null,
+  "extensions": [
+   "metadataPointer",
+   "tokenMetadata"
+  ],
+  "transferFee_bps": null
+ },
+ {
+  "mint": "D4LLPan8pSdsYmuxnLeq4rFXeXaxbazYLmvNd8ncwBSc",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null,
+  "extensions": [
+   "metadataPointer",
+   "tokenMetadata"
+  ],
+  "transferFee_bps": null
+ },
+ {
+  "mint": "DGojxfuXUNER9hMKL2PJ6JmrydRKFgRqDGuJ5pzissd5",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null,
+  "extensions": [
+   "metadataPointer",
+   "tokenMetadata"
+  ],
+  "transferFee_bps": null
+ },
+ {
+  "mint": "GbRs1rEFHU4f2qWVmm3aFs9QEFHYgeHigSCoPkCjpePM",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null,
+  "extensions": [
+   "metadataPointer",
+   "tokenMetadata"
+  ],
+  "transferFee_bps": null
+ },
+ {
+  "mint": "H2jDWfVqHLk179XunAgo9PEBTwHox5Sd2AJgC6C42k1w",
+  "program": "Token-2022",
+  "mintAuthority": null,
+  "freezeAuthority": null,
+  "extensions": [
+   "transferFeeConfig"
+  ],
+  "transferFee_bps": 500
+ }
+]

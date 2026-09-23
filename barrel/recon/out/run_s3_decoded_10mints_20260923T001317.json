@@ -1,0 +1,71 @@
+{
+ "file": "barrel/recon/sql/s3_decoded_10mints.sql",
+ "label": "1.5 S3 decoded 10 mints",
+ "execution_id": "01M35SQY23KQMCCY91EAYQ0JV3",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.350535886,
+ "submitted_at": "2026-09-23T00:13:11.619813Z",
+ "rows": [
+  {
+   "mint": "B6tBzcGXygwNSn1ghSrLYYYphG9UEQfrHvVAtetScoiw",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "N"
+  },
+  {
+   "mint": "D4LLPan8pSdsYmuxnLeq4rFXeXaxbazYLmvNd8ncwBSc",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "N"
+  },
+  {
+   "mint": "DGojxfuXUNER9hMKL2PJ6JmrydRKFgRqDGuJ5pzissd5",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "N"
+  },
+  {
+   "mint": "GbRs1rEFHU4f2qWVmm3aFs9QEFHYgeHigSCoPkCjpePM",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "N"
+  },
+  {
+   "mint": "H2jDWfVqHLk179XunAgo9PEBTwHox5Sd2AJgC6C42k1w",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "N"
+  },
+  {
+   "mint": "7C5mqYVj5P1kXuBvdw7yXjAdb1TWjw8xEVuWZn41pump",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "P"
+  },
+  {
+   "mint": "AaTwXAnMckAhL4ucT8i5GQpdN5MWCGuBzwkeNzBpump",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "P"
+  },
+  {
+   "mint": "AjdE84dGqhbqDYhh8Pm8oCRMCTpUGQ4oDaRBF5vwpump",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "P"
+  },
+  {
+   "mint": "FBmPBhgQvzaEvcdWDThNCnP7j83hu9cFtGW3tDj6pump",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "P"
+  },
+  {
+   "mint": "GfYX7XWmhcsF1PdoL6LZq5JuBmueK7bW4nwxtisDFGW8",
+   "non_transferable": false,
+   "permanent_delegate": null,
+   "stratum": "P"
+  }
+ ],
+ "error": null
+}

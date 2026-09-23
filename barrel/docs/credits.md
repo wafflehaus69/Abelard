@@ -47,8 +47,13 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 40 | barrel/recon/sql/s1s2_sample_tokens.sql (1.5 sample tokens) | `01M35RZ7BF29…` | 0.188 | 79.25 |
 | 41 | barrel/recon/sql/s1s2_authority_history.sql (1.5 S1/S2 history 5 mints) | `01M35S2M921X…` | 0.366 | 82.55 |
 | 42 | barrel/recon/sql/census_organic_week.sql (1.4 census organic (MR-6)) | `01M35SFD1DZF…` | 3.567 | 86.12 |
+| 43 | barrel/recon/sql/s3s4_extensions.sql (1.5 S3/S4 extensions 10 mints) | `01M35SK1TYR8…` | 0.000 | 86.12 |
+| 44 | barrel/recon/sql/s3s4_raw_calls.sql (1.5 S3/S4 raw calls) | `01M35SMXTYHG…` | 0.000 | 88.28 |
+| 45 | barrel/recon/sql/s3s4_raw_calls.sql (1.5 S3/S4 raw calls) | `01M35SNXJ2G3…` | 3.694 | 91.97 |
+| 46 | barrel/recon/sql/s3_decoded_10mints.sql (1.5 S3 decoded 10 mints) | `01M35SQY23KQ…` | 1.351 | 93.33 |
+| 47 | barrel/recon/sql/s3s4_raw_calls_n.sql (1.5 S3/S4 raw calls N) | `01M35ST6W6WZ…` | 5.819 | 99.15 |
 
-**Total consumed: 86.12 credits. Remaining: 2414. Usable after 15% reserve: 2052.**
+**Total consumed: 99.15 credits. Remaining: 2401. Usable after 15% reserve: 2041.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 86.121 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 99.150 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

@@ -1,0 +1,71 @@
+{
+ "file": "barrel/recon/sql/s3s4_raw_calls_n.sql",
+ "label": "1.5 S3/S4 raw calls N",
+ "execution_id": "01M35ST6W6WZ7C016Q80XN5M1E",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 5.818970589,
+ "submitted_at": "2026-09-23T00:14:26.182883Z",
+ "rows": [
+  {
+   "calls": 1,
+   "first_slot": 443309395,
+   "ix_index": 0,
+   "mint": "B6tBzcGXygwNSn1ghSrLYYYphG9UEQfrHvVAtetScoiw"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443309395,
+   "ix_index": 39,
+   "mint": "B6tBzcGXygwNSn1ghSrLYYYphG9UEQfrHvVAtetScoiw"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443283091,
+   "ix_index": 0,
+   "mint": "D4LLPan8pSdsYmuxnLeq4rFXeXaxbazYLmvNd8ncwBSc"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443283091,
+   "ix_index": 39,
+   "mint": "D4LLPan8pSdsYmuxnLeq4rFXeXaxbazYLmvNd8ncwBSc"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443284032,
+   "ix_index": 0,
+   "mint": "DGojxfuXUNER9hMKL2PJ6JmrydRKFgRqDGuJ5pzissd5"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443284032,
+   "ix_index": 39,
+   "mint": "DGojxfuXUNER9hMKL2PJ6JmrydRKFgRqDGuJ5pzissd5"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443366997,
+   "ix_index": 0,
+   "mint": "GbRs1rEFHU4f2qWVmm3aFs9QEFHYgeHigSCoPkCjpePM"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443366997,
+   "ix_index": 39,
+   "mint": "GbRs1rEFHU4f2qWVmm3aFs9QEFHYgeHigSCoPkCjpePM"
+  },
+  {
+   "calls": 1,
+   "first_slot": 443308662,
+   "ix_index": 20,
+   "mint": "H2jDWfVqHLk179XunAgo9PEBTwHox5Sd2AJgC6C42k1w"
+  },
+  {
+   "calls": 3,
+   "first_slot": 443308662,
+   "ix_index": 26,
+   "mint": "H2jDWfVqHLk179XunAgo9PEBTwHox5Sd2AJgC6C42k1w"
+  }
+ ],
+ "error": null
+}
