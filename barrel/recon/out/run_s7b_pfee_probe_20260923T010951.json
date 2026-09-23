@@ -1,0 +1,17 @@
+{
+ "file": "barrel/recon/sql/s7b_pfee_probe.sql",
+ "label": "S7b pfee raw probe",
+ "execution_id": "01M35WYHAA1WM0HZ9KMFFJHRX4",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.153088236,
+ "submitted_at": "2026-09-23T01:09:13.67493Z",
+ "rows": [
+  {
+   "distinct_discriminators": 12,
+   "inner_calls": 38854525,
+   "pfee_calls": 38865183,
+   "txs": 35442792
+  }
+ ],
+ "error": null
+}

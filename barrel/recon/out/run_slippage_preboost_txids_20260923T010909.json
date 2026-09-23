@@ -1,0 +1,56 @@
+{
+ "file": "barrel/recon/sql/slippage_preboost_txids.sql",
+ "label": "1.6 pre-BOOST tx ids",
+ "execution_id": "01M35WY2AFY6V7BG3DBWJWHXRN",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.152382353,
+ "submitted_at": "2026-09-23T01:08:58.320488Z",
+ "rows": [
+  {
+   "base_out": "896504509548",
+   "base_r": "171262646726494",
+   "evt_block_slot": 423478908,
+   "evt_tx_id": "ojF5MdtYRg7KyuFTR2nF18ncQ79JcLvZVSgdvZgpGaMoHzrBp6hGyNZTH4VnChxY8o4k7Vo3MyBHU5mGSAnCkqx",
+   "pool": "8CWfdpgEsiN9qDgkDEoxUth4YeXxkNrnqPgtTqmdaPbd",
+   "q_in": "588000000",
+   "quote_r": "110414884614"
+  },
+  {
+   "base_out": "276352670665",
+   "base_r": "170366142216946",
+   "evt_block_slot": 423478908,
+   "evt_tx_id": "5hELWcB2PFVTcjBQVRX42saDnwcnXwKoQkXzow6Acoe4LtmqccX5vd9G8sqhTMrqsVrUDbnbyvMhhRpsG7SrDPdw",
+   "pool": "8CWfdpgEsiN9qDgkDEoxUth4YeXxkNrnqPgtTqmdaPbd",
+   "q_in": "182506138",
+   "quote_r": "110997074337"
+  },
+  {
+   "base_out": "1114398332531",
+   "base_r": "265929029206288",
+   "evt_block_slot": 423478908,
+   "evt_tx_id": "VKKLHSF26yZW4e1bzyzu9kqba5M6pmZmC959YWua2J7d9q5KMFunhuQocyGDustW6nRH3Z3DMTBrzdNxfv51AFv",
+   "pool": "2MoKuH2C2EM8ZjFZPsxzBAYeZEDYW3RikipsNtvfYBDj",
+   "q_in": "300000000",
+   "quote_r": "70408929585"
+  },
+  {
+   "base_out": "47056969393",
+   "base_r": "147882336300087",
+   "evt_block_slot": 423478908,
+   "evt_tx_id": "5BjkpHapuHd1LYPsuFkkYxBugN8jAK1o4PTzqUe9Wm1ghUxJE9KgoKyVvco7iPvaMTfvSPtZrr8SHDQJH7hpri1p",
+   "pool": "8h8zPaznhuWYY3UFF5FfZ31XFLXZyCcNZ71gW9MEYHEc",
+   "q_in": "51347579",
+   "quote_r": "161314756669"
+  },
+  {
+   "base_out": "740591562589",
+   "base_r": "251582884710750",
+   "evt_block_slot": 423478908,
+   "evt_tx_id": "5Yg2nu7sHn64hj1NjohbznqsftWQPhVCerR7Ue1VPvuH94STDUYkdjWycjcFhmEcXSwqscAQrfWDMjV3GoNQ3tgn",
+   "pool": "9bczPCEXJPqyrJ5VJy7ZrD7xAXuFDHL7LhhCWzSqozyA",
+   "q_in": "210256527",
+   "quote_r": "70335802985"
+  }
+ ],
+ "error": null
+}

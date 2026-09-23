@@ -1,0 +1,31 @@
+{
+ "file": "barrel/recon/sql/slippage_validate_v2.sql",
+ "label": "1.6 slippage v2 + implied virtual reserve",
+ "execution_id": "01M35WW8GA68DR5S8Z1X9K3DMQ",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.410264706,
+ "submitted_at": "2026-09-23T01:07:59.114991Z",
+ "rows": [
+  {
+   "V_sol_p10": 0.1959486146903534,
+   "V_sol_p50": 1.5647675802253418,
+   "V_sol_p90": 6.594217535849136,
+   "day": "2026-06-01",
+   "err_p50": 1.2817823998361384,
+   "err_p90": 2.2770811316924764,
+   "n": 40,
+   "pools": 15
+  },
+  {
+   "V_sol_p10": 17.598099853499757,
+   "V_sol_p50": 19.6932740112455,
+   "V_sol_p90": 36.59231828006836,
+   "day": "2026-09-01",
+   "err_p50": 1.7392568441520633,
+   "err_p90": 19.937760449787902,
+   "n": 40,
+   "pools": 23
+  }
+ ],
+ "error": null
+}

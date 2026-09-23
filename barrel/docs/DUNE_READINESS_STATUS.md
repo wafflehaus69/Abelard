@@ -18,13 +18,13 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.4 20-token seeded reconciliation list | ⬜ | |
 | 1.5 S1/S2 as-of, reconciled on 5 tokens | ✅ | reconstruction 5/5 (necessary) + **differential test 7/7** on N post-entry revocations (`VALIDATION_1_5_S1_S2.md`); history window starts at mint creation |
 | 1.5 S3/S4 | ✅ | `VALIDATION_1_5_S3_S4.md`: 10/10 reconciled (5 P + 5 N) via raw Token-2022 calls by instruction index; first live FAIL found (N mint, 500 bps transfer fee); S4 *rate* as-of needs sub-instruction decode (next) |
-| 1.5 S6/S7/S7b/S8 | ⬜ | |
+| 1.5 S6/S7/S7b/S8 | 🟡 | S5 locker list + gaps and S7b source (raw pfee calls + pinned IDL; no decoded tables) in `VALIDATION_1_5_S5_S7B.md`; S6/S7/S8 queries not yet written |
 | 1.5 S9/S10 | ⬜ | |
 | 1.5 UNKNOWN path per check | 🟡 | S1–S4 documented; S5–S10 pending |
 | 1.6 fee pricing from decoded events, per era, SOL-quoted | ⬜ | one-day proportions already confirmed (25.0/5.0 bps) |
 | 1.6 fee samples re-run with v1 fix | ✅ | `M0_FEE_LEGS.md` Part 3 |
-| 1.6 slippage from reserves, validated on 10 swaps | ⬜ | |
-| 1.7 rebalance date chosen, seeded | ⬜ | |
+| 1.6 slippage from reserves, validated on 10 swaps | 🟡 | post-BOOST explained (implied virtual quote reserve ~20 SOL/pool, absent from Dune's layout); pre-BOOST residual 1.3% under chain decode |
+| 1.7 rebalance date chosen, seeded | ✅ | **T = 2026-03-23**, seed 20260922, 41 eligible Mondays (`recon/out/rebalance_date_1_7.json`): after calibration slice (ends 2025-07-10), pre-BOOST, 60-day lookback clear of DEGRADED |
 | 1.7 funnel written, dry-run on 2-day window | ⬜ | |
 | 1.7 projection template | ⬜ | |
 | 1.8 personal-history replay | ❌ | owner wallets not yet in `barrel/private/` |

@@ -56,8 +56,14 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 49 | barrel/recon/sql/s1s2_differential_history.sql (1.5 S1/S2 differential history) | `01M35VP2V489…` | 0.215 | 99.56 |
 | 50 | barrel/recon/sql/census_organic_v2_week.sql (1.4 census organic v1 vs v2) | `01M35VQ89ZJ8…` | 43.626 | 143.19 |
 | 51 | barrel/recon/sql/s1s2_differential_history_redutae.sql (1.5 differential re-pull REDUTAE1) | `01M35VVV5RDH…` | 0.814 | 144.01 |
+| 52 | barrel/recon/sql/discover_fees_and_lockers.sql (S7b/S5 discovery) | `01M35WJ2NBQM…` | 5.448 | 149.45 |
+| 53 | barrel/recon/sql/slippage_validate_10.sql (1.6 slippage 10 swaps) | `01M35WRSJW49…` | 0.289 | 159.38 |
+| 54 | barrel/recon/sql/slippage_validate_preboost.sql (1.6 slippage pre vs post BOOST) | `01M35WTRSJ8D…` | 0.424 | 159.81 |
+| 55 | barrel/recon/sql/slippage_validate_v2.sql (1.6 slippage v2 + implied virtual reserve) | `01M35WW8GA68…` | 0.410 | 160.22 |
+| 56 | barrel/recon/sql/slippage_preboost_txids.sql (1.6 pre-BOOST tx ids) | `01M35WY2AFY6…` | 0.152 | 160.37 |
+| 57 | barrel/recon/sql/s7b_pfee_probe.sql (S7b pfee raw probe) | `01M35WYHAA1W…` | 1.153 | 161.37 |
 
-**Total consumed: 144.01 credits. Remaining: 2356. Usable after 15% reserve: 2003.**
+**Total consumed: 161.37 credits. Remaining: 2339. Usable after 15% reserve: 1988.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 143.191 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 161.527 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

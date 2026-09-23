@@ -1,0 +1,16 @@
+{
+ "seed": 20260922,
+ "method": "random.Random(seed).choice over eligible Mondays",
+ "P_start": "2025-03-20",
+ "weeks_in_P": 79,
+ "calibration_slice_end": "2025-07-10",
+ "boost": "2026-07-21",
+ "degraded": [
+  "2025-08-05",
+  "2025-08-11"
+ ],
+ "eligible_count": 41,
+ "eligible_first": "2025-10-13",
+ "eligible_last": "2026-07-20",
+ "rebalance_date_T": "2026-03-23"
+}

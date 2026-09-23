@@ -1,0 +1,20 @@
+{
+ "file": "barrel/recon/sql/slippage_validate_preboost.sql",
+ "label": "1.6 slippage pre vs post BOOST",
+ "execution_id": "01M35WTRSJ8DMN7DD8FNEY0BP4",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.423558824,
+ "submitted_at": "2026-09-23T01:07:10.258952Z",
+ "rows": [
+  {
+   "day": "2026-09-01",
+   "errB_p50": 1.6194893772363614,
+   "errB_p90": 16.31078174047033,
+   "errC_lp_p50": 1.410372009468529,
+   "errC_p50": 1.6135955554618933,
+   "errC_p90": 16.206086783488484,
+   "n": 10
+  }
+ ],
+ "error": null
+}
