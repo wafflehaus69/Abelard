@@ -1,0 +1,25 @@
+{
+ "file": "barrel/recon/sql/census_organic_week.sql",
+ "label": "1.4 census organic (MR-6)",
+ "execution_id": "01M35SFD1DZF8T4T1N8K5BH0VP",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 3.567205883,
+ "submitted_at": "2026-09-23T00:08:32.045576Z",
+ "rows": [
+  {
+   "caveat": "S7b fee-share recipients NOT excluded (pending)",
+   "first_within_15min": 7234,
+   "first_within_60s": 7221,
+   "graduates": 7236,
+   "t_first_p10": 0,
+   "t_first_p50": 0,
+   "t_first_p90": 1,
+   "takers_max": 33100,
+   "takers_p10": 18,
+   "takers_p50": 420,
+   "takers_p90": 3202,
+   "zero_organic": 0
+  }
+ ],
+ "error": null
+}

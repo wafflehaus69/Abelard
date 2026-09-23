@@ -46,8 +46,9 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 39 | barrel/recon/sql/discover_spl_token_tables.sql (1.5 spl token discovery) | `01M35RYXD3TQ…` | 1.941 | 79.06 |
 | 40 | barrel/recon/sql/s1s2_sample_tokens.sql (1.5 sample tokens) | `01M35RZ7BF29…` | 0.188 | 79.25 |
 | 41 | barrel/recon/sql/s1s2_authority_history.sql (1.5 S1/S2 history 5 mints) | `01M35S2M921X…` | 0.366 | 82.55 |
+| 42 | barrel/recon/sql/census_organic_week.sql (1.4 census organic (MR-6)) | `01M35SFD1DZF…` | 3.567 | 86.12 |
 
-**Total consumed: 82.55 credits. Remaining: 2417. Usable after 15% reserve: 2055.**
+**Total consumed: 86.12 credits. Remaining: 2414. Usable after 15% reserve: 2052.**
 
 _Generated 2026-09-22T19:35:40+00:00_
-_API says used: 82.183 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 86.121 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
