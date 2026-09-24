@@ -114,6 +114,18 @@ GUARDS = {
                          "history, labelled as ahead of the demand panel; its demand "
                          "frontier is read from the gated hyperscaler series"),
 
+    # --- the alert gate: not a series, but it reads the same frontier --------
+    "alerts": dict(
+        kind=DERIVED, frontier=True,
+        no_floor_because="not a figure but a GATE, declared here because it used to "
+                         "carry the package's second definition of the frontier. R3 "
+                         "(2026-09-22): snapshot._frontier_quarter now anchors on the "
+                         "total's published quarter — the one the coverage rule "
+                         "accepted — instead of the newest quarter any issuer reached. "
+                         "Phase transitions and commitment moves pass through it alike",
+        note="tests/test_one_frontier.py fails if any module derives a frontier "
+             "from arrival order again"),
+
     # --- not figures ---------------------------------------------------------
     "generated_unix": dict(kind=META),
     "bands_measured_on": dict(kind=META),

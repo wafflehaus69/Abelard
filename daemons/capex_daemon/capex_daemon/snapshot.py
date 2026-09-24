@@ -1013,19 +1013,39 @@ SINCE_SECTIONS = (
 
 
 def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):
-    """The oldest quarter a transition may alert from.
+    """The oldest quarter a transition may alert from — E31, on the coverage rule.
 
-    Anchored on the newest quarter any classified series reached, so a panel
-    mid-filing-season does not go silent just because one issuer is ahead.
+    **One frontier, one definition (R3, 2026-09-22).** This used to anchor on
+    "the newest quarter ANY classified series reached", which is a second,
+    incompatible definition of the frontier: arrival order rather than coverage.
+    It fails exactly where it matters. On 2026-09-12 Oracle alone reached 2026Q3
+    and dragged this gate to 2026Q2, which silenced every transition the rest of
+    the panel had at 2026Q2 — the gate moved because one issuer filed early, not
+    because the panel got there.
+
+    So the anchor is now the aggregate's own published frontier: the newest
+    quarter that PASSED the coverage gate (`trend.frontier_split`) and was
+    therefore published. Nothing is recomputed here; the quarter is read from
+    the total, which is the single place a frontier is decided.
+
+    The one-quarter lookback stays, and now means what it says: a transition at
+    the quarter before the panel's frontier is still current news.
     """
-    qs = [o["quarter"] for i in (snap.get("issuers") or {}).values()
-          for o in (i.get("observations") or [])]
-    qs += [o["quarter"] for b in (snap.get("buckets") or {}).values()
-           for o in (b.get("observations") or [])]
-    qs += [o["quarter"] for o in ((snap.get("total") or {}).get("observations") or [])]
-    if not qs:
+    total = snap.get("total") or {}
+    anchor = total.get("latest_quarter")
+    if not anchor:
+        # Same quantity under its other name: the total's observations are the
+        # frontier-trimmed series, so their last quarter IS the published
+        # frontier. Reading it here is not a second definition — reading the
+        # ISSUERS' quarters would be, and that is what this no longer does.
+        obs = total.get("observations") or []
+        anchor = obs[-1]["quarter"] if obs else None
+    if not anchor:
+        # No published total at all — a panel below its membership floor. There
+        # is no frontier to gate on, and inventing one from the issuers would be
+        # exactly the second definition this function exists to remove.
         return None
-    y, n = trend._cq_sort(max(qs, key=trend._cq_sort))
+    y, n = trend._cq_sort(anchor)
     idx = y * 4 + n - lookback
     return "{}Q{}".format((idx - 1) // 4, (idx - 1) % 4 + 1)
 
