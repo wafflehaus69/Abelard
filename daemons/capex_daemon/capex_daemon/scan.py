@@ -27,9 +27,9 @@ import json
 import os
 import time
 
-from . import (alerts as alertmod, brief, config, divergence, edgar, facts_api,
-               freshness, identity, phases, snapshot, storage, suppliers, tagmap,
-               universe)
+from . import (alerts as alertmod, brief, commitments, config, divergence, edgar,
+               facts_api, freshness, identity, phases, snapshot, storage,
+               suppliers, tagmap, universe)
 
 WATERMARK_PREFIX = "scan:"
 
@@ -395,6 +395,16 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     prior = {r[0] for r in con.execute("SELECT event_key FROM phase_events")}
     first_run = not prior
     alerts = snapshot.alert_lines(snap, prior_keys=prior)
+    # P2 C4 — commitment moves get their own event store and their own first
+    # run. The two backfills are independent: the phase ladder has been
+    # recording since CD-1, so a panel whose transitions are long since known is
+    # still seeing its FIRST commitment deltas today, and dumping years of them
+    # into the queue would be a flood dressed as news (R2, E31).
+    commit_prior = {r[0] for r in con.execute(
+        "SELECT event_key FROM commitment_events")}
+    first_commit_run = not commit_prior
+    commit_alerts, commit_quarantined = snapshot.commitment_alerts_and_quarantine(
+        snap, prior_keys=commit_prior)
     # Record EVERY transition the snapshot knows about — issuer, bucket AND
     # total-panel. Recording only issuer transitions would leave aggregate ones
     # permanently absent from phase_events, so they would re-alert on every scan
@@ -403,6 +413,10 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
                                    x["to_state"], x["yoy"], x["delta"])
                  for x in snap["transitions"]]
     phases.record_transitions(con, all_trans, now_unix=started)
+    # Every delta, not only the alerting ones — so a later threshold change or a
+    # newly ruled basis class cannot announce old moves as news.
+    commit_recorded = commitments.record_commitment_events(
+        con, snapshot.commitment_deltas(snap), now_unix=started)
 
     # B1 — what changed in THIS run, assembled by the scan because "new" is a
     # fact about the run and a renderer reading only the snapshot cannot know
@@ -417,17 +431,26 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
             row["form"], row["period"] = f.form, f.report_date
     snap[snapshot.SINCE_KEY] = snapshot.since_last_scan(
         snap, prior_keys=prior, filings=filed, ingest_gaps=ingest_gaps,
-        scan_unix=started)
+        scan_unix=started, commitment_prior_keys=commit_prior)
     if first_run:
         # A first run rediscovers everything; that is a backfill, not news.
         snap[snapshot.SINCE_KEY]["transitions"] = []
         snap[snapshot.SINCE_KEY]["first_run_backfill"] = True
+    if first_commit_run:
+        snap[snapshot.SINCE_KEY]["commitment_alerts"] = []
+        snap[snapshot.SINCE_KEY]["commitment_quarantined"] = []
+        snap[snapshot.SINCE_KEY]["first_commitment_backfill"] = len(commit_alerts)
     snapshot.save(con, snap)
     if first_run:
         # A first run rediscovers the entire history at once. That is a backfill,
         # not news — it is recorded so later runs are quiet, and reported as a
         # count rather than blasted into the alert bar.
         alerts = []
+    if first_commit_run:
+        # R2, explicitly: the first run of a newly wired alert is silent. Every
+        # delta has just been recorded, so tomorrow's scan is quiet and the
+        # first real move announces itself.
+        commit_alerts = []
 
     # Durability, not dispatch (E28). Whatever survived the frontier gate is
     # handed to the shared queue; Abelard decides what becomes a push. An
@@ -435,10 +458,16 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     # that vanished between derivation and the queue is the one failure this
     # whole path exists to prevent.
     enqueued = duplicates = 0
+    commit_enqueued = commit_duplicates = 0
     try:
         enqueued, duplicates = alertmod.enqueue_alerts(alerts, queue_path=queue_path)
     except Exception as exc:
         errors.append(("alert-queue", "enqueue failed: {}".format(exc)))
+    try:
+        commit_enqueued, commit_duplicates = alertmod.enqueue_commitment_alerts(
+            commit_alerts, queue_path=queue_path)
+    except Exception as exc:
+        errors.append(("alert-queue", "commitment enqueue failed: {}".format(exc)))
 
     # The nightly artifact is the PDF phase page, drawn from the same model the
     # dashboard renders (brief.py). The matplotlib PNG pipeline it replaced was
@@ -488,6 +517,11 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         "artifacts_written": artifacts,
         "alerts": alerts,
         "alerts_enqueued": enqueued,
+        "commitment_deltas_recorded": len(commit_recorded),
+        "commitment_alerts_enqueued": commit_enqueued,
+        "commitment_alerts_duplicate": commit_duplicates,
+        "commitment_alerts_quarantined": len(commit_quarantined),
+        "first_commitment_backfill": first_commit_run,
         "alerts_duplicate": duplicates,
         "transitions_recorded": len(all_trans),
         "first_run_backfill": first_run,
@@ -583,6 +617,12 @@ def format_summary(result):
             result.get("transitions_recorded", 0))
     elif result.get("alerts"):
         base += " | {} enqueued".format(result.get("alerts_enqueued", 0))
+    if result.get("first_commitment_backfill"):
+        base += " | first commitment run: {} moves backfilled, none alerted".format(
+            result.get("commitment_deltas_recorded", 0))
+    elif result.get("commitment_alerts_enqueued"):
+        base += " | {} commitment moves enqueued".format(
+            result["commitment_alerts_enqueued"])
         base += " | TRANSITIONS: {}".format("; ".join(
             "{} {} {}->{} ({})".format(a["series_key"], a["quarter"], a["from_state"],
                                        a["to_state"], a["reason"])

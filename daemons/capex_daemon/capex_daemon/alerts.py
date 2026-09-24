@@ -29,6 +29,7 @@ QUEUE_SOURCE = "capex_daemon"
 DEFAULT_QUEUE_PATH = Path.home() / ".openclaw" / "abelard_queue" / "queue.db"
 
 KIND_PHASE_TRANSITION = "phase_transition"
+KIND_COMMITMENT_MOVE = "commitment_move"
 
 
 def _open(queue_path):
@@ -68,6 +69,61 @@ def enqueue_alerts(alerts, queue_path=None, queue=None):
                     "quarter": a["quarter"],
                     "from_state": a["from_state"],
                     "to_state": a["to_state"],
+                    "reason": a["reason"],
+                },
+            )
+            if created:
+                enqueued += 1
+            else:
+                duplicates += 1
+    finally:
+        if own:
+            q.close()
+    return enqueued, duplicates
+
+
+def enqueue_commitment_alerts(alerts, queue_path=None, queue=None):
+    """Enqueue already-gated commitment moves (P2 C4). Returns (enqueued, duplicates).
+
+    `alerts` is the output of `snapshot.commitment_alerts_and_quarantine()[0]` —
+    frontier-gated, above the ratified threshold, basis-checked, and restricted
+    to the three buildout classes. As with transitions, this function adds no
+    policy of its own: the alertable decision belongs to the snapshot layer, and
+    a second copy here would drift from it.
+
+    **This is the sink the B4 work lacked.** `commitment_alert_lines` existed,
+    was tested, rendered on the Brief's since-page — and nothing enqueued it, so
+    a commitment move could never reach attention. A ratified behaviour is not
+    built until its consumer calls it.
+    """
+    if not alerts:
+        return 0, 0
+    own = queue is None
+    q = queue if queue is not None else _open(queue_path)
+    enqueued = duplicates = 0
+    try:
+        for a in alerts:
+            _item, created = q.enqueue(
+                source=QUEUE_SOURCE,
+                kind=KIND_COMMITMENT_MOVE,
+                # Issuer-scoped: a commitment move is one issuer against its own
+                # previous disclosure, never a panel series.
+                topic_key="issuer:{}".format(a["ticker"]),
+                dedupe_key=a["event_key"],
+                payload={
+                    "ticker": a["ticker"],
+                    "bucket": a.get("bucket"),
+                    "concept": a.get("concept"),
+                    # The class travels with the alert. A commitment figure that
+                    # arrives without saying what it contains is how lessor
+                    # receipts and prepaid rent reached the buildout read.
+                    "basis_class": a.get("basis_class"),
+                    "from_q": a["from_q"], "to_q": a["to_q"],
+                    "quarters_between": a.get("quarters_between"),
+                    "from_value": a.get("from_value"), "to_value": a.get("to_value"),
+                    "delta": a.get("delta"), "multiple": a.get("multiple"),
+                    "armed_by": a.get("armed_by"),
+                    "basis": a.get("basis"),
                     "reason": a["reason"],
                 },
             )

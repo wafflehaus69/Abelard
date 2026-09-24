@@ -147,6 +147,26 @@ CREATE TABLE IF NOT EXISTS phase_events(
 );
 CREATE INDEX IF NOT EXISTS idx_phase_events_series ON phase_events(series_key, quarter);
 
+-- Forward-commitment moves (P2 C4). Same rule as phase_events and for the same
+-- reason: the key is content-derived, so a move re-derived by a later scan
+-- cannot alert twice. EVERY delta is recorded, not only the ones that alerted —
+-- otherwise a threshold change, or an issuer's class being ruled later, would
+-- announce years of old moves as news.
+CREATE TABLE IF NOT EXISTS commitment_events(
+    event_key TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    from_q TEXT NOT NULL,
+    to_q TEXT NOT NULL,
+    from_value REAL,
+    to_value REAL,
+    delta REAL,
+    multiple REAL,
+    basis_class TEXT,
+    concept TEXT,
+    observed_unix INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_commitment_events_ticker ON commitment_events(ticker, to_q);
+
 -- Composition events: a member entering or leaving a bucket-sum. Published
 -- BESIDE the trend, never blended into it (P3).
 CREATE TABLE IF NOT EXISTS composition_events(

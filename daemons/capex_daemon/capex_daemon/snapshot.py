@@ -954,7 +954,7 @@ SINCE_KEY = "since_last_scan"
 
 
 def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
-                    scan_unix=None):
+                    scan_unix=None, commitment_prior_keys=None):
     """B1 — what changed in the scan that produced this snapshot.
 
     The daemon has been a state dump: everything it knows, every night, with no
@@ -972,8 +972,14 @@ def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
     from a section that failed to run.
     """
     frontier = _frontier_quarter(snap)
+    # Commitment moves are keyed in their own namespace and recorded in their
+    # own table (C4). Passing the PHASE keys here would have been harmless by
+    # luck — the two key shapes never collide — and wrong in principle, because
+    # it silently meant no commitment move was ever deduplicated.
+    commit_prior = (prior_keys if commitment_prior_keys is None
+                    else commitment_prior_keys)
     alertable, quarantined = commitment_alerts_and_quarantine(
-        snap, prior_keys=prior_keys)
+        snap, prior_keys=commit_prior)
     comp = []
     for b, bk in sorted((snap.get("buckets") or {}).items()):
         for e in (bk.get("composition_events") or []):
@@ -989,7 +995,7 @@ def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
         "commitment_alerts": alertable,
         "commitment_quarantined": quarantined,
         "commitment_basis_owed": commitment_basis_checks_owed(
-            snap, prior_keys=prior_keys),
+            snap, prior_keys=commit_prior),
         "supplier_frontier": fr,
         "composition_events": comp,
         "ingest_gaps": list(ingest_gaps or ()),
