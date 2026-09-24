@@ -89,6 +89,63 @@ def is_net_presentation(concept):
     return concept in NET_PRESENTATION_CONCEPTS
 
 
+# --- one raise, two presentations (C6, found via KEEL) --------------------
+# "Net of issuance costs" is a gross inflow and stays eligible (the WULF ruling
+# above). It does NOT follow that it may be summed with the GROSS tagging of the
+# same raise: those are one raise stated twice, and adding them reports roughly
+# twice the money.
+#
+# KEEL is the citing case. Its cash-flow statement reads "Proceeds from
+# long-term debt, net of transaction costs 445,124"; Note 13's long-term-debt
+# movement tags the same raise gross, "Issuance of long-term debt 458,650", with
+# transaction costs on their own line. 458,650 - 13,526 = 445,124. The existing
+# rules cannot catch it: the values are not identical (so not a double-tag), and
+# the two share ONE live period, below the containment minimum (so they were
+# summed as "distinct instruments") — $903,774K for a $458,650K raise.
+#
+# The relationship here is not inferred from the data, so one shared period is
+# enough: the concepts' verified line mappings say outright that one is the
+# other net of costs. The test is `net <= gross`, not a tolerance — E8 forbids
+# inventing a band, and none is needed.
+COST_NET_RESTATEMENTS = {
+    "ProceedsFromDebtNetOfIssuanceCosts": (
+        ("ProceedsFromIssuanceOfLongTermDebt", "ProceedsFromIssuanceOfDebt",
+         "ProceedsFromIssuanceOfSecuredDebt", "ProceedsFromConvertibleDebt",
+         "ProceedsFromNotesPayable", "ProceedsFromShortTermDebt"),
+        "the same raise stated net of transaction costs and gross "
+        "(KEEL 10-Q 0001812477-26-000023: statement line 445,124 net; Note 13 "
+        "458,650 gross, costs shown separately)"),
+}
+
+
+def _cost_net_conflict(a, b, series_a, series_b, cutoff=None):
+    """(shared, reason) when a and b are one raise stated two ways, else None."""
+    for net, (grosses, why) in COST_NET_RESTATEMENTS.items():
+        if a == net and b in grosses:
+            net_s, gross_s = series_a, series_b
+        elif b == net and a in grosses:
+            net_s, gross_s = series_b, series_a
+        else:
+            continue
+        shared = sorted(set(net_s) & set(gross_s))
+        if cutoff:
+            shared = [p for p in shared if p[1] and p[1] >= cutoff]
+        live = [p for p in shared if net_s[p] or gross_s[p]]
+        if not live:
+            return None
+        # Identical values are a double-TAG, and rule (a) handles those better
+        # than a refusal does: collapse keeps the series, refusal withholds it.
+        # CIFR is the case — it tags $167,113,000 as both ProceedsFromConvertible
+        # Debt and ProceedsFromDebtNetOfIssuanceCosts in their one shared period.
+        # Firing here would have withheld a total that collapses cleanly.
+        if all(_close(net_s[p], gross_s[p]) for p in live):
+            return None
+        # Same raise implies the net side never exceeds the gross side.
+        if all(net_s[p] <= gross_s[p] or _close(net_s[p], gross_s[p]) for p in live):
+            return live, "{}; summing them would double-count it".format(why)
+    return None
+
+
 class PairVerdict:
     __slots__ = ("a", "b", "branch", "shared_periods", "detail")
 
@@ -234,6 +291,12 @@ def resolve_total(indexed, resolution, unit_filter=("USD",)):
     verdicts, collapsed, refused = [], set(), []
     for i, a in enumerate(live):
         for b in live[i + 1:]:
+            conflict = _cost_net_conflict(a, b, series_map[a], series_map[b], cutoff)
+            if conflict:
+                shared, detail = conflict
+                verdicts.append(PairVerdict(a, b, BRANCH_REFUSED, shared, detail))
+                refused.append((a, b, detail))
+                continue
             branch, shared, detail = classify_pair(series_map[a], series_map[b], cutoff)
             verdicts.append(PairVerdict(a, b, branch, shared, detail))
             if branch == BRANCH_COLLAPSED:
