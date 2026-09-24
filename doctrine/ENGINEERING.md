@@ -444,6 +444,41 @@ phantom -$975M quarter. Presentation was clean throughout. Two independent
 gates were needed, and assuming one lesson covered both would have shipped the
 bug (see [E21] corollaries).
 
+**Third citation (Mando's ruling R4, 2026-09-22) — the largest one, and a
+different layer.** GAP2 P2 presentation-verified all 26 forward-commitment lines
+on the Capex panel, one filing at a time. The concept predicts nothing:
+`UnrecordedUnconditionalPurchaseObligationBalanceSheetAmount` alone carries
+supply commitments (AVGO $126.82B, "primarily inventory"), signed leases not yet
+commenced (AMZN $137.21B, MSFT $329.1B), lease payments the company **receives**
+as lessor (CORZ $3.1B), prepaid rent **received** (WULF $90M) and a recorded
+balance-sheet liability (CCOI). `ContractualObligation` carries Meta's $349.31B
+of supply-and-datacenter commitments and a 2016 minimum-royalty from the shell
+company RIOT used to be. Six of the 26 published "forward commitments" were not
+forward commitments at all, and they were flowing through the delta events and
+the Brief's since-page as forward-demand moves.
+
+Two corollaries the earlier citations did not have.
+
+*The class belongs to the ROW, not the issuer.* AMZN and IRM each tag a
+non-buildout total and disclose their buildout figure beside it: AMZN's tagged
+line is media content, energy and software while its leases-not-yet-commenced
+sit in a different dimension member of the same concept. An issuer-level mapping
+cannot express that, so the ratified map keys on the figure.
+
+*Aggregation-layer blindness struck a fourth leg.* companyfacts drops
+dimensioned facts, which has now cost four different things: supplier segment
+revenue (CD-3 — NVDA's API record carries total `Revenues` and a segment
+*count*), Meta's Louisiana VIE exposure hiding behind a smaller "other VIEs"
+figure, Microsoft's not-yet-commenced leases (tagged, nested twice, invisible to
+the API), and now the commitments leg, where four names froze at their last
+undimensioned figure: AMZN at 2024Q2, NVDA at 2025Q3, MU 11 fiscal quarters,
+CLSK 7. NVDA is the measure of it — $45.77B published against $279B of supply
+and capacity live, plus $25B of datacenter leases not commenced, $29B of cloud
+services and $25B of equity investments, each its own class in the same note.
+A "hidden $130B" read of AMZN's live dimensioned figure would have been false in
+the other direction: that fact is media, energy and software. Presentation
+verification is what separated them.
+
 ## E24 — Never sum a parent and its consolidated subsidiary
 Ruled by Mando 2026-08-14; drafted by ClaudeCode from the originating incident
 rather than by Abelard — reword to the ledger's voice if wanted. Numbered E24
@@ -1000,8 +1035,76 @@ series and decides the answer the moment anything sums or compares across
 issuers.
 
 **Relation to [E31].** E31 gates ALERTS on a frontier; this defines the frontier
-of the SERIES. They are different frontiers, and E31's is still arrival-based
-(the newest quarter any classified series reached, less one quarter of
-lookback). That is safe today because no member leads the panel by more than a
-quarter, not by construction — recorded here as the one remaining
-arrival-defined frontier.
+of the SERIES. They were different frontiers, and E31's was arrival-based (the
+newest quarter any classified series reached, less one quarter of lookback),
+recorded here as the one remaining arrival-defined frontier and called safe
+today but not by construction.
+
+**Closed by Mando's ruling R3, 2026-09-22 (ORDER CD-GAP2-P2-BUILD C3): one
+frontier, one definition.** "Safe today" was already false where it mattered.
+The same Oracle quarter that caused this incident had dragged the ALERT window
+to 2026Q2, so every transition the rest of the panel had at 2026Q2 fell outside
+it — one early filer silencing the panel, by the same mechanism, in the leg
+nobody had looked at. The gate now anchors on the total's published quarter,
+the one the coverage rule accepted, and recomputes nothing. Measured on the
+2026-09-21 panel the window moves 2026Q2 → 2026Q1 and admits 14 transitions
+that arrival order had excluded, including MSFT ACCELERATING and META
+DECELERATING; all 14 were already recorded in `phase_events`, so nothing old
+was announced (`tests/test_one_frontier.py`). The structural half is pinned:
+the gate's own source may read the total and fails the suite if it reads
+issuers or buckets again.
+
+## E36 — A ratified behaviour is not built until its sink is connected
+
+Ruled by Mando 2026-09-22 (ruling R2 on ORDER CD-GAP2-P2-BUILD); drafted by
+ClaudeCode from the pattern rather than from one incident, because the pattern
+is the finding: five separate ratified behaviours were built, unit-tested,
+documented, and never reached anything.
+
+Incidents, in order.
+
+1. **The RIOT concept ruling** — recorded in the verify document, never encoded,
+   so the daemon kept reading deposits as capex ([E23]).
+2. **`prose.py`** — written to recover a figure from filing text, called by
+   nothing but its own tests.
+3. **The freshness fallback** — `assess` and `fetch_fallback_facts` existed and
+   passed; `scan.refresh_issuer` never called either, so an issuer whose facts
+   the API had dropped stayed dropped.
+4. **dcrev supplier transitions** — computed every scan, rendered on page 17,
+   never routed into `snap["transitions"]`, so the one supplier state with
+   thesis meaning could not fire.
+5. **B4 commitment alerts** — `commitment_alert_lines` was ratified with a
+   measured threshold, tested against 308 observation pairs, and rendered on the
+   Brief's since-page. `scan.run` enqueued only `alert_lines`. No commitment
+   move could reach attention, and none did.
+
+A sixth shape, adjacent: the frontier fix of 2026-09-21 corrected the
+definition and missed a second function that re-implemented it ([E35], "a fix
+must reach every reader").
+
+Rule: **every order that specifies an output names where that output LANDS —
+queue, Brief, file, ledger — and that landing is an acceptance criterion, not a
+consequence.** "It prints" is not "it's wired". A unit that cannot name its sink
+is not ready to be ordered.
+
+Acceptance has three parts, and the first two are not satisfiable by tests of
+the behaviour itself:
+
+* **The caller, on the production path.** Grep for the call site in `scan.run`,
+  `snapshot.build`, the enqueue — not for the definition. A test that imports a
+  function and asserts it works proves only that the function works.
+* **The artifact a reader sees.** After deploying, read the Brief, the live
+  snapshot, the queue, `phase_events` — not the scan's own summary line, which
+  reports what the scan believes it did.
+* **For anything that alerts: the first run is silent.** A newly connected sink
+  meets its whole history at once. Record every event, enqueue none, and say so
+  in the run summary; the next real move announces itself ([E31]).
+
+Corollary — a behaviour whose sink is deliberately "nowhere yet" says so in the
+order and in the code, and that is a different state from unwired. The
+commitment classes ship with `MIXED-UNSEPARABLE` and `NOT-A-COMMITMENT` reaching
+no total by design, written down as exclusions in the published table rather
+than as silence.
+
+Corollary — this is why "built and tested" is not a status. Of the five above,
+all five had passing tests at the moment they were doing nothing.
