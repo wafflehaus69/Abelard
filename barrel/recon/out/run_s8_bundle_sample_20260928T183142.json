@@ -1,0 +1,41 @@
+{
+ "file": "barrel/recon/sql/s8_bundle_sample.sql",
+ "label": "S8 bundle sample v2 (literal bounds)",
+ "execution_id": "01M3MMHZT2BT53WDZYZRJHWXDN",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.809558824,
+ "submitted_at": "2026-09-28T18:31:10.40341Z",
+ "rows": [
+  {
+   "max_buyers_sharing_one_funder": 1,
+   "mint": "7C5mqYVj",
+   "s8": "no",
+   "same_slot_buyers": 1
+  },
+  {
+   "max_buyers_sharing_one_funder": 7,
+   "mint": "AaTwXAnM",
+   "s8": "BUNDLE",
+   "same_slot_buyers": 7
+  },
+  {
+   "max_buyers_sharing_one_funder": 1,
+   "mint": "AjdE84dG",
+   "s8": "no",
+   "same_slot_buyers": 4
+  },
+  {
+   "max_buyers_sharing_one_funder": 1,
+   "mint": "FBmPBhgQ",
+   "s8": "no",
+   "same_slot_buyers": 1
+  },
+  {
+   "max_buyers_sharing_one_funder": 1,
+   "mint": "GfYX7XWm",
+   "s8": "no",
+   "same_slot_buyers": 4
+  }
+ ],
+ "error": null
+}

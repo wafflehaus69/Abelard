@@ -19,3 +19,15 @@ Two readings already: a creator funding 1,128 wallets around launch is a wallet 
 
 ## S8 — first run cancelled by the watchdog (79 credits)
 The funder join carried its ±24 h window only in the join predicate, so `sol_transfers` was scanned unpruned; the runner cancelled at 75.8 credits against a 75 cap. **Rule:** every query on `sol_transfers` carries literal `block_time` bounds in its WHERE clause.
+
+## S8 measured on five mints (`s8_bundle_sample.sql` v2, **1.8 credits** with literal bounds vs 79 unpruned)
+
+| mint | same-slot buyers (creation slot, bonding curve) | max buyers sharing one funder (24 h prior) | S8 |
+|---|---|---|---|
+| `7C5mqYVj…` | 1 | 1 | no |
+| `AaTwXAnM…` | **7** | **7** | **BUNDLE** |
+| `AjdE84dG…` | 4 | 1 | no |
+| `FBmPBhgQ…` | 1 | 1 | no |
+| `GfYX7XWm…` | 4 | 1 | no |
+
+Rule as coded: ≥ 5 distinct buyers in the creation slot AND ≥ 5 of them funded by one source within 24 h before. `AaTwXAnM…` is a textbook bundle: seven wallets, one funder, one slot. Detection feeds H2 (syndicate cluster seed) and S7b/RUG-A's aligned set.
