@@ -65,3 +65,8 @@ Seed **20260922**, order = `xxhash64(mint || seed)`, stratified 10 pre-event (ru
 | pre-8 | pre_event_rule | `3Tp5T1FtRbD3HZjQzLWztrCPxr7tUdKfC7QuhN1Upump` | `GSDrEdUJKaC68Gs27sJWaNq4bxVDLGsdicm4SiMtKDto` | 2025-05-28 18:37:14 | ☐ |
 | pre-9 | pre_event_rule | `BERf7cT29wX1tWZ5sKjsEymBXQZ2US4BJn5Rtsgfpump` | `6pZes3XxJVYpqmnEv6ceHDJ3JNRNLfhU7hq4eknZ3hrA` | 2026-02-21 20:57:42 | ☐ |
 | pre-10 | pre_event_rule | `BMpsBPcBRvgaeMJz4qixbyvDZ9m6EPHfyomtVfRxpump` | `CoL1tUeK6gn4QdPbydH1ip6MNgifVYsK3DTkJcgx6tEs` | 2025-06-12 19:28:57 | ☐ |
+
+## A3 calibration distributions — dry-run status (2026-09-28)
+* **Reserve decay + depth-floor ratio** (`a3_reserve_decay_day.sql`): first run failed on a Dune-side snapshot error on the decoded view (0 credits); retried.
+* **Per-venue volume share for routing X** (`a3_venue_share_day.sql`): **watchdog-cancelled at 85 credits** — `dex_solana.trades` at two-day scope joined to the day's 1,154 mints is unsizeable on the free tier. The distribution is computed in the paid month against the materialized trade table (per-venue tables joined by mint inside the window), not from the unified trades table ad hoc.
+* **Aligned-cluster sell fraction (days 0–7):** query design depends on the S7/S8 aligned set and the holder ledger; written after those materialize. Not run on the free tier.

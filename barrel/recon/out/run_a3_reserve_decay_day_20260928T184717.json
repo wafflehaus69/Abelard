@@ -1,0 +1,17 @@
+{
+ "file": "barrel/recon/sql/a3_reserve_decay_day.sql",
+ "label": "A3 reserve decay + depth ratio, one day",
+ "execution_id": "01M3MNF1DCGAV52FX1GKWD2JFZ",
+ "state": "QUERY_STATE_FAILED",
+ "credits": 0.0,
+ "submitted_at": "2026-09-28T18:47:02.31734Z",
+ "rows": null,
+ "error": {
+  "type": "FAILED_TYPE_EXECUTION_FAILED",
+  "message": "line 7:61: Failed analyzing stored view 'delta_prod.pumpdotfun_solana.pump_evt_completepumpammmigrationevent': Error getting snapshot for solana.instruction_calls_decoded_0021 at line 7, position 61 [Execution ID: 01M3MNF1DCGAV52FX1GKWD2JFZ]",
+  "metadata": {
+   "line": 7,
+   "column": 61
+  }
+ }
+}

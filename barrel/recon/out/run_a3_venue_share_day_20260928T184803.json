@@ -1,0 +1,10 @@
+{
+ "file": "barrel/recon/sql/a3_venue_share_day.sql",
+ "label": "A3 venue share (routing X), one day",
+ "execution_id": "01M3MNFPND3MTPKRHYNWYJ1AAF",
+ "state": "CANCELLED BY WATCHDOG",
+ "credits": 85.131911765,
+ "submitted_at": "2026-09-28T18:47:24.07818Z",
+ "rows": null,
+ "error": null
+}
