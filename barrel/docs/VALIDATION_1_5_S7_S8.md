@@ -13,3 +13,9 @@
 | `GfYX7XWm…` | `BzKANWcd…` | 13 | 1.7 | 1 | 1.0 |
 
 Two readings already: a creator funding 1,128 wallets around launch is a wallet factory; and **two unrelated creators share funder `5tzFkiKs…`** — the common-source signature S8 looks for, visible across tokens. S7's 1-hop set = creator ∪ wallets the creator funded in [t₀ − 24 h, t₀ + 24 h]; their holdings as-of entry come from the S6 ledger; S7 % = their balance / chain supply at entry. Threshold 15% pre-registered.
+
+## S7 measured on one mint (`s7_linked_supply_one_mint.sql`, 3.5 credits)
+`7C5mqYVj…`: linked set = creator + 118 wallets funded within ±24 h = **119 wallets; 0 hold a positive balance at entry (graduation + 240 min)**; supply at entry 1,999,999,986,909,699 (ledger, matches chain). **S7 = 0.000%** — the linked set had fully exited before entry. Consistent with insiders selling on the bonding curve before graduation; on P this check discriminates only where insiders *keep* supply through migration, and the sample says that is not the default.
+
+## S8 — first run cancelled by the watchdog (79 credits)
+The funder join carried its ±24 h window only in the join predicate, so `sol_transfers` was scanned unpruned; the runner cancelled at 75.8 credits against a 75 cap. **Rule:** every query on `sol_transfers` carries literal `block_time` bounds in its WHERE clause.

@@ -1,0 +1,18 @@
+{
+ "file": "barrel/recon/sql/s7_linked_supply_one_mint.sql",
+ "label": "S7 linked supply one mint",
+ "execution_id": "01M3MMAZRF6R6EQRTT7ANZGKWD",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 3.538970589,
+ "submitted_at": "2026-09-28T18:27:20.976003Z",
+ "rows": [
+  {
+   "linked_balance": null,
+   "linked_wallets": 119,
+   "linked_with_balance": 0,
+   "s7_pct": null,
+   "supply_at_entry": "1.999999986909699E15"
+  }
+ ],
+ "error": null
+}
