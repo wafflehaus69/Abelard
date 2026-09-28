@@ -20,3 +20,5 @@
 | `5uH885…` | 730,143,597 | 730,143,597 | **0** |
 
 Supply reconciled earlier to the lamport. **Holder reconstruction from `tokens_solana.transfers` is validated end to end on this mint**; the as-of-entry cut is the same ledger truncated at the entry slot (used for S7 above).
+
+**Full top-holder reconciliation via Helius (2026-09-28, `recon/out/s6_chain_largest_7C5m.json`):** all 9 largest token accounts read; the three positive owners match the ledger **exactly** (pool vault, `27HFmP…`, `5uH885…`); the remaining six accounts hold **0**. S6's holder reconstruction is validated end to end on this mint — supply, positive holders, and the absence of any holder the ledger missed.
