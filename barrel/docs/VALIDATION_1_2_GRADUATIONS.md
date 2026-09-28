@@ -38,3 +38,11 @@ Sample day 2025-02-15: **339** `CompleteEvent`s. Either-side join to `raydium_am
 ## Correction (2026-09-22): current-era pump.fun mints are mostly Token-2022
 
 The S1/S2 sample of five 2026-09-01 P graduates: **4 Token-2022, 1 legacy SPL** (`pump_evt_createevent.token_program`). M0_RECON R4's "pump.fun mints are legacy SPL" held for the 2025 sample and is wrong for the current era (pump.fun `create_v2`). Consequences: S3/S4 are live checks in stratum P; S1/S2 read both `spl_token_solana` and `spl_token_2022_solana` tables; the derived table's `mint` join must not assume a token program.
+
+## Stratum P, pre-event era (2025-03-20 → 2026-04-30) — source and validation, 2026-09-28
+
+`pump_evt_completepumpammmigrationevent` carries **no rows before May 2026** (`universe_p_by_month.sql`: 0 for every month 2025-03 → 2026-04; 2,048 in 2026-05; full volume from June). `pump_amm_evt_createpoolevent` is complete for the whole window (6,555 pools in 2025-03 → 100k+/month; `createpool_by_month.sql`). Whether the event was introduced in May 2026 or its decoding began then is not determined and does not change the fix.
+
+**Pre-event P admission rule:** `CompleteEvent` (bonding curve complete) for the mint, then a PumpSwap `createpoolevent` with `base_mint = mint`, `quote_mint = WSOL`, `evt_block_time ≥ complete_time`, within 1 day. **Validated on 2025-09-15 (`stratum_p_preevent_day.sql`): 321 completes → 321 with a pool → 321 WSOL-quoted; lag p50 1 s, p90 2 s.** The migration is permissionless, so pool `creator` is not a discriminator (323 distinct creators across 321 mints; the extra two are duplicate pool rows on a mint and are handled by taking the earliest pool).
+
+**Consequence:** the pre-registered P window (from 2025-03-20), the calibration slice (to 2025-07-10) and the 1.7 rebalance date (2026-03-23) are all recoverable. From May 2026 the decoded migration event is used and cross-checked against this rule on the overlap month; before it, this rule is the source. `universe_day.sql` is updated to take the union.

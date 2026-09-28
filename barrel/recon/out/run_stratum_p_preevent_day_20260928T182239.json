@@ -1,0 +1,19 @@
+{
+ "file": "barrel/recon/sql/stratum_p_preevent_day.sql",
+ "label": "P pre-event admission 2025-09-15",
+ "execution_id": "01M3MM1X4NZY624KDC4T5P6M39",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 4.518313398,
+ "submitted_at": "2026-09-28T18:22:23.381622Z",
+ "rows": [
+  {
+   "completes": 321,
+   "distinct_pool_creators": 323,
+   "lag_s_p50": 1,
+   "lag_s_p90": 2,
+   "with_pumpswap_pool": 321,
+   "wsol_quoted": 321
+  }
+ ],
+ "error": null
+}
