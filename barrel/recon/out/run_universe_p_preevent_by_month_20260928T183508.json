@@ -1,0 +1,107 @@
+{
+ "file": "barrel/recon/sql/universe_p_preevent_by_month.sql",
+ "label": "P pre-event universe by month v3",
+ "execution_id": "01M3MMRSBGXQVR5YJYKEKDKPD3",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 3.301232059,
+ "submitted_at": "2026-09-28T18:34:53.168725Z",
+ "rows": [
+  {
+   "completes_total": 2721,
+   "completes_with_pool": 2562,
+   "month": "2025-03-01 00:00:00.000 UTC",
+   "p_wsol": 2549
+  },
+  {
+   "completes_total": 9059,
+   "completes_with_pool": 8732,
+   "month": "2025-04-01 00:00:00.000 UTC",
+   "p_wsol": 8708
+  },
+  {
+   "completes_total": 8447,
+   "completes_with_pool": 8411,
+   "month": "2025-05-01 00:00:00.000 UTC",
+   "p_wsol": 8394
+  },
+  {
+   "completes_total": 6761,
+   "completes_with_pool": 6748,
+   "month": "2025-06-01 00:00:00.000 UTC",
+   "p_wsol": 6729
+  },
+  {
+   "completes_total": 2801,
+   "completes_with_pool": 2797,
+   "month": "2025-07-01 00:00:00.000 UTC",
+   "p_wsol": 2790
+  },
+  {
+   "completes_total": 4759,
+   "completes_with_pool": 4754,
+   "month": "2025-08-01 00:00:00.000 UTC",
+   "p_wsol": 4739
+  },
+  {
+   "completes_total": 4373,
+   "completes_with_pool": 4368,
+   "month": "2025-09-01 00:00:00.000 UTC",
+   "p_wsol": 4356
+  },
+  {
+   "completes_total": 2920,
+   "completes_with_pool": 2918,
+   "month": "2025-10-01 00:00:00.000 UTC",
+   "p_wsol": 2914
+  },
+  {
+   "completes_total": 3568,
+   "completes_with_pool": 3566,
+   "month": "2025-11-01 00:00:00.000 UTC",
+   "p_wsol": 3560
+  },
+  {
+   "completes_total": 4337,
+   "completes_with_pool": 4331,
+   "month": "2025-12-01 00:00:00.000 UTC",
+   "p_wsol": 4323
+  },
+  {
+   "completes_total": 6473,
+   "completes_with_pool": 6467,
+   "month": "2026-01-01 00:00:00.000 UTC",
+   "p_wsol": 6464
+  },
+  {
+   "completes_total": 8369,
+   "completes_with_pool": 8359,
+   "month": "2026-02-01 00:00:00.000 UTC",
+   "p_wsol": 8349
+  },
+  {
+   "completes_total": 11430,
+   "completes_with_pool": 11396,
+   "month": "2026-03-01 00:00:00.000 UTC",
+   "p_wsol": 11390
+  },
+  {
+   "completes_total": 8193,
+   "completes_with_pool": 8187,
+   "month": "2026-04-01 00:00:00.000 UTC",
+   "p_wsol": 8187
+  },
+  {
+   "completes_total": 7006,
+   "completes_with_pool": 7003,
+   "month": "2026-05-01 00:00:00.000 UTC",
+   "p_wsol": 6949
+  },
+  {
+   "completes_total": 7417,
+   "completes_with_pool": 7412,
+   "month": "2026-06-01 00:00:00.000 UTC",
+   "p_wsol": 7212
+  }
+ ],
+ "error": null
+}

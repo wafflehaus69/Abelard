@@ -12,7 +12,7 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.2 owner-wallet exclusion from `barrel/private/` | 🟡 | file present (3 addresses); `recon/owner_wallets.py` loader + SQL predicate + export assertion; to be applied in universe/trade queries and the census |
 | 1.3 schema frozen | ✅ | MR-7: frozen at 20 + 3 (`DERIVED_TABLE_SCHEMA.md`) |
 | 1.3 built + validated as plain query, one day | ✅ | `derived_trades_day_p.sql`: 12.6M rows, conservation holds on 84% of rows / 9,594 mints, failures concentrated by mint (unnamed leg); `trader_cost = gross − net` adopted |
-| 1.3 export contract with row counts | ⬜ | |
+| 1.3 export contract with row counts | ✅ | `DERIVED_TABLE_SCHEMA.md` §Export contract: P ≈ 180,543 tokens → ~4,152 credits per-token export; distributions in-warehouse |
 | 1.4 census queries | ✅ | v1 and v2 organic measured side by side (`VALIDATION_1_4_CENSUS.md`); v2 takers p50 207, first-organic p90 42 s; S7b exclusion pending |
 | 1.4 calibration-slice distributions | ⬜ | |
 | 1.4 20-token seeded reconciliation list | ⬜ | |

@@ -46,3 +46,29 @@ The S1/S2 sample of five 2026-09-01 P graduates: **4 Token-2022, 1 legacy SPL** 
 **Pre-event P admission rule:** `CompleteEvent` (bonding curve complete) for the mint, then a PumpSwap `createpoolevent` with `base_mint = mint`, `quote_mint = WSOL`, `evt_block_time ≥ complete_time`, within 1 day. **Validated on 2025-09-15 (`stratum_p_preevent_day.sql`): 321 completes → 321 with a pool → 321 WSOL-quoted; lag p50 1 s, p90 2 s.** The migration is permissionless, so pool `creator` is not a discriminator (323 distinct creators across 321 mints; the extra two are duplicate pool rows on a mint and are handled by taking the earliest pool).
 
 **Consequence:** the pre-registered P window (from 2025-03-20), the calibration slice (to 2025-07-10) and the 1.7 rebalance date (2026-03-23) are all recoverable. From May 2026 the decoded migration event is used and cross-checked against this rule on the overlap month; before it, this rule is the source. `universe_day.sql` is updated to take the union.
+
+
+## P universe over the window (2026-09-28) — `universe_p_preevent_by_month.sql`, 3.3 credits
+
+| month | completes | with PumpSwap pool ≤ 1 d | P (WSOL) |
+|---|---|---|---|
+| 2025-03 | 2,721 | 2,562 | 2,549 |
+| 2025-04 | 9,059 | 8,732 | 8,708 |
+| 2025-05 | 8,447 | 8,411 | 8,394 |
+| 2025-06 | 6,761 | 6,748 | 6,729 |
+| 2025-07 | 2,801 | 2,797 | 2,790 |
+| 2025-08 | 4,759 | 4,754 | 4,739 |
+| 2025-09 | 4,373 | 4,368 | 4,356 |
+| 2025-10 | 2,920 | 2,918 | 2,914 |
+| 2025-11 | 3,568 | 3,566 | 3,560 |
+| 2025-12 | 4,337 | 4,331 | 4,323 |
+| 2026-01 | 6,473 | 6,467 | 6,464 |
+| 2026-02 | 8,369 | 8,359 | 8,349 |
+| 2026-03 | 11,430 | 11,396 | 11,390 |
+| 2026-04 | 8,193 | 8,187 | 8,187 |
+| 2026-05 | 7,006 | 7,003 | 6,949 |
+| 2026-06 | 7,417 | 7,412 | 7,212 |
+
+**Cross-check on the overlap:** event table June 2026 = 7,215 P vs rule = 7,212 (**0.04%**); event table May 2026 = 2,048 vs rule = 6,949 — the event (or its decoding) begins mid-May, and the rule is the source before it. March 2025 shows 94% with a PumpSwap pool (the cutover month; the rest went to Raydium and are R), 96% in April, ≥ 99.7% after.
+
+**Stratum P size:** pre-event era (2025-03 → 2026-06, rule) **97,613**; post (2026-07 → 09, event table) **82,930**; **total ≈ 180,543 tokens.** BOOST is visible as June 7,212 → July 21,666.

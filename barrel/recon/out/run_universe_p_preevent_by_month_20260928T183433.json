@@ -1,0 +1,17 @@
+{
+ "file": "barrel/recon/sql/universe_p_preevent_by_month.sql",
+ "label": "P pre-event universe by month v2",
+ "execution_id": "01M3MMR29JC8VY5CBHK254PTMJ",
+ "state": "QUERY_STATE_FAILED",
+ "credits": 0.0,
+ "submitted_at": "2026-09-28T18:34:29.555289Z",
+ "rows": null,
+ "error": {
+  "type": "FAILED_TYPE_EXECUTION_FAILED",
+  "message": "line 8:1: mismatched input 'jm'. Expecting: '(', 'SELECT', 'TABLE', 'VALUES' at line 8, position 1 [Execution ID: 01M3MMR29JC8VY5CBHK254PTMJ]",
+  "metadata": {
+   "line": 8,
+   "column": 1
+  }
+ }
+}

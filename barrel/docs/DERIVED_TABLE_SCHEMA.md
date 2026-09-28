@@ -43,3 +43,18 @@ Lives inside Dune as a materialized view (`dune.<user>.result_barrel_trades`); o
 Buy variants: `buy` → gross = `user_quote_amount_in`, net = `quote_amount_in`; `buy_exact_quote_in` → the reverse; sells → gross = `quote_amount_out`, net = `user_quote_amount_out`. The identity holds on 84% of rows (9,594 mints, zero failures); the residual is positive and clusters in 264 + 3,500 mints — a real unnamed leg, kept as column 19.
 
 Deliberate exclusions: any carve-out leg (absent from Dune's pinned layout and not trader cost); anything from `pump_evt_createevent` (name/symbol/uri quarantined).
+
+
+## Export contract (readiness 1.3, third bullet) — filled 2026-09-28
+
+Only aggregates leave Dune. Datapoint costs at **1 credit / 1,000 datapoints** (Free, Analyst).
+
+| Export | Rows × columns | Datapoints | Credits |
+|---|---|---|---|
+| Per-token aggregate, stratum P (one row per mint; era, stratum, entry marks at G=15/60/240, gate S1–S11 verdicts, RUG label, expectancy inputs) | 180,543 × 23 | 4,152,489 | **~4,152** |
+| H1–H4 result grid (cells × metrics) | 108 × 12 | 1,296 | ~1.3 |
+| 20-token hand-reconciliation rows | 20 × 23 | 460 | <1 |
+| Calibration-slice per-token-day rows (A3 distributions; first 20% of weeks, 7 days each) | ~36,108 × 7 × 30 | 7,582,680 | **~7,583** |
+| Row-level trades | never | — | — |
+
+The per-token aggregate is the one export that matters; the calibration-slice rows are avoidable if the A3 distributions are computed in-warehouse and only their percentiles exported (the recommendation). **Projected export budget: ~4,152 credits with in-warehouse distributions, ~11,735 without.** This is stratum P only; R and N add their own rows.

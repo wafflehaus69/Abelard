@@ -1,0 +1,17 @@
+{
+ "file": "barrel/recon/sql/universe_p_preevent_by_month.sql",
+ "label": "P pre-event universe by month",
+ "execution_id": "01M3MMQ7MZMREY0B3EQGWYTWMN",
+ "state": "QUERY_STATE_FAILED",
+ "credits": 0.0,
+ "submitted_at": "2026-09-28T18:34:02.27244Z",
+ "rows": null,
+ "error": {
+  "type": "FAILED_TYPE_EXECUTION_FAILED",
+  "message": "line 10:90: Subquery uses 'j.ct' which must appear in GROUP BY clause at line 10, position 90 [Execution ID: 01M3MMQ7MZMREY0B3EQGWYTWMN]",
+  "metadata": {
+   "line": 10,
+   "column": 90
+  }
+ }
+}
