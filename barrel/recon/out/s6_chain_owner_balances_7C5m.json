@@ -1,0 +1,20 @@
+[
+ {
+  "owner": "CYZkgb4WdR1c2CGTHt1hHKKBYURzYbhpEbm8qcx8ogm9",
+  "ledger": 1999160558541364,
+  "chain_now": 1999160558541364,
+  "accounts": 1
+ },
+ {
+  "owner": "27HFmP7ccLadGswvQfvea4o3juLw75cPF4V6jWpHM3MX",
+  "ledger": 838117412742,
+  "chain_now": 838117412742,
+  "accounts": 1
+ },
+ {
+  "owner": "5uH885EKjPYPqLrJeJeJJFW4N7nqdAgCCBrSKZvQey9d",
+  "ledger": 730143597,
+  "chain_now": 730143597,
+  "accounts": 1
+ }
+]

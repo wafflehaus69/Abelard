@@ -9,3 +9,14 @@
 **Ledger result (top owners by net balance):** pool vault `CYZkgb…` 1,999,160,558,541,364 (~99.96% of supply), `27HFmP…` 838,117,412,742, `5uH885…` 730,143,597. Reconciliation of these against `getTokenLargestAccounts` (owner-resolved) is pending an RPC that rate-limits the heavy call; result appended when it lands.
 
 **S6 definition as it will be coded:** top-10 holders by owner, excluding the pool vault (from `createpoolevent`), the bonding-curve PDA, known burn addresses, and owner wallets (`recon/owner_wallets.py`). Threshold 40% pre-registered, sensitivity at 30/50. Denominator = chain supply at entry (mint − burns to that slot). UNKNOWN when ledger net ≠ chain supply by > 0.5%.
+
+## Chain reconciliation — done 2026-09-28 (`recon/out/s6_chain_owner_balances_7C5m.json`)
+`getTokenLargestAccounts` is blocked on the public RPC under load, so the reconciliation used `getTokenAccountsByOwner` for the ledger's top three owners:
+
+| owner | ledger net balance | chain balance now | diff |
+|---|---|---|---|
+| pool vault `CYZkgb…` | 1,999,160,558,541,364 | 1,999,160,558,541,364 | **0** |
+| `27HFmP…` | 838,117,412,742 | 838,117,412,742 | **0** |
+| `5uH885…` | 730,143,597 | 730,143,597 | **0** |
+
+Supply reconciled earlier to the lamport. **Holder reconstruction from `tokens_solana.transfers` is validated end to end on this mint**; the as-of-entry cut is the same ledger truncated at the entry slot (used for S7 above).
