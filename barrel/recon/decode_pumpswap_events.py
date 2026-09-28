@@ -35,7 +35,9 @@ import sys
 import time
 import urllib.request
 
-RPC = "https://api.mainnet-beta.solana.com"
+import keys as _keys  # noqa: E402
+PUBLIC_RPC = "https://api.mainnet-beta.solana.com"
+RPC = _keys.helius_rpc_url() or PUBLIC_RPC   # Helius when the key is present; the URL is never logged
 PUMPSWAP = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
 IDL_PATH = pathlib.Path(__file__).with_name("idl") / "pump_amm.json"
 
@@ -118,7 +120,7 @@ def rpc(method: str, params: list, tries: int = 5):
         except Exception as exc:  # noqa: BLE001 — reported, never swallowed
             last = exc
             time.sleep(0.7 * (attempt + 1))
-    raise RpcError(f"{method} failed after {tries} attempts: {last!r}")
+    raise RpcError(f"{method} failed after {tries} attempts: {str(last)[:160]}")   # never the URL
 
 
 # ------------------------------------------------------------------------ base58
