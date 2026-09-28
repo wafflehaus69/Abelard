@@ -965,14 +965,8 @@ def sec_buckets(snap, styles):
 
 
 def _commitments_series(snap, top):
-    """Buildout classes only (P2/R1) — see dashboard._commitments_chart."""
-    ser = {}
-    for tick, iss in (snap.get("issuers") or {}).items():
-        if not commitment_basis.is_buildout(tick):
-            continue
-        pts = [(p["q"], p["value"]) for p in (iss["commitments"].get("points_cq") or [])]
-        if len(pts) >= 2:
-            ser[tick] = pts
+    """One computation, two renderers — see `dashboard.buildout_series`."""
+    ser = dashboard.buildout_series(snap)
     return dict(sorted(ser.items(), key=lambda kv: -kv[1][-1][1])[:top])
 
 
@@ -1087,7 +1081,10 @@ CLASS_BLURBS = {
 
 def _sec_commitment_classes(snap, styles):
     """C1 — one table per class, ranked within the class and never across it."""
-    rows = dashboard.commitment_rows(snap)
+    rows = [r for r in dashboard.commitment_rows(snap)
+            if r["kind"] != "tagged-superseded"]
+    frozen = [r for r in dashboard.commitment_rows(snap)
+              if r["kind"] == "tagged-superseded"]
     out = [_P("By class — what each figure actually contains", styles["_h2"])]
     order = (list(commitment_basis.BUILDOUT_CLASSES)
              + [commitment_basis.CONTENT_ENERGY_SOFTWARE,
@@ -1108,14 +1105,32 @@ def _sec_commitment_classes(snap, styles):
             val = (_money(r["latest"]) if r["latest"] is not None
                    else (r["status"] or "—"))
             trs.append([
-                "<b>{}</b>{}".format(_x(r["ticker"]),
-                                     " (presentation)" if r["kind"] == "buildout" else ""),
+                "<b>{}</b>{}{}".format(
+                    _x(r["ticker"]),
+                    {"buildout": " (presentation)", "parser": " (parser)"}.get(
+                        r["kind"], ""),
+                    " — total, joins nothing" if r.get("is_total") else ""),
                 _x(r["bucket"]), _x(val), _x(r["as_of"] or "—"),
                 _x(r["concept"] or "—"), _x(r["contains"]), _x(src)])
         out.append(_table(
             ("Issuer", "Bucket", "Latest", "as of", "Concept", "Contains (verified)",
              "Read in"),
             trs, [68, 58, 62, 54, 146, 186, 106], styles, right_cols=(2,)))
+    if frozen:
+        out.append(_P("<b>Superseded — the figure the API still returns.</b> These "
+                      "issuers moved their disclosure onto dimensioned tags, which "
+                      "companyfacts drops, so the API's figure stopped moving. The "
+                      "live figures are above, read from the filings; these are kept "
+                      "so a reader who queries the API learns why they differ, and "
+                      "they feed nothing.", styles["_note"]))
+        out.append(_table(
+            ("Issuer", "Bucket", "Frozen at", "as of", "Concept", "Contains", "Read in"),
+            [["<b>{}</b>".format(_x(r["ticker"])), _x(r["bucket"]),
+              _x(_money(r["latest"])), _x(r["as_of"] or "—"),
+              _x(r["concept"] or "—"), _x(r["contains"]),
+              _x("{} {} {}".format(r["form"], r["filed"], r["accession"]).strip())]
+             for r in sorted(frozen, key=lambda r: -(r["latest"] or -1))],
+            [68, 58, 62, 54, 146, 186, 106], styles, right_cols=(2,)))
     return out
 
 

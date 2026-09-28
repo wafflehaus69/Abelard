@@ -183,7 +183,12 @@ TAGGED_BASIS = {r.ticker: r for r in [
        note="R1(a): AMZN's BUILDOUT row is a separate fact — leases not yet commenced. "
             "The tagged line is frozen at 2024Q2 because the live figure is "
             "dimension-tagged (…DigitalMediaContentProcureEnergyAndLicenseSoftwareMember, "
-            "$130.065B at 2026-06-30), which companyfacts drops."),
+            "$130.065B at 2026-06-30), which companyfacts drops. "
+            "RE-OPENED 2026-09-23: AMZN added \"acquire property and equipment\" to "
+            "this line's footnote after the 2024Q2 figure R1(a) was ruled on, and did "
+            "not rename the member. MIXED-UNSEPARABLE on the live evidence; held here "
+            "at the ruled class because both classes are non-buildout and no published "
+            "number turns on it. See commitment_capture.CAPTURE['AMZN']."),
     _b("GOOGL", CONTENT_ENERGY_SOFTWARE, "content licensing agreements with fixed or "
        "minimum guaranteed commitments",
        line_label="certain content licensing agreements … of $7.7 billion (Note 10)",

@@ -27,9 +27,9 @@ import json
 import os
 import time
 
-from . import (alerts as alertmod, brief, commitments, config, divergence, edgar,
-               facts_api, freshness, identity, phases, snapshot, storage,
-               suppliers, tagmap, universe)
+from . import (alerts as alertmod, brief, commitment_capture, commitments,
+               config, divergence, edgar, facts_api, freshness, identity,
+               phases, snapshot, storage, suppliers, tagmap, universe)
 
 WATERMARK_PREFIX = "scan:"
 
@@ -306,6 +306,10 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     subs_seen = {c.cik: c.submissions_doc for c in checks if c.submissions_doc}
     subs_seen.update(submissions_by_cik or {})
     supplier_legs, harvested = _harvest_suppliers(roster, con, http, subs_seen, errors)
+    # P2 C2 — the same parser discipline for the commitments leg. Four issuers
+    # moved their disclosure onto dimensioned tags, which companyfacts drops, so
+    # their published figure froze years ago; these rows come from the filings.
+    capture_rows, captured = _harvest_commitments(roster, con, http, subs_seen, errors)
 
     record_scan_completed(con, started)
 
@@ -391,7 +395,7 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     # per fact: only instances absent from the cache are fetched, which keeps a
     # quiet night to one submissions request per supplier.
     snap = snapshot.build(roster, indexed, now_unix=started,
-                          supplier_legs=supplier_legs)
+                          supplier_legs=supplier_legs, capture_rows=capture_rows)
     prior = {r[0] for r in con.execute("SELECT event_key FROM phase_events")}
     first_run = not prior
     alerts = snapshot.alert_lines(snap, prior_keys=prior)
@@ -527,6 +531,7 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
         "first_run_backfill": first_run,
         "phase_states": {k: v["state"] for k, v in snap["issuers"].items()},
         "supplier_instances_harvested": harvested,
+        "commitment_instances_harvested": captured,
         "summary": ("{} of {} issuers had new filings: {}".format(
             len(affected), len(checks), ", ".join(c.ticker for c in affected))
             if affected else
@@ -535,6 +540,37 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
                 if harvested else " on request")),
         "started_unix": started,
     }
+
+
+def _harvest_commitments(roster, con, http, submissions_by_cik, errors):
+    """Refresh and rebuild every captured commitment row (C2).
+
+    Returns ({ticker: rows}, instances_added). Only issuers with a VERIFIED
+    capture rule are touched, and only instances absent from the cache are
+    fetched, so a quiet night costs one submissions request per captured issuer.
+    """
+    rows, added = {}, 0
+    for cik, entity in sorted(roster.items()):
+        if not commitment_capture.rules_for(entity.ticker_display):
+            continue
+        try:
+            n, failures = commitment_capture.harvest(
+                entity, con, http=http,
+                submissions_doc=(submissions_by_cik or {}).get(cik))
+            added += n
+            for key, detail in failures:
+                errors.append((entity.ticker_display,
+                               "commitment instance {} unusable: {}".format(key, detail)))
+        except Exception as exc:
+            errors.append((entity.ticker_display,
+                           "commitment capture failed: {}".format(exc)))
+        try:
+            rows[entity.ticker_display] = commitment_capture.rows_from_db(
+                entity, cik, con)
+        except Exception as exc:
+            errors.append((entity.ticker_display,
+                           "commitment rows failed: {}".format(exc)))
+    return rows, added
 
 
 def _harvest_suppliers(roster, con, http, submissions_by_cik, errors):

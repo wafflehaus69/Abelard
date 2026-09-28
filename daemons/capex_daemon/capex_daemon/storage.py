@@ -167,6 +167,29 @@ CREATE TABLE IF NOT EXISTS commitment_events(
 );
 CREATE INDEX IF NOT EXISTS idx_commitment_events_ticker ON commitment_events(ticker, to_q);
 
+-- Parser-captured commitment figures (P2 C2). companyfacts drops dimensioned
+-- facts, which froze four issuers' commitment lines at their last undimensioned
+-- figure — NVDA at $45.77B while it disclosed $279B. These rows come out of the
+-- filing itself, one per VERIFIED rule (concept + axis + member), never from a
+-- concept name. Cached per instance like the supplier leg, so a quiet night
+-- costs one submissions request per issuer.
+CREATE TABLE IF NOT EXISTS commitment_capture_facts(
+    cik TEXT NOT NULL,
+    instance_key TEXT NOT NULL,
+    rule_key TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    value REAL NOT NULL,
+    accession TEXT,
+    PRIMARY KEY (cik, instance_key, rule_key, period_end)
+);
+CREATE TABLE IF NOT EXISTS commitment_capture_instances(
+    cik TEXT NOT NULL,
+    instance_key TEXT NOT NULL,
+    facts INTEGER,
+    accession TEXT,
+    PRIMARY KEY (cik, instance_key)
+);
+
 -- Composition events: a member entering or leaving a bucket-sum. Published
 -- BESIDE the trend, never blended into it (P3).
 CREATE TABLE IF NOT EXISTS composition_events(

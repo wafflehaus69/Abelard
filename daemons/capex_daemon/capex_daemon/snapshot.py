@@ -14,8 +14,8 @@ import json
 import time
 from datetime import datetime, timezone
 
-from . import (commitment_basis, commitments, config, disclosure, divergence,
-               normalize, phases, trend)
+from . import (commitment_basis, commitment_capture, commitments, config,
+               disclosure, divergence, normalize, phases, trend)
 
 SNAPSHOT_KEY = "panel_snapshot"
 
@@ -244,7 +244,31 @@ def _growth(prior, latest):
     return latest / prior - 1.0
 
 
-def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
+def _captured_rows(ticker, rows):
+    """Published shape for the parser-captured commitment figures (C2).
+
+    One entry per verified rule, each with its own class, its own series and the
+    accession the rule was read in. Totals are published with `is_total` set and
+    join nothing — NVIDIA tags its $366B total as a sibling member of the very
+    components it contains.
+    """
+    out = []
+    for row in (rows or []):
+        rule, pts = row["rule"], row["points"]
+        if not pts:
+            continue
+        ordered = sorted(pts.items())
+        cq = [{"q": normalize.calendar_align(pe)[0], "value": v, "end": pe}
+              for pe, v in ordered]
+        out.append(dict(rule.json(),
+                        points=[{"end": pe, "value": v} for pe, v in ordered],
+                        points_cq=cq,
+                        latest=ordered[-1][1], as_of=ordered[-1][0]))
+    return out
+
+
+def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None,
+          capture_rows=None):
     """Assemble the whole published view-model for one scan."""
     now_unix = int(now_unix if now_unix is not None else time.time())
     # The frontier gate measures its wait against the SCAN's timestamp, not the
@@ -300,6 +324,12 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
                 "basis": commitment_basis.basis_for(e.ticker_display).json(),
                 "buildout_row": (commitment_basis.buildout_row(e.ticker_display).json()
                                  if commitment_basis.buildout_row(e.ticker_display) else None),
+                # C2: figures read out of the filing itself, one per verified
+                # rule, because companyfacts drops the dimensioned facts these
+                # issuers now use. Each carries its own class.
+                "captured": _captured_rows(e.ticker_display,
+                                           (capture_rows or {}).get(e.ticker_display)),
+                "capture_refused": commitment_capture.refusal_for(e.ticker_display),
                 "latest": (comm.latest.value if comm and comm.latest else None),
                 "concept": comm.concept if comm else None,
                 "points": ([{"end": p.period_end, "value": p.value}
@@ -667,9 +697,56 @@ def commitment_deltas(snap, frontier=None):
             "multiple": (latest / base) if base > 0 else None,
             "basis_class": commitment_basis.class_of(tick),
             "buildout": commitment_basis.is_buildout(tick),
+            "source": "tagged",
             "event_key": "commit:{}:{}:{}:{:.0f}".format(
                 tick, prev["q"], cur["q"], latest),
         })
+    out += _captured_deltas(snap, frontier)
+    return out
+
+
+def _captured_deltas(snap, frontier=None):
+    """The same move, on the figures the parser reads (C2).
+
+    These are the moves the API could not see at all. NVIDIA's supply and
+    capacity went $119B -> $279B in one quarter while the panel published
+    $45.77B, and Amazon's leases not yet commenced ran $75.02B -> $137.21B over
+    three quarters while the panel published $32.41B frozen in 2024Q2.
+
+    Keys carry their own prefix. The tagged series' keys must not change: a key
+    change re-mints every event and announces years of history as news.
+    """
+    out = []
+    for tick, iss in sorted((snap.get("issuers") or {}).items()):
+        for row in ((iss.get("commitments") or {}).get("captured") or []):
+            if row.get("is_total") or row["class"] == commitment_basis.NOT_A_COMMITMENT:
+                continue
+            pts = row.get("points_cq") or []
+            if len(pts) < 2:
+                continue
+            prev, cur = pts[-2], pts[-1]
+            if frontier and trend._cq_sort(cur["q"]) < trend._cq_sort(frontier):
+                continue
+            base, latest = prev.get("value"), cur.get("value")
+            if base is None or latest is None:
+                continue
+            out.append({
+                "ticker": tick,
+                "bucket": iss.get("bucket"),
+                "concept": "{} [{}]".format(row["concept"], row["label"][:40]),
+                "from_q": prev["q"], "to_q": cur["q"],
+                "quarters_between": (trend._cq_index(cur["q"])
+                                     - trend._cq_index(prev["q"])),
+                "from_value": base, "to_value": latest,
+                "delta": latest - base,
+                "multiple": (latest / base) if base > 0 else None,
+                "basis_class": row["class"],
+                "buildout": bool(row.get("buildout")),
+                "source": "parser",
+                "rule_key": row["rule_key"],
+                "event_key": "commitcap:{}:{}:{}:{:.0f}".format(
+                    row["rule_key"], prev["q"], cur["q"], latest),
+            })
     return out
 
 

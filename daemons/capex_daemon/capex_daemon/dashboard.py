@@ -205,20 +205,39 @@ def _provenance(iss):
         iss.get("quarters_in_state") or 0, cov, len(iss.get("quarters") or []))
 
 
-def _commitments_chart(snap, title, top=8):
-    """Per-issuer commitment stocks. The sum is refused; the series are not.
+def buildout_series(snap):
+    """{label: [(quarter, value)]} — every series Leg 3 is allowed to plot.
 
     Buildout classes only (P2/R1): a chart of "forward commitments" that plots
     CORZ's lessor receipts beside Meta's supply commitments is a chart of two
     different things.
+
+    Where the parser captured an issuer's live figures (C2), those are what
+    Leg 3 shows. Plotting NVDA's frozen $45.77B beside Meta's live $349.31B was
+    not a comparison; it was two different years on one axis.
     """
     ser = {}
     for tick, iss in (snap.get("issuers") or {}).items():
+        c = iss.get("commitments") or {}
+        captured = [r for r in (c.get("captured") or [])
+                    if r.get("buildout") and not r.get("is_total")]
+        if captured:
+            for cap in captured:
+                pts = [(p["q"], p["value"]) for p in (cap.get("points_cq") or [])]
+                if pts:
+                    ser["{} · {}".format(tick, cap["key"])] = pts
+            continue
         if not commitment_basis.is_buildout(tick):
             continue
-        pts = [(p["q"], p["value"]) for p in (iss["commitments"].get("points_cq") or [])]
+        pts = [(p["q"], p["value"]) for p in (c.get("points_cq") or [])]
         if len(pts) >= 2:
             ser[tick] = pts
+    return ser
+
+
+def _commitments_chart(snap, title, top=8):
+    """Per-issuer commitment stocks. The sum is refused; the series are not."""
+    ser = buildout_series(snap)
     ser = dict(sorted(ser.items(), key=lambda kv: -kv[1][-1][1])[:top])
     return svgcharts.multi_line_chart(
         ser, title, height=320,
@@ -614,8 +633,13 @@ def commitment_rows(snap):
             continue
         b = c.get("basis") or commitment_basis.basis_for(tick).json()
         pts = c.get("points") or []
+        # A tagged figure an issuer has stopped maintaining is not a current
+        # number. Where the parser reads the live disclosure, the frozen row
+        # stays on the page for the record and leaves the class ranking.
+        superseded = bool(c.get("captured"))
         rows.append({
-            "ticker": tick, "bucket": iss.get("bucket"), "kind": "tagged",
+            "ticker": tick, "bucket": iss.get("bucket"),
+            "kind": "tagged-superseded" if superseded else "tagged",
             "status": c.get("status"), "latest": c.get("latest"),
             "as_of": (pts[-1]["end"] if pts else None),
             "concept": c.get("concept"), "detail": c.get("detail") or "",
@@ -623,7 +647,23 @@ def commitment_rows(snap):
             "accession": b.get("accession") or "", "form": b.get("form") or "",
             "filed": b.get("filed") or "", "line_label": b.get("line_label") or "",
         })
-        br = c.get("buildout_row")
+        # C2 — figures the parser read out of the filing, one per verified rule.
+        # These supersede the DECLARED buildout row: a declaration says where to
+        # look, a capture is the number.
+        captured = c.get("captured") or []
+        for cap in captured:
+            rows.append({
+                "ticker": tick, "bucket": iss.get("bucket"), "kind": "parser",
+                "status": "PARSER", "latest": cap.get("latest"),
+                "as_of": cap.get("as_of"), "concept": cap.get("concept"),
+                "detail": "", "class": cap["class"],
+                "contains": cap.get("label") or cap.get("quote") or "",
+                "note": cap.get("note") or "", "accession": cap.get("accession") or "",
+                "form": cap.get("form") or "", "filed": cap.get("filed") or "",
+                "line_label": cap.get("label") or "", "is_total": cap.get("is_total"),
+                "points": len(cap.get("points") or []),
+            })
+        br = None if captured else c.get("buildout_row")
         if br:
             rows.append({
                 "ticker": tick, "bucket": iss.get("bucket"), "kind": "buildout",
@@ -654,8 +694,11 @@ def _basis_table(rows, within_class):
                    "<td class='note' style='margin:0' title='{}'>{}</td>"
                    "<td class='note' style='margin:0'>{}</td></tr>".format(
                        _esc(r["ticker"]),
-                       " <span class='flag'>by presentation</span>"
-                       if r["kind"] == "buildout" else "",
+                       {"buildout": " <span class='flag'>by presentation</span>",
+                        "parser": " <span class='flag' style='background:#eef3fb;"
+                                  "color:#1f4e9c'>parser</span>"}.get(r["kind"], "")
+                       + (" <span class='flag'>total — joins nothing</span>"
+                          if r.get("is_total") else ""),
                        _esc(r["bucket"]), val, _esc(r["as_of"] or "—"),
                        _esc(r["concept"] or "—"), _esc(r["line_label"]),
                        _esc(r["contains"]), _esc(src)))
@@ -701,35 +744,52 @@ def view_commitments(snap):
     out.append(_commitment_deltas_block(snap))
 
     rows = commitment_rows(snap)
+    live = [r for r in rows if r["kind"] != "tagged-superseded"]
     out.append("<h2>By class — what each figure actually contains</h2>")
     for cls in commitment_basis.BUILDOUT_CLASSES:
-        out.append(_class_section(rows, cls, cls,
+        out.append(_class_section(live, cls, cls,
                                   _esc(commitment_basis.CLASS_MEANING[cls])))
     out.append(_class_section(
-        rows, commitment_basis.CONTENT_ENERGY_SOFTWARE,
+        live, commitment_basis.CONTENT_ENERGY_SOFTWARE,
         "CONTENT-ENERGY-SOFTWARE — annotative, not the buildout",
         "Real commitments, and not infrastructure. Published because they are large "
         "and because a reader who has seen them elsewhere should find them here with "
         "a reason, <b>never</b> in Leg 3 or a buildout total. AMZN and IRM also appear "
         "above, on the buildout figure each discloses separately."))
     out.append(_class_section(
-        rows, commitment_basis.MIXED_UNSEPARABLE,
+        live, commitment_basis.MIXED_UNSEPARABLE,
         "MIXED-UNSEPARABLE — disclosed, not separable",
         "Several classes in one total with no published split, so no part of it can be "
         "attributed to the buildout. Excluded from buildout totals until the components "
         "are separable."))
     out.append(_class_section(
-        rows, commitment_basis.UNCLASSIFIED,
+        live, commitment_basis.UNCLASSIFIED,
         "UNCLASSIFIED — discloses, not yet read",
         "A figure exists and its contents have not been verified in the filing. It does "
         "not enter the buildout read by default; it enters when someone reads it."))
     out.append(_class_section(
-        rows, commitment_basis.NOT_A_COMMITMENT,
+        live, commitment_basis.NOT_A_COMMITMENT,
         "NOT-A-COMMITMENT — excluded everywhere, listed here so the exclusion is visible",
         "Not forward commitments at all. These are removed from the deltas, the "
         "since-page, Leg 3 and every alert. They are shown only so that a reader who "
         "finds the number in the filing learns why it is absent rather than assuming "
         "it was missed."))
+    frozen = [r for r in rows if r["kind"] == "tagged-superseded"]
+    if frozen:
+        out.append("<h3 style='font-size:14px;margin:18px 0 4px'>Superseded — the "
+                   "figure the API still returns</h3>")
+        out.append("<p class='note'>These issuers moved their disclosure onto "
+                   "dimensioned tags, which companyfacts drops, so the API's figure "
+                   "stopped moving. The live figures are above, read from the filings. "
+                   "The frozen ones stay here because a reader who queries the API will "
+                   "see them and should find out why they differ — they are <b>not</b> "
+                   "ranked with current figures and they feed nothing.</p>")
+        out.append(_basis_table(frozen, within_class=False))
+    for tick, iss in sorted((snap.get("issuers") or {}).items()):
+        why = (iss.get("commitments") or {}).get("capture_refused")
+        if why:
+            out.append("<div class='warn'><b>{}: capture refused.</b> {}</div>".format(
+                _esc(tick), _esc(why)))
     return _page("Forward commitments", "/commitments", "".join(out))
 
 
