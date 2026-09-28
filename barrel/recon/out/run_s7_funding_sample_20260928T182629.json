@@ -1,0 +1,56 @@
+{
+ "file": "barrel/recon/sql/s7_funding_sample.sql",
+ "label": "S7 funding sample v2",
+ "execution_id": "01M3MM84ZD9X0ZFH6GN39AT1G3",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 23.395441177,
+ "submitted_at": "2026-09-28T18:25:48.014126Z",
+ "rows": [
+  {
+   "a_funder": "48jU2PZf",
+   "creator": "HrEvjspV",
+   "funders_24h_before": 3,
+   "mint": "7C5mqYVj",
+   "sol_in": 1.28,
+   "sol_out": 10.53,
+   "wallets_funded_pm24h": 118
+  },
+  {
+   "a_funder": "5tzFkiKs",
+   "creator": "AoffxPiA",
+   "funders_24h_before": 1,
+   "mint": "AaTwXAnM",
+   "sol_in": 0.893,
+   "sol_out": 1.376,
+   "wallets_funded_pm24h": 30
+  },
+  {
+   "a_funder": "5tzFkiKs",
+   "creator": "F5DmbwfU",
+   "funders_24h_before": 2,
+   "mint": "AjdE84dG",
+   "sol_in": 98.95,
+   "sol_out": 503.437,
+   "wallets_funded_pm24h": 19
+  },
+  {
+   "a_funder": "4eFUJRUq",
+   "creator": "FvctG9Je",
+   "funders_24h_before": 1,
+   "mint": "FBmPBhgQ",
+   "sol_in": 269.263,
+   "sol_out": 1798.61,
+   "wallets_funded_pm24h": 1128
+  },
+  {
+   "a_funder": "EgJoaEBS",
+   "creator": "BzKANWcd",
+   "funders_24h_before": 1,
+   "mint": "GfYX7XWm",
+   "sol_in": 0.951,
+   "sol_out": 1.682,
+   "wallets_funded_pm24h": 13
+  }
+ ],
+ "error": null
+}

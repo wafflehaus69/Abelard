@@ -72,11 +72,12 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 65 | barrel/recon/sql/createpool_by_month.sql (coverage: createpool by month) | `01M3MKXA6PV5…` | 0.970 | 1020.82 |
 | 66 | barrel/recon/sql/stratum_p_preevent_day.sql (P pre-event admission 2025-09-15) | `01M3MM1X4NZY…` | 4.518 | 1025.38 |
 | 67 | barrel/recon/sql/s7_funding_sample.sql (S7 funding sample 5 creators) | `01M3MM2HNGYM…` | 0.000 | 1025.38 |
+| 68 | barrel/recon/sql/s7_funding_sample.sql (S7 funding sample v2) | `01M3MM84ZD9X…` | 23.395 | 1048.78 |
 
-**Total consumed: 1025.38 credits. Remaining: 1475. Usable after 15% reserve: 1253.**
+**Total consumed: 1048.78 credits. Remaining: 1451. Usable after 15% reserve: 1234.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _INCIDENT 2026-09-23: `slippage_sell_txids.sql` (expect 8) billed **840.28 credits** — a `pool IN (subquery)` joined with an OR on the partition column defeated pruning and scanned the sell-event history. Cancel arrived after completion. Runner now cancels in flight above max(3×expect, 5) and refuses --expect > 25 without --confirm. Free tier after: 1,010.7 / 2,500 used._
 
 _API says used (pre-incident line, superseded above): 1010.738 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
-_API says used: 1025.382 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 1048.778 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
