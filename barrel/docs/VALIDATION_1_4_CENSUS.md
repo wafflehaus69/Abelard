@@ -70,3 +70,17 @@ Seed **20260922**, order = `xxhash64(mint || seed)`, stratified 10 pre-event (ru
 * **Reserve decay + depth-floor ratio** (`a3_reserve_decay_day.sql`): first run failed on a Dune-side snapshot error on the decoded view (0 credits); retried.
 * **Per-venue volume share for routing X** (`a3_venue_share_day.sql`): **watchdog-cancelled at 85 credits** — `dex_solana.trades` at two-day scope joined to the day's 1,154 mints is unsizeable on the free tier. The distribution is computed in the paid month against the materialized trade table (per-venue tables joined by mint inside the window), not from the unified trades table ad hoc.
 * **Aligned-cluster sell fraction (days 0–7):** query design depends on the S7/S8 aligned set and the holder ledger; written after those materialize. Not run on the free tier.
+
+### Reserve decay and depth-floor ratio — one day, validated (`a3_reserve_decay_day.sql`, 2.3 credits)
+
+1,154 P graduates of 2026-09-01; quote reserves relative to the first post-graduation event's (pre-swap) reserves:
+
+| horizon | p10 | p50 | p90 |
+|---|---|---|---|
+| +1 h | 0.011 | **0.166** | 1.474 |
+| +24 h | 0.002 | **0.072** | 0.408 |
+| +7 d | 0.001 | **0.049** | 0.208 |
+
+**1,031 / 1,154 (89%) have reserves down ≥ 80% within 7 days.** v1.0's "LP drained ≥ 80% in 7 days" limb, read as reserve drain through trading, labels nine in ten graduates a rug: it is the base rate of a graduate's first week, not a signal. This is the measurement A3 asked for before X/Y/D are set, and it says the discriminating outcome variable is RUG-A (aligned-cluster dump), not any reserve threshold on its own.
+
+Depth-floor ratio for a $20 ticket (bought at G = 240, marked at day 7, SOL/USD = 200 for the dry run): p01 0.40, p10 0.59, **p50 0.93**; **2 tokens below the provisional F = 20%**. A $20 position is rarely below the floor even on dead pools; F bites on tiny-pool tail cases only. Slice-scope run and the block-time SOL/USD series follow in the paid month.

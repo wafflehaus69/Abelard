@@ -1,0 +1,28 @@
+{
+ "file": "barrel/recon/sql/a3_reserve_decay_day.sql",
+ "label": "A3 reserve decay + depth ratio, one day (retry)",
+ "execution_id": "01M3MNMP01CD6BCMT0K431E02P",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 2.317794118,
+ "submitted_at": "2026-09-28T18:50:07.23377Z",
+ "rows": [
+  {
+   "below_provisional_F20": 2,
+   "depth_p01": 0.396264054842458,
+   "depth_p10": 0.5860835356131339,
+   "depth_p50": 0.9320794540265079,
+   "r1h_p10": 0.011262642349719559,
+   "r1h_p50": 0.16606448289919182,
+   "r1h_p90": 1.4744067364888918,
+   "r24h_p10": 0.0019550413440644464,
+   "r24h_p50": 0.0718067664638694,
+   "r24h_p90": 0.408273240212072,
+   "r7d_p10": 0.0013347421287492824,
+   "r7d_p50": 0.04936790519754122,
+   "r7d_p90": 0.2083342327178726,
+   "reserves_down_80pct_7d": 1031,
+   "tokens": 1154
+  }
+ ],
+ "error": null
+}
