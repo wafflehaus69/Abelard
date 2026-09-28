@@ -6,6 +6,7 @@ become an interpolation, and open interest must never be silently treated as sam
 import datetime as dt
 import os
 import tempfile
+import types
 
 from smart_money import db as dbmod, options_chain as oc
 
@@ -21,6 +22,27 @@ def _db():
     fd, p = tempfile.mkstemp(suffix=".db")
     os.close(fd)
     return p, dbmod.connect(p)
+
+
+class _FrozenDate(dt.date):
+    @classmethod
+    def today(cls):
+        return cls.fromisoformat(TODAY)
+
+
+def _freeze_clock(monkeypatch):
+    """Hold the module's wall clock at TODAY.
+
+    A call that cannot be handed a date reads dt.date.today() (options_chain.py
+    resolves `snapshot_date or dt.date.today()`), so a fixture expiry that was in the
+    future when the test was written ages into the past and the leg starts picking
+    nothing. That is how the ingest-only test went red on 2026-08-22 and stayed red
+    for five weeks. Rolling the fixture forward would only rearm it; freezing the
+    clock pins the exact coupling that broke and keeps TODAY the file's one time
+    constant. The patch is module-local — the stdlib is untouched."""
+    monkeypatch.setattr(oc, "dt", types.SimpleNamespace(
+        date=_FrozenDate, datetime=dt.datetime, timedelta=dt.timedelta,
+        timezone=dt.timezone))
 
 
 def _contract(strike, vol, oi, ctype="C", expiry="2026-08-21"):
@@ -281,9 +303,12 @@ def test_a_ticker_with_no_expiries_is_no_chain_not_an_error(monkeypatch):
 # ---------------------------------------------------------------- scan wiring
 
 def test_the_leg_is_ingest_only_and_emits_no_events(monkeypatch):
+    """Also the suite's ONLY exercise of the leg's OK branch. Converting it to assert
+    DEGRADED would have deleted that coverage and duplicated the test below."""
     from smart_money import scan
     p, con = _db()
     try:
+        _freeze_clock(monkeypatch)
         monkeypatch.setattr(oc, "_fetch",
                             lambda *a, **k: (_result(calls=[_contract(100, 1, 2)]),
                                              "{}"))

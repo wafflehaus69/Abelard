@@ -4,9 +4,21 @@ clamping/escaping, and the public-bind refusal."""
 import os
 import tempfile
 
+import datetime as dt
+
 from smart_money import dashboard as dash
 from smart_money import db as dbmod
 from smart_money import queries as q
+
+# The fixture buy below is dated 2026-06-01. A test that leaves `anchor` at its
+# default reads the wall clock, and the 90-day window stopped reaching that row on
+# 2026-08-31 — after which test_trades_csv_export stood red for four weeks while
+# test_trades_view_and_expand_params kept passing over an EMPTY table. This is a
+# fixed past date, the one test_queries.py uses against the same row; it is not
+# "the current window start" and must not be rolled forward to track the clock.
+FIXTURE_ANCHOR = "2026-06-30"
+
+EMPTY_TRADES = "No trades match this window and filter."
 
 
 def _fixture_db():
@@ -66,8 +78,13 @@ def test_html_escaping_blocks_injection():
 def test_trades_view_and_expand_params():
     path = _fixture_db()
     con = q.connect_ro(path)
-    h = dash.view_trades(con, dash._params({"side": ["buy"], "scope": ["all"]}))
+    h = dash.view_trades(con, dash._params({"side": ["buy"], "scope": ["all"],
+                                            "anchor": [FIXTURE_ANCHOR]}))
     assert h.startswith("<!doctype html>"), "trades page"
+    # Green is not the same as tested. Without these two lines this test asserted its
+    # chrome over an empty table for four weeks and nothing noticed.
+    assert "ZZZ" in h, "the fixture buy must render as a row"
+    assert EMPTY_TRADES not in h, "an empty table must not pass as a rendered one"
     assert "Insider trades" in h and "trade date" in h and "reported" in h, h[:400]
     assert "per page:" in h and "page 1 of" in h, "pager present"
     assert "/trades.csv" in h and "whole dataset CSV" in h, "csv export links present"
@@ -90,9 +107,11 @@ def test_trades_view_and_expand_params():
 
 
 def test_trades_csv_export():
+    """While this was red, the _csv_bytes completeness contract never saw a real
+    q_insider_trades row — the /trades pairing of that guard was dark."""
     path = _fixture_db()
     con = q.connect_ro(path)
-    p = dash._params({"side": ["buy"], "scope": ["all"]})
+    p = dash._params({"side": ["buy"], "scope": ["all"], "anchor": [FIXTURE_ANCHOR]})
     data = dash._build_trades_csv(con, p, full=False)
     assert data.startswith("person,ticker,side,trade_date"), data[:60]
     assert data.splitlines()[0].endswith(",provenance"), "provenance is the last CSV column"
@@ -104,6 +123,39 @@ def test_trades_csv_export():
     assert len(full.strip().splitlines()) >= len(lines)
     con.close()
     os.unlink(path)
+
+
+def test_the_default_window_still_reaches_a_recent_trade():
+    """The counterweight to FIXTURE_ANCHOR. Pinning the anchor makes the tests above
+    permanently time-independent — and, on its own, would retire the suite's last path
+    through the DEFAULT, today-anchored window. The question J8 was opened on — does
+    the real default window return rows — would then be answerable only by a human at
+    a terminal. One row dated relative to the wall clock, read through every surface
+    that renders trades with no anchor given, keeps it answerable here."""
+    path = _fixture_db()
+    recent = (dt.date.today() - dt.timedelta(days=5)).isoformat()
+    con = dbmod.connect(path)
+    con.execute(
+        "INSERT INTO form4_transactions(accession, tx_index, reporting_person, "
+        "reporting_cik, issuer, issuer_cik, ticker, code, plan_flag, shares, price, "
+        "value, ownership_after, tx_date, filed_date, role, ingest_regime) "
+        "VALUES('RECENT',0,'Recent Insider','2','Recent Co','8','RCNT','P',0,50,2.0,"
+        "100,NULL,?,?,NULL,'watchlist')", (recent, recent))
+    con.commit()
+    con.close()
+    con = q.connect_ro(path)
+    try:
+        p = dash._params({"side": ["buy"], "scope": ["all"]})
+        assert p["anchor"] == dt.date.today().isoformat(), "the default IS the clock"
+        assert "RCNT" in dash._build_trades_csv(con, p, full=False), "the CSV"
+        h = dash.view_trades(con, p)
+        assert "RCNT" in h and EMPTY_TRADES not in h, "the page"
+        spec = dash._page_brief_spec(con, dict(p, _path="/trades"), "/trades")
+        rows = spec["tables"][0][2]
+        assert any(r.get("ticker") == "RCNT" for r in rows), "the PDF"
+    finally:
+        con.close()
+        os.unlink(path)
 
 
 def test_clusters_view_pagination_and_csv():

@@ -32,11 +32,16 @@ def test_page_spec_uses_the_shared_csv_columns(tmp_path):
     dbmod.connect(path).close()
     con = q.connect_ro(path)
     p = dash._params({})
+    # /trades was the one _CSV_COLS route missing here. Its PDF renders the same rows
+    # as /trades.csv against the same columns but never passes through _csv_bytes, so
+    # without this pin the promise that the three surfaces cannot drift was kept on
+    # the CSV alone.
     for route, cols in (("/oge", dash._OGE_CSV_COLS),
                         ("/disagreements", dash._DIS_CSV_COLS),
                         ("/congress_gaps", dash._GAP_CSV_COLS),
                         ("/portfolios", dash._PORT_CSV_COLS),
-                        ("/insiders", dash._INSIDER_CSV_COLS)):
+                        ("/insiders", dash._INSIDER_CSV_COLS),
+                        ("/trades", dash._CSV_COLS)):
         spec = dash._page_brief_spec(con, p, route)
         assert spec is not None, route
         # The spec is now {title, subtitle, tables, notes} — a view may draw more
