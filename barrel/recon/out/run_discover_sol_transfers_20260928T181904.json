@@ -1,0 +1,183 @@
+{
+ "file": "barrel/recon/sql/discover_sol_transfers.sql",
+ "label": "S7/S8 SOL transfer discovery",
+ "execution_id": "01M3MKVJMFGSJZ87R4NAQYWAY7",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 2.682801437,
+ "submitted_at": "2026-09-28T18:18:56.015903Z",
+ "rows": [
+  {
+   "table_name": "account_activity",
+   "table_schema": "solana"
+  },
+  {
+   "table_name": "account_activity_0015",
+   "table_schema": "solana"
+  },
+  {
+   "table_name": "account_activity_0099",
+   "table_schema": "solana"
+  },
+  {
+   "table_name": "daily_balances",
+   "table_schema": "solana_utils"
+  },
+  {
+   "table_name": "latest_balances",
+   "table_schema": "solana_utils"
+  },
+  {
+   "table_name": "spl_token_call_transfer",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "spl_token_call_transferchecked",
+   "table_schema": "spl_token_solana"
+  },
+  {
+   "table_name": "system_program_call_advancenonceaccount",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_allocate",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_allocatewithseed",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_assign",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_assignwithseed",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_authorizenonceaccount",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_createaccount",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_createaccountwithseed",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_initializenonceaccount",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_transfer",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_transferwithseed",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_upgradenonceaccount",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "system_program_call_withdrawnonceaccount",
+   "table_schema": "system_program_solana"
+  },
+  {
+   "table_name": "net_transfers_daily",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "net_transfers_daily_asset",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "rwa_transfers",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "rwa_transfers_tokens",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_close_account_2022_transfers_001",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_close_account_transfers_001a",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_close_account_transfers_001b",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_close_account_transfers_001c",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_close_account_transfers_001d",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_create_account_transfers_003",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_transfers",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_transfers_003",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_vote_withdraw_transfers_001",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "sol_withdraw_nonce_transfers_001",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_2022_transfers",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_2022_transfers_005a",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_2022_transfers_005b",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_2022_transfers_005c",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_transfers",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_transfers_003a",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_transfers_003b",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "spl_token_transfers_003c",
+   "table_schema": "tokens_solana"
+  },
+  {
+   "table_name": "transfers",
+   "table_schema": "tokens_solana"
+  }
+ ],
+ "error": null
+}

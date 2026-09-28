@@ -67,11 +67,14 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 60 | barrel/recon/sql/s6_holders_one_mint.sql (S6 holders one mint (retry)) | `01M38AED8KKJ…` | 7.570 | 1010.74 |
 | 61 | barrel/recon/sql/s6_actions_one_mint.sql (S6 per-action diagnosis) | `01M3MKHTB4T1…` | 5.713 | 1016.45 |
 | 62 | barrel/recon/sql/slippage_sell_txids_v2.sql (1.6 sell tx ids v2 (pruned)) | `01M3MKNKXM4S…` | 0.441 | 1016.89 |
+| 63 | barrel/recon/sql/discover_sol_transfers.sql (S7/S8 SOL transfer discovery) | `01M3MKVJMFGS…` | 2.683 | 1019.58 |
+| 64 | barrel/recon/sql/universe_p_by_month.sql (1.3 P universe by month) | `01M3MKVZ1416…` | 0.273 | 1019.86 |
+| 65 | barrel/recon/sql/createpool_by_month.sql (coverage: createpool by month) | `01M3MKXA6PV5…` | 0.970 | 1020.82 |
 
-**Total consumed: 1016.89 credits. Remaining: 1483. Usable after 15% reserve: 1261.**
+**Total consumed: 1020.82 credits. Remaining: 1479. Usable after 15% reserve: 1257.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _INCIDENT 2026-09-23: `slippage_sell_txids.sql` (expect 8) billed **840.28 credits** — a `pool IN (subquery)` joined with an OR on the partition column defeated pruning and scanned the sell-event history. Cancel arrived after completion. Runner now cancels in flight above max(3×expect, 5) and refuses --expect > 25 without --confirm. Free tier after: 1,010.7 / 2,500 used._
 
 _API says used (pre-incident line, superseded above): 1010.738 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
-_API says used: 1016.895 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 1020.826 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

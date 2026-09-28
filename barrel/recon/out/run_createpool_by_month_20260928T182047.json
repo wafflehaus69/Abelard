@@ -1,0 +1,125 @@
+{
+ "file": "barrel/recon/sql/createpool_by_month.sql",
+ "label": "coverage: createpool by month",
+ "execution_id": "01M3MKXA6PV5203TZ2JCF0VDZ6",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.969558824,
+ "submitted_at": "2026-09-28T18:19:52.918834Z",
+ "rows": [
+  {
+   "month": "2025-03-01 00:00:00.000 UTC",
+   "pools_created": 6555,
+   "top_creator": "91ooRaaBMa",
+   "top_creator_pools": 35
+  },
+  {
+   "month": "2025-04-01 00:00:00.000 UTC",
+   "pools_created": 35881,
+   "top_creator": "FufVHugiAn",
+   "top_creator_pools": 350
+  },
+  {
+   "month": "2025-05-01 00:00:00.000 UTC",
+   "pools_created": 67177,
+   "top_creator": "HutCSHtTaN",
+   "top_creator_pools": 954
+  },
+  {
+   "month": "2025-06-01 00:00:00.000 UTC",
+   "pools_created": 114087,
+   "top_creator": "CU6LrxqZax",
+   "top_creator_pools": 1112
+  },
+  {
+   "month": "2025-07-01 00:00:00.000 UTC",
+   "pools_created": 116950,
+   "top_creator": "3oSP3nimwT",
+   "top_creator_pools": 312
+  },
+  {
+   "month": "2025-08-01 00:00:00.000 UTC",
+   "pools_created": 123343,
+   "top_creator": "4tLWb8chzh",
+   "top_creator_pools": 313
+  },
+  {
+   "month": "2025-09-01 00:00:00.000 UTC",
+   "pools_created": 87923,
+   "top_creator": "5fFDbfnECm",
+   "top_creator_pools": 154
+  },
+  {
+   "month": "2025-10-01 00:00:00.000 UTC",
+   "pools_created": 69617,
+   "top_creator": "DoDSz8tyai",
+   "top_creator_pools": 976
+  },
+  {
+   "month": "2025-11-01 00:00:00.000 UTC",
+   "pools_created": 37239,
+   "top_creator": "BZQq4YqQkG",
+   "top_creator_pools": 1277
+  },
+  {
+   "month": "2025-12-01 00:00:00.000 UTC",
+   "pools_created": 42443,
+   "top_creator": "BZQq4YqQkG",
+   "top_creator_pools": 1023
+  },
+  {
+   "month": "2026-01-01 00:00:00.000 UTC",
+   "pools_created": 68875,
+   "top_creator": "JBSWs1xiTG",
+   "top_creator_pools": 1228
+  },
+  {
+   "month": "2026-02-01 00:00:00.000 UTC",
+   "pools_created": 106472,
+   "top_creator": "LicZpge8V1",
+   "top_creator_pools": 3300
+  },
+  {
+   "month": "2026-03-01 00:00:00.000 UTC",
+   "pools_created": 104099,
+   "top_creator": "CeEk2MEqkZ",
+   "top_creator_pools": 2642
+  },
+  {
+   "month": "2026-04-01 00:00:00.000 UTC",
+   "pools_created": 60340,
+   "top_creator": "9dBgK7Gx6Z",
+   "top_creator_pools": 518
+  },
+  {
+   "month": "2026-05-01 00:00:00.000 UTC",
+   "pools_created": 62715,
+   "top_creator": "9dBgK7Gx6Z",
+   "top_creator_pools": 285
+  },
+  {
+   "month": "2026-06-01 00:00:00.000 UTC",
+   "pools_created": 71682,
+   "top_creator": "4Wmszk3tqJ",
+   "top_creator_pools": 642
+  },
+  {
+   "month": "2026-07-01 00:00:00.000 UTC",
+   "pools_created": 64430,
+   "top_creator": "9NzkUptLDc",
+   "top_creator_pools": 410
+  },
+  {
+   "month": "2026-08-01 00:00:00.000 UTC",
+   "pools_created": 96431,
+   "top_creator": "9NzkUptLDc",
+   "top_creator_pools": 432
+  },
+  {
+   "month": "2026-09-01 00:00:00.000 UTC",
+   "pools_created": 105396,
+   "top_creator": "NMVXLGSVrv",
+   "top_creator_pools": 325
+  }
+ ],
+ "error": null
+}

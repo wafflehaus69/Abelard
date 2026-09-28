@@ -1,0 +1,66 @@
+{
+ "file": "barrel/recon/sql/universe_p_by_month.sql",
+ "label": "1.3 P universe by month",
+ "execution_id": "01M3MKVZ1416G432PPQE2RPRSW",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.273049283,
+ "submitted_at": "2026-09-28T18:19:08.709206Z",
+ "rows": [
+  {
+   "month": "2025-11-01 00:00:00.000 UTC",
+   "p_alt_graduates": 0,
+   "p_graduates": 0
+  },
+  {
+   "month": "2025-12-01 00:00:00.000 UTC",
+   "p_alt_graduates": 0,
+   "p_graduates": 0
+  },
+  {
+   "month": "2026-01-01 00:00:00.000 UTC",
+   "p_alt_graduates": 0,
+   "p_graduates": 0
+  },
+  {
+   "month": "2026-02-01 00:00:00.000 UTC",
+   "p_alt_graduates": 0,
+   "p_graduates": 0
+  },
+  {
+   "month": "2026-03-01 00:00:00.000 UTC",
+   "p_alt_graduates": 0,
+   "p_graduates": 0
+  },
+  {
+   "month": "2026-04-01 00:00:00.000 UTC",
+   "p_alt_graduates": 0,
+   "p_graduates": 0
+  },
+  {
+   "month": "2026-05-01 00:00:00.000 UTC",
+   "p_alt_graduates": 41,
+   "p_graduates": 2048
+  },
+  {
+   "month": "2026-06-01 00:00:00.000 UTC",
+   "p_alt_graduates": 202,
+   "p_graduates": 7215
+  },
+  {
+   "month": "2026-07-01 00:00:00.000 UTC",
+   "p_alt_graduates": 407,
+   "p_graduates": 21666
+  },
+  {
+   "month": "2026-08-01 00:00:00.000 UTC",
+   "p_alt_graduates": 1331,
+   "p_graduates": 32883
+  },
+  {
+   "month": "2026-09-01 00:00:00.000 UTC",
+   "p_alt_graduates": 1960,
+   "p_graduates": 28381
+  }
+ ],
+ "error": null
+}
