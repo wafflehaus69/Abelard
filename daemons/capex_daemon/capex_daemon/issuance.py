@@ -229,12 +229,16 @@ def build_series_map(indexed, concepts, unit_filter=("USD",)):
 
 
 class IssuanceResolution:
-    def __init__(self, status, contributing, collapsed, verdicts, detail):
+    def __init__(self, status, contributing, collapsed, verdicts, detail, eras=None):
         self.status = status
         self.contributing = tuple(contributing)
         self.collapsed = tuple(collapsed)
         self.verdicts = tuple(verdicts)
         self.detail = detail
+        # R5: {primary: (earlier-era concepts…)}. A collapsed concept is not
+        # discarded — it is the same instrument under the name it used before,
+        # and its periods fill the ones the current-era concept never reported.
+        self.eras = dict(eras or {})
 
     @property
     def is_refused(self):
@@ -288,7 +292,7 @@ def resolve_total(indexed, resolution, unit_filter=("USD",)):
                 live[0], "; counterparty views excluded: " + ", ".join(excluded) if excluded else ""))
 
     cutoff = _frontier_cutoff(*series_map.values())
-    verdicts, collapsed, refused = [], set(), []
+    verdicts, collapsed, refused, era_pairs = [], set(), [], []
     for i, a in enumerate(live):
         for b in live[i + 1:]:
             conflict = _cost_net_conflict(a, b, series_map[a], series_map[b], cutoff)
@@ -300,7 +304,10 @@ def resolve_total(indexed, resolution, unit_filter=("USD",)):
             branch, shared, detail = classify_pair(series_map[a], series_map[b], cutoff)
             verdicts.append(PairVerdict(a, b, branch, shared, detail))
             if branch == BRANCH_COLLAPSED:
-                collapsed.add(b)          # keep the alphabetically-first member
+                # R5: keep the CURRENT era, not the alphabetically-first name.
+                keep, drop = current_era(a, b, series_map)
+                collapsed.add(drop)
+                era_pairs.append((keep, drop))
             elif branch == BRANCH_REFUSED:
                 refused.append((a, b, detail))
 
@@ -313,7 +320,54 @@ def resolve_total(indexed, resolution, unit_filter=("USD",)):
         BRANCH_SUMMED if len(contributing) > 1 else BRANCH_SINGLE)
     return IssuanceResolution(
         STATUS_OK, contributing, sorted(collapsed), verdicts,
-        "{}: {} contributing, {} collapsed".format(branch, len(contributing), len(collapsed)))
+        "{}: {} contributing, {} collapsed".format(branch, len(contributing), len(collapsed)),
+        eras=_era_groups(era_pairs, contributing))
+
+
+def _newest_end(series):
+    return max((p[1] for p in series if p[1]), default="")
+
+
+def current_era(a, b, series_map):
+    """(keep, drop) for a collapsed double-tag — ruling R5, 2026-09-28.
+
+    The rule used to keep the alphabetically-first name. CIFR is the case that
+    showed why that is wrong: it tags $167,113,000 as both
+    ProceedsFromConvertibleDebt and ProceedsFromDebtNetOfIssuanceCosts in the
+    one period they share, so they collapse — and the alphabet kept the
+    convertible series, which ENDS at 2025-09-30, and dropped the net-tagged one
+    that carries FY2025 and both 2026 quarters. The live figures were being
+    discarded in favour of a name that had stopped being used.
+
+    The current era is the concept whose newest period is latest. A tie falls
+    back to the alphabet, so a genuinely simultaneous double-tag still resolves
+    the way it always did.
+    """
+    ea, eb = _newest_end(series_map.get(a, {})), _newest_end(series_map.get(b, {}))
+    if eb > ea:
+        return b, a
+    return a, b
+
+
+def _era_groups(pairs, contributing):
+    """{primary: (earlier concepts…)} with chains resolved to a surviving primary."""
+    parent = {}
+    for keep, drop in pairs:
+        parent[drop] = keep
+
+    def root(c):
+        seen = set()
+        while c in parent and c not in seen:
+            seen.add(c)
+            c = parent[c]
+        return c
+
+    groups = {}
+    for drop in parent:
+        r = root(drop)
+        if r in contributing:
+            groups.setdefault(r, []).append(drop)
+    return {k: tuple(sorted(v)) for k, v in groups.items()}
 
 
 def overlap_matrix(indexed, resolution, unit_filter=("USD",)):

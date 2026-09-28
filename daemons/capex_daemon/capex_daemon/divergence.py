@@ -64,7 +64,26 @@ class IssuerView:
             self.ticker, self.ttm_capex, self.ratio)
 
 
-def _merged_issuance(indexed, contributing, keyed="period_end"):
+def _era_pooled(indexed, concept, earlier=()):
+    """One instrument's facts across the names it has carried (R5).
+
+    The current-era concept wins every period it reports; an earlier-era
+    concept contributes only the periods the current one never did. Pooling at
+    the FACT level, before differencing, is what lets a fiscal year tagged under
+    the new name subtract a nine-month YTD tagged under the old one — CIFR's
+    Q4 2025 exists only that way.
+    """
+    rowsd = [f for f in indexed.get(concept, []) if f.unit == "USD" and f.period_start]
+    pool = {(f.period_start, f.period_end): f
+            for f in facts_api.dedupe_latest_filed(rowsd)}
+    for old in earlier:
+        rows_old = [f for f in indexed.get(old, []) if f.unit == "USD" and f.period_start]
+        for f in facts_api.dedupe_latest_filed(rows_old):
+            pool.setdefault((f.period_start, f.period_end), f)
+    return list(pool.values())
+
+
+def _merged_issuance(indexed, contributing, keyed="period_end", eras=None):
     """Sum the contributing issuance concepts into one discrete-quarter series.
 
     `keyed="period_end"` is what the ratio window uses — it must line up with
@@ -74,12 +93,14 @@ def _merged_issuance(indexed, contributing, keyed="period_end"):
 
     Extracted so the panel-level credit leg on the front page and the per-issuer
     ratio come from ONE computation. Two paths would drift.
+
+    `eras` (R5) maps a contributing concept to the names the same instrument
+    carried earlier; their periods fill the gaps the current name leaves.
     """
     merged = {}
     for concept in contributing:
-        rowsd = [f for f in indexed.get(concept, [])
-                 if f.unit == "USD" and f.period_start]
-        pairs = [(f, concept) for f in facts_api.dedupe_latest_filed(rowsd)]
+        pooled = _era_pooled(indexed, concept, (eras or {}).get(concept, ()))
+        pairs = [(f, concept) for f in pooled]
         for r in normalize.discrete_quarters(pairs):
             k = r.period_end if keyed == "period_end" else r.calendar_quarter
             merged[k] = merged.get(k, 0.0) + r.value
@@ -96,7 +117,8 @@ def issuer_issuance_calendar_series(indexed):
     res = issuance.resolve_total(indexed, debt_res)
     if res.is_refused or not res.contributing:
         return None
-    return _merged_issuance(indexed, res.contributing, keyed="calendar") or None
+    return _merged_issuance(indexed, res.contributing, keyed="calendar",
+                            eras=res.eras) or None
 
 
 SIGNIFICANT_FIGURES = 3
@@ -188,7 +210,8 @@ def build_issuer_view(entity, indexed):
     if issuance_res.is_refused:
         statuses.append(STATUS_ISSUANCE_REFUSED)
     elif issuance_res.contributing:
-        merged = _merged_issuance(indexed, issuance_res.contributing)
+        merged = _merged_issuance(indexed, issuance_res.contributing,
+                                  eras=issuance_res.eras)
         if rows:
             window = [r.period_end for r in rows[-config.ANCHOR_WINDOW_QUARTERS:]]
             vals = [merged[e] for e in window if e in merged]
