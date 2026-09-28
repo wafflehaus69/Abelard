@@ -6,6 +6,7 @@ import argparse, json, pathlib, re, sys, time, datetime as dt
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import dune_roundtrip as rt
 import dune_usage
+import owner_wallets
 ROOT = pathlib.Path(__file__).resolve().parents[1]; OUT = ROOT / "recon" / "out"; LEDGER = ROOT / "docs" / "credits.md"
 ALLOWANCE = 2500.0; RESERVE = 0.15
 def consumed():
@@ -13,6 +14,10 @@ def consumed():
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true")
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
+    # Owner-wallet exclusion (MR-3.4): SQL files write __NOT_OWNER(col)__; the addresses are read
+    # from barrel/private/ at run time and reach only the query text sent to Dune, never the repo.
+    for m_ in set(re.findall(r"__NOT_OWNER\(([A-Za-z0-9_.]+)\)__", sql)):
+        sql = sql.replace(f"__NOT_OWNER({m_})__", owner_wallets.sql_not_owner(m_))
     # Authoritative balance from POST /v1/usage (no credits consumed); ledger is the fallback.
     u = dune_usage.usage()
     if u.get("credits_included") is not None:

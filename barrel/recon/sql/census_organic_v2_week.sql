@@ -36,7 +36,7 @@ sw AS (
          (COALESCE(t7.max_pools_7d, 0) > 200 OR COALESCE(h.med_hold_s, 999999) < 60) AS bot
   FROM win s JOIN g ON g.pool = s.pool LEFT JOIN first_seen fs ON fs.wallet = s.wallet
   LEFT JOIN tok7 t7 ON t7.wallet = s.wallet LEFT JOIN hold h ON h.wallet = s.wallet
-  WHERE s.t >= g.g_time AND s.t < g.g_time + INTERVAL '7' DAY),
+  WHERE s.t >= g.g_time AND s.t < g.g_time + INTERVAL '7' DAY AND __NOT_OWNER(s.wallet)__),
 per AS (
   SELECT mint,
          COUNT(DISTINCT CASE WHEN v1 THEN wallet END) AS takers_v1,

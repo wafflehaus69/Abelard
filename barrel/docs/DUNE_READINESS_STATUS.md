@@ -5,17 +5,17 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | Item | Status | Evidence |
 |---|---|---|
 | 1.1 key in `barrel/private/`, guard extended, guard passes | ✅ | `barrel/private/dune.env`; `recon/leak_guard.py` (live-key + pattern match) |
-| 1.1 queries as `.sql` files in repo | 🟡 | new queries live in `recon/sql/` and run via `dune_run_sql.py`; round-trip probes remain inline in their scripts (historical evidence, not pipeline) |
+| 1.1 queries as `.sql` files in repo | ✅ | every pipeline query is a `.sql` under `recon/sql/` run through the metered runner; the round-trip probes stay inline as evidence, not pipeline |
 | 1.1 credit meter with 15% reserve | ✅ | `recon/dune_run_sql.py` reads `POST /v1/usage` (`credits_used`/`credits_included`) before every run; refuses above remaining × 0.85 |
 | 1.2 graduation-event query, validated vs chain-side count | ✅ | `VALIDATION_1_2_GRADUATIONS.md`: Dune raw, BigQuery (250=250 exact), pool join 1,154/1,154, chain 6/6 |
 | 1.2 stratum/era/DEGRADED labelling | 🟡 | P / P-alt / R validated; era + DEGRADED columns validated in `universe_day.sql`; N is multi-venue (v4 negligible; CP init; Meteora first-trade proxy, no creation table on Dune) — count measured, rule needs Architect confirmation |
-| 1.2 owner-wallet exclusion from `barrel/private/` | 🟡 | file present (3 addresses); `recon/owner_wallets.py` loader + SQL predicate + export assertion; to be applied in universe/trade queries and the census |
+| 1.2 owner-wallet exclusion from `barrel/private/` | ✅ | `recon/owner_wallets.py`; runner substitutes `__NOT_OWNER(col)__` at run time (addresses never in the repo); placed in the census; applied to trade queries as they are written |
 | 1.3 schema frozen | ✅ | MR-7: frozen at 20 + 3 (`DERIVED_TABLE_SCHEMA.md`) |
 | 1.3 built + validated as plain query, one day | ✅ | `derived_trades_day_p.sql`: 12.6M rows, conservation holds on 84% of rows / 9,594 mints, failures concentrated by mint (unnamed leg); `trader_cost = gross − net` adopted |
 | 1.3 export contract with row counts | ✅ | `DERIVED_TABLE_SCHEMA.md` §Export contract: P ≈ 180,543 tokens → ~4,152 credits per-token export; distributions in-warehouse |
 | 1.4 census queries | ✅ | v1 and v2 organic measured side by side (`VALIDATION_1_4_CENSUS.md`); v2 takers p50 207, first-organic p90 42 s; S7b exclusion pending |
 | 1.4 calibration-slice distributions | ⬜ | |
-| 1.4 20-token seeded reconciliation list | ⬜ | |
+| 1.4 20-token seeded reconciliation list | ✅ | drawn, seed 20260922, 10 pre + 10 post (`VALIDATION_1_4_CENSUS.md`); Solscan check runs on day one |
 | 1.5 S1/S2 as-of, reconciled on 5 tokens | ✅ | reconstruction 5/5 (necessary) + **differential test 7/7** on N post-entry revocations (`VALIDATION_1_5_S1_S2.md`); history window starts at mint creation |
 | 1.5 S3/S4 | ✅ | `VALIDATION_1_5_S3_S4.md`: 10/10 reconciled (5 P + 5 N) via raw Token-2022 calls by instruction index; first live FAIL found (N mint, 500 bps transfer fee); S4 *rate* as-of needs sub-instruction decode (next) |
 | 1.5 S6/S7/S7b/S8 | 🟡 | S5/S7b sources set; S6 ledger built on one mint and reconciles to chain supply to the lamport (`VALIDATION_1_5_S6.md`; an earlier 'double-record' claim was wrong and is corrected there); top-holder chain reconciliation pending; S7 written and measured on one mint (0.000%, `VALIDATION_1_5_S7_S8.md`); S8 measured on five mints — one BUNDLE found (`AaTwXAnM…`, 7 buyers / 1 funder); S6 ledger reconciled to chain to the lamport on supply and top-3 owners (`VALIDATION_1_5_S6.md`) |

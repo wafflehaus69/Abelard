@@ -1,0 +1,151 @@
+{
+ "file": "barrel/recon/sql/recon_20_tokens.sql",
+ "label": "1.4 20-token seeded list",
+ "execution_id": "01M3MN7JJF3EHPMQ73WAW5ZJ71",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 12.657205883,
+ "submitted_at": "2026-09-28T18:42:57.744036Z",
+ "rows": [
+  {
+   "grad_time": "2026-07-19 09:00:05.000 UTC",
+   "mint": "9jB1P6Uq2mbSaub9xCAf7ULKmEsTqmgKt73UEZMpump",
+   "pool": "83jULW4wV9NEtTTqvuswFLj8dB3ktCCKZKzwdHdR2wAG",
+   "rn": 1,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-09-18 16:16:29.000 UTC",
+   "mint": "9NWLfQDavTQVoPSSp5sYdWZEue7sdN6FLJTLvd8Ypump",
+   "pool": "yzTjF6kA7Nj6yWVK4prbY3AL6SGSvH3oqSXyf38DgqB",
+   "rn": 2,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-07-16 15:03:37.000 UTC",
+   "mint": "2QhpfEeZ8ijBprekdN99jDmPmwqHKNiLWc3X22s3pump",
+   "pool": "HnAgSEQXW1Ff2x28qauMnQnQsAvwDRCT4NNH4YPzTLY6",
+   "rn": 3,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-08-25 08:58:27.000 UTC",
+   "mint": "q1oHmmvubgWZx66vmw7TLuCCN9KLS95C7PLE3vjpump",
+   "pool": "GEpMCwZ4SUHsfAsbWFPU2vaThLg2dVKaF2FeQaNyBFnd",
+   "rn": 4,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-08-14 17:58:21.000 UTC",
+   "mint": "2NfrHeJKV1Lwbi1d1wLmx6zPw8aL6tRvnY61mE7mpump",
+   "pool": "94LEZyEWgQfTfSuTVb4ZUVvzdu5JYfEpFgu1428HbD5F",
+   "rn": 5,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-09-06 10:59:30.000 UTC",
+   "mint": "2sywcwJdrYWXr7h3xqNAoSKQfyutcBnFeVg5vP96pump",
+   "pool": "8JUaR6h1xbD3RHqwWUGDfVRCTQe98W4CsypvXAuhRhfd",
+   "rn": 6,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-08-15 07:39:18.000 UTC",
+   "mint": "5wpvCAWGoe8mVQ82Ace7KQ2gQe8nm5QLthNRghBepump",
+   "pool": "EU2qRRscKeRdkThYkTGqkxb57xq7WAohJ4Coq2QP9vYw",
+   "rn": 7,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-06-24 14:08:37.000 UTC",
+   "mint": "Cs6DwfAyq4zQUMsU5iq1cQ9oE6aYPEG64jeKQxxXpump",
+   "pool": "H9EDfs52iENyK5JAVk4xvHHjixLLHuhjioTQDRoY5oMk",
+   "rn": 8,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-06-12 04:19:28.000 UTC",
+   "mint": "AGnJqiPt5UHSGwaqabQTFttKdFJ3EAeMjiUVtTMrpump",
+   "pool": "CnXqZyVovoYpNZcXm5oS44AV4Q36Mb26rmPuAMj825dE",
+   "rn": 9,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2026-08-21 21:25:35.000 UTC",
+   "mint": "oZPbdNqzFbURtZEjZspXtf7txDGJaU7hAg5qwVapump",
+   "pool": "Bz91xkFX7xTvDQxtr4g7jb8FkjmVn8T8aghCnfiAF9Lg",
+   "rn": 10,
+   "src": "migration_event"
+  },
+  {
+   "grad_time": "2025-11-26 08:57:31.000 UTC",
+   "mint": "HPaNjCWasGYbNRuZtxy7JjAX9KFQsYF7hdVoEgRupump",
+   "pool": "C1mP6oucp2VH31XrbfQc9aSDxdYpECWQmhBznK4gPNyu",
+   "rn": 1,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2026-02-28 18:51:38.000 UTC",
+   "mint": "5DUEGjxje8Zr3XJScHJ7DGkE92aTiG89yEC999hTpump",
+   "pool": "CBxAph4qv28UWHTftWXb2Ff6dbBDqCcbpFQwuDLPsmch",
+   "rn": 2,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2025-05-06 13:40:27.000 UTC",
+   "mint": "Br7tiDXX2wQwB3Cq1Cc8muDdT67N1pPZxuD3zhHapump",
+   "pool": "GAxTcwLbL5XwLjczSxqJXyY2UuvZko3ASzNYWPuWWG5N",
+   "rn": 3,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2025-04-01 22:40:48.000 UTC",
+   "mint": "pktvwZiDcmiCxyX38YEFWPhLU3rwG4RNsf3hm2fpump",
+   "pool": "3awrTSAe74ebGdNTcbawTKMfBQgnDiWUjrVpbDvrqiLz",
+   "rn": 4,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2025-04-01 13:44:03.000 UTC",
+   "mint": "4KGFTuvRER7LstJutY3eRhxUkRYUKdsHE7EcqJuppump",
+   "pool": "6YqX8wkSnNSvZXKNLL6tYwQts4VugAFmvQMrUcp5tBnh",
+   "rn": 5,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2026-04-10 09:23:48.000 UTC",
+   "mint": "8hgDR8L6mADmVhZLqyQxiMPmsn9EZiH3Lbgh2JRZpump",
+   "pool": "3GoYU4RmNK4XZ3cwfzaY7MNaaEM8TfFzLWdMDnsgoMx1",
+   "rn": 6,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2025-03-31 19:10:30.000 UTC",
+   "mint": "EUknbxwQ6foXeJVtSgTfYBRRZGmfPJ3dKMC1LkHvpump",
+   "pool": "9QEMtr3tGV1Cw5UobPqNnZTtj8rUhjMXLaNxAA9zcdjr",
+   "rn": 7,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2025-05-28 18:37:14.000 UTC",
+   "mint": "3Tp5T1FtRbD3HZjQzLWztrCPxr7tUdKfC7QuhN1Upump",
+   "pool": "GSDrEdUJKaC68Gs27sJWaNq4bxVDLGsdicm4SiMtKDto",
+   "rn": 8,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2026-02-21 20:57:42.000 UTC",
+   "mint": "BERf7cT29wX1tWZ5sKjsEymBXQZ2US4BJn5Rtsgfpump",
+   "pool": "6pZes3XxJVYpqmnEv6ceHDJ3JNRNLfhU7hq4eknZ3hrA",
+   "rn": 9,
+   "src": "pre_event_rule"
+  },
+  {
+   "grad_time": "2025-06-12 19:28:57.000 UTC",
+   "mint": "BMpsBPcBRvgaeMJz4qixbyvDZ9m6EPHfyomtVfRxpump",
+   "pool": "CoL1tUeK6gn4QdPbydH1ip6MNgifVYsK3DTkJcgx6tEs",
+   "rn": 10,
+   "src": "pre_event_rule"
+  }
+ ],
+ "error": null
+}
