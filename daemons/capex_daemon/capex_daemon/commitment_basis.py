@@ -47,6 +47,18 @@ CONTENT_ENERGY_SOFTWARE = "CONTENT-ENERGY-SOFTWARE"
 MIXED_UNSEPARABLE = "MIXED-UNSEPARABLE"
 NOT_A_COMMITMENT = "NOT-A-COMMITMENT"
 UNCLASSIFIED = "UNCLASSIFIED"
+#: Ruled by Mando 2026-09-28 (ORDER CD-GAP2-P2-CLOSE Z1). A promise to cover
+#: SOMEONE ELSE'S obligation, paid only if they do not. Not a purchase and not a
+#: lease, so never buildout — and not "not a commitment" either, because the
+#: exposure is real and, at NVIDIA, larger than most issuers' whole books.
+GUARANTEES = "GUARANTEES"
+
+#: Sub-tags qualify a class without changing it. CONTINGENT (ruled 2026-09-28):
+#: the obligation exists only if a condition occurs — NVIDIA buys AI-cloud
+#: capacity only if the cloud fails to sell it. It stays in its class and feeds
+#: what that class feeds; the sub-tag travels with the figure everywhere so no
+#: reader mistakes a backstop for a firm order.
+QUALIFIER_CONTINGENT = "CONTINGENT"
 
 #: The only classes that feed Leg 3, the since-page and alerts (R1).
 BUILDOUT_CLASSES = (SUPPLY, SUPPLY_CAPEX, LEASES_NOT_COMMENCED)
@@ -54,18 +66,21 @@ BUILDOUT_CLASSES = (SUPPLY, SUPPLY_CAPEX, LEASES_NOT_COMMENCED)
 ANNOTATIVE_CLASSES = (CONTENT_ENERGY_SOFTWARE,)
 #: Published with a reason, joins no total.
 WITHHELD_CLASSES = (MIXED_UNSEPARABLE, UNCLASSIFIED)
+#: A real exposure on another party's obligation. Its own section; joins nothing.
+GUARANTEE_CLASSES = (GUARANTEES,)
 #: Removed from the deltas, the since-page and Leg 3. Listed only as excluded.
 EXCLUDED_CLASSES = (NOT_A_COMMITMENT,)
 
 CLASS_ORDER = (SUPPLY, SUPPLY_CAPEX, LEASES_NOT_COMMENCED,
-               CONTENT_ENERGY_SOFTWARE, MIXED_UNSEPARABLE, UNCLASSIFIED,
-               NOT_A_COMMITMENT)
+               CONTENT_ENERGY_SOFTWARE, GUARANTEES, MIXED_UNSEPARABLE,
+               UNCLASSIFIED, NOT_A_COMMITMENT)
 
 CLASS_MEANING = {
     SUPPLY: "unconditional purchase, supply or capacity obligations",
     SUPPLY_CAPEX: "supply obligations that explicitly include PP&E or datacenter build",
     LEASES_NOT_COMMENCED: "signed leases that have not yet commenced",
     CONTENT_ENERGY_SOFTWARE: "real commitments, unrelated to the buildout",
+    GUARANTEES: "a contingent exposure on another party's obligation",
     MIXED_UNSEPARABLE: "several classes in one total, not separable from it",
     UNCLASSIFIED: "discloses a figure; its contents have not been read yet",
     NOT_A_COMMITMENT: "not a forward commitment at all",
@@ -184,11 +199,11 @@ TAGGED_BASIS = {r.ticker: r for r in [
             "The tagged line is frozen at 2024Q2 because the live figure is "
             "dimension-tagged (…DigitalMediaContentProcureEnergyAndLicenseSoftwareMember, "
             "$130.065B at 2026-06-30), which companyfacts drops. "
-            "RE-OPENED 2026-09-23: AMZN added \"acquire property and equipment\" to "
-            "this line's footnote after the 2024Q2 figure R1(a) was ruled on, and did "
-            "not rename the member. MIXED-UNSEPARABLE on the live evidence; held here "
-            "at the ruled class because both classes are non-buildout and no published "
-            "number turns on it. See commitment_capture.CAPTURE['AMZN']."),
+            "This FROZEN 2024Q2 figure is correctly CONTENT-ENERGY-SOFTWARE: its "
+            "footnote had no PP&E. The live line was reclassified MIXED-UNSEPARABLE "
+            "by Mando 2026-09-28, dated from 2025-03-31 when AMZN added \"acquire "
+            "property and equipment\" to the footnote — see "
+            "commitment_capture.CAPTURE['AMZN']."),
     _b("GOOGL", CONTENT_ENERGY_SOFTWARE, "content licensing agreements with fixed or "
        "minimum guaranteed commitments",
        line_label="certain content licensing agreements … of $7.7 billion (Note 10)",

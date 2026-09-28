@@ -662,6 +662,9 @@ def commitment_rows(snap):
                 "form": cap.get("form") or "", "filed": cap.get("filed") or "",
                 "line_label": cap.get("label") or "", "is_total": cap.get("is_total"),
                 "points": len(cap.get("points") or []),
+                "qualifiers": list(cap.get("qualifiers") or []),
+                "reclass_from": cap.get("reclass_from"),
+                "cls_before": cap.get("cls_before"),
             })
         br = None if captured else c.get("buildout_row")
         if br:
@@ -698,7 +701,17 @@ def _basis_table(rows, within_class):
                         "parser": " <span class='flag' style='background:#eef3fb;"
                                   "color:#1f4e9c'>parser</span>"}.get(r["kind"], "")
                        + (" <span class='flag'>total — joins nothing</span>"
-                          if r.get("is_total") else ""),
+                          if r.get("is_total") else "")
+                       + "".join(" <span class='flag' style='background:#8a3fa0;"
+                                 "color:#fff' title='the obligation exists only if a "
+                                 "condition occurs — a backstop, not a firm order'>"
+                                 "{}</span>".format(_esc(q))
+                                 for q in (r.get("qualifiers") or []))
+                       + (" <span class='flag' title='{} before {}'>reclassified "
+                          "{}</span>".format(_esc(r["cls_before"]),
+                                             _esc(r["reclass_from"]),
+                                             _esc(r["reclass_from"]))
+                          if r.get("reclass_from") else ""),
                        _esc(r["bucket"]), val, _esc(r["as_of"] or "—"),
                        _esc(r["concept"] or "—"), _esc(r["line_label"]),
                        _esc(r["contains"]), _esc(src)))
@@ -756,6 +769,14 @@ def view_commitments(snap):
         "and because a reader who has seen them elsewhere should find them here with "
         "a reason, <b>never</b> in Leg 3 or a buildout total. AMZN and IRM also appear "
         "above, on the buildout figure each discloses separately."))
+    out.append(_class_section(
+        live, commitment_basis.GUARANTEES,
+        "GUARANTEES — exposure on another party's obligation",
+        "A promise to cover someone else's obligation, paid only if they do not. Not a "
+        "purchase and not a lease, so never in Leg 3 or a buildout total; not "
+        "NOT-A-COMMITMENT either, because the exposure is real and can be larger than "
+        "most issuers' whole commitment books. Published as maximum exposure, which is "
+        "what the filing states — not an expected loss."))
     out.append(_class_section(
         live, commitment_basis.MIXED_UNSEPARABLE,
         "MIXED-UNSEPARABLE — disclosed, not separable",
@@ -974,11 +995,15 @@ def _commitment_deltas_block(snap):
         big = r["multiple"] >= 2.0 and r["delta"] >= 1e9
         style = " style='font-weight:600'" if big else ""
         cls = r.get("basis_class") or commitment_basis.UNCLASSIFIED
-        out.append("<tr{}><td><b>{}</b></td><td class='note' title='{}'>{}{}</td>"
+        tags = "".join(" <span class='flag'>{}</span>".format(_esc(q))
+                       for q in (r.get("qualifiers") or []))
+        if r.get("basis_change"):
+            tags += " <span class='flag'>basis changed — not a move</span>"
+        out.append("<tr{}><td><b>{}</b>{}</td><td class='note' title='{}'>{}{}</td>"
                    "<td class='note'>{}</td><td>{}</td><td>{}</td>"
                    "<td class='num'>{}q</td><td class='num'>{}</td><td class='num'>{}</td>"
                    "<td class='num'>{}</td><td class='num'>{:.2f}x</td></tr>".format(
-                       style, _esc(r["ticker"]),
+                       style, _esc(r["ticker"]), tags,
                        _esc(commitment_basis.CLASS_MEANING.get(cls, "")), _esc(cls),
                        "" if r.get("buildout") else
                        " <span class='flag'>cannot alert</span>",

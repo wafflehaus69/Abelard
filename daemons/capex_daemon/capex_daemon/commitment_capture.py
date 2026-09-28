@@ -45,13 +45,22 @@ class Rule:
     """One verified figure: what to match, what it means, where that was read."""
 
     __slots__ = ("ticker", "key", "cls", "concept", "axis", "members", "label",
-                 "accession", "form", "filed", "quote", "is_total", "note")
+                 "accession", "form", "filed", "quote", "is_total", "note",
+                 "qualifiers", "cls_before", "reclass_from", "reclass_evidence")
 
     def __init__(self, ticker, key, cls, concept, axis="", members=(), label="",
-                 accession="", form="", filed="", quote="", is_total=False, note=""):
+                 accession="", form="", filed="", quote="", is_total=False, note="",
+                 qualifiers=(), cls_before=None, reclass_from=None,
+                 reclass_evidence=""):
         self.ticker = ticker
         self.key = key
         self.cls = cls
+        self.qualifiers = tuple(qualifiers)
+        # A DATED reclass: the same line meant something else before the issuer
+        # re-worded it. Points before `reclass_from` carry `cls_before`.
+        self.cls_before = cls_before
+        self.reclass_from = reclass_from
+        self.reclass_evidence = reclass_evidence
         self.concept = concept
         self.axis = axis
         self.members = (members,) if isinstance(members, str) else tuple(members)
@@ -71,13 +80,21 @@ class Rule:
     def buildout(self):
         return self.cls in commitment_basis.BUILDOUT_CLASSES and not self.is_total
 
+    def cls_at(self, period_end):
+        """The class this line carried at `period_end` (dated reclass, Z1c)."""
+        if self.reclass_from and self.cls_before and period_end < self.reclass_from:
+            return self.cls_before
+        return self.cls
+
     def json(self):
         return {"ticker": self.ticker, "key": self.key, "rule_key": self.rule_key,
                 "class": self.cls, "concept": self.concept, "axis": self.axis,
                 "members": list(self.members), "label": self.label,
                 "accession": self.accession, "form": self.form, "filed": self.filed,
                 "quote": self.quote, "is_total": self.is_total, "note": self.note,
-                "buildout": self.buildout}
+                "buildout": self.buildout, "qualifiers": list(self.qualifiers),
+                "cls_before": self.cls_before, "reclass_from": self.reclass_from,
+                "reclass_evidence": self.reclass_evidence}
 
     def __repr__(self):
         return "Rule({} {})".format(self.rule_key, self.cls)
@@ -165,7 +182,7 @@ _register(
          accession="0001018724-26-000026", form="10-Q", filed="2026-07-31",
          quote="$137,214,000,000 at 2026-06-30, on the leases-not-yet-commenced "
                "member of the purchase-obligation category axis"),
-    Rule("AMZN", "content-energy-software", commitment_basis.CONTENT_ENERGY_SOFTWARE,
+    Rule("AMZN", "content-energy-software", commitment_basis.MIXED_UNSEPARABLE,
          _UUPO, _AMZN_AXIS,
          "LongTermAgreementsToAcquireAndLicenseDigitalMediaContentProcureEnergy"
          "AndLicenseSoftwareMember",
@@ -174,18 +191,20 @@ _register(
          accession="0001018724-26-000026", form="10-Q", filed="2026-07-31",
          quote="$130,065,000,000 at 2026-06-30 — the line the panel froze at "
                "$32.41B in 2024Q2",
-         note="RE-OPENED, and it changes no published number: both candidate "
-              "classes are non-buildout. R1(a) ruled this line "
-              "CONTENT-ENERGY-SOFTWARE on its 2024Q2 reading, which was exact "
-              "then — footnote (2) said \"acquire and license digital media "
-              "content, procure energy, and license software\". The live "
-              "footnote reads \"...procure energy, acquire and license digital "
-              "media content, ACQUIRE PROPERTY AND EQUIPMENT, and license "
-              "software\" (hand-checked in 0001018724-26-000026 against "
-              "0001018724-24-000130). The XBRL member name still carries the "
-              "old composition. So the row now blends PP&E purchasing with "
-              "content licensing and publishes no split — MIXED-UNSEPARABLE on "
-              "the evidence. Held at the ruled class pending Mando."),
+         note="Reclassified by Mando 2026-09-28 (Z1), DATED: AMZN added "
+              "\"acquire property and equipment\" to this line's footnote (2) "
+              "with the 10-Q for 2025-03-31 and never renamed the XBRL member, so "
+              "from that quarter the line blends PP&E purchasing with content "
+              "licensing and publishes no split. Earlier points keep "
+              "CONTENT-ENERGY-SOFTWARE, which was exact for them. Neither class "
+              "is buildout, so no published total turns on it.",
+         cls_before=commitment_basis.CONTENT_ENERGY_SOFTWARE,
+         reclass_from="2025-03-31",
+         reclass_evidence="footnote (2) without PP&E through the FY2024 10-K "
+                          "0001018724-25-000004; with PP&E from the 10-Q "
+                          "0001018724-25-000036 (period 2025-03-31, filed "
+                          "2025-05-02) onward. Hand-checked in all six filings "
+                          "2024-06-30 .. 2025-09-30."),
     Rule("AMZN", "total-commitments", commitment_basis.NOT_A_COMMITMENT,
          "ContractualObligation", label="Total commitments",
          accession="0001018724-26-000026", form="10-Q", filed="2026-07-31",
@@ -222,11 +241,11 @@ _register(
          accession="0001045810-26-000075", form="10-Q", filed="2026-08-26",
          quote="\"if AI clouds do not successfully sell committed capacity to "
                "third-party customers, we have agreed to purchase that capacity\"",
-         note="JUDGMENT CALL, flagged for ruling: this is a CONTINGENT capacity "
-              "purchase, not an unconditional one. Classed SUPPLY because the "
-              "issuer presents it in its commitments table and the obligation is "
-              "to buy capacity; a ruling that contingent obligations are not "
-              "SUPPLY would move $36B out of the buildout read."),
+         note="Ruled by Mando 2026-09-28 (Z1): stays SUPPLY with a CONTINGENT "
+              "sub-tag. NVIDIA buys this capacity only if the AI cloud fails to "
+              "sell it — a backstop, not a firm order — and the sub-tag travels "
+              "with the figure so no reader mistakes one for the other.",
+         qualifiers=(commitment_basis.QUALIFIER_CONTINGENT,)),
     Rule("NVDA", "dc-leases-not-commenced", commitment_basis.LEASES_NOT_COMMENCED,
          "OtherCommitment", _NVDA_AXIS, "DataCenterLeaseNotYetCommencedMember",
          label="Data center leases not commenced",

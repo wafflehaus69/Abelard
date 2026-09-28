@@ -258,10 +258,11 @@ def _captured_rows(ticker, rows):
         if not pts:
             continue
         ordered = sorted(pts.items())
-        cq = [{"q": normalize.calendar_align(pe)[0], "value": v, "end": pe}
-              for pe, v in ordered]
+        cq = [{"q": normalize.calendar_align(pe)[0], "value": v, "end": pe,
+               "class": rule.cls_at(pe)} for pe, v in ordered]
         out.append(dict(rule.json(),
-                        points=[{"end": pe, "value": v} for pe, v in ordered],
+                        points=[{"end": pe, "value": v, "class": rule.cls_at(pe)}
+                                for pe, v in ordered],
                         points_cq=cq,
                         latest=ordered[-1][1], as_of=ordered[-1][0]))
     return out
@@ -730,9 +731,15 @@ def _captured_deltas(snap, frontier=None):
             base, latest = prev.get("value"), cur.get("value")
             if base is None or latest is None:
                 continue
+            # A move across a dated reclass is a change of BASIS, not of size —
+            # the line started including something it did not include before.
+            basis_change = (prev.get("class") or row["class"]) != \
+                (cur.get("class") or row["class"])
             out.append({
                 "ticker": tick,
                 "bucket": iss.get("bucket"),
+                "qualifiers": list(row.get("qualifiers") or []),
+                "basis_change": basis_change,
                 "concept": "{} [{}]".format(row["concept"], row["label"][:40]),
                 "from_q": prev["q"], "to_q": cur["q"],
                 "quarters_between": (trend._cq_index(cur["q"])
@@ -741,7 +748,7 @@ def _captured_deltas(snap, frontier=None):
                 "delta": latest - base,
                 "multiple": (latest / base) if base > 0 else None,
                 "basis_class": row["class"],
-                "buildout": bool(row.get("buildout")),
+                "buildout": bool(row.get("buildout")) and not basis_change,
                 "source": "parser",
                 "rule_key": row["rule_key"],
                 "event_key": "commitcap:{}:{}:{}:{:.0f}".format(

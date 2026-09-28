@@ -118,6 +118,8 @@ def enqueue_commitment_alerts(alerts, queue_path=None, queue=None):
                     # arrives without saying what it contains is how lessor
                     # receipts and prepaid rent reached the buildout read.
                     "basis_class": a.get("basis_class"),
+                    # A CONTINGENT figure arrives saying so (ruled 2026-09-28).
+                    "qualifiers": a.get("qualifiers") or [],
                     "from_q": a["from_q"], "to_q": a["to_q"],
                     "quarters_between": a.get("quarters_between"),
                     "from_value": a.get("from_value"), "to_value": a.get("to_value"),

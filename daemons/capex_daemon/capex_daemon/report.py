@@ -1062,6 +1062,12 @@ CLASS_BLURBS = {
         "because a reader who has seen them elsewhere should find them here with a "
         "reason, <b>never</b> in Leg 3 or a buildout total. AMZN and IRM also appear "
         "above, on the buildout figure each discloses separately."),
+    commitment_basis.GUARANTEES: (
+        "GUARANTEES — exposure on another party's obligation",
+        "A promise to cover someone else's obligation, paid only if they do not. Never "
+        "in Leg 3 or a buildout total, and not NOT-A-COMMITMENT either: the exposure is "
+        "real. Published as the maximum exposure the filing states, not an expected "
+        "loss."),
     commitment_basis.MIXED_UNSEPARABLE: (
         "MIXED-UNSEPARABLE — disclosed, not separable",
         "Several classes in one total with no published split, so no part of it can be "
@@ -1088,6 +1094,7 @@ def _sec_commitment_classes(snap, styles):
     out = [_P("By class — what each figure actually contains", styles["_h2"])]
     order = (list(commitment_basis.BUILDOUT_CLASSES)
              + [commitment_basis.CONTENT_ENERGY_SOFTWARE,
+                commitment_basis.GUARANTEES,
                 commitment_basis.MIXED_UNSEPARABLE, commitment_basis.UNCLASSIFIED,
                 commitment_basis.NOT_A_COMMITMENT])
     for cls in order:
@@ -1109,7 +1116,10 @@ def _sec_commitment_classes(snap, styles):
                     _x(r["ticker"]),
                     {"buildout": " (presentation)", "parser": " (parser)"}.get(
                         r["kind"], ""),
-                    " — total, joins nothing" if r.get("is_total") else ""),
+                    (" — total, joins nothing" if r.get("is_total") else "")
+                    + "".join(" [{}]".format(_x(q)) for q in (r.get("qualifiers") or []))
+                    + (" [reclassified {}]".format(_x(r["reclass_from"]))
+                       if r.get("reclass_from") else "")),
                 _x(r["bucket"]), _x(val), _x(r["as_of"] or "—"),
                 _x(r["concept"] or "—"), _x(r["contains"]), _x(src)])
         out.append(_table(
