@@ -1,0 +1,61 @@
+{
+ "file": "barrel/recon/sql/slippage_sell_txids_v2.sql",
+ "label": "1.6 sell tx ids v2 (pruned)",
+ "execution_id": "01M3MKNKXM4SHPC4PAVZB1D7JR",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.440735295,
+ "submitted_at": "2026-09-28T18:15:40.724833Z",
+ "rows": [
+  {
+   "day": "2026-06-01",
+   "evt_tx_id": "2SuuPpfHrajeaEDi4jbp3ur9oQEp54xtfZNG65BJhfLqUUM973rwe2BKihVnR3oJeVuKxpnDonQg4hEjXzHVy7sU",
+   "pool": "3hK2PJtLVXrF9h8xMzHSiinTkUNvThLbmDzyi1UTsA4e"
+  },
+  {
+   "day": "2026-06-01",
+   "evt_tx_id": "3z6dMKY2zoptRkBa6w4ykB92L7Wj1w6KnVRskn5mhq1xJLw7u2dpQHfpHhChbASoXspxjGUscH7tQGnYFg7v7r2c",
+   "pool": "G5yPfoXAj85Qrv1BKJ2raHtE1ciaZvmMdCvpCwFXpefx"
+  },
+  {
+   "day": "2026-06-01",
+   "evt_tx_id": "WsTuNRJ3iKsgQqHymauYXiFFGRHHE3nqcg9i2prtprsBxHSj3Zfvogx9F9JF4oG2PRtrNiYV9oinenq4EtxzCa5",
+   "pool": "ARiCuaL3Sqb1BnKi6xYmiSUG7nbbrvNHd6TJV9atKVu7"
+  },
+  {
+   "day": "2026-06-01",
+   "evt_tx_id": "3aPokmzmezQoFzLAuciNF4s4u9s6S6ZmSVRf8k66yBo4zNMgLdJxYQZaFGrgVYzAUoDhotWSiVHqa323xwitY1Bb",
+   "pool": "3hK2PJtLVXrF9h8xMzHSiinTkUNvThLbmDzyi1UTsA4e"
+  },
+  {
+   "day": "2026-06-01",
+   "evt_tx_id": "5Yg2nu7sHn64hj1NjohbznqsftWQPhVCerR7Ue1VPvuH94STDUYkdjWycjcFhmEcXSwqscAQrfWDMjV3GoNQ3tgn",
+   "pool": "3139sQUvCqBvAvdbKAoQbjEYmvsa8p8h57mxKb6PdTmH"
+  },
+  {
+   "day": "2026-09-01",
+   "evt_tx_id": "3Hws3rgP6mUBehsDhj247tJf8DHwRMhRHTinWH39xUdD5jtDCkLRWuECNvy3HwMY23FrvVSXw5Zyo9AXVMRsusST",
+   "pool": "6Kt94MW8hQotFaxiFxnpnPrmiPguSwirFueFAnhKZJ8q"
+  },
+  {
+   "day": "2026-09-01",
+   "evt_tx_id": "2hDrkzd7QM8P1NGiygZQ2KLhGBr5GGM1NGX87diJD7V2K5xPqkyB6BtH33zczeZ7M8uTmP7gibQBbmzfc6cmFJ1L",
+   "pool": "6Kt94MW8hQotFaxiFxnpnPrmiPguSwirFueFAnhKZJ8q"
+  },
+  {
+   "day": "2026-09-01",
+   "evt_tx_id": "HxQUsA55P3eX541qS7SFcBEVJo4ZPiRvEk9TigtDfLMprDg5fEJcgLNoFBQrG1QfQM5eUq65WVdRcGBWHGZJ4EZ",
+   "pool": "6v161BRMdfKaR2yoFRc15cKJmHWYgPkDfJpB8tYsJKqx"
+  },
+  {
+   "day": "2026-09-01",
+   "evt_tx_id": "4Km7Hn8G27dpvouTunydKzZbbGUwVxqHKghEJavHqYhS5CEd41NVbLb7CD7WYE5L6nbBanBdvxfoeT4FkYiGVJo1",
+   "pool": "6Kt94MW8hQotFaxiFxnpnPrmiPguSwirFueFAnhKZJ8q"
+  },
+  {
+   "day": "2026-09-01",
+   "evt_tx_id": "5NrLd1ieCRTzSrR3pho2LV3BsdpVxVoteKJ2XsW514CU9Heo8QMpu7Nmi9iLd9gV4Ures2NtWGVnj2C1Rq4FmGUt",
+   "pool": "EFH8B3k5df4p6CLeKDHRqWTVrCTi5CKwP1N8MjioREJo"
+  }
+ ],
+ "error": null
+}

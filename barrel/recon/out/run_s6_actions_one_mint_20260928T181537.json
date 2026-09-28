@@ -1,0 +1,35 @@
+{
+ "file": "barrel/recon/sql/s6_actions_one_mint.sql",
+ "label": "S6 per-action diagnosis",
+ "execution_id": "01M3MKHTB4T1RCV2S1ZNY6VYJ3",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 5.713088236,
+ "submitted_at": "2026-09-28T18:13:36.228581Z",
+ "rows": [
+  {
+   "action": "transfer",
+   "distinct_to": 39,
+   "from_owner_null": 0,
+   "rows": 423,
+   "to_owner_null": 0,
+   "total_amount": "2.1639497383966296E16"
+  },
+  {
+   "action": "burn",
+   "distinct_to": 0,
+   "from_owner_null": 0,
+   "rows": 2,
+   "to_owner_null": 2,
+   "total_amount": "5.93902297E8"
+  },
+  {
+   "action": "mint",
+   "distinct_to": 2,
+   "from_owner_null": 2,
+   "rows": 2,
+   "to_owner_null": 0,
+   "total_amount": "2.0E15"
+  }
+ ],
+ "error": null
+}

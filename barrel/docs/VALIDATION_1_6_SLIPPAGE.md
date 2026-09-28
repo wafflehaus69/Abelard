@@ -31,3 +31,11 @@ Entry fill for a $20 ticket: `x` = $20 in lamports at block-time SOL/USD, gross 
 
 ## Limit, and how the backtest handles it
 Dune's decoded `pump_amm_evt_buyevent` pins the 473-byte layout and **does not carry `virtual_quote_reserves`**. Post-BOOST fills therefore cannot be priced from the decoded table alone. Two recoveries: (a) read the Pool account's `virtual_quote_reserves` once per pool (it is set at BOOST init; whether the buy-and-burn changes it over time is checked before it is treated as constant — `BoostBuyAndBurnEvent` carries the field per event, so an as-of path exists via raw logs); (b) the raw-log decode with the pinned full layout. The derived table records `virtual_quote_reserves` as a **derived per-pool value with its source**, not as a stored column (schema stays 20 + 3).
+
+## Sell side, validated on 10 executed sells (2026-09-28) — `recon/out/slippage_model_test_sells.json`
+```
+quote_out = (pool_quote_token_reserves + virtual_quote_reserves) * base_in / (pool_base_token_reserves + base_in)
+```
+**10 / 10 at 0.0000%** (5 pre-BOOST with virtual = 0, 5 post-BOOST with virtual = 17.585 SOL). Reserves pre-swap, as on the buy side. The identity `user_quote_amount_out = quote_out − (lp + protocol + creator)` holds on **6 / 10**; the other four pay a further 0.76–0.96% off the output — an unnamed leg (the 409-byte sell layout on those lacks the holder-rewards fields). Same treatment as the buy side: **exit cost = `quote_out − user_quote_out`** (gross − net), named legs for decomposition, the difference in `residual`.
+
+**Exit-fill rule for §5, as it will be coded:** `quote_out` from the inverted curve against the exit block's pre-swap reserves; net proceeds = `quote_out × (1 − r)` where `r` is the token's own observed (gross − net)/gross ratio on sells in its history, never a constant. Under MR-3.2 the exit is the worse of next-block price and this depth-implied fill.

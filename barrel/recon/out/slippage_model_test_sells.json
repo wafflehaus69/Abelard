@@ -1,0 +1,82 @@
+[
+ {
+  "day": "2026-06-01",
+  "tx": "2SuuPpfHrajeaEDi4jbp3ur9oQEp54xtfZNG65BJhfLqUUM973rwe2BKihVnR3oJeVuKxpnDonQg4hEjXzHVy7sU",
+  "V": 0,
+  "errA": 1.9559127309283103e-08,
+  "errB": 0.0,
+  "body": 384
+ },
+ {
+  "day": "2026-06-01",
+  "tx": "3z6dMKY2zoptRkBa6w4ykB92L7Wj1w6KnVRskn5mhq1xJLw7u2dpQHfpHhChbASoXspxjGUscH7tQGnYFg7v7r2c",
+  "V": 0,
+  "errA": 4.3524957567861763e-07,
+  "errB": 0.0,
+  "body": 384
+ },
+ {
+  "day": "2026-06-01",
+  "tx": "WsTuNRJ3iKsgQqHymauYXiFFGRHHE3nqcg9i2prtprsBxHSj3Zfvogx9F9JF4oG2PRtrNiYV9oinenq4EtxzCa5",
+  "V": 0,
+  "errA": 2.737705148910657e-07,
+  "errB": 0.7575758586653265,
+  "body": 384
+ },
+ {
+  "day": "2026-06-01",
+  "tx": "3aPokmzmezQoFzLAuciNF4s4u9s6S6ZmSVRf8k66yBo4zNMgLdJxYQZaFGrgVYzAUoDhotWSiVHqa323xwitY1Bb",
+  "V": 0,
+  "errA": 4.940752824555946e-09,
+  "errB": 0.0,
+  "body": 384
+ },
+ {
+  "day": "2026-06-01",
+  "tx": "5Yg2nu7sHn64hj1NjohbznqsftWQPhVCerR7Ue1VPvuH94STDUYkdjWycjcFhmEcXSwqscAQrfWDMjV3GoNQ3tgn",
+  "V": 0,
+  "errA": 1.604514889309691e-07,
+  "errB": 0.0,
+  "body": 384
+ },
+ {
+  "day": "2026-09-01",
+  "tx": "3Hws3rgP6mUBehsDhj247tJf8DHwRMhRHTinWH39xUdD5jtDCkLRWuECNvy3HwMY23FrvVSXw5Zyo9AXVMRsusST",
+  "V": 17584506258,
+  "errA": 1.3943853760206818e-07,
+  "errB": 0.9615388094885182,
+  "body": 409
+ },
+ {
+  "day": "2026-09-01",
+  "tx": "2hDrkzd7QM8P1NGiygZQ2KLhGBr5GGM1NGX87diJD7V2K5xPqkyB6BtH33zczeZ7M8uTmP7gibQBbmzfc6cmFJ1L",
+  "V": 17584506258,
+  "errA": 3.3802087529416826e-08,
+  "errB": 0.9615384865547242,
+  "body": 409
+ },
+ {
+  "day": "2026-09-01",
+  "tx": "HxQUsA55P3eX541qS7SFcBEVJo4ZPiRvEk9TigtDfLMprDg5fEJcgLNoFBQrG1QfQM5eUq65WVdRcGBWHGZJ4EZ",
+  "V": 17584505472,
+  "errA": 4.338574542856158e-07,
+  "errB": 0.0,
+  "body": 409
+ },
+ {
+  "day": "2026-09-01",
+  "tx": "4Km7Hn8G27dpvouTunydKzZbbGUwVxqHKghEJavHqYhS5CEd41NVbLb7CD7WYE5L6nbBanBdvxfoeT4FkYiGVJo1",
+  "V": 17584506258,
+  "errA": 1.0658333751512078e-08,
+  "errB": 0.9615386899393822,
+  "body": 409
+ },
+ {
+  "day": "2026-09-01",
+  "tx": "5NrLd1ieCRTzSrR3pho2LV3BsdpVxVoteKJ2XsW514CU9Heo8QMpu7Nmi9iLd9gV4Ures2NtWGVnj2C1Rq4FmGUt",
+  "V": 17584505288,
+  "errA": 5.960222827054543e-07,
+  "errB": 0.0,
+  "body": 409
+ }
+]
