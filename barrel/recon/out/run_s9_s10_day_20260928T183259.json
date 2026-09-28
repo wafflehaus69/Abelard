@@ -1,0 +1,21 @@
+{
+ "file": "barrel/recon/sql/s9_s10_day.sql",
+ "label": "S9/S10 one day",
+ "execution_id": "01M3MMMDF23JQMGT6SWJT6YRHS",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 2.755441177,
+ "submitted_at": "2026-09-28T18:32:29.923253Z",
+ "rows": [
+  {
+   "graduates": 1154,
+   "s10_no_organic_sell_30min": 3,
+   "s10_sellable_30min": 1151,
+   "s9a_flagged": 59,
+   "s9a_p95_vol_per_taker_sol": 20.446494579414352,
+   "s9b_flagged_gt30pct": 1116,
+   "s9b_roundtrip_p50": 0.893361559630176,
+   "s9b_roundtrip_p90": 0.9946883046573802
+  }
+ ],
+ "error": null
+}

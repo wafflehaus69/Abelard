@@ -19,14 +19,14 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.5 S1/S2 as-of, reconciled on 5 tokens | ✅ | reconstruction 5/5 (necessary) + **differential test 7/7** on N post-entry revocations (`VALIDATION_1_5_S1_S2.md`); history window starts at mint creation |
 | 1.5 S3/S4 | ✅ | `VALIDATION_1_5_S3_S4.md`: 10/10 reconciled (5 P + 5 N) via raw Token-2022 calls by instruction index; first live FAIL found (N mint, 500 bps transfer fee); S4 *rate* as-of needs sub-instruction decode (next) |
 | 1.5 S6/S7/S7b/S8 | 🟡 | S5/S7b sources set; S6 ledger built on one mint and reconciles to chain supply to the lamport (`VALIDATION_1_5_S6.md`; an earlier 'double-record' claim was wrong and is corrected there); top-holder chain reconciliation pending; S7 written and measured on one mint (0.000%, `VALIDATION_1_5_S7_S8.md`); S8 measured on five mints — one BUNDLE found (`AaTwXAnM…`, 7 buyers / 1 funder); S6 top-holder chain reconciliation pending |
-| 1.5 S9/S10 | ⬜ | |
-| 1.5 UNKNOWN path per check | 🟡 | S1–S4 documented; S5–S10 pending |
+| 1.5 S9/S10 | ✅ | written and measured on one day (`VALIDATION_1_5_S9_S10.md`); S9b vacuous as pre-registered → v1.2; S10 near-vacuous |
+| 1.5 UNKNOWN path per check | ✅ | S1–S4 in their validation docs; S5–S10 in `VALIDATION_1_5_S9_S10.md` |
 | 1.6 fee pricing from decoded events, per era, SOL-quoted | ⬜ | one-day proportions already confirmed (25.0/5.0 bps) |
 | 1.6 fee samples re-run with v1 fix | ✅ | `M0_FEE_LEGS.md` Part 3 |
 | 1.6 slippage from reserves, validated on 10 swaps | ✅ | buys 10/10 and sells 10/10 at 0.0000% (`VALIDATION_1_6_SLIPPAGE.md`); exit-fill rule written |
 | 1.7 rebalance date chosen, seeded | ✅ | **T = 2026-03-23**, seed 20260922, 41 eligible Mondays (`recon/out/rebalance_date_1_7.json`): after calibration slice (ends 2025-07-10), pre-BOOST, 60-day lookback clear of DEGRADED |
 | 1.7 funnel written, dry-run on 2-day window | ⬜ | |
-| 1.7 projection template | ⬜ | |
+| 1.7 projection template | ✅ | `COST_TRIAL_TEMPLATE.md` |
 | 1.8 personal-history replay | 🟡 | wallets present; the replay filters 18 months of events by 3 wallets (~hundreds of credits) — deferred to the paid month; query to be written against the derived table |
 | §3 `credits.md` | ✅ | `docs/credits.md` |
 
