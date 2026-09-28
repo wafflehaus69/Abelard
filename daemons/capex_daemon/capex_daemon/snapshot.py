@@ -1037,8 +1037,31 @@ def _money_plain(v):
 SINCE_KEY = "since_last_scan"
 
 
+def first_sight(rows, seen_series):
+    """(already-seen, first-seen) — R6, ruled 2026-09-28.
+
+    A series met for the first time brings its whole history with it, and none
+    of that history is news: it is the daemon learning to read something, not
+    the issuer doing something. So a move in a first-seen series never reaches
+    the queue. It is published ONCE on the Brief, under its own header, and from
+    the next scan on the series is known and its next genuine move alerts.
+
+    Decided per SERIES rather than per table. A table-wide first run is right
+    exactly once; every capture rule added afterwards — a new NVIDIA member, a
+    CLSK rule once its tagging is consistent — would otherwise meet a non-empty
+    table and announce years of old moves as tonight's news.
+    """
+    if seen_series is None:
+        return list(rows), []
+    seen = set(seen_series)
+    old = [r for r in rows if commitments.series_key(r) in seen]
+    new = [r for r in rows if commitments.series_key(r) not in seen]
+    return old, new
+
+
 def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
-                    scan_unix=None, commitment_prior_keys=None):
+                    scan_unix=None, commitment_prior_keys=None,
+                    commitment_seen_series=None):
     """B1 — what changed in the scan that produced this snapshot.
 
     The daemon has been a state dump: everything it knows, every night, with no
@@ -1064,6 +1087,13 @@ def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
                     else commitment_prior_keys)
     alertable, quarantined = commitment_alerts_and_quarantine(
         snap, prior_keys=commit_prior)
+    alertable, _ = first_sight(alertable, commitment_seen_series)
+    quarantined, _ = first_sight(quarantined, commitment_seen_series)
+    # Everything the first-seen series carry, frontier or not: this is the
+    # record of what was just learned to be read, not a list of news.
+    _, first_seen = first_sight(commitment_deltas(snap), commitment_seen_series)
+    newly_captured = [d for d in first_seen if d.get("source") == "parser"]
+    backfilled = [d for d in first_seen if d.get("source") != "parser"]
     comp = []
     for b, bk in sorted((snap.get("buckets") or {}).items()):
         for e in (bk.get("composition_events") or []):
@@ -1078,8 +1108,10 @@ def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
         "filings": list(filings or ()),
         "commitment_alerts": alertable,
         "commitment_quarantined": quarantined,
-        "commitment_basis_owed": commitment_basis_checks_owed(
-            snap, prior_keys=commit_prior),
+        "commitment_basis_owed": first_sight(commitment_basis_checks_owed(
+            snap, prior_keys=commit_prior), commitment_seen_series)[0],
+        "commitment_newly_captured": newly_captured,
+        "commitment_backfilled_count": len(backfilled),
         "supplier_frontier": fr,
         "composition_events": comp,
         "ingest_gaps": list(ingest_gaps or ()),
@@ -1095,6 +1127,9 @@ SINCE_SECTIONS = (
      "queued", "nothing quarantined"),
     ("commitment_basis_owed", "Commitment moves awaiting a basis check — not "
      "alerts", "no unclassified issuer moved past the threshold"),
+    ("commitment_newly_captured", "Newly captured — a series read for the first "
+     "time; its moves are published once and were not sent to the queue",
+     "no commitment series was read for the first time"),
     ("supplier_frontier", "Suppliers ahead of the demand panel", "no supplier is "
      "ahead of the panel"),
     ("composition_events", "Composition changes", "no bucket changed membership"),

@@ -1107,6 +1107,19 @@ def view_since(snap):
                    "entire history at once. That is a backfill, not news.</div>")
     out.append("<p class='note'><b>Thesis line.</b> {}</p>".format(
         _esc(snapshot.thesis_line(snap))))
+    nc = since.get("commitment_newly_captured") or []
+    if nc:
+        # R6 — the same header the Brief carries, published once.
+        series = sorted({"{} · {}".format(r["ticker"], r["rule_key"].split(":", 1)[1])
+                         if r.get("rule_key") else r["ticker"] for r in nc})
+        out.append("<div class='mapped'><b>Newly captured: {} commitment series read "
+                   "from the filings for the first time.</b> {}. Their moves are "
+                   "listed below once; none was sent to the queue. From the next scan "
+                   "on, each series is known and its next genuine move alerts.{}</div>"
+                   .format(len(series), _esc(", ".join(series)),
+                           " {} moves in tagged series were recorded as history on the "
+                           "same run.".format(since["commitment_backfilled_count"])
+                           if since.get("commitment_backfilled_count") else ""))
     for key, title, empty in snapshot.SINCE_SECTIONS:
         rows = since.get(key) or []
         out.append("<h2>{}</h2>".format(_esc(title)))

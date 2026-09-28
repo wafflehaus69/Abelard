@@ -406,9 +406,14 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
     # into the queue would be a flood dressed as news (R2, E31).
     commit_prior = {r[0] for r in con.execute(
         "SELECT event_key FROM commitment_events")}
+    commit_seen = commitments.seen_series(con)
     first_commit_run = not commit_prior
     commit_alerts, commit_quarantined = snapshot.commitment_alerts_and_quarantine(
         snap, prior_keys=commit_prior)
+    # R6: a move in a series met for the first time never reaches the queue,
+    # whether this is the table's first run or a capture rule added last week.
+    commit_alerts, _ = snapshot.first_sight(commit_alerts, commit_seen)
+    commit_quarantined, _ = snapshot.first_sight(commit_quarantined, commit_seen)
     # Record EVERY transition the snapshot knows about — issuer, bucket AND
     # total-panel. Recording only issuer transitions would leave aggregate ones
     # permanently absent from phase_events, so they would re-alert on every scan
@@ -435,26 +440,22 @@ def run(con=None, roster=None, http=None, render=True, outdir=None, now_unix=Non
             row["form"], row["period"] = f.form, f.report_date
     snap[snapshot.SINCE_KEY] = snapshot.since_last_scan(
         snap, prior_keys=prior, filings=filed, ingest_gaps=ingest_gaps,
-        scan_unix=started, commitment_prior_keys=commit_prior)
+        scan_unix=started, commitment_prior_keys=commit_prior,
+        commitment_seen_series=commit_seen)
     if first_run:
         # A first run rediscovers everything; that is a backfill, not news.
         snap[snapshot.SINCE_KEY]["transitions"] = []
         snap[snapshot.SINCE_KEY]["first_run_backfill"] = True
     if first_commit_run:
-        snap[snapshot.SINCE_KEY]["commitment_alerts"] = []
-        snap[snapshot.SINCE_KEY]["commitment_quarantined"] = []
-        snap[snapshot.SINCE_KEY]["first_commitment_backfill"] = len(commit_alerts)
+        snap[snapshot.SINCE_KEY]["first_commitment_backfill"] = True
     snapshot.save(con, snap)
     if first_run:
         # A first run rediscovers the entire history at once. That is a backfill,
         # not news — it is recorded so later runs are quiet, and reported as a
         # count rather than blasted into the alert bar.
         alerts = []
-    if first_commit_run:
-        # R2, explicitly: the first run of a newly wired alert is silent. Every
-        # delta has just been recorded, so tomorrow's scan is quiet and the
-        # first real move announces itself.
-        commit_alerts = []
+    # (R2's silent first run is now a consequence of R6 rather than a special
+    # case: on the table's first run every series is first-seen.)
 
     # Durability, not dispatch (E28). Whatever survived the frontier gate is
     # handed to the shared queue; Abelard decides what becomes a push. An

@@ -1319,6 +1319,18 @@ def sec_provenance(snap, styles):
     return out
 
 
+def _mapped(text, styles):
+    """A blue box: information the reader must see, not a warning — the same
+    tint the dashboard uses for its `.mapped` notices."""
+    return _tinted(text, styles, "#eef3fb", "#1f4e9c")
+
+
+def commitments_series(row):
+    """"NVDA · supply-and-capacity" for a captured series, the ticker otherwise."""
+    rk = row.get("rule_key")
+    return "{} · {}".format(row["ticker"], rk.split(":", 1)[1]) if rk else row["ticker"]
+
+
 def sec_since(snap, styles):
     """B1 — page one of everything. What changed since the last scan.
 
@@ -1352,6 +1364,22 @@ def sec_since(snap, styles):
             "<b>First run.</b> This scan rediscovered the entire history at once. "
             "That is a backfill, not news, so no transition is reported as new.",
             styles))
+    nc = since.get("commitment_newly_captured") or []
+    if nc:
+        # R6 — the header. Published once, on the scan that first read them.
+        series = sorted({commitments_series(r) for r in nc})
+        out.append(_mapped(
+            "<b>Newly captured: {} commitment series read from the filings for the "
+            "first time.</b> {} Their moves are listed below <b>once</b>. None was "
+            "sent to the queue — a series met for the first time brings its whole "
+            "history with it, and that history is the daemon learning to read "
+            "something, not the issuer doing something. From the next scan on, "
+            "each series is known and its next genuine move alerts.{}".format(
+                len(series), _x(", ".join(series)),
+                " {} moves in tagged series were recorded as history on the same "
+                "run.".format(since["commitment_backfilled_count"])
+                if since.get("commitment_backfilled_count") else ""),
+            styles))
 
     for key, title, empty in snapshot.SINCE_SECTIONS:
         rows = since.get(key) or []
@@ -1376,6 +1404,19 @@ def _since_table(key, rows, styles):
                       [["<b>{}</b>".format(_x(r["ticker"])), _x(r.get("form") or "—"),
                         _x(r.get("period") or "—"), _x(r.get("filed") or "—")]
                        for r in rows], [80, 70, 90, 90], styles)
+    if key == "commitment_newly_captured":
+        return _table(("Series", "Class", "From", "To", "was", "now", "change",
+                       "multiple"),
+                      [["<b>{}</b>{}".format(_x(commitments_series(r)),
+                                            "".join(" [{}]".format(_x(q)) for q in
+                                                    (r.get("qualifiers") or []))),
+                        _x(r.get("basis_class") or "—"),
+                        _x(r["from_q"]), _x(r["to_q"]), _x(_money(r["from_value"])),
+                        _x(_money(r["to_value"])), _x(_money(r["delta"])),
+                        "{:.2f}x".format(r["multiple"]) if r["multiple"] else "—"]
+                       for r in sorted(rows, key=lambda r: -abs(r["delta"]))],
+                      [150, 126, 48, 48, 66, 66, 70, 52], styles,
+                      right_cols=(4, 5, 6, 7))
     if key in ("commitment_alerts", "commitment_quarantined",
                "commitment_basis_owed"):
         return _table(("Issuer", "Concept", "From", "To", "was", "now", "change",
