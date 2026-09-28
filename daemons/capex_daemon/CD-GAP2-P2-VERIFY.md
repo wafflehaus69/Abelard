@@ -118,3 +118,136 @@ the axis verification showed matters most: **is the figure about the buildout at
 **Bearing on the open commitment-alert decision.** Wiring B4's alerts before classes
 exist would alert on CORZ's lease receipts and WULF's prepaid rent. P2's classes should
 land first.
+
+---
+
+# BUILD RECORD — ORDER CD-GAP2-P2-BUILD (C1–C6), 2026-09-22/23
+
+Built on `cd-gap2-p2`, commit per unit, held for the merge word. Every figure below was
+measured against the live panel (Basilic snapshot of 2026-09-21) or the filings
+themselves, not asserted.
+
+## C1 — the classes, ratified and gating (`f2d03ed`)
+
+`commitment_basis.py` holds the ruled map: 26 tagged lines, each with the class read in
+its filing, the accession, and what it contains. Only SUPPLY, SUPPLY+CAPEX and
+LEASES-NOT-COMMENCED reach Leg 3, the since-page or an alert.
+
+**What it removed, measured.** CORZ's −$2.70B at 0.53x was publishing as a
+forward-commitment MOVE; it is lease payments CORZ expects to RECEIVE. Gone, with WULF's
+prepaid rent, CCOI's recorded liability and RIOT's 2016 royalty. The three alerts that
+fire today (META +$111.64B, SMCI 3.39x, ORCL +$20.84B) are all buildout classes, so the
+gate changes no alert today — it changes which moves CAN alert.
+
+**UNCLASSIFIED is the default and is not buildout**, so a new name cannot enter the
+buildout read by existing. That gate has an edge — a genuine jump at a name nobody has
+read cannot alert — so those moves publish as `commitment_basis_owed`: work orders on
+the since-page, never signals. Dropping them silently would rebuild P2's own failure one
+layer up, with the number replaced by a silence.
+
+## C2 — the parser leg (`08d2be9`)
+
+Seventeen verified rules over five issuers; 33 agent verifications, with an adversarial
+second reader on every rule that could reach a buildout total.
+
+| issuer | the API's figure | the filing's figure |
+|---|---|---|
+| **NVDA** | $45.77B (2025Q3) | **$279B** supply and capacity, +$160B in one quarter (2.34x) |
+| **MSFT** | nothing (UNCOVERED-UNTAGGED) | **$329.1B** leases not yet commenced, +$132.5B in one quarter |
+| **AMZN** | $32.41B (2024Q2) | **$137.21B** leases not yet commenced: 75.0 → 96.4 → 106.3 → 137.2 |
+| **MU** | $6.70B (2023Q3) | $5.5B goods, services and capital additions |
+| **IRM** | $234.0M | $1.09B datacenter construction (R1(a)) |
+
+Three double-count traps are pinned by test, each found in a real filing: a total tagged
+as a sibling member of its own components (NVDA's $366B); one value wrapped under two
+contexts (MSFT's $329.1B); a maturity ladder on the same member summing to the same
+total (AMZN's six buckets). **The MSFT case changed the design** — the adversarial
+re-read found the two nested contexts bind the OPPOSITE way round from the first
+reading, so no rule may resolve a nested fact by member name.
+
+**CLSK is refused, not captured.** Its class split exists only under
+`ContractualObligationDueInNextTwelveMonths`, which the filing uses for its whole
+multi-year table. A twelve-month figure ranked beside other issuers' total stocks inside
+one class is the error the classes exist to prevent. The refusal publishes with its
+reason.
+
+## C3 — one frontier (`a81dd89`)
+
+E31's alert gate was the package's second definition of "the frontier": arrival order,
+not coverage. It fails where it matters — the same Oracle quarter that caused E35 had
+dragged the ALERT window to 2026Q2 and silenced every transition the rest of the panel
+had there. The gate now reads the total's published quarter. The window moves
+2026Q2 → 2026Q1 and admits 14 transitions, and **all 14 are already in `phase_events`,
+so widening it announces nothing** — measured, not assumed.
+
+## C4 — the sink (`601ec39`)
+
+`commitment_events` (its own table), `alerts.enqueue_commitment_alerts` (issuer-scoped,
+dedupe_key = the event key unmodified, class in the payload), and `scan.run` wiring all
+three with its own first-run flag. Acceptance runs against the real `AlertQueue`: a
+SUPPLY+CAPEX move arrives once and is a duplicate on re-derivation; the identical move
+at CORZ never arrives; a GOOGL content-licensing move cannot alert and is still
+recorded. **The first run is silent** (R2), which is why the six moves the parser leg
+just found will backfill rather than fire.
+
+## C5 — the ledger (`667a731`)
+
+E36 ("a ratified behaviour is not built until its sink is connected"), E23's third and
+largest citation, and E35's closing paragraph corrected — it had recorded E31's
+arrival-based frontier as "the one remaining" and called it safe today, which was
+already false.
+
+## C6 — KEEL, and what the check found (`eff267f`)
+
+KEEL's $1.079B is debt principal plus lease payments; the credit leg measures issuance,
+a flow. Not the same quantity, not double-counted, and now published nowhere — correct.
+
+The check found a live double count in the same issuer: KEEL tags one raise twice, gross
+in Note 13 ($458,650K) and net of transaction costs on the cash-flow statement
+($445,124K), and the resolver summed them as distinct instruments — **$903,774K for a
+$458,650K raise**. Gross/net pairs of one raise are now refused rather than summed. The
+first cut misfired on CIFR, which tags the same $167,113,000 under both concepts;
+identical values are a double-TAG and collapse handles them better, so identical pairs
+fall through to rule (a). Checked across all 40 issuers: KEEL is the only status change.
+
+## Retro-note (E15), dated 2026-09-23
+
+**Where the time went.** The research half took nine agents and a day; the build half
+took six units and found three defects nobody had ordered fixed — E31's second frontier,
+KEEL's gross/net sum, and a superseded figure ranked as current inside its own class.
+All three surfaced from *running the thing and reading the output*, not from tests,
+which is the same lesson E36 records from the other side.
+
+**The correction that matters most is against my own earlier work.** P2's research read
+AMZN's $130.065B line as content, energy and software, and R1(a) was ruled on that
+reading. It was exact for the 2024Q2 figure. It is no longer exact: AMZN added "acquire
+property and equipment" to that footnote after, and did not rename the XBRL member, so
+the member name now misdescribes the line. Hand-checked at both ends
+(0001018724-24-000130 against 0001018724-26-000026). Nothing published changes — both
+candidate classes are non-buildout — but the label is wrong, so the ruling is re-opened
+rather than quietly kept.
+
+**Expiry.** Every class in `commitment_basis.TAGGED_BASIS` is dated to the filing it was
+read in. A class whose issuer re-words its footnote is stale the moment it does so, and
+nothing in this build detects that. Re-verification obligation: for any issuer whose
+class or capture was read before 2026-09-23, re-read the line when its next annual
+report lands. AMZN is the proof that this is not theoretical.
+
+## Open for Mando
+
+1. **AMZN's $130.065B line** — re-classify MIXED-UNSEPARABLE on the live footnote, or
+   keep CONTENT-ENERGY-SOFTWARE? No published number turns on it either way.
+2. **NVDA's $36B AI-cloud agreements** — classed SUPPLY, and they are CONTINGENT: NVIDIA
+   buys the capacity only if the AI cloud fails to sell it. A ruling that contingent
+   obligations are not SUPPLY moves $36B out of the buildout read.
+3. **NVDA's guarantees** — $105B to SB Energy and $3.5B of land/power/shell guarantees
+   are classed NOT-A-COMMITMENT (maximum exposure, not a purchase). They are large
+   enough that "excluded, and why" may deserve its own line rather than a table row.
+4. **AMZN's RPO disclosures** — $38B of existing AWS–OpenAI commitments and two $100B
+   expansions (OpenAI, Anthropic) are revenue obligations owed TO Amazon. Not
+   commitments BY Amazon, so excluded here — but they are the demand side of the same
+   buildout and nothing in the daemon reads them.
+5. **CIFR's collapse** — keeps `ProceedsFromConvertibleDebt` and drops the net-tagged
+   series carrying the newer figures ($2.77B for H1 2026 against $1.44B). Whether
+   collapse should keep the series with live data rather than the alphabetically-first
+   is a separate ruling. Flagged, not touched.
