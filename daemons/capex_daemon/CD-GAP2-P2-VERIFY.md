@@ -208,7 +208,9 @@ in Note 13 ($458,650K) and net of transaction costs on the cash-flow statement
 $458,650K raise**. Gross/net pairs of one raise are now refused rather than summed. The
 first cut misfired on CIFR, which tags the same $167,113,000 under both concepts;
 identical values are a double-TAG and collapse handles them better, so identical pairs
-fall through to rule (a). Checked across all 40 issuers: KEEL is the only status change.
+fall through to rule (a). Checked across all 35 panel issuers: KEEL is the only status change.
+*(Corrected 2026-09-28: this line first said "40". The check covered every issuer
+on the panel; the panel has 35.)*
 
 ## Retro-note (E15), dated 2026-09-23
 
@@ -233,21 +235,46 @@ nothing in this build detects that. Re-verification obligation: for any issuer w
 class or capture was read before 2026-09-23, re-read the line when its next annual
 report lands. AMZN is the proof that this is not theoretical.
 
-## Open for Mando
+## Rulings of 2026-09-28 (ORDER CD-GAP2-P2-CLOSE) — the open list, closed
 
-1. **AMZN's $130.065B line** — re-classify MIXED-UNSEPARABLE on the live footnote, or
-   keep CONTENT-ENERGY-SOFTWARE? No published number turns on it either way.
-2. **NVDA's $36B AI-cloud agreements** — classed SUPPLY, and they are CONTINGENT: NVIDIA
-   buys the capacity only if the AI cloud fails to sell it. A ruling that contingent
-   obligations are not SUPPLY moves $36B out of the buildout read.
-3. **NVDA's guarantees** — $105B to SB Energy and $3.5B of land/power/shell guarantees
-   are classed NOT-A-COMMITMENT (maximum exposure, not a purchase). They are large
-   enough that "excluded, and why" may deserve its own line rather than a table row.
-4. **AMZN's RPO disclosures** — $38B of existing AWS–OpenAI commitments and two $100B
-   expansions (OpenAI, Anthropic) are revenue obligations owed TO Amazon. Not
-   commitments BY Amazon, so excluded here — but they are the demand side of the same
-   buildout and nothing in the daemon reads them.
-5. **CIFR's collapse** — keeps `ProceedsFromConvertibleDebt` and drops the net-tagged
-   series carrying the newer figures ($2.77B for H1 2026 against $1.44B). Whether
-   collapse should keep the series with live data rather than the alphabetically-first
-   is a separate ruling. Flagged, not touched.
+| item | ruling | built |
+|---|---|---|
+| AMZN's $130.065B line | MIXED-UNSEPARABLE, **dated** from 2025-03-31 | `9f79830`. Hand-checked in all six filings 2024-06-30 → 2025-09-30: "acquire property and equipment" enters footnote (2) with 10-Q 0001018724-25-000036. Earlier points keep CONTENT-ENERGY-SOFTWARE; a delta across the date is a basis change, not a move |
+| NVDA's $36B AI-cloud agreements | SUPPLY with a CONTINGENT sub-tag | `9f79830`. The sub-tag travels into the delta, the alert payload and both renderers |
+| NVDA's guarantees | a GUARANTEES class; R4: read them first | `9f79830` (class), `5aed69f` (Z3 read and capture — below) |
+| AMZN's RPO disclosures | not raised in the relay | still open |
+| CIFR's collapse | R5: prefer the current era | `33e3e3c` — below |
+| First run of the commitment alerts | R6: a header on the Brief, nothing to the queue | `2611f61` — below |
+
+**R5, measured.** Across all 35 issuers on identical companyfacts inputs before and
+after, exactly one changes: CIFR, TTM issuance **$1.270B → $5.745B**, credit-to-capex
+**1.03 → 4.66**. Verified against the filings — one cash-flow line renamed between
+the 9M 2025 10-Q ("Proceeds from issuance of convertible notes, net of issuance costs
+1,437,395") and the FY2025 10-K ("Proceeds from notes, net of issuance costs
+3,145,829"). The alphabet kept the convertible name, which ends at 2025-09-30, so three
+of the four TTM quarters were being dropped. The discrete quarters reconcile exactly:
+1,270,282 + 1,708,434 + 1,969,780 + 796,657 = $5,745,153K.
+
+**R6, and the hole it closed.** C4's first-run flag was table-wide, which is right
+exactly once. Any capture rule added afterwards — Z3's guarantees were the first,
+the same day — would have met a non-empty table and alerted its whole history.
+First sight is now decided per series.
+
+**Z3, NVIDIA's guarantees** (one reader, two adversarial re-readers, neither refuted):
+
+| component | maximum exposure | what it is |
+|---|---|---|
+| AI-cloud partners' datacenter leases | $3.5B | "land, power, and shell guarantees for select AI cloud partners' data center lease obligations in the event of their default"; flat across three filings |
+| OpenAI affiliate, SB Energy PORTS campus | $105B (cap) | "credit support … on behalf of a customer, an affiliate of OpenAI Group PBC", ~4.25 GW, "triggered upon certain tenant defaults" |
+
+The scale is real (scale="9" on every fact; table headed "(in billions)"). SB Energy is
+the landlord, not the guaranteed party. The $105B was signed in August 2026, *after*
+the balance-sheet date, is not yet effective, steps up from FY2029, sits behind a
+Tenant Parent Guaranty, and is indemnified by OpenAI. Neither guarantee is in the Note
+10 commitment tables. A naive sum of every fact on the concept reads $325.5B.
+
+## Still open
+
+1. **AMZN's RPO disclosures** — $38B of existing AWS–OpenAI commitments and two $100B
+   expansions (OpenAI, Anthropic) are revenue obligations owed TO Amazon, the demand
+   side of the same buildout. Nothing in the daemon reads them.
