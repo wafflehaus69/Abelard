@@ -14,7 +14,8 @@ import json
 import time
 from datetime import datetime, timezone
 
-from . import commitments, config, disclosure, divergence, normalize, phases, trend
+from . import (commitment_basis, commitment_capture, commitments, config,
+               disclosure, divergence, normalize, phases, trend)
 
 SNAPSHOT_KEY = "panel_snapshot"
 
@@ -243,7 +244,32 @@ def _growth(prior, latest):
     return latest / prior - 1.0
 
 
-def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
+def _captured_rows(ticker, rows):
+    """Published shape for the parser-captured commitment figures (C2).
+
+    One entry per verified rule, each with its own class, its own series and the
+    accession the rule was read in. Totals are published with `is_total` set and
+    join nothing — NVIDIA tags its $366B total as a sibling member of the very
+    components it contains.
+    """
+    out = []
+    for row in (rows or []):
+        rule, pts = row["rule"], row["points"]
+        if not pts:
+            continue
+        ordered = sorted(pts.items())
+        cq = [{"q": normalize.calendar_align(pe)[0], "value": v, "end": pe,
+               "class": rule.cls_at(pe)} for pe, v in ordered]
+        out.append(dict(rule.json(),
+                        points=[{"end": pe, "value": v, "class": rule.cls_at(pe)}
+                                for pe, v in ordered],
+                        points_cq=cq,
+                        latest=ordered[-1][1], as_of=ordered[-1][0]))
+    return out
+
+
+def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None,
+          capture_rows=None):
     """Assemble the whole published view-model for one scan."""
     now_unix = int(now_unix if now_unix is not None else time.time())
     # The frontier gate measures its wait against the SCAN's timestamp, not the
@@ -293,6 +319,18 @@ def build(roster, indexed_by_cik, now_unix=None, supplier_legs=None):
             "commitments": {
                 "status": comm.status if comm else "ABSENT",
                 "detail": comm.detail if comm else "",
+                # P2/R1: the class travels with every figure. A commitments
+                # number that arrives without saying what it contains is how
+                # lessor receipts and prepaid rent reached Leg 3.
+                "basis": commitment_basis.basis_for(e.ticker_display).json(),
+                "buildout_row": (commitment_basis.buildout_row(e.ticker_display).json()
+                                 if commitment_basis.buildout_row(e.ticker_display) else None),
+                # C2: figures read out of the filing itself, one per verified
+                # rule, because companyfacts drops the dimensioned facts these
+                # issuers now use. Each carries its own class.
+                "captured": _captured_rows(e.ticker_display,
+                                           (capture_rows or {}).get(e.ticker_display)),
+                "capture_refused": commitment_capture.refusal_for(e.ticker_display),
                 "latest": (comm.latest.value if comm and comm.latest else None),
                 "concept": comm.concept if comm else None,
                 "points": ([{"end": p.period_end, "value": p.value}
@@ -626,12 +664,21 @@ def commitment_deltas(snap, frontier=None):
     **A stock disclosed on the issuer's own schedule.** Consecutive observations
     are not consecutive quarters, so the gap is published with the delta: a 3.4x
     move over two quarters and over eight are different facts.
+
+    **NOT-A-COMMITMENT never appears here (P2/R1).** Six of the published lines
+    are not forward commitments at all — CORZ's $3.1B is lease payments it
+    *receives*, WULF's is prepaid rent received, KEEL's is note principal — and
+    a delta on one of those is a move in nothing. They are removed, not styled
+    differently. Every surviving row carries its class, and `buildout` says
+    whether it may reach Leg 3, the since-page or an alert.
     """
     out = []
     for tick, iss in sorted((snap.get("issuers") or {}).items()):
         c = iss.get("commitments") or {}
         pts = c.get("points_cq") or []
         if len(pts) < 2 or not c.get("concept"):
+            continue
+        if commitment_basis.is_excluded(tick):
             continue
         prev, cur = pts[-2], pts[-1]
         if frontier and trend._cq_sort(cur["q"]) < trend._cq_sort(frontier):
@@ -649,14 +696,69 @@ def commitment_deltas(snap, frontier=None):
             "from_value": base, "to_value": latest,
             "delta": latest - base,
             "multiple": (latest / base) if base > 0 else None,
+            "basis_class": commitment_basis.class_of(tick),
+            "buildout": commitment_basis.is_buildout(tick),
+            "source": "tagged",
             "event_key": "commit:{}:{}:{}:{:.0f}".format(
                 tick, prev["q"], cur["q"], latest),
         })
+    out += _captured_deltas(snap, frontier)
+    return out
+
+
+def _captured_deltas(snap, frontier=None):
+    """The same move, on the figures the parser reads (C2).
+
+    These are the moves the API could not see at all. NVIDIA's supply and
+    capacity went $119B -> $279B in one quarter while the panel published
+    $45.77B, and Amazon's leases not yet commenced ran $75.02B -> $137.21B over
+    three quarters while the panel published $32.41B frozen in 2024Q2.
+
+    Keys carry their own prefix. The tagged series' keys must not change: a key
+    change re-mints every event and announces years of history as news.
+    """
+    out = []
+    for tick, iss in sorted((snap.get("issuers") or {}).items()):
+        for row in ((iss.get("commitments") or {}).get("captured") or []):
+            if row.get("is_total") or row["class"] == commitment_basis.NOT_A_COMMITMENT:
+                continue
+            pts = row.get("points_cq") or []
+            if len(pts) < 2:
+                continue
+            prev, cur = pts[-2], pts[-1]
+            if frontier and trend._cq_sort(cur["q"]) < trend._cq_sort(frontier):
+                continue
+            base, latest = prev.get("value"), cur.get("value")
+            if base is None or latest is None:
+                continue
+            # A move across a dated reclass is a change of BASIS, not of size —
+            # the line started including something it did not include before.
+            basis_change = (prev.get("class") or row["class"]) != \
+                (cur.get("class") or row["class"])
+            out.append({
+                "ticker": tick,
+                "bucket": iss.get("bucket"),
+                "qualifiers": list(row.get("qualifiers") or []),
+                "basis_change": basis_change,
+                "concept": "{} [{}]".format(row["concept"], row["label"][:40]),
+                "from_q": prev["q"], "to_q": cur["q"],
+                "quarters_between": (trend._cq_index(cur["q"])
+                                     - trend._cq_index(prev["q"])),
+                "from_value": base, "to_value": latest,
+                "delta": latest - base,
+                "multiple": (latest / base) if base > 0 else None,
+                "basis_class": row["class"],
+                "buildout": bool(row.get("buildout")) and not basis_change,
+                "source": "parser",
+                "rule_key": row["rule_key"],
+                "event_key": "commitcap:{}:{}:{}:{:.0f}".format(
+                    row["rule_key"], prev["q"], cur["q"], latest),
+            })
     return out
 
 
 def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
-                           absolute=None):
+                           absolute=None, only_classes=None):
     """Commitment jumps worth announcing. Empty while every bound is UNSET.
 
     E8 in its literal form: the consumer of an unset constant surfaces the
@@ -675,6 +777,11 @@ def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
         defensible multiple would ever catch.
 
     An arm that is not fully armed simply does not fire; the other still can.
+
+    **Classes gate the arms (P2/R1).** Only SUPPLY, SUPPLY+CAPEX and
+    LEASES-NOT-COMMENCED can alert. Wiring these before the classes existed
+    would have alerted on CORZ's lease receipts and WULF's prepaid rent — the
+    reason B4 was held.
     """
     multiple = COMMITMENT_JUMP_MULTIPLE if multiple is None else multiple
     min_delta = COMMITMENT_JUMP_MIN_DELTA if min_delta is None else min_delta
@@ -684,8 +791,12 @@ def commitment_alert_lines(snap, prior_keys=(), multiple=None, min_delta=None,
         return []
     prior = set(prior_keys or ())
     out = []
+    allowed = (commitment_basis.BUILDOUT_CLASSES if only_classes is None
+               else tuple(only_classes))
     for d in commitment_deltas(snap, frontier=_frontier_quarter(snap)):
         if d["event_key"] in prior:
+            continue
+        if d.get("basis_class") not in allowed:
             continue
         by_multiple = (rel_armed and d["multiple"] is not None
                        and d["multiple"] >= multiple and d["delta"] >= min_delta)
@@ -736,6 +847,24 @@ def commitment_alerts_and_quarantine(snap, prior_keys=()):
     rows = commitment_alert_lines(snap, prior_keys=prior_keys)
     return ([r for r in rows if r.get("alertable", True)],
             [r for r in rows if not r.get("alertable", True)])
+
+
+def commitment_basis_checks_owed(snap, prior_keys=()):
+    """Threshold-sized moves at issuers whose figure has never been read.
+
+    The class gate is right and it has an edge: a newly admitted issuer that
+    starts tagging a commitment concept is UNCLASSIFIED, so a genuine $50B jump
+    there cannot alert. Silently dropping it would rebuild, one layer up, the
+    exact failure P2 found — a number travelling without its meaning, except now
+    the number is a silence.
+
+    So the move is published as WORK, not as a signal: someone must read the
+    filing before it can mean anything. It is not an alert and never enters Leg
+    3, the thesis line or a total.
+    """
+    return commitment_alert_lines(
+        snap, prior_keys=prior_keys,
+        only_classes=(commitment_basis.UNCLASSIFIED,))
 
 
 # B2 — the cross-check band. UNSET, and the comment that used to sit here was
@@ -908,8 +1037,31 @@ def _money_plain(v):
 SINCE_KEY = "since_last_scan"
 
 
+def first_sight(rows, seen_series):
+    """(already-seen, first-seen) — R6, ruled 2026-09-28.
+
+    A series met for the first time brings its whole history with it, and none
+    of that history is news: it is the daemon learning to read something, not
+    the issuer doing something. So a move in a first-seen series never reaches
+    the queue. It is published ONCE on the Brief, under its own header, and from
+    the next scan on the series is known and its next genuine move alerts.
+
+    Decided per SERIES rather than per table. A table-wide first run is right
+    exactly once; every capture rule added afterwards — a new NVIDIA member, a
+    CLSK rule once its tagging is consistent — would otherwise meet a non-empty
+    table and announce years of old moves as tonight's news.
+    """
+    if seen_series is None:
+        return list(rows), []
+    seen = set(seen_series)
+    old = [r for r in rows if commitments.series_key(r) in seen]
+    new = [r for r in rows if commitments.series_key(r) not in seen]
+    return old, new
+
+
 def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
-                    scan_unix=None):
+                    scan_unix=None, commitment_prior_keys=None,
+                    commitment_seen_series=None):
     """B1 — what changed in the scan that produced this snapshot.
 
     The daemon has been a state dump: everything it knows, every night, with no
@@ -927,8 +1079,21 @@ def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
     from a section that failed to run.
     """
     frontier = _frontier_quarter(snap)
+    # Commitment moves are keyed in their own namespace and recorded in their
+    # own table (C4). Passing the PHASE keys here would have been harmless by
+    # luck — the two key shapes never collide — and wrong in principle, because
+    # it silently meant no commitment move was ever deduplicated.
+    commit_prior = (prior_keys if commitment_prior_keys is None
+                    else commitment_prior_keys)
     alertable, quarantined = commitment_alerts_and_quarantine(
-        snap, prior_keys=prior_keys)
+        snap, prior_keys=commit_prior)
+    alertable, _ = first_sight(alertable, commitment_seen_series)
+    quarantined, _ = first_sight(quarantined, commitment_seen_series)
+    # Everything the first-seen series carry, frontier or not: this is the
+    # record of what was just learned to be read, not a list of news.
+    _, first_seen = first_sight(commitment_deltas(snap), commitment_seen_series)
+    newly_captured = [d for d in first_seen if d.get("source") == "parser"]
+    backfilled = [d for d in first_seen if d.get("source") != "parser"]
     comp = []
     for b, bk in sorted((snap.get("buckets") or {}).items()):
         for e in (bk.get("composition_events") or []):
@@ -943,6 +1108,10 @@ def since_last_scan(snap, prior_keys=(), filings=(), ingest_gaps=(),
         "filings": list(filings or ()),
         "commitment_alerts": alertable,
         "commitment_quarantined": quarantined,
+        "commitment_basis_owed": first_sight(commitment_basis_checks_owed(
+            snap, prior_keys=commit_prior), commitment_seen_series)[0],
+        "commitment_newly_captured": newly_captured,
+        "commitment_backfilled_count": len(backfilled),
         "supplier_frontier": fr,
         "composition_events": comp,
         "ingest_gaps": list(ingest_gaps or ()),
@@ -956,6 +1125,11 @@ SINCE_SECTIONS = (
      "past the ratified threshold"),
     ("commitment_quarantined", "Quarantined — BASIS-SUSPECT, presentation check "
      "queued", "nothing quarantined"),
+    ("commitment_basis_owed", "Commitment moves awaiting a basis check — not "
+     "alerts", "no unclassified issuer moved past the threshold"),
+    ("commitment_newly_captured", "Newly captured — a series read for the first "
+     "time; its moves are published once and were not sent to the queue",
+     "no commitment series was read for the first time"),
     ("supplier_frontier", "Suppliers ahead of the demand panel", "no supplier is "
      "ahead of the panel"),
     ("composition_events", "Composition changes", "no bucket changed membership"),
@@ -964,19 +1138,39 @@ SINCE_SECTIONS = (
 
 
 def _frontier_quarter(snap, lookback=ALERT_LOOKBACK_QUARTERS):
-    """The oldest quarter a transition may alert from.
+    """The oldest quarter a transition may alert from — E31, on the coverage rule.
 
-    Anchored on the newest quarter any classified series reached, so a panel
-    mid-filing-season does not go silent just because one issuer is ahead.
+    **One frontier, one definition (R3, 2026-09-22).** This used to anchor on
+    "the newest quarter ANY classified series reached", which is a second,
+    incompatible definition of the frontier: arrival order rather than coverage.
+    It fails exactly where it matters. On 2026-09-12 Oracle alone reached 2026Q3
+    and dragged this gate to 2026Q2, which silenced every transition the rest of
+    the panel had at 2026Q2 — the gate moved because one issuer filed early, not
+    because the panel got there.
+
+    So the anchor is now the aggregate's own published frontier: the newest
+    quarter that PASSED the coverage gate (`trend.frontier_split`) and was
+    therefore published. Nothing is recomputed here; the quarter is read from
+    the total, which is the single place a frontier is decided.
+
+    The one-quarter lookback stays, and now means what it says: a transition at
+    the quarter before the panel's frontier is still current news.
     """
-    qs = [o["quarter"] for i in (snap.get("issuers") or {}).values()
-          for o in (i.get("observations") or [])]
-    qs += [o["quarter"] for b in (snap.get("buckets") or {}).values()
-           for o in (b.get("observations") or [])]
-    qs += [o["quarter"] for o in ((snap.get("total") or {}).get("observations") or [])]
-    if not qs:
+    total = snap.get("total") or {}
+    anchor = total.get("latest_quarter")
+    if not anchor:
+        # Same quantity under its other name: the total's observations are the
+        # frontier-trimmed series, so their last quarter IS the published
+        # frontier. Reading it here is not a second definition — reading the
+        # ISSUERS' quarters would be, and that is what this no longer does.
+        obs = total.get("observations") or []
+        anchor = obs[-1]["quarter"] if obs else None
+    if not anchor:
+        # No published total at all — a panel below its membership floor. There
+        # is no frontier to gate on, and inventing one from the issuers would be
+        # exactly the second definition this function exists to remove.
         return None
-    y, n = trend._cq_sort(max(qs, key=trend._cq_sort))
+    y, n = trend._cq_sort(anchor)
     idx = y * 4 + n - lookback
     return "{}Q{}".format((idx - 1) // 4, (idx - 1) % 4 + 1)
 

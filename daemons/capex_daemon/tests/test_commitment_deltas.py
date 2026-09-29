@@ -68,9 +68,11 @@ def test_both_bounds_are_required_together(unset):
 
 
 def test_the_proposed_pair_rejects_a_near_zero_base():
-    """WULF, live: $0.000B -> $0.118B is 846x and is not forward demand."""
-    wulf = [{"q": "2026Q1", "value": 140_000.0}, {"q": "2026Q2", "value": 118_000_000.0}]
-    snap = _snap(wulf, ticker="WULF", bucket="builder")
+    """The shape, taken from WULF's live figures: $0.000B -> $0.118B is 846x and
+    is not forward demand. Carried by a classified ticker because WULF itself is
+    now NOT-A-COMMITMENT (prepaid rent RECEIVED) and is excluded outright."""
+    shape = [{"q": "2026Q1", "value": 140_000.0}, {"q": "2026Q2", "value": 118_000_000.0}]
+    snap = _snap(shape, ticker="CIFR", bucket="builder")
     assert snapshot.commitment_deltas(snap)[0]["multiple"] > 800
     assert snapshot.commitment_alert_lines(snap, multiple=2.0, min_delta=1e9) == []
 
@@ -170,7 +172,7 @@ def test_a_move_above_ten_times_is_quarantined_not_alerted():
     """A 2372x move is not a growth rate until someone confirms the two
     observations measure the same thing. Quarantine is a queue, not a verdict."""
     unchecked = [{"q": "2026Q1", "value": 1.0e9}, {"q": "2026Q2", "value": 40.0e9}]
-    snap = _snap(unchecked, ticker="ZZZZ", bucket="builder")
+    snap = _snap(unchecked, ticker="MARA", bucket="builder")
     alertable, quarantined = snapshot.commitment_alerts_and_quarantine(snap)
     assert alertable == []
     assert len(quarantined) == 1

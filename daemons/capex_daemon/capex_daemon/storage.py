@@ -147,6 +147,50 @@ CREATE TABLE IF NOT EXISTS phase_events(
 );
 CREATE INDEX IF NOT EXISTS idx_phase_events_series ON phase_events(series_key, quarter);
 
+-- Forward-commitment moves (P2 C4). Same rule as phase_events and for the same
+-- reason: the key is content-derived, so a move re-derived by a later scan
+-- cannot alert twice. EVERY delta is recorded, not only the ones that alerted —
+-- otherwise a threshold change, or an issuer's class being ruled later, would
+-- announce years of old moves as news.
+CREATE TABLE IF NOT EXISTS commitment_events(
+    event_key TEXT PRIMARY KEY,
+    series_key TEXT,
+    ticker TEXT NOT NULL,
+    from_q TEXT NOT NULL,
+    to_q TEXT NOT NULL,
+    from_value REAL,
+    to_value REAL,
+    delta REAL,
+    multiple REAL,
+    basis_class TEXT,
+    concept TEXT,
+    observed_unix INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_commitment_events_ticker ON commitment_events(ticker, to_q);
+
+-- Parser-captured commitment figures (P2 C2). companyfacts drops dimensioned
+-- facts, which froze four issuers' commitment lines at their last undimensioned
+-- figure — NVDA at $45.77B while it disclosed $279B. These rows come out of the
+-- filing itself, one per VERIFIED rule (concept + axis + member), never from a
+-- concept name. Cached per instance like the supplier leg, so a quiet night
+-- costs one submissions request per issuer.
+CREATE TABLE IF NOT EXISTS commitment_capture_facts(
+    cik TEXT NOT NULL,
+    instance_key TEXT NOT NULL,
+    rule_key TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    value REAL NOT NULL,
+    accession TEXT,
+    PRIMARY KEY (cik, instance_key, rule_key, period_end)
+);
+CREATE TABLE IF NOT EXISTS commitment_capture_instances(
+    cik TEXT NOT NULL,
+    instance_key TEXT NOT NULL,
+    facts INTEGER,
+    accession TEXT,
+    PRIMARY KEY (cik, instance_key)
+);
+
 -- Composition events: a member entering or leaving a bucket-sum. Published
 -- BESIDE the trend, never blended into it (P3).
 CREATE TABLE IF NOT EXISTS composition_events(
@@ -205,5 +249,17 @@ def connect(path=None):
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA foreign_keys=ON")
     con.executescript(SCHEMA)
+    _migrate(con)
     con.commit()
     return con
+
+
+def _migrate(con):
+    """Columns added after a table first shipped. Idempotent."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(commitment_events)")}
+    if cols and "series_key" not in cols:
+        # R6: first sight is decided per SERIES. A row written before the
+        # column existed belongs to a tagged series, whose key is its ticker.
+        con.execute("ALTER TABLE commitment_events ADD COLUMN series_key TEXT")
+        con.execute("UPDATE commitment_events SET series_key = ticker "
+                    "WHERE series_key IS NULL")

@@ -115,6 +115,49 @@ def forward_commitments(cik, indexed, unit="USD"):
                             "no purchase-obligation concept present")
 
 
+def series_key(delta):
+    """The series a commitment move belongs to (R6).
+
+    A tagged series is the issuer's own; a parser-captured one is its rule,
+    because NVIDIA alone now carries six captured series with six classes.
+    """
+    return delta.get("rule_key") or delta["ticker"]
+
+
+def seen_series(con):
+    """Every series the event store has ever recorded a move for."""
+    return {r[0] for r in con.execute(
+        "SELECT DISTINCT series_key FROM commitment_events WHERE series_key IS NOT NULL")}
+
+
+def record_commitment_events(con, deltas, now_unix=None):
+    """Persist commitment moves idempotently on their content-derived key (C4).
+
+    Mirrors `phases.record_transitions`, including the part that matters most:
+    EVERY delta is recorded, not only the ones that alerted. Recording only
+    alerts would mean that raising a threshold, or ruling an issuer's basis
+    class later, dumps years of old moves into the queue as news — the same
+    failure that made a classifier change announce a 2013 transition in 2026.
+    """
+    import time as _time
+    now_unix = int(now_unix if now_unix is not None else _time.time())
+    written = []
+    for d in deltas:
+        if con.execute("SELECT 1 FROM commitment_events WHERE event_key=?",
+                       (d["event_key"],)).fetchone():
+            continue
+        con.execute(
+            "INSERT INTO commitment_events(event_key, series_key, ticker, from_q, "
+            "to_q, from_value, to_value, delta, multiple, basis_class, concept, "
+            "observed_unix) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (d["event_key"], series_key(d), d["ticker"], d["from_q"], d["to_q"],
+             d.get("from_value"), d.get("to_value"), d.get("delta"),
+             d.get("multiple"), d.get("basis_class"), d.get("concept"), now_unix))
+        written.append(d)
+    con.commit()
+    return written
+
+
 def equipment_deposits(cik, indexed, unit="USD"):
     """C3 — the deposits leading indicator, only where the line is verified.
 

@@ -37,7 +37,8 @@ parity that matters; the wording is a follow-up.
 import socket
 import time
 
-from . import brief, dashboard, phases, snapshot, svgcharts, trend
+from . import (brief, commitment_basis, dashboard, phases, snapshot, svgcharts,
+               trend)
 
 # The box the dashboard actually serves from. A render produced anywhere else is
 # a copy of a copy: the snapshot was pulled at some moment and cannot know what
@@ -964,11 +965,8 @@ def sec_buckets(snap, styles):
 
 
 def _commitments_series(snap, top):
-    ser = {}
-    for tick, iss in (snap.get("issuers") or {}).items():
-        pts = [(p["q"], p["value"]) for p in (iss["commitments"].get("points_cq") or [])]
-        if len(pts) >= 2:
-            ser[tick] = pts
+    """One computation, two renderers — see `dashboard.buildout_series`."""
+    ser = dashboard.buildout_series(snap)
     return dict(sorted(ser.items(), key=lambda kv: -kv[1][-1][1])[:top])
 
 
@@ -994,7 +992,15 @@ def sec_commitments(snap, styles):
         "Contracted but unspent. Leads reported capex. Issuers that disclose a figure "
         "without XBRL-tagging it publish <b>UNCOVERED-UNTAGGED</b> rather than a zero.",
         styles["_note"]))
-    out.append(_commitments_drawing(snap, "Forward commitment stock, per issuer",
+    out.append(_P(
+        "<b>Every figure carries its class (ratified 2026-09-22).</b> The XBRL concept "
+        "predicts nothing about what a figure contains: one concept carries supply "
+        "commitments, signed leases, lessor lease <i>receipts</i>, prepaid rent and debt "
+        "principal. Each line below was read in the filing named beside it. Only "
+        "<b>SUPPLY</b>, <b>SUPPLY+CAPEX</b> and <b>LEASES-NOT-COMMENCED</b> reach Leg 3, "
+        "the since-page or an alert.", styles["_note"]))
+    out.append(_commitments_drawing(snap, "Forward commitment stock, per issuer "
+                                          "(buildout classes only)",
                                     top=10, height=210))
     out.append(_P(
         "A <b>stock</b>, not a flow, and disclosed on the issuer's own schedule rather than "
@@ -1015,6 +1021,11 @@ def sec_commitments(snap, styles):
             "commitment totals incomparable does not arise. A stock is disclosed on the "
             "issuer's own schedule, so the <b>gap</b> travels beside the move: 3x over one "
             "quarter and 3x over eight are different facts.", styles["_note"]))
+        out.append(_P(
+            "NOT-A-COMMITMENT rows are <b>absent</b>, not greyed: a delta on lessor "
+            "receipts or prepaid rent is a move in nothing. Rows outside the three "
+            "buildout classes publish with their class and cannot alert.",
+            styles["_note"]))
         if (snapshot.COMMITMENT_JUMP_MULTIPLE is None
                 or snapshot.COMMITMENT_JUMP_MIN_DELTA is None):
             out.append(_warn(
@@ -1027,27 +1038,109 @@ def sec_commitments(snap, styles):
                 styles))
             out.append(_spacer(4))
         out.append(_table(
-            ("Issuer", "Concept", "From", "To", "gap", "was", "now", "change", "multiple"),
-            [["<b>{}</b>".format(_x(d["ticker"])), _x(d["concept"]), _x(d["from_q"]),
+            ("Issuer", "Class", "Concept", "From", "To", "gap", "was", "now",
+             "change", "multiple"),
+            [["<b>{}</b>".format(_x(d["ticker"])),
+              _x(d.get("basis_class") or commitment_basis.UNCLASSIFIED)
+              + ("" if d.get("buildout") else " (cannot alert)"),
+              _x(d["concept"]), _x(d["from_q"]),
               _x(d["to_q"]), "{}q".format(d["quarters_between"]),
               _x(_money(d["from_value"])), _x(_money(d["to_value"])),
               _x(_money(d["delta"])), "{:.2f}x".format(d["multiple"])]
              for d in deltas],
-            [52, 176, 52, 52, 34, 74, 74, 78, 56], styles,
-            right_cols=(4, 5, 6, 7, 8)))
+            [46, 120, 132, 46, 46, 30, 66, 66, 70, 50], styles,
+            right_cols=(5, 6, 7, 8, 9)))
 
-    rows = []
-    for tick, iss in sorted(snap["issuers"].items(),
-                            key=lambda kv: -((kv[1]["commitments"] or {}).get("latest") or -1)):
-        c = iss["commitments"]
-        if c["status"] == "ABSENT":
+    out += _sec_commitment_classes(snap, styles)
+    return out
+
+
+CLASS_BLURBS = {
+    commitment_basis.CONTENT_ENERGY_SOFTWARE: (
+        "CONTENT-ENERGY-SOFTWARE — annotative, not the buildout",
+        "Real commitments, and not infrastructure. Published because they are large and "
+        "because a reader who has seen them elsewhere should find them here with a "
+        "reason, <b>never</b> in Leg 3 or a buildout total. AMZN and IRM also appear "
+        "above, on the buildout figure each discloses separately."),
+    commitment_basis.GUARANTEES: (
+        "GUARANTEES — exposure on another party's obligation",
+        "A promise to cover someone else's obligation, paid only if they do not. Never "
+        "in Leg 3 or a buildout total, and not NOT-A-COMMITMENT either: the exposure is "
+        "real. Published as the maximum exposure the filing states, not an expected "
+        "loss."),
+    commitment_basis.MIXED_UNSEPARABLE: (
+        "MIXED-UNSEPARABLE — disclosed, not separable",
+        "Several classes in one total with no published split, so no part of it can be "
+        "attributed to the buildout. Excluded from buildout totals until the components "
+        "are separable."),
+    commitment_basis.UNCLASSIFIED: (
+        "UNCLASSIFIED — discloses, not yet read",
+        "A figure exists and its contents have not been verified in the filing. It does "
+        "not enter the buildout read by default; it enters when someone reads it."),
+    commitment_basis.NOT_A_COMMITMENT: (
+        "NOT-A-COMMITMENT — excluded everywhere, listed so the exclusion is visible",
+        "Not forward commitments at all. Removed from the deltas, the since-page, Leg 3 "
+        "and every alert. Shown only so that a reader who finds the number in the filing "
+        "learns why it is absent rather than assuming it was missed."),
+}
+
+
+def _sec_commitment_classes(snap, styles):
+    """C1 — one table per class, ranked within the class and never across it."""
+    rows = [r for r in dashboard.commitment_rows(snap)
+            if r["kind"] != "tagged-superseded"]
+    frozen = [r for r in dashboard.commitment_rows(snap)
+              if r["kind"] == "tagged-superseded"]
+    out = [_P("By class — what each figure actually contains", styles["_h2"])]
+    order = (list(commitment_basis.BUILDOUT_CLASSES)
+             + [commitment_basis.CONTENT_ENERGY_SOFTWARE,
+                commitment_basis.GUARANTEES,
+                commitment_basis.MIXED_UNSEPARABLE, commitment_basis.UNCLASSIFIED,
+                commitment_basis.NOT_A_COMMITMENT])
+    for cls in order:
+        got = sorted([r for r in rows if r["class"] == cls],
+                     key=lambda r: -(r["latest"] if r["latest"] is not None else -1))
+        if not got:
             continue
-        rows.append(["<b>{}</b>".format(_x(tick)), _x(iss["bucket"]),
-                     "<font color='{}'>{}</font>".format(COV_RULE, _x(c["status"])),
-                     _x(_money(c["latest"])), _x(c["concept"] or "—"),
-                     _x(c["detail"][:150])])
-    out.append(_table(("Issuer", "Bucket", "Status", "Latest", "Concept", "Detail"),
-                      rows, [56, 62, 106, 66, 214, 216], styles, right_cols=(3,)))
+        head, blurb = CLASS_BLURBS.get(
+            cls, (cls, commitment_basis.CLASS_MEANING.get(cls, "")))
+        out.append(_P("<b>{}</b> — {}".format(_x(head), blurb), styles["_note"]))
+        trs = []
+        for r in got:
+            src = ("{} {} {}".format(r["form"], r["filed"], r["accession"]).strip()
+                   if r["accession"] else "—")
+            val = (_money(r["latest"]) if r["latest"] is not None
+                   else (r["status"] or "—"))
+            trs.append([
+                "<b>{}</b>{}{}".format(
+                    _x(r["ticker"]),
+                    {"buildout": " (presentation)", "parser": " (parser)"}.get(
+                        r["kind"], ""),
+                    (" — total, joins nothing" if r.get("is_total") else "")
+                    + "".join(" [{}]".format(_x(q)) for q in (r.get("qualifiers") or []))
+                    + (" [reclassified {}]".format(_x(r["reclass_from"]))
+                       if r.get("reclass_from") else "")),
+                _x(r["bucket"]), _x(val), _x(r["as_of"] or "—"),
+                _x(r["concept"] or "—"), _x(r["contains"]), _x(src)])
+        out.append(_table(
+            ("Issuer", "Bucket", "Latest", "as of", "Concept", "Contains (verified)",
+             "Read in"),
+            trs, [68, 58, 62, 54, 146, 186, 106], styles, right_cols=(2,)))
+    if frozen:
+        out.append(_P("<b>Superseded — the figure the API still returns.</b> These "
+                      "issuers moved their disclosure onto dimensioned tags, which "
+                      "companyfacts drops, so the API's figure stopped moving. The "
+                      "live figures are above, read from the filings; these are kept "
+                      "so a reader who queries the API learns why they differ, and "
+                      "they feed nothing.", styles["_note"]))
+        out.append(_table(
+            ("Issuer", "Bucket", "Frozen at", "as of", "Concept", "Contains", "Read in"),
+            [["<b>{}</b>".format(_x(r["ticker"])), _x(r["bucket"]),
+              _x(_money(r["latest"])), _x(r["as_of"] or "—"),
+              _x(r["concept"] or "—"), _x(r["contains"]),
+              _x("{} {} {}".format(r["form"], r["filed"], r["accession"]).strip())]
+             for r in sorted(frozen, key=lambda r: -(r["latest"] or -1))],
+            [68, 58, 62, 54, 146, 186, 106], styles, right_cols=(2,)))
     return out
 
 
@@ -1226,6 +1319,18 @@ def sec_provenance(snap, styles):
     return out
 
 
+def _mapped(text, styles):
+    """A blue box: information the reader must see, not a warning — the same
+    tint the dashboard uses for its `.mapped` notices."""
+    return _tinted(text, styles, "#eef3fb", "#1f4e9c")
+
+
+def commitments_series(row):
+    """"NVDA · supply-and-capacity" for a captured series, the ticker otherwise."""
+    rk = row.get("rule_key")
+    return "{} · {}".format(row["ticker"], rk.split(":", 1)[1]) if rk else row["ticker"]
+
+
 def sec_since(snap, styles):
     """B1 — page one of everything. What changed since the last scan.
 
@@ -1259,6 +1364,22 @@ def sec_since(snap, styles):
             "<b>First run.</b> This scan rediscovered the entire history at once. "
             "That is a backfill, not news, so no transition is reported as new.",
             styles))
+    nc = since.get("commitment_newly_captured") or []
+    if nc:
+        # R6 — the header. Published once, on the scan that first read them.
+        series = sorted({commitments_series(r) for r in nc})
+        out.append(_mapped(
+            "<b>Newly captured: {} commitment series read from the filings for the "
+            "first time.</b> {} Their moves are listed below <b>once</b>. None was "
+            "sent to the queue — a series met for the first time brings its whole "
+            "history with it, and that history is the daemon learning to read "
+            "something, not the issuer doing something. From the next scan on, "
+            "each series is known and its next genuine move alerts.{}".format(
+                len(series), _x(", ".join(series)),
+                " {} moves in tagged series were recorded as history on the same "
+                "run.".format(since["commitment_backfilled_count"])
+                if since.get("commitment_backfilled_count") else ""),
+            styles))
 
     for key, title, empty in snapshot.SINCE_SECTIONS:
         rows = since.get(key) or []
@@ -1283,7 +1404,21 @@ def _since_table(key, rows, styles):
                       [["<b>{}</b>".format(_x(r["ticker"])), _x(r.get("form") or "—"),
                         _x(r.get("period") or "—"), _x(r.get("filed") or "—")]
                        for r in rows], [80, 70, 90, 90], styles)
-    if key in ("commitment_alerts", "commitment_quarantined"):
+    if key == "commitment_newly_captured":
+        return _table(("Series", "Class", "From", "To", "was", "now", "change",
+                       "multiple"),
+                      [["<b>{}</b>{}".format(_x(commitments_series(r)),
+                                            "".join(" [{}]".format(_x(q)) for q in
+                                                    (r.get("qualifiers") or []))),
+                        _x(r.get("basis_class") or "—"),
+                        _x(r["from_q"]), _x(r["to_q"]), _x(_money(r["from_value"])),
+                        _x(_money(r["to_value"])), _x(_money(r["delta"])),
+                        "{:.2f}x".format(r["multiple"]) if r["multiple"] else "—"]
+                       for r in sorted(rows, key=lambda r: -abs(r["delta"]))],
+                      [150, 126, 48, 48, 66, 66, 70, 52], styles,
+                      right_cols=(4, 5, 6, 7))
+    if key in ("commitment_alerts", "commitment_quarantined",
+               "commitment_basis_owed"):
         return _table(("Issuer", "Concept", "From", "To", "was", "now", "change",
                        "multiple", "basis"),
                       [["<b>{}</b>".format(_x(r["ticker"])), _x(r["concept"]),
