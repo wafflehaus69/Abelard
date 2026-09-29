@@ -897,17 +897,33 @@ def _cohort_block(coh):
                                  100 * b["without"], 100 * b["with"], b["step_pp"]))
     out.append("<table><tr><th>Leg</th><th>Members</th><th>From</th><th>To</th>"
                "<th class='num'>quarters</th><th class='num'>latest</th>"
-               "<th class='num'>low</th><th class='num'>high</th></tr>")
+               "<th class='num'>low</th><th class='num'>high</th>"
+               "<th>registered band</th></tr>")
     for c in cohorts:
+        b = c.get("band")
+        band_cell = ("<b>{:.0f}–{:.0f}%</b> since {} · latest <b>{}</b>".format(
+            100 * b["low"], 100 * b["high"], _esc(b["effective"]),
+            _esc(c.get("band_position"))) if b else "<span class='note'>none</span>")
         out.append("<tr><td><b>{}</b></td><td>{}</td><td>{}</td><td>{}</td>"
                    "<td class='num'>{}</td><td class='num'>{:.2f}%</td>"
-                   "<td class='num'>{:.2f}%</td><td class='num'>{:.2f}%</td></tr>".format(
+                   "<td class='num'>{:.2f}%</td><td class='num'>{:.2f}%</td>"
+                   "<td>{}</td></tr>".format(
                        _esc(c["label"]), _esc(", ".join(c["names"])), _esc(c["from_q"]),
                        _esc(c["to_q"]), c["quarters"], 100 * c["latest_ratio"],
-                       100 * c["min_ratio"], 100 * c["max_ratio"]))
+                       100 * c["min_ratio"], 100 * c["max_ratio"], band_cell))
     out.append("</table>")
-    out.append("<p class='chartnote'>No band is registered on any of these legs. "
-               "Registering one is a ruling, not a measurement (E8).</p>")
+    banded = [c for c in cohorts if c.get("band")]
+    if banded:
+        b = banded[0]["band"]
+        out.append("<div class='mapped'><b>Registered band: {:.0f}–{:.0f}% on the {} leg "
+                   "({}), effective {}</b> — ratified {}. {}. It is read against this "
+                   "leg only: the matched series changes membership, and a membership "
+                   "change is not a breach.</div>".format(
+                       100 * b["low"], 100 * b["high"], _esc(banded[0]["label"]),
+                       _esc("+".join(banded[0]["names"])), _esc(b["effective"]),
+                       _esc(b["ratified"]), _esc(b["basis"])))
+    out.append("<p class='chartnote'>No band on any other leg. Registering one is a "
+               "ruling, not a measurement (E8).</p>")
     return "".join(out)
 
 

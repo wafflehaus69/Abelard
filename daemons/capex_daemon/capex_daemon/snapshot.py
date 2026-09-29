@@ -255,6 +255,15 @@ def crosscheck_cohorts(member_quarters, hyper):
             "latest_ratio": ratios[-1], "min_ratio": min(ratios), "max_ratio": max(ratios),
             "capex_members_changed": len({r["capex_members"] for r in ser}) > 1,
         }
+        band = CROSSCHECK_BAND
+        if isinstance(band, dict) and sorted(names) == sorted(band["leg"]):
+            # The registered band travels with its leg, with every quarter since
+            # it took effect marked against it.
+            coh["band"] = dict(band)
+            coh["band_position"] = band_position(ratios[-1], band)
+            for r in ser:
+                if trend._cq_sort(r["q"]) >= trend._cq_sort(band["effective"]):
+                    r["band_position"] = band_position(r["ratio"], band)
         cohorts.append(coh)
         if prev is not None:
             entrant = names[-1]
@@ -840,10 +849,50 @@ def commitment_alerts_and_quarantine(snap, prior_keys=()):
 # latter, and E8 forbids inventing it — least of all in a sentence whose whole
 # purpose is that a reader trusts its structure without re-reading it.
 #
-# So the clause reports the level and its own recent change, and says plainly
-# that no band is registered. A range can be pre-registered later, which is what
-# "pre-registered" has to mean to be worth anything.
-CROSSCHECK_BAND = None
+# So the clause reported the level and its own recent change, and said plainly
+# that no band was registered, until one was.
+#
+# REGISTERED by Mando 2026-09-28 (ORDER CD-GAP2-P2-CLOSE), on the recommendation
+# in CD-GAP2-P3-VERIFY: 44-48% on the TWO-NAME leg (AMD+NVDA) only, effective
+# 2024Q3 — the leg and the window it was observed on. It held 44.07-47.66% for
+# eight consecutive quarters while the denominator nearly tripled.
+#
+# The band belongs to the LEG, not to the ratio. The matched series (every
+# covered supplier, whoever reported) read 53.78% at 2026Q2 against 44.51% on
+# the two names — MU's entry at 2025Q3 stepped it +5.81pp. Comparing the matched
+# series with this band would call a membership change a breach. So the band is
+# only ever read against the cohort whose names it was registered on, and a
+# snapshot without that cohort says "no reading" rather than falling back.
+#
+# Nothing is registered on the three-name leg: four observations is not a
+# distribution (E8), and MU's contribution was still widening.
+CROSSCHECK_BAND = {
+    "leg": ("AMD", "NVDA"),
+    "low": 0.44,
+    "high": 0.48,
+    "effective": "2024Q3",
+    "ratified": "2026-09-28",
+    "basis": ("the two-name leg held 44.07-47.66% for eight consecutive quarters, "
+              "2024Q3-2026Q2 (CD-GAP2-P3-VERIFY)"),
+}
+
+
+def band_leg(snap, band=None):
+    """The cohort a registered band applies to, or None. Never the matched series."""
+    band = CROSSCHECK_BAND if band is None else band
+    if not isinstance(band, dict):
+        return None
+    want = sorted(band["leg"])
+    for c in (((snap.get("suppliers") or {}).get("crosscheck_cohorts") or {})
+              .get("cohorts") or []):
+        if sorted(c.get("names") or []) == want and c.get("series"):
+            return c
+    return None
+
+
+def band_position(ratio, band):
+    lo, hi = band["low"], band["high"]
+    return "inside" if lo <= ratio <= hi else ("above" if ratio > hi else "below")
 
 
 def thesis_line(snap, band=CROSSCHECK_BAND):
@@ -898,7 +947,25 @@ def thesis_line(snap, band=CROSSCHECK_BAND):
 
     ratio = cc.get("latest_ratio")
     ser = cc.get("series") or []
-    if ratio is None:
+    if isinstance(band, dict):
+        # The registered band is read against its OWN leg, never the matched
+        # series — see CROSSCHECK_BAND.
+        leg = band_leg(snap, band)
+        if leg is None:
+            cc_clause = ("the supplier cross-check has no reading on its registered "
+                         "{}-name leg ({})".format(len(band["leg"]),
+                                                   "+".join(band["leg"])))
+        else:
+            lr = leg["latest_ratio"]
+            cc_clause = ("the supplier cross-check reads {:.1f}% on its registered "
+                         "{} leg ({}, {}), {} its {:.0f}–{:.0f}% band{}".format(
+                             100 * lr, leg["label"], "+".join(leg["names"]),
+                             leg["to_q"], band_position(lr, band),
+                             100 * band["low"], 100 * band["high"],
+                             "" if ratio is None else
+                             "; {:.1f}% across every covered supplier".format(
+                                 100 * ratio)))
+    elif ratio is None:
         cc_clause = "the supplier cross-check has no current reading"
     elif band:
         lo, hi = band

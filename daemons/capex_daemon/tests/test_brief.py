@@ -97,20 +97,66 @@ def test_the_thesis_line_carries_no_adjectives_of_judgement():
         assert word not in line, word
 
 
-def test_no_band_is_registered_and_the_clause_does_not_pretend_one_is():
-    """The first cut of this shipped CROSSCHECK_BAND = (0.44, 0.48) with a
-    comment claiming it came from CD-3b. CD-3b measured the dcrev:supplier
-    DEAD-BAND (9pp) — a band on quarter-to-quarter moves in the ladder, not a
-    registered range for the ratio's LEVEL. 44-48% was the range the two-name
-    cross-check was OBSERVED to hold in CD-3, which GAP2 P3 asks to be
-    re-registered or retired; until it rules, it is not a pre-registration."""
-    assert snapshot.CROSSCHECK_BAND is None
+def test_the_band_is_registered_on_the_two_name_leg_only():
+    """Superseded 2026-09-28. Until then this test pinned that NO band was
+    registered: 44-48% was the range the two-name cross-check was OBSERVED to
+    hold in CD-3, and GAP2 P3 asked it to be re-registered or retired. P3 put
+    eight consecutive quarters behind it and Mando registered it — on the
+    two-name leg (AMD+NVDA), effective 2024Q3, and nowhere else."""
+    band = snapshot.CROSSCHECK_BAND
+    assert band["leg"] == ("AMD", "NVDA")
+    assert (band["low"], band["high"]) == (0.44, 0.48)
+    assert band["effective"] == "2024Q3" and band["ratified"] == "2026-09-28"
+
+
+def _with_legs(two=0.4451, three=0.5378, matched=0.5378):
+    snap = _fake_snapshot()
+    snap["suppliers"]["crosscheck"]["latest_ratio"] = matched
+    snap["suppliers"]["crosscheck_cohorts"] = {"cohorts": [
+        {"names": ["AMD", "NVDA"], "label": "two-name", "to_q": "2026Q2",
+         "latest_ratio": two, "series": [{"q": "2026Q2", "ratio": two}]},
+        {"names": ["AMD", "NVDA", "MU"], "label": "three-name", "to_q": "2026Q2",
+         "latest_ratio": three, "series": [{"q": "2026Q2", "ratio": three}]}]}
+    return snap
+
+
+def test_the_clause_reads_the_band_against_its_own_leg():
+    line = snapshot.thesis_line(_with_legs())
+    assert "44.5% on its registered two-name leg (AMD+NVDA, 2026Q2)" in line
+    assert "inside its 44–48% band" in line
+    assert "53.8% across every covered supplier" in line
+
+
+def test_the_matched_series_is_never_read_against_the_band():
+    """The matched series read 53.78% at 2026Q2 — MU's entry stepped it
+    +5.81pp. Against 44-48% that would say "above", and it would be calling a
+    membership change a breach."""
+    line = snapshot.thesis_line(_with_legs(two=0.4451, matched=0.5378))
+    assert "above" not in line
+
+
+def test_a_breach_on_the_leg_is_stated_as_a_position():
+    assert "above its 44–48% band" in snapshot.thesis_line(_with_legs(two=0.50))
+    assert "below its 44–48% band" in snapshot.thesis_line(_with_legs(two=0.40))
+
+
+def test_without_the_leg_the_clause_says_so_rather_than_falling_back():
+    """An old snapshot has no cohorts. The honest clause is "no reading on the
+    registered leg" — not the matched series against a band it was never
+    registered on."""
     snap = _fake_snapshot()
     snap["suppliers"]["crosscheck"]["latest_ratio"] = 0.538
     line = snapshot.thesis_line(snap)
-    assert "53.8%" in line
+    assert "no reading on its registered 2-name leg (AMD+NVDA)" in line
+    assert "53.8%" not in line
+
+
+def test_the_unregistered_path_still_works_for_a_ruling_that_retires_the_band():
+    """Retiring the band must not need new code either."""
+    snap = _fake_snapshot()
+    snap["suppliers"]["crosscheck"]["latest_ratio"] = 0.538
+    line = snapshot.thesis_line(snap, band=False)
     assert "against no pre-registered band" in line
-    assert "above" not in line and "inside" not in line
 
 
 def test_the_clause_shows_change_by_eye_without_a_band():
@@ -119,7 +165,7 @@ def test_the_clause_shows_change_by_eye_without_a_band():
     snap["suppliers"]["crosscheck"]["latest_ratio"] = 0.538
     snap["suppliers"]["crosscheck"]["series"] = [
         {"q": "2026Q1", "ratio": 0.507}, {"q": "2026Q2", "ratio": 0.538}]
-    assert "from 50.7% a quarter earlier" in snapshot.thesis_line(snap)
+    assert "from 50.7% a quarter earlier" in snapshot.thesis_line(snap, band=False)
 
 
 def test_a_band_once_registered_is_stated_as_a_position():
@@ -151,7 +197,8 @@ def test_the_thesis_line_honours_the_b5_refusal():
 def test_a_missing_cross_check_says_so_rather_than_inventing_a_position():
     snap = _fake_snapshot()
     snap["suppliers"]["crosscheck"]["latest_ratio"] = None
-    assert "no current reading" in snapshot.thesis_line(snap)
+    assert "no current reading" in snapshot.thesis_line(snap, band=False)
+    assert "no reading on its registered" in snapshot.thesis_line(snap)
 
 
 def test_the_same_snapshot_always_yields_the_same_sentence():

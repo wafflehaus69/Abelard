@@ -1081,16 +1081,29 @@ def _sec_cohorts(snap, styles):
                 b["step_pp"]), styles))
         out.append(_spacer(4))
     out.append(_table(
-        ("Leg", "Members", "From", "To", "quarters", "latest", "low", "high"),
+        ("Leg", "Members", "From", "To", "quarters", "latest", "low", "high", "band"),
         [["<b>{}</b>".format(_x(c["label"])), _x(", ".join(c["names"])),
           _x(c["from_q"]), _x(c["to_q"]), str(c["quarters"]),
           "{:.2f}%".format(100 * c["latest_ratio"]),
           "{:.2f}%".format(100 * c["min_ratio"]),
-          "{:.2f}%".format(100 * c["max_ratio"])] for c in cohorts],
-        [72, 150, 52, 52, 56, 60, 56, 56], styles, right_cols=(4, 5, 6, 7)))
+          "{:.2f}%".format(100 * c["max_ratio"]),
+          ("{:.0f}–{:.0f}% · {}".format(100 * c["band"]["low"], 100 * c["band"]["high"],
+                                        _x(c.get("band_position")))
+           if c.get("band") else "none")] for c in cohorts],
+        [66, 128, 48, 48, 48, 54, 50, 50, 82], styles, right_cols=(4, 5, 6, 7)))
+    banded = [c for c in cohorts if c.get("band")]
+    if banded:
+        b = banded[0]["band"]
+        out.append(_P(
+            "<b>Registered band: {:.0f}–{:.0f}% on the {} leg ({}), effective {}</b> — "
+            "ratified {}. {}. Read against this leg only: the matched series changes "
+            "membership, and a membership change is not a breach.".format(
+                100 * b["low"], 100 * b["high"], _x(banded[0]["label"]),
+                _x("+".join(banded[0]["names"])), _x(b["effective"]), _x(b["ratified"]),
+                _x(b["basis"])), styles["_note"]))
     out.append(_P(
-        "No band is registered on any of these legs. Registering one is a ruling, not a "
-        "measurement (E8).", styles["_chartnote"]))
+        "No band on any other leg. Registering one is a ruling, not a measurement (E8).",
+        styles["_chartnote"]))
     return out
 
 

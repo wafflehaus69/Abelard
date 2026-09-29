@@ -98,3 +98,20 @@ def test_a_changing_denominator_is_flagged_on_the_leg():
 
 def test_no_hyperscaler_denominator_yields_nothing_rather_than_a_ratio():
     assert snapshot.crosscheck_cohorts({"A": _q(2024, 8, 10.0)}, None) == {}
+
+
+def test_the_registered_band_travels_with_its_leg_and_only_its_leg():
+    """Ruled 2026-09-28: 44-48% on AMD+NVDA from 2024Q3. The three-name leg
+    carries no band, and every quarter since the band took effect is marked."""
+    q = ["{}Q{}".format(2023 + i // 4, i % 4 + 1) for i in range(16)]
+    members = {"AMD": {x: 5.0 for x in q}, "NVDA": {x: 40.0 for x in q},
+               "MU": {x: 5.0 for x in q[8:]}}
+    hyper = _hyper({x: 100.0 for x in q})
+    cohorts = {tuple(sorted(c["names"])): c
+               for c in snapshot.crosscheck_cohorts(members, hyper)["cohorts"]}
+    two = cohorts[("AMD", "NVDA")]
+    assert two["band"]["low"] == 0.44 and two["band_position"] == "inside"
+    assert all("band_position" in r for r in two["series"]
+               if r["q"] >= "2024Q3")
+    assert all("band_position" not in r for r in two["series"] if r["q"] < "2024Q3")
+    assert "band" not in cohorts[("AMD", "MU", "NVDA")]
