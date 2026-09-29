@@ -184,6 +184,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-5 (below) | Architect, relayed by Mando; ClaudeCode recording | 2026-09-21 | Spend guardrail; D1 → Dune free-tier test first; options 2/3 rejected; BigQuery scope; E34; August 2025 DEGRADED |
 | MR-6 → [`docs/RULINGS_2026-09-22_B.md`](docs/RULINGS_2026-09-22_B.md) | Architect via Mando | 2026-09-22 | Census metric replaced (two distributions); N multi-venue approved with `birth_is_proxy`; schema sign-off conditional (file returned); corrections: BOOST 4.7×, cost = gross − net |
 | MR-7 → [`docs/RULINGS_2026-09-22_C.md`](docs/RULINGS_2026-09-22_C.md) | Architect via Mando | 2026-09-22 | Schema **frozen at 20 + 3**; S1/S2 acceptance = differential test (≥5 post-entry revocations on N); organic-v2 alongside v1; S4 M0 rule = rate at init, FLAG/UNKNOWN on post-entry update |
+| MR-8 → [`docs/RULINGS_2026-09-28.md`](docs/RULINGS_2026-09-28.md) | Architect via Mando | 2026-09-28 | Two-source P admission ratified; **S9 → feature**, **S10 → feature**, **RUG-A sole outcome variable**; bot-layer markup metric added to §5 per era; §1 complete-as-amended contingent on 1.6 per-era fee pricing |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
@@ -595,3 +596,15 @@ Full text: `docs/RULINGS_2026-09-22_B.md`. Two **corrections to this document's 
 2. **Derived-table cost rule: `trader_cost = gross − net`.** Named legs (`lp_fee`, `protocol_fee`, `coin_creator_fee`) are retained for the fee-era analysis and are **not load-bearing for expectancy**. The residual (gross − net − the three named legs), which clusters by mint, is kept as its own column as an unnamed leg, never folded into a named one.
 
 Rulings: the §2 census metric "≥1 swap in 7 days" is **withdrawn** and replaced by two distributions (distinct organic takers in days 0–7; seconds to first organic swap), no threshold. Stratum N approved multi-venue with a `birth_is_proxy` flag; CLMM logged as a known gap with one re-check before v1.2. Schema sign-off is conditional and the file has been returned with a v2 proposal.
+
+---
+
+### MR-8 — Rulings (Architect via Mando, 2026-09-28)
+
+Full text: `docs/RULINGS_2026-09-28.md`. Effects on this document:
+
+* **§3 universe, stratum P:** admission is two-source — bonding-curve `CompleteEvent` → PumpSwap pool on the mint within 1 day (2025-03-20 → mid-May 2026), the decoded migration event after; the overlap month is the seam test (0.04%); `admission_source` travels with every row.
+* **§4 gate:** **S9 and S10 are no longer gate checks.** Both are logged features. S9's percentile threshold is set on the calibration slice in v1.2. **H1's recall statement counts S1–S8 (with S7b) only.** The live Jupiter sellability simulation is M1's real S10.
+* **§4 rug definition:** **RUG-A (aligned-cluster dump) is the sole outcome variable.** The reserve-drain limb is withdrawn as a label (89% base rate, `VALIDATION_1_4_CENSUS.md`); reserve decay remains a reported distribution.
+* **§3/§5:** G stays {15, 60, 240}. New cost-model line: **bot-layer markup = price at G ÷ graduation price**, reported as a distribution per era. Pre-registered expectation: the largest single cost.
+* **Readiness §1 is complete-as-amended** once 1.6 per-era fee pricing is done on the free tier; the four materialization-scale items (venue-share and aligned-sell distributions, §6 funnel dry-run, S7b window extraction, 1.8 replay) run on purchase day after the materialized view and the cost trial.
