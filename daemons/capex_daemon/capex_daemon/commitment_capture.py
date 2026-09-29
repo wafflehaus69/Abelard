@@ -46,12 +46,13 @@ class Rule:
 
     __slots__ = ("ticker", "key", "cls", "concept", "axis", "members", "label",
                  "accession", "form", "filed", "quote", "is_total", "note",
-                 "qualifiers", "cls_before", "reclass_from", "reclass_evidence")
+                 "qualifiers", "cls_before", "reclass_from", "reclass_evidence",
+                 "since")
 
     def __init__(self, ticker, key, cls, concept, axis="", members=(), label="",
                  accession="", form="", filed="", quote="", is_total=False, note="",
                  qualifiers=(), cls_before=None, reclass_from=None,
-                 reclass_evidence=""):
+                 reclass_evidence="", since=None):
         self.ticker = ticker
         self.key = key
         self.cls = cls
@@ -61,6 +62,10 @@ class Rule:
         self.cls_before = cls_before
         self.reclass_from = reclass_from
         self.reclass_evidence = reclass_evidence
+        # The earliest period this rule was VERIFIED for. A concept can carry an
+        # unrelated older figure under the same shape; a rule does not vouch
+        # for history nobody read.
+        self.since = since
         self.concept = concept
         self.axis = axis
         self.members = (members,) if isinstance(members, str) else tuple(members)
@@ -134,6 +139,8 @@ def facts_for(rule, facts):
         if getattr(f, "period_start", None) is not None:   # commitments are instants
             continue
         pe = f.period_end
+        if rule.since and pe and pe < rule.since:
+            continue
         if pe and (pe not in out or abs(f.value) > abs(out[pe])):
             out[pe] = f.value
     return out
@@ -284,6 +291,60 @@ _register(
          label="Total (Additional Commitments table)",
          accession="0001045810-26-000075", form="10-Q", filed="2026-08-26",
          quote="36 + 20 = 56", is_total=True),
+
+    # ---- NVDA guarantees — Z3, read 2026-09-28 ---------------------------
+    # One reader and two adversarial re-readers (value/scale, meaning/class);
+    # neither refuted. Every guarantee ix:nonFraction carries scale="9", and the
+    # table is headed "(in billions)": $105B is not a scale error. Neither
+    # guarantee appears in either Note 10 commitment table, so nothing here
+    # double-counts against the SUPPLY/LEASES rows above.
+    Rule("NVDA", "guarantee-ai-cloud-leases", commitment_basis.GUARANTEES,
+         "GuaranteeObligationsMaximumExposure", "GuaranteeObligationsByNatureAxis",
+         ("LandPowerAndShellGuaranteesForAICloudsMember",
+          "FacilityLeaseGuaranteesMember"),
+         label="Land, power and shell guarantees of AI-cloud partners' "
+               "datacenter leases (maximum exposure)",
+         accession="0001045810-26-000075", form="10-Q", filed="2026-08-26",
+         quote="\"We entered into land, power, and shell guarantees for select AI "
+               "cloud partners' data center lease obligations in the event of their "
+               "default. The maximum gross exposure under all agreements is $3.5 "
+               "billion.\"",
+         note="Flat at $3.5B across three filings. Accepts both member names: the "
+              "FY2026 10-K and Q1 10-Q tag it FacilityLeaseGuaranteesMember, and Q2 "
+              "renamed it, which would otherwise break the series at a name change "
+              "rather than a change in exposure. The same exposure also appears as a "
+              "$3,529M derivative notional in Note 8 — not captured, never added."),
+    Rule("NVDA", "guarantee-openai-ports", commitment_basis.GUARANTEES,
+         "GuaranteeObligationsMaximumExposure", "GuaranteeObligationsByNatureAxis",
+         "FinancialGuaranteeMember",
+         label="Credit support for an OpenAI affiliate's leases at SB Energy's "
+               "PORTS campus, Ohio (cap)",
+         accession="0001045810-26-000075", form="10-Q", filed="2026-08-26",
+         quote="\"In August 2026, we entered into guarantees, capped at a total of "
+               "$105 billion, to provide credit support on a land, power, and shell "
+               "buildout with affiliates of SB Energy Corp. … on behalf of a "
+               "customer, an affiliate of OpenAI Group PBC … Our payment obligations "
+               "under the guarantees are triggered upon certain tenant defaults\"",
+         note="The guaranteed party is the OpenAI affiliate (the tenant); SB Energy "
+              "is the landlord and beneficiary, not the guaranteed party. Signed "
+              "August 2026, AFTER the 2026-07-26 balance-sheet date, and not yet "
+              "effective: it steps up phase by phase across nine 20-year leases for "
+              "~4.25 GW, the first expected in FY2029. It is a second layer — a "
+              "Residual Value Guaranty behind a Tenant Parent Guaranty — and OpenAI "
+              "indemnifies NVIDIA. The filing tags the $105B twice; the second copy "
+              "(2026-08-31, subsequent-event and counterparty axes) is excluded by "
+              "the one-axis rule. A further ~3.8 GW of optional support is not in "
+              "the figure."),
+    Rule("NVDA", "guarantees-total", commitment_basis.GUARANTEES,
+         "GuaranteeObligationsMaximumExposure",
+         label="Total maximum gross exposure under guarantees",
+         accession="0001045810-26-000075", form="10-Q", filed="2026-08-26",
+         quote="3.5 + 105.0 = 108.5 (in billions)", is_total=True,
+         since="2026-07-26",
+         note="A naive sum of every GuaranteeObligationsMaximumExposure fact in the "
+              "instance reads $325.5B: two copies of $3.5B, two of $105B and this "
+              "total. Bounded to 2026-07-26: the same undimensioned shape carries an "
+              "unrelated $860M at 2025-10-26 that nobody has read."),
 
     # ---- MSFT — 10-K 0001193125-26-323660, filed 2026-07-29 -------------
     # The $194.06B purchase-commitment table is still untagged and still
