@@ -1,5 +1,7 @@
 # Dune readiness — status against `DUNE_READINESS_ORDERS.md` §1
 
+> **§1 COMPLETE-AS-AMENDED (MR-8, 2026-09-28).** The four materialization-scale items (venue-share and aligned-sell distributions, §6 funnel dry-run, S7b window extraction, 1.8 replay) run on purchase day, sequenced after the materialized view and the §6 cost trial. Free tier used: ~1,273 of 2,500.
+
 Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ blocked (with reason)
 
 | Item | Status | Evidence |
@@ -21,7 +23,7 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 | 1.5 S6/S7/S7b/S8 | 🟡 | S5/S7b sources set; S6 ledger built on one mint and reconciles to chain supply to the lamport (`VALIDATION_1_5_S6.md`; an earlier 'double-record' claim was wrong and is corrected there); top-holder chain reconciliation pending; S7 written and measured on one mint (0.000%, `VALIDATION_1_5_S7_S8.md`); S8 measured on five mints — one BUNDLE found (`AaTwXAnM…`, 7 buyers / 1 funder); S6 ledger reconciled to chain to the lamport on supply and all 9 largest accounts (`VALIDATION_1_5_S6.md`) |
 | 1.5 S9/S10 | ✅ | written and measured on one day (`VALIDATION_1_5_S9_S10.md`); S9b vacuous as pre-registered → v1.2; S10 near-vacuous |
 | 1.5 UNKNOWN path per check | ✅ | S1–S4 in their validation docs; S5–S10 in `VALIDATION_1_5_S9_S10.md` |
-| 1.6 fee pricing from decoded events, per era, SOL-quoted | ⬜ | one-day proportions already confirmed (25.0/5.0 bps) |
+| 1.6 fee pricing from decoded events, per era, SOL-quoted | ✅ | `M0_FEE_LEGS.md` Part 4: three eras, cost p50 119/115/112 bps; creator fee near-universal since Oct 2025 (corrects Part 2) |
 | 1.6 fee samples re-run with v1 fix | ✅ | `M0_FEE_LEGS.md` Part 3 |
 | 1.6 slippage from reserves, validated on 10 swaps | ✅ | buys 10/10 and sells 10/10 at 0.0000% (`VALIDATION_1_6_SLIPPAGE.md`); exit-fill rule written |
 | 1.7 rebalance date chosen, seeded | ✅ | **T = 2026-03-23**, seed 20260922, 41 eligible Mondays (`recon/out/rebalance_date_1_7.json`): after calibration slice (ends 2025-07-10), pre-BOOST, 60-day lookback clear of DEGRADED |

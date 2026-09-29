@@ -39,3 +39,14 @@ quote_out = (pool_quote_token_reserves + virtual_quote_reserves) * base_in / (po
 **10 / 10 at 0.0000%** (5 pre-BOOST with virtual = 0, 5 post-BOOST with virtual = 17.585 SOL). Reserves pre-swap, as on the buy side. The identity `user_quote_amount_out = quote_out − (lp + protocol + creator)` holds on **6 / 10**; the other four pay a further 0.76–0.96% off the output — an unnamed leg (the 409-byte sell layout on those lacks the holder-rewards fields). Same treatment as the buy side: **exit cost = `quote_out − user_quote_out`** (gross − net), named legs for decomposition, the difference in `residual`.
 
 **Exit-fill rule for §5, as it will be coded:** `quote_out` from the inverted curve against the exit block's pre-swap reserves; net proceeds = `quote_out × (1 − r)` where `r` is the token's own observed (gross − net)/gross ratio on sells in its history, never a constant. Under MR-3.2 the exit is the worse of next-block price and this depth-implied fill.
+
+## Bot-layer markup (MR-8 ruling 4) — dry run, one day (`bot_layer_markup_day.sql`, 1.2 credits)
+price at G ÷ graduation price, 1,154 P graduates of 2026-09-01 (post-BOOST; effective quote reserve includes the 17.585 SOL virtual constant on both sides):
+
+| G | p10 | p50 | p90 | tokens above 1.0 |
+|---|---|---|---|---|
+| 15 min | 0.051 | **0.323** | 2.977 | 386 / 1,154 |
+| 60 min | 0.044 | **0.154** | 1.538 | — |
+| 240 min | 0.017 | **0.099** | 1.176 | 147 / 1,154 |
+
+The median G-lagged entry is at a **68–90% discount** to the graduation price, after the bot layer has pumped and dumped; a fat upper tail (p90 ≈ 3× at 15 min) carries the "markup" cases. The pre-registered expectation that this is the largest single cost is not what a post-BOOST day shows; read as a cost it is negative at the median. It is reported per era as a distribution, as ruled, and the per-era and pre-BOOST shapes come with the materialized table.

@@ -1,0 +1,25 @@
+{
+ "file": "barrel/recon/sql/bot_layer_markup_day.sql",
+ "label": "bot-layer markup dry run, one day",
+ "execution_id": "01M3N867Y4ZXMGBAG11Q0PTXA8",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.2025,
+ "submitted_at": "2026-09-29T00:14:17.029306Z",
+ "rows": [
+  {
+   "m15_p10": 0.05113601425986609,
+   "m15_p50": 0.322883692722846,
+   "m15_p90": 2.9771967227905236,
+   "m240_p10": 0.01650263505572948,
+   "m240_p50": 0.09880564698318693,
+   "m240_p90": 1.176007892706225,
+   "m60_p10": 0.04383128903483833,
+   "m60_p50": 0.15394614921566138,
+   "m60_p90": 1.5382587697735794,
+   "tokens": 1154,
+   "up_at_15": 386,
+   "up_at_240": 147
+  }
+ ],
+ "error": null
+}

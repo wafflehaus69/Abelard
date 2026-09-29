@@ -314,3 +314,19 @@ Still true, and still binding:
   started before the per-version *event* breakdown was added, so how many of the 188 swap
   events came from the 61 version-1 transactions is not reported. Every fetched transaction
   went through the same decoder, so version-1 swaps are in the sample. Their share is not.
+
+---
+
+# Part 4 — fee pricing per era, SOL-quoted stratum P (readiness 1.6; 2026-09-28)
+
+`recon/sql/fees_per_era.sql`, one sample day per era, aggregate only, 1.4 credits. Trader cost = gross − net (variant-aware), named legs beside it, residual kept.
+
+| era | sample day | swaps | cost bps p10 / p50 / p90 | lp p50 | protocol p50 | creator p50 / p90 | % with creator fee | identity holds | residual p90 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 — before the 2026-01-10 creator overhaul | 2025-10-15 | 1,056,872 | 94 / **119** / 125 | 19.8 | 5.0 | 82 / 95 | **99.7%** | 100% | 0 |
+| 2 — 2026-01-10 → BOOST | 2026-04-15 | 1,670,890 | 33 / **115** / 125 | 20.0 | 5.0 | 60 / 95 | 85.0% | 85% | 30 |
+| 3 — post-BOOST | 2026-09-01 | 6,768,778 | 30 / **112** / 125 | 19.8 | 5.0 | 31 / 94 | 79.3% | 80% | 53 |
+
+**Correction to Part 2's reading of the admin history.** Part 2 inferred that per-token creator fees became configurable only on 2026-09-09 and that "essentially none of the M0 window is priced like today". Realized fees say otherwise: **creator fees were near-universal at ~82 bps median in October 2025** — set through the fee program's market-cap tiers, not the 5 bps in `GlobalConfig`. The admin-event timeline dated *config* changes; it did not price swaps. This is exactly why MR-3.3 prices §5 from realized fees and uses config history for era dates only.
+
+**What §5 carries:** median cost per leg ~112–119 bps in every era (~2.3% round trip before slippage and markup); the unnamed leg grows through the eras (residual p90 0 → 30 → 53 bps; identity 100% → 85% → 80%) and stays in `residual`. Slice-scope distributions run in the paid month against the materialized table.

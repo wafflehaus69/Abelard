@@ -1,0 +1,53 @@
+{
+ "file": "barrel/recon/sql/fees_per_era.sql",
+ "label": "1.6 fee pricing per era (3 sample days)",
+ "execution_id": "01M3N8581TMAKMBY8TMN7VGTF0",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.400147059,
+ "submitted_at": "2026-09-29T00:13:44.378512Z",
+ "rows": [
+  {
+   "cost_bps_p10": 94.17208146751756,
+   "cost_bps_p50": 118.57592747169308,
+   "cost_bps_p90": 124.95692622263095,
+   "cre_bps_p50": 81.76756164676469,
+   "cre_bps_p90": 94.98270041646148,
+   "era": "era1_pre_creator_overhaul",
+   "lp_bps_p50": 19.773321987081914,
+   "pct_identity_holds": "100.000000000000000",
+   "pct_with_creator_fee": "99.700000000000000",
+   "prot_bps_p50": 5.000020731605956,
+   "residual_bps_p90": 0,
+   "swaps": 1056872
+  },
+  {
+   "cost_bps_p10": 33.198915675079476,
+   "cost_bps_p50": 115.3495823689559,
+   "cost_bps_p90": 125.00008131037323,
+   "cre_bps_p50": 60.121520186132756,
+   "cre_bps_p90": 94.95802806881846,
+   "era": "era2_pre_boost",
+   "lp_bps_p50": 19.994701842470022,
+   "pct_identity_holds": "85.100000000000000",
+   "pct_with_creator_fee": "85.000000000000000",
+   "prot_bps_p50": 5.000028212403498,
+   "residual_bps_p90": 29.99138225522221,
+   "swaps": 1670890
+  },
+  {
+   "cost_bps_p10": 29.91079721072496,
+   "cost_bps_p50": 112.06246066638442,
+   "cost_bps_p90": 124.51409925051527,
+   "cre_bps_p50": 30.9101067529338,
+   "cre_bps_p90": 93.87361953659017,
+   "era": "era3_post_boost",
+   "lp_bps_p50": 19.845353045195786,
+   "pct_identity_holds": "80.100000000000000",
+   "pct_with_creator_fee": "79.300000000000000",
+   "prot_bps_p50": 4.992458392008086,
+   "residual_bps_p90": 52.774150148445486,
+   "swaps": 6768778
+  }
+ ],
+ "error": null
+}
