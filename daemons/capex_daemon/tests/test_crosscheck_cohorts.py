@@ -104,8 +104,9 @@ def test_the_registered_band_travels_with_its_leg_and_only_its_leg():
     """Ruled 2026-09-28: 44-48% on AMD+NVDA from 2024Q3. The three-name leg
     carries no band, and every quarter since the band took effect is marked."""
     q = ["{}Q{}".format(2023 + i // 4, i % 4 + 1) for i in range(16)]
-    members = {"AMD": {x: 5.0 for x in q}, "NVDA": {x: 40.0 for x in q},
-               "MU": {x: 5.0 for x in q[8:]}}
+    # TTM numerators are four-quarter sums: (1.15 + 10.0) x 4 = 44.6 over 100.
+    members = {"AMD": {x: 1.15 for x in q}, "NVDA": {x: 10.0 for x in q},
+               "MU": {x: 1.0 for x in q[8:]}}
     hyper = _hyper({x: 100.0 for x in q})
     cohorts = {tuple(sorted(c["names"])): c
                for c in snapshot.crosscheck_cohorts(members, hyper)["cohorts"]}
