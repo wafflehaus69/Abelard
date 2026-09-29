@@ -189,9 +189,104 @@ def _supplier_section(legs, bucket_trends, as_of=None):
                 "latest_quarter": series[-1]["q"] if series else None,
                 "warning": warn,
             }
+            out["crosscheck_cohorts"] = crosscheck_cohorts(members, hyper)
     out["frontier"] = _supplier_frontier(legs, bucket_trends.get("hyperscaler"))
     out["dc_transitions"] = dc_transitions
     return out
+
+
+# GAP2 P3. A cohort is named for its size, in Mando's words for it.
+COHORT_LABELS = {1: "single-name", 2: "two-name", 3: "three-name",
+                 4: "four-name", 5: "five-name"}
+
+
+def crosscheck_cohorts(member_quarters, hyper):
+    """Constant-membership cross-check legs, with every entry dated as a break.
+
+    The published cross-check is a MATCHED sum: whoever reports a quarter is in
+    it that quarter. That is the right rule for CURRENCY and the wrong one for a
+    LEVEL, and the cross-check is read as a level — "the supplier side is
+    running at X% of hyperscaler capex".
+
+    Live, that has already misled. The published series rose 46.73% -> 51.08%
+    between 2025Q2 and 2025Q3 and read as demand shifting. It was Micron
+    arriving: on the two names that spanned both quarters the ratio FELL, 46.73%
+    -> 45.26%. A reader watching the line saw a 4.35pp rise where the underlying
+    ratio moved -1.47pp.
+
+    So: one series per cohort, each with fixed membership, plus a `breaks` list
+    that dates every entry and measures the step it caused — the same quarter
+    read both ways, which is the only comparison that isolates the entrant.
+
+    Cohorts are built by entry order rather than named, so a fourth supplier
+    admitted next year produces its own leg and its own dated break without a
+    code change.
+    """
+    if hyper is None or not getattr(hyper, "ttm", None):
+        return {}
+    ttms = {t: trend.ttm_by_quarter(q) for t, q in (member_quarters or {}).items() if q}
+    ttms = {t: v for t, v in ttms.items() if v}
+    if not ttms:
+        return {}
+    first = {t: min(v, key=trend._cq_sort) for t, v in ttms.items()}
+    order = sorted(first, key=lambda t: (trend._cq_sort(first[t]), t))
+    hyper_members = getattr(hyper, "membership", {}) or {}
+
+    def leg(names):
+        qs = sorted(set.intersection(*[set(ttms[n]) for n in names]) & set(hyper.ttm),
+                    key=trend._cq_sort)
+        return [{"q": q, "dc": sum(ttms[n][q] for n in names), "capex": hyper.ttm[q],
+                 "ratio": sum(ttms[n][q] for n in names) / hyper.ttm[q],
+                 "capex_members": len(hyper_members.get(q, []))}
+                for q in qs if hyper.ttm[q]]
+
+    cohorts, breaks, prev = [], [], None
+    for k in range(1, len(order) + 1):
+        names = order[:k]
+        ser = leg(names)
+        if not ser:
+            continue
+        ratios = [r["ratio"] for r in ser]
+        coh = {
+            "names": list(names), "size": k,
+            "label": COHORT_LABELS.get(k, "{}-name".format(k)),
+            "is_crosscheck": k >= 2,
+            "series": ser, "from_q": ser[0]["q"], "to_q": ser[-1]["q"],
+            "quarters": len(ser),
+            "latest_ratio": ratios[-1], "min_ratio": min(ratios), "max_ratio": max(ratios),
+            "capex_members_changed": len({r["capex_members"] for r in ser}) > 1,
+        }
+        band = CROSSCHECK_BAND
+        if isinstance(band, dict) and sorted(names) == sorted(band["leg"]):
+            # The registered band travels with its leg, with every quarter since
+            # it took effect marked against it.
+            coh["band"] = dict(band)
+            coh["band_position"] = band_position(ratios[-1], band)
+            for r in ser:
+                if trend._cq_sort(r["q"]) >= trend._cq_sort(band["effective"]):
+                    r["band_position"] = band_position(r["ratio"], band)
+        cohorts.append(coh)
+        if prev is not None:
+            entrant = names[-1]
+            at = {r["q"]: r for r in prev["series"]}
+            overlap = [r for r in ser if r["q"] in at]
+            if overlap:
+                r0 = overlap[0]
+                breaks.append({
+                    "q": r0["q"], "entrant": entrant,
+                    "without": at[r0["q"]]["ratio"], "with": r0["ratio"],
+                    "step_pp": 100 * (r0["ratio"] - at[r0["q"]]["ratio"]),
+                    "from_label": prev["label"], "to_label": coh["label"],
+                    "prior_q_without": (prev["series"][prev["series"].index(at[r0["q"]]) - 1]["ratio"]
+                                        if prev["series"].index(at[r0["q"]]) else None),
+                    "basis": ("the same quarter read both ways — the only "
+                              "comparison that isolates the entrant"),
+                })
+        prev = coh
+    return {"cohorts": cohorts, "breaks": breaks,
+            "entry_order": [{"ticker": t, "first_ttm_quarter": first[t]} for t in order],
+            "basis": ("constant membership per leg. A level compared across a "
+                      "membership change is arithmetic, not economics.")}
 
 
 def _supplier_frontier(legs, hyper):
@@ -883,10 +978,50 @@ def commitment_basis_checks_owed(snap, prior_keys=()):
 # latter, and E8 forbids inventing it — least of all in a sentence whose whole
 # purpose is that a reader trusts its structure without re-reading it.
 #
-# So the clause reports the level and its own recent change, and says plainly
-# that no band is registered. A range can be pre-registered later, which is what
-# "pre-registered" has to mean to be worth anything.
-CROSSCHECK_BAND = None
+# So the clause reported the level and its own recent change, and said plainly
+# that no band was registered, until one was.
+#
+# REGISTERED by Mando 2026-09-28 (ORDER CD-GAP2-P2-CLOSE), on the recommendation
+# in CD-GAP2-P3-VERIFY: 44-48% on the TWO-NAME leg (AMD+NVDA) only, effective
+# 2024Q3 — the leg and the window it was observed on. It held 44.07-47.66% for
+# eight consecutive quarters while the denominator nearly tripled.
+#
+# The band belongs to the LEG, not to the ratio. The matched series (every
+# covered supplier, whoever reported) read 53.78% at 2026Q2 against 44.51% on
+# the two names — MU's entry at 2025Q3 stepped it +5.81pp. Comparing the matched
+# series with this band would call a membership change a breach. So the band is
+# only ever read against the cohort whose names it was registered on, and a
+# snapshot without that cohort says "no reading" rather than falling back.
+#
+# Nothing is registered on the three-name leg: four observations is not a
+# distribution (E8), and MU's contribution was still widening.
+CROSSCHECK_BAND = {
+    "leg": ("AMD", "NVDA"),
+    "low": 0.44,
+    "high": 0.48,
+    "effective": "2024Q3",
+    "ratified": "2026-09-28",
+    "basis": ("the two-name leg held 44.07-47.66% for eight consecutive quarters, "
+              "2024Q3-2026Q2 (CD-GAP2-P3-VERIFY)"),
+}
+
+
+def band_leg(snap, band=None):
+    """The cohort a registered band applies to, or None. Never the matched series."""
+    band = CROSSCHECK_BAND if band is None else band
+    if not isinstance(band, dict):
+        return None
+    want = sorted(band["leg"])
+    for c in (((snap.get("suppliers") or {}).get("crosscheck_cohorts") or {})
+              .get("cohorts") or []):
+        if sorted(c.get("names") or []) == want and c.get("series"):
+            return c
+    return None
+
+
+def band_position(ratio, band):
+    lo, hi = band["low"], band["high"]
+    return "inside" if lo <= ratio <= hi else ("above" if ratio > hi else "below")
 
 
 def thesis_line(snap, band=CROSSCHECK_BAND):
@@ -941,7 +1076,25 @@ def thesis_line(snap, band=CROSSCHECK_BAND):
 
     ratio = cc.get("latest_ratio")
     ser = cc.get("series") or []
-    if ratio is None:
+    if isinstance(band, dict):
+        # The registered band is read against its OWN leg, never the matched
+        # series — see CROSSCHECK_BAND.
+        leg = band_leg(snap, band)
+        if leg is None:
+            cc_clause = ("the supplier cross-check has no reading on its registered "
+                         "{}-name leg ({})".format(len(band["leg"]),
+                                                   "+".join(band["leg"])))
+        else:
+            lr = leg["latest_ratio"]
+            cc_clause = ("the supplier cross-check reads {:.1f}% on its registered "
+                         "{} leg ({}, {}), {} its {:.0f}–{:.0f}% band{}".format(
+                             100 * lr, leg["label"], "+".join(leg["names"]),
+                             leg["to_q"], band_position(lr, band),
+                             100 * band["low"], 100 * band["high"],
+                             "" if ratio is None else
+                             "; {:.1f}% across every covered supplier".format(
+                                 100 * ratio)))
+    elif ratio is None:
         cc_clause = "the supplier cross-check has no current reading"
     elif band:
         lo, hi = band
