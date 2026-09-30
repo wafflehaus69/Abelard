@@ -88,11 +88,14 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 81 | barrel/recon/sql/a3_reserve_decay_day.sql (A3 reserve decay + depth ratio, one day (retry)) | `01M3MNMP01CD…` | 2.318 | 1270.93 |
 | 82 | barrel/recon/sql/fees_per_era.sql (1.6 fee pricing per era (3 sample days)) | `01M3N8581TMA…` | 1.400 | 1272.33 |
 | 83 | barrel/recon/sql/bot_layer_markup_day.sql (bot-layer markup dry run, one day) | `01M3N867Y4ZX…` | 1.202 | 1273.54 |
+| 84 | barrel/recon/sql/swap_rows_by_month.sql (storage sizing: swap rows by month) | `01M3T8AHZKYV…` | 27.864 | 1301.40 |
 
-**Total consumed: 1273.54 credits. Remaining: 1226. Usable after 15% reserve: 1042.**
+**Total consumed: 1301.40 credits. Remaining: 1199. Usable after 15% reserve: 1019.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _INCIDENT 2026-09-23: `slippage_sell_txids.sql` (expect 8) billed **840.28 credits** — a `pool IN (subquery)` joined with an OR on the partition column defeated pruning and scanned the sell-event history. Cancel arrived after completion. Runner now cancels in flight above max(3×expect, 5) and refuses --expect > 25 without --confirm. Free tier after: 1,010.7 / 2,500 used._
 
 _API says used (pre-incident line, superseded above): 1010.738 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
-_API says used: 1273.536 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 1301.400 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+
+_2026-09-30: `swap_rows_by_month.sql` billed 27.86 against an expectation of 10 (cap 30) — near-miss, recorded. Correction: the 2,500 credits are a one-time 14-day Plus trial ending 2026-10-06, not a recurring free tier; the account becomes view-only after._
