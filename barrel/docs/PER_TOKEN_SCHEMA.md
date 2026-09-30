@@ -1,5 +1,7 @@
 # BARREL M0 — per-token foundation table: schema for sign-off (burn-down item 2)
 
+> **SUPERSEDED 2026-09-30** by `PT_FEATURES_SCHEMA.md` (frozen, 85 columns, neutral names). Kept for its §0 constraints; its column table is no longer authoritative.
+
 **Author:** ClaudeCode · **Date:** 2026-09-30 · **Status:** DRAFT for Architect sign-off. Item 3 materializes this and does not run until it is frozen.
 **Grain:** one row per **mint × era**, where era ∈ {pre_boost, post_boost}. A mint belongs to one era by its graduation time, so in practice this is one row per mint (~180,500 for P over the window).
 **Replaces:** MR-4.5's per-swap table as the M0 foundation (`PURCHASE_DAY_PREP.md`: 7.94B swap rows don't fit any plan's storage). The frozen 20 + 3 per-swap schema (`DERIVED_TABLE_SCHEMA.md`) survives as the row definition *inside* the queries that build this table. It is never stored beyond a one-day measurement.

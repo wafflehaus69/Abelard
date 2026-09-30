@@ -1,0 +1,693 @@
+{
+ "table": "result_pt_features",
+ "frozen": "2026-09-30",
+ "ruling": "docs/RULINGS_2026-09-30.md",
+ "rules": [
+  "Public names only in any saved query or Dune table; this mapping never goes to Dune.",
+  "Verdicts, thresholds and hypothesis logic are never in a saved query; ad-hoc /sql/execute only.",
+  "Owner-wallet addresses never in a saved query.",
+  "Every c04 = -1 also appears in u_codes."
+ ],
+ "columns": [
+  {
+   "public": "mint",
+   "internal": "mint",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "token mint",
+   "n": 1
+  },
+  {
+   "public": "era",
+   "internal": "era",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "pre_boost / post_boost by graduation time vs 2026-07-21",
+   "n": 2
+  },
+  {
+   "public": "stratum",
+   "internal": "stratum",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "P / P_alt / R / N (MR-6)",
+   "n": 3
+  },
+  {
+   "public": "adm_src",
+   "internal": "admission_source",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "complete_to_pool_1d / migration_event / raydium_v4_migrator / cp_init / meteora_first_trade (MR-8.1)",
+   "n": 4
+  },
+  {
+   "public": "birth_proxy",
+   "internal": "birth_is_proxy",
+   "type": "boolean",
+   "group": "identity",
+   "definition": "true on Meteora first-trade rows (MR-6)",
+   "n": 5
+  },
+  {
+   "public": "degraded",
+   "internal": "degraded",
+   "type": "boolean",
+   "group": "identity",
+   "definition": "graduated or traded inside 2025-08-05 -> 08-11 (MR-5.6)",
+   "n": 6
+  },
+  {
+   "public": "pool",
+   "internal": "pool",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "graduation pool (PumpSwap for P)",
+   "n": 7
+  },
+  {
+   "public": "quote_mint",
+   "internal": "quote_mint",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "from pool creation (authoritative)",
+   "n": 8
+  },
+  {
+   "public": "token_program",
+   "internal": "token_program",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "legacy SPL / Token-2022",
+   "n": 9
+  },
+  {
+   "public": "create_time",
+   "internal": "create_time",
+   "type": "timestamp",
+   "group": "identity",
+   "definition": "mint creation (pump CreateEvent; chain fallback for N)",
+   "n": 10
+  },
+  {
+   "public": "grad_time",
+   "internal": "grad_time",
+   "type": "timestamp",
+   "group": "identity",
+   "definition": "graduation (pool birth for N)",
+   "n": 11
+  },
+  {
+   "public": "grad_slot",
+   "internal": "grad_slot",
+   "type": "bigint",
+   "group": "identity",
+   "definition": "graduation slot",
+   "n": 12
+  },
+  {
+   "public": "creator",
+   "internal": "creator",
+   "type": "varchar",
+   "group": "identity",
+   "definition": "deployer wallet",
+   "n": 13
+  },
+  {
+   "public": "vqr",
+   "internal": "virtual_quote_reserves",
+   "type": "double",
+   "group": "prices",
+   "definition": "per pool; 17.585 SOL post-BOOST, 0 before (1.6)",
+   "n": 14
+  },
+  {
+   "public": "px_grad",
+   "internal": "price_grad",
+   "type": "double",
+   "group": "prices",
+   "definition": "first post-graduation event, pre-swap reserves",
+   "n": 15
+  },
+  {
+   "public": "qres_grad",
+   "internal": "quote_res_grad",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at graduation",
+   "n": 16
+  },
+  {
+   "public": "px_g15",
+   "internal": "entry_price_g15",
+   "type": "double",
+   "group": "prices",
+   "definition": "effective quote reserve / base reserve, last event before grad + 15 min",
+   "n": 17
+  },
+  {
+   "public": "px_g60",
+   "internal": "entry_price_g60",
+   "type": "double",
+   "group": "prices",
+   "definition": "effective quote reserve / base reserve, last event before grad + 60 min",
+   "n": 18
+  },
+  {
+   "public": "px_g240",
+   "internal": "entry_price_g240",
+   "type": "double",
+   "group": "prices",
+   "definition": "effective quote reserve / base reserve, last event before grad + 240 min",
+   "n": 19
+  },
+  {
+   "public": "qres_g15",
+   "internal": "entry_quote_res_g15",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at entry (depth for the $20 fill and the depth floor)",
+   "n": 20
+  },
+  {
+   "public": "qres_g60",
+   "internal": "entry_quote_res_g60",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at entry (depth for the $20 fill and the depth floor)",
+   "n": 21
+  },
+  {
+   "public": "qres_g240",
+   "internal": "entry_quote_res_g240",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at entry (depth for the $20 fill and the depth floor)",
+   "n": 22
+  },
+  {
+   "public": "bres_g15",
+   "internal": "entry_base_res_g15",
+   "type": "double",
+   "group": "prices",
+   "definition": "base reserve at entry",
+   "n": 23
+  },
+  {
+   "public": "bres_g60",
+   "internal": "entry_base_res_g60",
+   "type": "double",
+   "group": "prices",
+   "definition": "base reserve at entry",
+   "n": 24
+  },
+  {
+   "public": "bres_g240",
+   "internal": "entry_base_res_g240",
+   "type": "double",
+   "group": "prices",
+   "definition": "base reserve at entry",
+   "n": 25
+  },
+  {
+   "public": "px_1h",
+   "internal": "price_1h",
+   "type": "double",
+   "group": "prices",
+   "definition": "price at grad + 1h",
+   "n": 26
+  },
+  {
+   "public": "px_4h",
+   "internal": "price_4h",
+   "type": "double",
+   "group": "prices",
+   "definition": "price at grad + 4h",
+   "n": 27
+  },
+  {
+   "public": "px_24h",
+   "internal": "price_24h",
+   "type": "double",
+   "group": "prices",
+   "definition": "price at grad + 24h",
+   "n": 28
+  },
+  {
+   "public": "px_7d",
+   "internal": "price_7d",
+   "type": "double",
+   "group": "prices",
+   "definition": "price at grad + 7d",
+   "n": 29
+  },
+  {
+   "public": "qres_1h",
+   "internal": "quote_res_1h",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at grad + 1h (A3 reserve decay)",
+   "n": 30
+  },
+  {
+   "public": "qres_4h",
+   "internal": "quote_res_4h",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at grad + 4h (A3 reserve decay)",
+   "n": 31
+  },
+  {
+   "public": "qres_24h",
+   "internal": "quote_res_24h",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at grad + 24h (A3 reserve decay)",
+   "n": 32
+  },
+  {
+   "public": "qres_7d",
+   "internal": "quote_res_7d",
+   "type": "double",
+   "group": "prices",
+   "definition": "quote reserve at grad + 7d (A3 reserve decay)",
+   "n": 33
+  },
+  {
+   "public": "peak_7d_g15",
+   "internal": "peak_price_7d_after_g15",
+   "type": "double",
+   "group": "prices",
+   "definition": "max price over (grad + 15 min, grad + 7d]",
+   "n": 34
+  },
+  {
+   "public": "peak_7d_g60",
+   "internal": "peak_price_7d_after_g60",
+   "type": "double",
+   "group": "prices",
+   "definition": "max price over (grad + 60 min, grad + 7d]",
+   "n": 35
+  },
+  {
+   "public": "peak_7d_g240",
+   "internal": "peak_price_7d_after_g240",
+   "type": "double",
+   "group": "prices",
+   "definition": "max price over (grad + 240 min, grad + 7d]",
+   "n": 36
+  },
+  {
+   "public": "mdd_7d_g15",
+   "internal": "max_drawdown_7d_after_g15",
+   "type": "double",
+   "group": "path",
+   "definition": "largest peak-to-trough fall within (grad + 15 min, grad + 7d], fraction",
+   "n": 37
+  },
+  {
+   "public": "mdd_7d_g60",
+   "internal": "max_drawdown_7d_after_g60",
+   "type": "double",
+   "group": "path",
+   "definition": "largest peak-to-trough fall within (grad + 60 min, grad + 7d], fraction",
+   "n": 38
+  },
+  {
+   "public": "mdd_7d_g240",
+   "internal": "max_drawdown_7d_after_g240",
+   "type": "double",
+   "group": "path",
+   "definition": "largest peak-to-trough fall within (grad + 240 min, grad + 7d], fraction",
+   "n": 39
+  },
+  {
+   "public": "peak_24h_g15",
+   "internal": "peak_price_24h_after_g15",
+   "type": "double",
+   "group": "path",
+   "definition": "max price over (grad + 15 min, grad + 15 min + 24h]; the H2/H3 24h time stop",
+   "n": 40
+  },
+  {
+   "public": "peak_24h_g60",
+   "internal": "peak_price_24h_after_g60",
+   "type": "double",
+   "group": "path",
+   "definition": "max price over (grad + 60 min, grad + 60 min + 24h]; the H2/H3 24h time stop",
+   "n": 41
+  },
+  {
+   "public": "peak_24h_g240",
+   "internal": "peak_price_24h_after_g240",
+   "type": "double",
+   "group": "path",
+   "definition": "max price over (grad + 240 min, grad + 240 min + 24h]; the H2/H3 24h time stop",
+   "n": 42
+  },
+  {
+   "public": "mdd_24h_g15",
+   "internal": "max_drawdown_24h_after_g15",
+   "type": "double",
+   "group": "path",
+   "definition": "largest peak-to-trough fall within the same 24h window, fraction",
+   "n": 43
+  },
+  {
+   "public": "mdd_24h_g60",
+   "internal": "max_drawdown_24h_after_g60",
+   "type": "double",
+   "group": "path",
+   "definition": "largest peak-to-trough fall within the same 24h window, fraction",
+   "n": 44
+  },
+  {
+   "public": "mdd_24h_g240",
+   "internal": "max_drawdown_24h_after_g240",
+   "type": "double",
+   "group": "path",
+   "definition": "largest peak-to-trough fall within the same 24h window, fraction",
+   "n": 45
+  },
+  {
+   "public": "c01",
+   "internal": "s1_mint_auth",
+   "type": "varchar",
+   "group": "gate",
+   "definition": "PASS/FAIL/UNKNOWN as-of G240, instruction-history reconstruction (1.5)",
+   "n": 46
+  },
+  {
+   "public": "c02",
+   "internal": "s2_freeze_auth",
+   "type": "varchar",
+   "group": "gate",
+   "definition": "PASS/FAIL/UNKNOWN as-of G240",
+   "n": 47
+  },
+  {
+   "public": "c03",
+   "internal": "s3_ext",
+   "type": "varchar",
+   "group": "gate",
+   "definition": "PASS/FAIL/UNKNOWN: Token-2022 extensions (hook, delegate, non-transferable, confidential)",
+   "n": 48
+  },
+  {
+   "public": "c04",
+   "internal": "s4_fee_bps",
+   "type": "integer",
+   "group": "gate",
+   "definition": "transfer-fee bps at init; NULL = none; -1 = FLAG/UNKNOWN (post-entry fee instruction, MR-7). INVARIANT: every -1 also appears in u_codes",
+   "n": 49
+  },
+  {
+   "public": "c05",
+   "internal": "s5_lp",
+   "type": "varchar",
+   "group": "gate",
+   "definition": "PASS/FAIL/UNKNOWN; P is PASS by construction (LP burned at migrate)",
+   "n": 50
+  },
+  {
+   "public": "c06_g15",
+   "internal": "s6_top10_pct_g15",
+   "type": "double",
+   "group": "gate",
+   "definition": "top-10 owners ex-pool, ex-curve, ex-burn, % of chain supply at entry",
+   "n": 51
+  },
+  {
+   "public": "c06_g60",
+   "internal": "s6_top10_pct_g60",
+   "type": "double",
+   "group": "gate",
+   "definition": "top-10 owners ex-pool, ex-curve, ex-burn, % of chain supply at entry",
+   "n": 52
+  },
+  {
+   "public": "c06_g240",
+   "internal": "s6_top10_pct_g240",
+   "type": "double",
+   "group": "gate",
+   "definition": "top-10 owners ex-pool, ex-curve, ex-burn, % of chain supply at entry",
+   "n": 53
+  },
+  {
+   "public": "c07_g15",
+   "internal": "s7_linked_pct_g15",
+   "type": "double",
+   "group": "gate",
+   "definition": "creator + 1-hop +/-24h funded wallets, % of supply at entry",
+   "n": 54
+  },
+  {
+   "public": "c07_g60",
+   "internal": "s7_linked_pct_g60",
+   "type": "double",
+   "group": "gate",
+   "definition": "creator + 1-hop +/-24h funded wallets, % of supply at entry",
+   "n": 55
+  },
+  {
+   "public": "c07_g240",
+   "internal": "s7_linked_pct_g240",
+   "type": "double",
+   "group": "gate",
+   "definition": "creator + 1-hop +/-24h funded wallets, % of supply at entry",
+   "n": 56
+  },
+  {
+   "public": "c07b",
+   "internal": "s7b_feeshare_wallets",
+   "type": "integer",
+   "group": "gate",
+   "definition": "fee-share recipients as-of entry; NULL until S7b is extracted (paid month)",
+   "n": 57
+  },
+  {
+   "public": "c08",
+   "internal": "s8_bundle",
+   "type": "varchar",
+   "group": "gate",
+   "definition": "BUNDLE / no / UNKNOWN: >= 5 same-slot buyers sharing one funder",
+   "n": 58
+  },
+  {
+   "public": "c11",
+   "internal": "s11_copycat",
+   "type": "varchar",
+   "group": "gate",
+   "definition": "classification only; name/symbol comparison runs outside Dune (quarantine)",
+   "n": 59
+  },
+  {
+   "public": "u_codes",
+   "internal": "unknown_reasons",
+   "type": "array(varchar)",
+   "group": "gate",
+   "definition": "every UNKNOWN in the row with its reason code (validation docs)",
+   "n": 60
+  },
+  {
+   "public": "c09a",
+   "internal": "s9a_vol_per_taker",
+   "type": "double",
+   "group": "feature",
+   "definition": "24h volume / distinct takers (feature, MR-8.2)",
+   "n": 61
+  },
+  {
+   "public": "c09b",
+   "internal": "s9b_roundtrip_share",
+   "type": "double",
+   "group": "feature",
+   "definition": "share of 24h volume from same-wallet round trips (feature, MR-8.2)",
+   "n": 62
+  },
+  {
+   "public": "c10",
+   "internal": "s10_sellable_30m",
+   "type": "boolean",
+   "group": "feature",
+   "definition": "any non-creator, non-migrator sell within 30 min (feature, MR-8.3)",
+   "n": 63
+  },
+  {
+   "public": "adj_applied",
+   "internal": "owner_correction_applied",
+   "type": "boolean",
+   "group": "control",
+   "definition": "false in Dune always; set true locally after the unsaved owner-participation query is applied",
+   "n": 64
+  },
+  {
+   "public": "seta_n",
+   "internal": "aligned_set_size",
+   "type": "integer",
+   "group": "rug_a",
+   "definition": "creator + 1-hop funded + c08 bundle wallets + c07b fee-share (when present)",
+   "n": 65
+  },
+  {
+   "public": "seta_hold_g240",
+   "internal": "aligned_holdings_entry",
+   "type": "double",
+   "group": "rug_a",
+   "definition": "set balance at G240, raw units",
+   "n": 66
+  },
+  {
+   "public": "seta_flow_d0_7",
+   "internal": "aligned_net_flow_d0_7",
+   "type": "array(double)",
+   "group": "rug_a",
+   "definition": "8 elements: net token flow per day 0-7, raw units, sells negative",
+   "n": 67
+  },
+  {
+   "public": "seta_sf_7d",
+   "internal": "aligned_sell_fraction_7d",
+   "type": "double",
+   "group": "rug_a",
+   "definition": "cumulative sold / holdings at entry (RUG-A X input; thresholds set in v1.2)",
+   "n": 68
+  },
+  {
+   "public": "cluster_n",
+   "internal": "syndicate_cluster_size",
+   "type": "integer",
+   "group": "h2",
+   "definition": "wallets funded by one source within 7d that bought within 30 min post-graduation",
+   "n": 69
+  },
+  {
+   "public": "cluster_src",
+   "internal": "syndicate_common_funder",
+   "type": "varchar",
+   "group": "h2",
+   "definition": "the common source, or NULL",
+   "n": 70
+  },
+  {
+   "public": "cluster_t1",
+   "internal": "syndicate_first_distribution_time",
+   "type": "timestamp",
+   "group": "h2",
+   "definition": "first block the cluster's net flow turns negative",
+   "n": 71
+  },
+  {
+   "public": "cluster_px_t1",
+   "internal": "price_at_first_distribution",
+   "type": "double",
+   "group": "h2",
+   "definition": "price at cluster_t1; marks the H2 exit (sign-off addition 2)",
+   "n": 72
+  },
+  {
+   "public": "org1_n_7d",
+   "internal": "organic_v1_takers_7d",
+   "type": "integer",
+   "group": "activity",
+   "definition": "MR-6 definition",
+   "n": 73
+  },
+  {
+   "public": "org2_n_7d",
+   "internal": "organic_v2_takers_7d",
+   "type": "integer",
+   "group": "activity",
+   "definition": "MR-7 definition",
+   "n": 74
+  },
+  {
+   "public": "org1_t_s",
+   "internal": "t_first_organic_v1_s",
+   "type": "integer",
+   "group": "activity",
+   "definition": "seconds from graduation",
+   "n": 75
+  },
+  {
+   "public": "org2_t_s",
+   "internal": "t_first_organic_v2_s",
+   "type": "integer",
+   "group": "activity",
+   "definition": "seconds from graduation",
+   "n": 76
+  },
+  {
+   "public": "cb_p50",
+   "internal": "cost_bps_buy_p50",
+   "type": "double",
+   "group": "cost",
+   "definition": "median (gross - net)/gross over buys in (grad, grad + 7d]",
+   "n": 77
+  },
+  {
+   "public": "cs_p50",
+   "internal": "cost_bps_sell_p50",
+   "type": "double",
+   "group": "cost",
+   "definition": "same over sells",
+   "n": 78
+  },
+  {
+   "public": "cf_p50",
+   "internal": "creator_fee_bps_p50",
+   "type": "double",
+   "group": "cost",
+   "definition": "median creator fee bps",
+   "n": 79
+  },
+  {
+   "public": "rs_p90",
+   "internal": "residual_bps_p90",
+   "type": "double",
+   "group": "cost",
+   "definition": "the unnamed leg, never folded (MR-6)",
+   "n": 80
+  },
+  {
+   "public": "mk_g15",
+   "internal": "markup_g15",
+   "type": "double",
+   "group": "cost",
+   "definition": "px_g15 / px_grad (MR-8.4)",
+   "n": 81
+  },
+  {
+   "public": "mk_g60",
+   "internal": "markup_g60",
+   "type": "double",
+   "group": "cost",
+   "definition": "px_g60 / px_grad (MR-8.4)",
+   "n": 82
+  },
+  {
+   "public": "mk_g240",
+   "internal": "markup_g240",
+   "type": "double",
+   "group": "cost",
+   "definition": "px_g240 / px_grad (MR-8.4)",
+   "n": 83
+  },
+  {
+   "public": "n_7d",
+   "internal": "n_swaps_7d",
+   "type": "bigint",
+   "group": "cost",
+   "definition": "swaps in (grad, grad + 7d]",
+   "n": 84
+  },
+  {
+   "public": "qv_7d",
+   "internal": "quote_volume_7d",
+   "type": "double",
+   "group": "cost",
+   "definition": "quote volume in (grad, grad + 7d]",
+   "n": 85
+  }
+ ]
+}
