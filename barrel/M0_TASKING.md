@@ -608,3 +608,6 @@ Full text: `docs/RULINGS_2026-09-28.md`. Effects on this document:
 * **§4 rug definition:** **RUG-A (aligned-cluster dump) is the sole outcome variable.** The reserve-drain limb is withdrawn as a label (89% base rate, `VALIDATION_1_4_CENSUS.md`); reserve decay remains a reported distribution.
 * **§3/§5:** G stays {15, 60, 240}. New cost-model line: **bot-layer markup = price at G ÷ graduation price**, reported as a distribution per era. Pre-registered expectation: the largest single cost.
 * **Readiness §1 is complete-as-amended** once 1.6 per-era fee pricing is done on the free tier; the four materialization-scale items (venue-share and aligned-sell distributions, §6 funnel dry-run, S7b window extraction, 1.8 replay) run on purchase day after the materialized view and the cost trial.
+
+
+**MR-8 addendum (Mando, 2026-09-30):** no billing account on the GCP project (MR-5.3 confirmed); the GCP budget alert in the readiness orders §4 is moot because the free-tier hard stop is stronger. Overage controls move to the Dune purchase screen.

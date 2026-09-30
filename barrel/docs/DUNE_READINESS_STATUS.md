@@ -42,3 +42,9 @@ Updated by ClaudeCode. ✅ done · 🟡 in progress · ⬜ not started · ❌ bl
 
 ## Watchdog events 2026-09-28
 `s8_bundle_sample.sql` v1 cancelled at 75.8 (unpruned `sol_transfers` join; rerun with literal bounds cost 1.8). `a3_venue_share_day.sql` cancelled at 85.1 (`dex_solana.trades`, two days × 1,154 mints). Both caught by the in-flight cap; both billed. **Free tier after: 1,268 used, ~1,232 remaining.**
+
+
+## §4 pre-purchase actions — closed 2026-09-30
+* **No billing account is attached** to `project-1602caf0-d9ea-4ac6-b0b` (confirmed by Mando). MR-5.3 satisfied.
+* **GCP budget alert: moot by construction.** Budgets attach to a billing account; with none, BigQuery usage beyond the free tier fails instead of billing. That hard stop is stronger than an alert, which only notifies. Attaching an account in order to create an alert would remove the stop, so it is not done.
+* **The budget question moves to Dune:** on purchase day, read from the checkout screen whether Analyst bills overage past its credit allowance (the free tier lists pay-as-you-go at $5 per 100 credits). If it does, the in-flight watchdog plus a hard stop at the allowance in `dune_run_sql.py` are the controls, and any cap Dune offers on the account page is set at checkout.
