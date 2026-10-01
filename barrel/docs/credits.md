@@ -92,8 +92,28 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 85 | barrel/recon/sql/pt_features_a_day.sql (3a tier A, one graduation day (validation)) | `01M3TE07T6HP…` | 27.355 | 1328.76 |
 | 86 | barrel/recon/sql/a3_seta_day.sql (4a aligned-set flow, one graduation day) | `01M3TF443W7M…` | 85.132 | 1499.61 |
 | 87 | barrel/recon/sql/createevent_creator_probe.sql (creator vs user on create events) | `01M3TFA6BXSC…` | 1.061 | 1500.71 |
+| 88 | barrel/recon/sql/a3_inputs_nullcount_probe.sql (E35 null-count of a3 inputs, one hour, June 2025) | `01M3THFFS7WW…` | 2.494 | 1503.21 |
+| 89 | barrel/recon/sql/tradeevent_layout_probe.sql (tradeevent column fill per era) | `01M3THHGXAA2…` | 0.399 | 1503.60 |
+| 90 | barrel/recon/sql/tradeevent_layout_probe.sql (tradeevent column fill per era, 20 min each) | `01M3THJHFCPR…` | 2.883 | 1506.49 |
+| 91 | barrel/recon/sql/a3_seta_day.sql (4a corrected v2, one graduation day (order 3, hard cap 90)) | `01M3THP7FWBE…` | 14.650 | 1521.14 |
+| 92 | barrel/recon/sql/heavy_b1b_c06_day.sql (heavy B1b c06 top-10, one day (new pattern, hard cap)) | `01M3THZCKEKD…` | 5.734 | 1526.92 |
+| 93 | barrel/recon/sql/heavy_b1a_members_day.sql (heavy B1a members+funding, one day (new pattern, hard cap)) | `01M3TJ0HDN6P…` | 44.473 | 1571.45 |
+| 94 | barrel/recon/sql/cex_labels_probe.sql (labelled Solana exchange wallets: exists?) | `01M3TJ61SXTZ…` | 0.043 | 1571.74 |
+| 95 | barrel/recon/sql/fanout_calibration_week.sql (fan-out histogram, calibration week, labelled exchanges marked (hard cap)) | `01M3TJ6HT508…` | 11.501 | 1583.25 |
+| 96 | barrel/recon/sql/heavy_b1a_members_week.sql (heavy B1a members+funding, calibration week (1,573 tokens)) | `01M3TJ9RK5AH…` | 76.661 | 1659.91 |
+| 97 | barrel/recon/sql/heavy_b1b_c06_week.sql (heavy B1b c06, calibration week) | `01M3TJG1D39X…` | 8.805 | 1670.95 |
+| 98 | barrel/recon/sql/cex_labels_list.sql (labelled exchange wallets, list) | `01M3TK0W3T93…` | 0.050 | 1671.35 |
+| 99 | barrel/recon/sql/heavy_b2_auth_day.sql (heavy B2 c01-c04 inputs, one day (new pattern, hard cap)) | `01M3TK10VWZX…` | 0.000 | 1671.37 |
+| 100 | barrel/recon/sql/heavy_b3_cluster_day.sql (heavy B3 cluster inputs, one day (new pattern, hard cap)) | `01M3TK15XWH7…` | 0.000 | 1671.37 |
+| 101 | barrel/recon/sql/heavy_b2_auth_day.sql (heavy B2 c01-c02 inputs, one day (new pattern, hard cap)) | `01M3TK23R7YD…` | 0.000 | 1671.37 |
+| 102 | barrel/recon/sql/heavy_b3_cluster_day.sql (heavy B3 cluster inputs, one day (new pattern, hard cap)) | `01M3TK29E6D2…` | 0.000 | 1671.37 |
+| 103 | barrel/recon/sql/heavy_b2_auth_day.sql (heavy B2 c01-c02 inputs, one day (new pattern, hard cap)) | `01M3TK3566JA…` | 0.109 | 1671.48 |
+| 104 | barrel/recon/sql/heavy_b3_cluster_day.sql (heavy B3 cluster inputs, one day (new pattern, hard cap)) | `01M3TK3J5J0J…` | 38.671 | 1710.20 |
+| 105 | barrel/recon/sql/heavy_b2_auth_week.sql (heavy B2 c01-c02 inputs, calibration week) | `01M3TK9Q3RWR…` | 0.128 | 1714.40 |
+| 106 | barrel/recon/sql/heavy_b3_cluster_week.sql (heavy B3 cluster inputs, calibration week) | `01M3TKA6DNAR…` | 61.838 | 1776.61 |
+| 107 | barrel/recon/sql/pt_features_a_week.sql (order 3: regenerate the week's 60 event columns with creator filled) | `01M3TKDHF23V…` | 34.958 | 1840.64 |
 
-**Total consumed: 1500.71 credits. Remaining: 999. Usable after 15% reserve: 849.**
+**Total consumed: 1840.64 credits. Remaining: 659. Usable after 15% reserve: 560.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _INCIDENT 2026-09-23: `slippage_sell_txids.sql` (expect 8) billed **840.28 credits** — a `pool IN (subquery)` joined with an OR on the partition column defeated pruning and scanned the sell-event history. Cancel arrived after completion. Runner now cancels in flight above max(3×expect, 5) and refuses --expect > 25 without --confirm. Free tier after: 1,010.7 / 2,500 used._
@@ -103,4 +123,4 @@ _API says used (pre-incident line, superseded above): 1010.738 of 2500 (authorit
 _2026-09-30: `swap_rows_by_month.sql` billed 27.86 against an expectation of 10 (cap 30) — near-miss, recorded. Correction: the 2,500 credits are a one-time 14-day Plus trial ending 2026-10-06, not a recurring free tier; the account becomes view-only after._
 
 _2026-09-30, burn-down item 3: usage 1,301.4 → 1,414.5 (113.1 credits). Authoritative per-step figures are in `recon/out/burn_3a.json` and `burn_3b.json`; these runs did not go through `dune_run_sql.py`, so they have no rows in the table above._
-_API says used: 1500.711 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 1842.578 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

@@ -1,0 +1,35 @@
+{
+ "file": "barrel/recon/sql/tradeevent_layout_probe.sql",
+ "label": "tradeevent column fill per era",
+ "execution_id": "01M3THHGXAA26PJHND3TZX0X7V",
+ "state": "CANCELLED BY WATCHDOG (credits 5.0 > cap 4.0)",
+ "credits": 0.399342106,
+ "cap": 4.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.227841025
+  ],
+  [
+   3.1,
+   1.388943107
+  ],
+  [
+   5.6,
+   2.54766525
+  ],
+  [
+   8.3,
+   3.76956788
+  ],
+  [
+   11.1,
+   5.021822876
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T01:33:56.010486Z",
+ "rows": null,
+ "error": null
+}

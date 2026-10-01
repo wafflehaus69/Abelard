@@ -1,0 +1,79 @@
+{
+ "file": "barrel/recon/sql/tradeevent_layout_probe.sql",
+ "label": "tradeevent column fill per era, 20 min each",
+ "execution_id": "01M3THJHFCPRQYB2YHPYZZZPND",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 2.882500001,
+ "cap": 5.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.0025
+  ],
+  [
+   3.2,
+   0.238837763
+  ],
+  [
+   5.8,
+   0.504125846
+  ],
+  [
+   8.5,
+   0.771466748
+  ],
+  [
+   11.0,
+   2.190735295
+  ],
+  [
+   18.8,
+   2.882500001
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T01:34:29.356605Z",
+ "rows": [
+  {
+   "d": "2026-09-01",
+   "is_buy": 44942,
+   "ix_buy": 15363,
+   "ix_name": 44942,
+   "ix_sell": 20863,
+   "n": 44942,
+   "slot": 44942,
+   "sol_amount": 44942,
+   "token_amount": 44942,
+   "usr": 44942,
+   "vsr": 44942
+  },
+  {
+   "d": "2025-10-15",
+   "is_buy": 0,
+   "ix_buy": 0,
+   "ix_name": 0,
+   "ix_sell": 0,
+   "n": 10959,
+   "slot": 10959,
+   "sol_amount": 0,
+   "token_amount": 0,
+   "usr": 10959,
+   "vsr": 0
+  },
+  {
+   "d": "2025-06-09",
+   "is_buy": 0,
+   "ix_buy": 0,
+   "ix_name": 0,
+   "ix_sell": 0,
+   "n": 39107,
+   "slot": 39107,
+   "sol_amount": 0,
+   "token_amount": 0,
+   "usr": 39107,
+   "vsr": 0
+  }
+ ],
+ "error": null
+}

@@ -1,0 +1,72 @@
+{
+ "file": "barrel/recon/sql/a3_inputs_nullcount_probe.sql",
+ "label": "E35 null-count of a3 inputs, one hour, June 2025",
+ "execution_id": "01M3THFFS7WWN3JG1XKGXQ1460",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 2.494264706,
+ "cap": 6.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   0.0025
+  ],
+  [
+   3.1,
+   0.215192999
+  ],
+  [
+   5.6,
+   0.472310137
+  ],
+  [
+   8.2,
+   0.726957989
+  ],
+  [
+   10.7,
+   1.103676471
+  ],
+  [
+   21.6,
+   1.520147059
+  ],
+  [
+   34.2,
+   1.851911765
+  ],
+  [
+   51.8,
+   2.494264706
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T01:32:49.320057Z",
+ "rows": [
+  {
+   "c1": 3668996,
+   "c2": 3668996,
+   "c3": 3668996,
+   "c4": 2033124,
+   "n": 3668996,
+   "src": "sol_transfers"
+  },
+  {
+   "c1": 7243106,
+   "c2": 7216940,
+   "c3": 7269392,
+   "c4": 7269392,
+   "n": 7269392,
+   "src": "transfers"
+  },
+  {
+   "c1": 122813,
+   "c2": 0,
+   "c3": 122813,
+   "c4": 122813,
+   "n": 122813,
+   "src": "tradeevent"
+  }
+ ],
+ "error": null
+}
