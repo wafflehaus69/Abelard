@@ -526,7 +526,7 @@
    "internal": "aligned_set_size",
    "type": "integer",
    "group": "rug_a",
-   "definition": "creator + 1-hop funded + c08 bundle wallets + c07b fee-share (when present)",
+   "definition": "RAW wallet count: creator + wallets it funded within 24h + c08 bundle wallets, restricted to wallets that ever held the token; bonding curve excluded (MR-12.6). c07b fee-share is out of M0",
    "n": 65
   },
   {
@@ -694,7 +694,7 @@
    "internal": "fund_to_first_buy_s",
    "type": "double",
    "group": "rug_a",
-   "definition": "median seconds from a set member's funding to its first acquisition of the token, over members where both were measured; NULL = measured for nobody, never 0 (MR-11)",
+   "definition": "seconds from a set member's first SOL inflow from its classified funder to its first acquisition of the token; per token, the median across set members; NULL when the funder is unknown (MR-12.2)",
    "n": 86
   },
   {
@@ -702,8 +702,40 @@
    "internal": "block_id",
    "type": "varchar",
    "group": "control",
-   "definition": "block for effective-n: 'F:' + the creator's funder when that funder is dedicated, else 'D:' + launch day (MR-11 section 2)",
+   "definition": "block for effective-n: 'F:' + the creator's funder when that funder links (purpose-built, or factory once shipped), else 'C:' + the creator wallet (MR-11 s2, fallback per MR-12.5)",
    "n": 87
+  },
+  {
+   "public": "seta_actors",
+   "internal": "aligned_set_actors",
+   "type": "integer",
+   "group": "rug_a",
+   "definition": "seta_n after funding-mesh collapse; NULL when any member's funding is unknown",
+   "n": 88
+  },
+  {
+   "public": "cluster_actors",
+   "internal": "syndicate_cluster_actors",
+   "type": "integer",
+   "group": "h2",
+   "definition": "cluster_n after collapse; NULL when unresolved",
+   "n": 89
+  },
+  {
+   "public": "org1_actors_7d",
+   "internal": "organic_v1_actors_7d",
+   "type": "integer",
+   "group": "activity",
+   "definition": "org1_n_7d after collapse; NULL when unresolved",
+   "n": 90
+  },
+  {
+   "public": "org2_actors_7d",
+   "internal": "organic_v2_actors_7d",
+   "type": "integer",
+   "group": "activity",
+   "definition": "org2_n_7d after collapse; NULL when unresolved",
+   "n": 91
   }
  ]
 }

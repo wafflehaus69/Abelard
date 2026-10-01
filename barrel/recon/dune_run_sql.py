@@ -12,7 +12,7 @@ ALLOWANCE = 2500.0; RESERVE = 0.15
 def consumed():
     m = re.search(r"Total consumed: ([\d.]+)", LEDGER.read_text(encoding="utf-8")); return float(m.group(1)) if m else 0.0
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
+    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
     # Owner-wallet exclusion (MR-3.4): SQL files write __NOT_OWNER(col)__; the addresses are read
     # from barrel/private/ at run time and reach only the query text sent to Dune, never the repo.
@@ -60,7 +60,7 @@ def main():
             time.sleep(3); st = rt.dune("GET", f"/execution/{eid}/status", key); break
         if st.get("is_execution_finished"): break
         time.sleep(2)
-    res = rt.dune("GET", f"/execution/{eid}/results", key) if st.get("is_execution_finished") else {}
+    res = rt.dune("GET", f"/execution/{eid}/results", key) if st.get("is_execution_finished") and not a.no_rows else {}  # --no-rows: cost measurement only; export is billed per MB
     cost = float(st.get("execution_cost_credits") or 0)
     rows = (res.get("result") or {}).get("rows")
     # A result larger than one page comes back with next_offset; fetch every page (export is billed per MB).

@@ -1,4 +1,4 @@
-# `pt_features` — per-token schema, 87 columns: 85 frozen 2026-09-30, plus 2 ordered by MR-11 (2026-10-01) awaiting signature of their definition lines
+# `pt_features` — per-token schema, 91 columns: 85 frozen 2026-09-30, plus 2 by MR-11 and 4 collapsed-count twins by MR-12 ruling 3 (2026-10-01)
 
 **Frozen by:** `RULINGS_2026-09-30.md` (Architect sign-off with three changes). **Source of truth:** `recon/pt_features_schema.json`, written with this page by `recon/gen_pt_features_schema.py`. The **public name** is the only name that exists in Dune; internal names and definitions live only in this repo.
 
@@ -83,7 +83,7 @@ Dune table: `dune.<user>.result_pt_features` (view names must start with `result
 | 62 | `c09b` | double | `s9b_roundtrip_share` | share of 24h volume from same-wallet round trips (feature, MR-8.2) |
 | 63 | `c10` | boolean | `s10_sellable_30m` | any non-creator, non-migrator sell within 30 min (feature, MR-8.3) |
 | 64 | `adj_applied` | boolean | `owner_correction_applied` | false in Dune always; set true locally after the unsaved owner-participation query is applied |
-| 65 | `seta_n` | integer | `aligned_set_size` | creator + 1-hop funded + c08 bundle wallets + c07b fee-share (when present) |
+| 65 | `seta_n` | integer | `aligned_set_size` | RAW wallet count: creator + wallets it funded within 24h + c08 bundle wallets, restricted to wallets that ever held the token; bonding curve excluded (MR-12.6). c07b fee-share is out of M0 |
 | 66 | `seta_hold_g240` | double | `aligned_holdings_entry` | set balance at G240, raw units |
 | 67 | `seta_flow_d0_7` | array(double) | `aligned_net_flow_d0_7` | 8 elements: net token flow per day 0-7, raw units, sells negative |
 | 68 | `seta_sf_7d` | double | `aligned_sell_fraction_7d` | cumulative sold / holdings at entry (RUG-A X input; thresholds set in v1.2) |
@@ -104,5 +104,9 @@ Dune table: `dune.<user>.result_pt_features` (view names must start with `result
 | 83 | `mk_g240` | double | `markup_g240` | px_g240 / px_grad (MR-8.4) |
 | 84 | `n_7d` | bigint | `n_swaps_7d` | swaps in (grad, grad + 7d] |
 | 85 | `qv_7d` | double | `quote_volume_7d` | quote volume in (grad, grad + 7d] |
-| 86 | `seta_lat_s` | double | `fund_to_first_buy_s` | median seconds from a set member's funding to its first acquisition of the token, over members where both were measured; NULL = measured for nobody, never 0 (MR-11) |
-| 87 | `blk` | varchar | `block_id` | block for effective-n: 'F:' + the creator's funder when that funder is dedicated, else 'D:' + launch day (MR-11 section 2) |
+| 86 | `seta_lat_s` | double | `fund_to_first_buy_s` | seconds from a set member's first SOL inflow from its classified funder to its first acquisition of the token; per token, the median across set members; NULL when the funder is unknown (MR-12.2) |
+| 87 | `blk` | varchar | `block_id` | block for effective-n: 'F:' + the creator's funder when that funder links (purpose-built, or factory once shipped), else 'C:' + the creator wallet (MR-11 s2, fallback per MR-12.5) |
+| 88 | `seta_actors` | integer | `aligned_set_actors` | seta_n after funding-mesh collapse; NULL when any member's funding is unknown |
+| 89 | `cluster_actors` | integer | `syndicate_cluster_actors` | cluster_n after collapse; NULL when unresolved |
+| 90 | `org1_actors_7d` | integer | `organic_v1_actors_7d` | org1_n_7d after collapse; NULL when unresolved |
+| 91 | `org2_actors_7d` | integer | `organic_v2_actors_7d` | org2_n_7d after collapse; NULL when unresolved |

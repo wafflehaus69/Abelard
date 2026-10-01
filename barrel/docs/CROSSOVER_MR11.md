@@ -100,3 +100,20 @@ Also flagged: `blk` puts a funder address into a table that is public under the 
 ## 7. Orders 5–7 (CONSENSUS)
 
 Not started. They are a different workstream with its own worktree, and D3's recalibration needs the 59 nights of store data on Basilic. Q1, Q7 and Q8 are answers and need no code. D1, D2, D7 and the dashboard restatement (D4, D5) are fixes to `consensus/`; D3 is a report followed by a ruling. A separate session has been proposed for them.
+
+## 8. After MR-12 (rulings of 2026-10-01, second set)
+
+The three open points in §6 are ruled (`RULINGS_2026-10-01_B.md`). What changed in code and what the rulings produce on the calibration week:
+
+* **Classifier is label-first** (`actors.classify_funder`): labelled exchange → `cex` whatever its fan-out; unlabelled at or above 400 → `hub`, never links; unlabelled below 400 → `dedicated`, links. 400 is provisional; 32 and 8,192 are the sensitivity values in §3 and below. A `factory` class is in the code and links, with an empty list until v1.2 (`FACTORY_CLASS.md`: the two populations do separate).
+* **Blocks, creator-wallet fallback (ruling 5).** Launch-day blocks are gone; each creator whose funder does not link is its own block.
+
+| | Tokens | Blocks at 400 | at 32 | at 8,192 | Largest block |
+|---|---|---|---|---|---|
+| Calibration week | 1,523 | **1,287** (0.845 of raw n) | 1,299 | 1,262 | 12 tokens (a funder) |
+| Post-BOOST day 2026-09-01 | 1,087 | **871** (0.801) | 885 | 869 | 16 tokens (a funder) |
+
+  At 400, 623 blocks are funders holding 797 tokens and 664 are single creators holding 726 (a creator with several tokens is one block; the largest holds 8). **Block n is about 80–85% of raw n**, and the threshold barely moves it.
+* **Column 86 is redefined (ruling 2):** the clock starts at the member's *first* inflow from its funder, not the last one before the acquisition. `gen_heavy_b1.py` is changed accordingly. **The latency figures in §3 were measured under the earlier definition (last inflow) and are a lower bound on the ruled one; they have not been re-measured.**
+* **Count columns carry both values (ruling 3).** Schema is 91 columns: `seta_actors`, `cluster_actors`, `org1_actors_7d`, `org2_actors_7d` beside their raw counts. `c07b` gets its twin when it is built. **Cost consequence, not yet measured:** collapsing the organic taker counts needs a funder for every taker over seven days (a median of about 1,400 wallets per token). That is a join of the size of the early-buyer query or larger, and it is priced in `PURCHASE_DECISION.md` as an estimate, not a measurement.
+* **Aligned-set definition (ruling 6):** the corrected one stands. `VALIDATION_1_5_S7_S8.md`'s "118" and "1,128 funded wallets" are struck as set sizes.

@@ -1,5 +1,7 @@
 # Readiness 1.5 — S7 (deployer-linked supply) and S8 (bundle at launch): sources and sample (2026-09-28)
 
+> **STRUCK 2026-10-01 (MR-12 ruling 6).** The "wallets funded ± 24 h" figures in this file (118, 30, 19, 1,128, 13) count every recipient of creator SOL, which includes fee, tip and rent accounts on every token. They are not aligned-set sizes. The set is restricted to wallets that ever held the token (`HEAVY_TIER_UNITS.md` §1); its median size is 1. The funding source, the cost figures and the bundle sample below stand.
+
 **Source for funding:** `tokens_solana.sol_transfers` (`from_owner`, `to_owner`, `amount`, `block_time`; filter on `block_time`, not `block_date`). Cost: **23.4 credits for a 7-day scan** joined to five creators — the window run must scope each creator's ±24 h inside the materialization, never as an ad-hoc scan.
 
 ## S7 sample — five P creators (`recon/sql/s7_funding_sample.sql`)

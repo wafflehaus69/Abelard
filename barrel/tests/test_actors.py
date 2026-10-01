@@ -46,7 +46,7 @@ def test_single_wallet_with_unknown_funding_is_not_one_actor():
 def test_kinds():
     c = lambda f, n: actors.classify_funder(f, n, **KW)  # noqa: E731
     assert [c("EXCH", 1), c("FEEACCT", 9), c("x", 99), c("x", 100), c("x", None), c(None, 5)] == \
-           ["cex", "nonpersonal", "dedicated", "high_fanout", "unknown", None]
+           ["cex", "nonpersonal", "dedicated", "hub", "unknown", None]
 
 
 def test_latency_is_none_when_unmeasured_never_zero():
@@ -54,10 +54,22 @@ def test_latency_is_none_when_unmeasured_never_zero():
     assert actors.fund_to_first_buy_s([row("a", lat=10), row("b", lat=30), row("c")]) == 20
 
 
-def test_block_id_falls_back_to_launch_day():
-    assert actors.block_id(row("cr", "F1", 3), "2025-06-09", **KW) == "F:F1"
+def test_block_id_falls_back_to_the_creator_wallet():
+    assert actors.block_id(row("cr", "F1", 3), "cr", **KW) == "F:F1"
     for r in (row("cr", "EXCH", 3), row("cr", "BIG", 5000), row("cr"), None):
-        assert actors.block_id(r, "2025-06-09", **KW) == "D:2025-06-09"
+        assert actors.block_id(r, "cr", **KW) == "C:cr"
+
+
+def test_label_beats_fan_out():
+    assert actors.classify_funder("EXCH", 1, **KW) == "cex" and actors.classify_funder("EXCH", 10**6, **KW) == "cex"
+
+
+def test_a_factory_links_where_a_hub_does_not():
+    rows = [row("a", "BIG", 5000), row("b", "BIG", 5000)]
+    assert actors.resolution.actor_count(actors.token_record(rows, **KW)) == 2
+    rec = actors.token_record(rows, factories={"BIG"}, **KW)
+    assert actors.resolution.actor_count(rec) == 1 and rec["collapse_state"] == "collapsed"
+    assert actors.block_id(row("cr", "BIG", 5000), "cr", factories={"BIG"}, **KW) == "F:BIG"
 
 
 def test_parity_with_consensus_m10():

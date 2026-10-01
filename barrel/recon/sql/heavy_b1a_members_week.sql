@@ -79,15 +79,18 @@ mm0 AS (
   FROM seta s JOIN base bs ON bs.mint = s.mint
   LEFT JOIN bal b ON b.mint = s.mint AND b.w = s.w),
 mm AS (SELECT * FROM mm0 WHERE (is_creator OR first_in IS NOT NULL) AND NOT coalesce(got_mint, false)),
-inb AS (
-  SELECT m.mint, m.w, max_by(s.from_owner, s.block_time) AS funder, max(s.block_time) AS funded_ts,
-         max_by(CAST(s.amount AS double), s.block_time) / 1e9 AS funded_sol,
-         approx_distinct(s.from_owner) AS n_senders
+inb0 AS (   -- one row per (member, sender): first and last transfer before the member's first action
+  SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_time) AS t_last,
+         max_by(CAST(s.amount AS double), s.block_time) / 1e9 AS last_sol
   FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
   WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-17 00:00:00'
     AND CAST(s.amount AS double) >= 1e6
     AND s.from_owner <> m.w AND s.block_time < m.t_act
-  GROUP BY 1, 2),
+  GROUP BY 1, 2, 3),
+inb AS (    -- funder = the last sender before the first action; funded_ts = that funder's FIRST transfer (MR-12.2)
+  SELECT mint, w, max_by(sender, t_last) AS funder, max_by(t_first, t_last) AS funded_ts,
+         max_by(last_sol, t_last) AS funded_sol, count(*) AS n_senders
+  FROM inb0 GROUP BY 1, 2),
 fan AS (
   SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
   FROM tokens_solana.sol_transfers s

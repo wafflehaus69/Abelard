@@ -3,7 +3,7 @@
 **Orders:** `RULINGS_2026-10-01.md` orders 3–4 (MR-10); crossover order 4 (`RULINGS_2026-10-01_CROSSOVER.md`, MR-11).
 **Scope:** calibration week, graduations 2025-06-09 → 06-15, 1,573 stratum-P tokens (1,523 created within 3 days of graduating, the queries' scope limit). Pre-BOOST. One graduation day (241 tokens) was run first for every new query.
 **Spent:** order 3 **57.3 credits** (4a itself 20.4 of its 90). Order 4 **284.6 of 350**, exports included. **Session total 341.9.**
-**Balance:** 1,842.6 used of 2,500. **477.4 spendable above the 180 reserve.** Trial ends 2026-10-06.
+**Balance after orders 3–4:** 1,842.6 used of 2,500. **After the MR-12 runs (§4, and `FACTORY_CLASS.md`): 2,052.5 used, 267.5 spendable above the 180 reserve.** Trial ends 2026-10-06.
 **Evidence:** `recon/out/run_*_20261001T*.json` (cost, in-flight samples, rows). Rows that name wallets are in `barrel/private/out/` and are not in the repo.
 
 ---
@@ -81,6 +81,22 @@ Every run now records Dune's in-flight cost counter at each poll. It is **not co
 
 ---
 
-## 4. One measurement left open, for a ruling
+## 4. The post-BOOST day (MR-12 ruling 1) — measured 2026-10-01
 
-The heavy tier has been measured in one era. A single post-BOOST graduation day of B1a and B3 (same queries, proven patterns) would say whether the 7,100 holds, doubles or triples in the era that holds most of the window's volume. Expected 90–250 credits. **477 are spendable and expire on 2026-10-06.** It is outside the 350 ordered for order 4, so it has not been run. Requested: authorization for up to 250.
+Authorized up to 250; **spent 170.7**, of which 44.3 was the export of one result (below). Day: graduations of **2026-09-01**, 1,154 stratum-P tokens (the complete → pool admission and the decoded migration event agree on all 1,154; `postboost_universe_probe.sql`, 0.5 credits).
+
+| Query | June 2025 day (241 tokens) | Post-BOOST day (1,154 tokens) | Ratio |
+|---|---|---|---|
+| B1a members + funding | 44.47 | **59.72** | 1.34 |
+| B3 early-buyer groups | 38.67 | **58.45** | 1.51 |
+| B1b holder concentration | 5.73 | **7.05** | 1.23 |
+| B2 authority history | 0.11 | 0.14 | — |
+| **Sum** | 88.98 | **125.36** | **1.41** |
+
+**The ×1.5 guess is replaced by ×1.41 for the four queries together** (×1.33 without the early-buyer groups). Nearly five times the tokens for 1.4× the credits: again cost follows the days scanned, not the tokens.
+
+Applied to the window: the 7,100 for the four queries in monthly chunks becomes **about 7,500** if only the post-BOOST chunks (about 3 of 20) carry the higher rate, and **10,000** if every chunk does. Pre-BOOST months other than June 2025 are not measured.
+
+**An export lesson, 44.3 credits.** The post-BOOST day returned 76,999 member rows against 461 for the June day, and fetching them cost 44.3 credits, three quarters of the query itself. A handful of tokens carry sets of about 3,800 wallets each. Median set size is still 1 and the 90th percentile 3. The runner now has `--no-rows` for cost measurements, and the build reduces members to one row per token inside the query, so this cost does not recur.
+
+**Set states on that day (threshold 400):** 579 solo, 118 independent, 10 collapsed, **380 unresolved (35%)**, against 14% in the June week. More sets have a member whose funder is outside the scanned window.

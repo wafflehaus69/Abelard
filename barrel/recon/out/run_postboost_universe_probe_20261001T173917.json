@@ -1,0 +1,62 @@
+{
+ "file": "barrel/recon/sql/postboost_universe_probe.sql",
+ "label": "post-BOOST day: admission and creator fill",
+ "execution_id": "01M3W8RZE2TVPHVB3S5NVFW6VY",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.497382353,
+ "cap": 3.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.0025
+  ],
+  [
+   2.9,
+   0.165362958
+  ],
+  [
+   5.4,
+   0.409515467
+  ],
+  [
+   7.9,
+   0.497382353
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T17:39:11.939095Z",
+ "rows": [
+  {
+   "also_in_other": 36202,
+   "n": 36202,
+   "quote_mint": null,
+   "src": "createevent_fill"
+  },
+  {
+   "also_in_other": 1154,
+   "n": 1154,
+   "quote_mint": "So11111111111111111111111111111111111111112",
+   "src": "complete_to_pool"
+  },
+  {
+   "also_in_other": 55,
+   "n": 55,
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "src": "complete_to_pool"
+  },
+  {
+   "also_in_other": 55,
+   "n": 55,
+   "quote_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+   "src": "migration_event"
+  },
+  {
+   "also_in_other": 1154,
+   "n": 1154,
+   "quote_mint": "11111111111111111111111111111111",
+   "src": "migration_event"
+  }
+ ],
+ "error": null
+}

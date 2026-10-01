@@ -1,0 +1,67 @@
+{
+ "file": "barrel/recon/sql/heavy_b3_cluster_pbday.sql",
+ "label": "MR-12 r1: heavy B3, one post-BOOST day 2026-09-01 (hard cap, rows not fetched)",
+ "execution_id": "01M3W8XEAKRP8A9GCWD8V3ZBCP",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 58.449558824,
+ "cap": 110.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   0.0025
+  ],
+  [
+   5.3,
+   0.234981567
+  ],
+  [
+   7.7,
+   0.477938511
+  ],
+  [
+   10.2,
+   0.731820034
+  ],
+  [
+   12.7,
+   0.984137264
+  ],
+  [
+   15.3,
+   1.234912762
+  ],
+  [
+   18.0,
+   1.500519611
+  ],
+  [
+   20.5,
+   1.757506677
+  ],
+  [
+   23.1,
+   2.013010093
+  ],
+  [
+   25.6,
+   25.308382353
+  ],
+  [
+   35.6,
+   47.437794118
+  ],
+  [
+   50.7,
+   57.6025
+  ],
+  [
+   56.0,
+   58.449558824
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T17:41:38.260845Z",
+ "rows": null,
+ "error": null
+}

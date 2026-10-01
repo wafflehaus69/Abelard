@@ -12,20 +12,20 @@ talks to Dune or to an RPC, and no threshold has a default: the caller passes th
    f3aeb0d). It cannot be imported: m10 pulls in the CONSENSUS data layer at import time.
    ``tests/test_actors.py`` holds the two to the same answers whenever m10 is importable.
 
-3. ``classify_funder`` is m5's classifier re-derived for Solana. m5 calls a funder an exchange
-   when its fan-out passes a threshold calibrated on Polygon USDC. On Solana SOL transfers that
-   discriminant does not separate exchanges from wallet factories (``docs/CROSSOVER_MR11.md``):
-   half the labelled exchange wallets active in the calibration week paid 15 or fewer
-   recipients, and about 15,000 unlabelled senders paid more than 1,000. So the kinds are:
+3. ``classify_funder`` is the label-first classifier ruled in MR-12 (ruling 4). m5's fan-out
+   test alone does not classify on Solana (``docs/CROSSOVER_MR11.md``), so:
 
-       nonpersonal   a known program-owned or infrastructure address
-       cex           a labelled exchange wallet (Dune ``cex_solana.addresses``)
-       high_fanout   unlabelled, fan-out at or above the threshold: exchange, or factory, unknown which
-       dedicated     unlabelled, fan-out below the threshold
-       unknown       fan-out was not measured
+       nonpersonal   a known program-owned or infrastructure address          never links
+       cex           a labelled exchange wallet, whatever its fan-out         never links
+       factory       unlabelled, high fan-out, on the caller's factory list   LINKS
+       hub           unlabelled, fan-out at or above the threshold            never links
+       dedicated     unlabelled, fan-out below the threshold (purpose-built)  LINKS
+       unknown       fan-out was not measured                                 never links
 
-   Only ``dedicated`` links wallets. Every other kind counts each wallet as its own actor, which
-   can only overstate the number of actors, the safe direction for a safety screen.
+   The threshold is 400, provisional until v1.2 freezes it; 32 and 8,192 are the sensitivity
+   values. The factory class is pre-registered but not shipped: the list is empty unless the
+   caller passes one, and it ships in v1.2 only if the measurement in
+   ``docs/FACTORY_CLASS.md`` is accepted.
 """
 from __future__ import annotations
 
@@ -47,7 +47,10 @@ def _load_resolution():
 
 resolution = _load_resolution()
 
-KINDS = ("nonpersonal", "cex", "high_fanout", "dedicated", "unknown")
+KINDS = ("nonpersonal", "cex", "factory", "hub", "dedicated", "unknown")
+LINKING = ("dedicated", "factory")
+FANOUT_PROVISIONAL = 400                          # MR-12 ruling 4; v1.2 freezes it
+FANOUT_SENSITIVITY = (32, 8192)
 ACTORS_KEY = "actor_count_post_collapse"          # the key resolution.actor_count reads
 U_SET_FUNDING = "SETA_FUNDING_UNKNOWN"            # u_codes entry when a set cannot be collapsed
 
@@ -70,7 +73,8 @@ def collapse_actors(member_funding: dict[str, dict[str, Any] | None]) -> int | N
 
 
 def classify_funder(funder: str | None, fan_out: int | None, *, fanout_threshold: int,
-                    labelled_cex: Iterable[str] = (), nonpersonal: Iterable[str] = ()) -> str | None:
+                    labelled_cex: Iterable[str] = (), nonpersonal: Iterable[str] = (),
+                    factories: Iterable[str] = ()) -> str | None:
     """Kind of a funding source. None when there is no funder to classify."""
     if not funder:
         return None
@@ -78,21 +82,23 @@ def classify_funder(funder: str | None, fan_out: int | None, *, fanout_threshold
         return "nonpersonal"
     if funder in labelled_cex:
         return "cex"
+    if funder in factories:
+        return "factory"
     if fan_out is None:
         return "unknown"
-    return "high_fanout" if fan_out >= fanout_threshold else "dedicated"
+    return "hub" if fan_out >= fanout_threshold else "dedicated"
 
 
-def member_funding(rows: list[dict[str, Any]], *, fanout_threshold: int,
-                   labelled_cex: Iterable[str] = (), nonpersonal: Iterable[str] = ()
-                   ) -> dict[str, dict[str, Any] | None]:
+def member_funding(rows: list[dict[str, Any]], **kw) -> dict[str, dict[str, Any] | None]:
     """wallet -> funding record for one token's members. A member whose funder was not found
-    in the scanned window maps to None, which makes the whole set unresolved."""
+    in the scanned window maps to None, which makes the whole set unresolved. ``funder_kind``
+    is what collapse_actors reads: a linking class is passed to it as 'dedicated', and the
+    class itself is kept in ``funder_class``."""
     out: dict[str, dict[str, Any] | None] = {}
     for r in rows:
-        kind = classify_funder(r.get("funder"), r.get("fan_out"), fanout_threshold=fanout_threshold,
-                               labelled_cex=labelled_cex, nonpersonal=nonpersonal)
-        out[r["w"]] = {"funder": r["funder"], "funder_kind": kind} if kind else None
+        cls = classify_funder(r.get("funder"), r.get("fan_out"), **kw)
+        out[r["w"]] = ({"funder": r["funder"], "funder_class": cls,
+                        "funder_kind": "dedicated" if cls in LINKING else cls} if cls else None)
     return out
 
 
@@ -115,11 +121,12 @@ def fund_to_first_buy_s(rows: list[dict[str, Any]]) -> float | None:
     return statistics.median(v) if v else None
 
 
-def block_id(creator_row: dict[str, Any] | None, launch_day: str, **kw) -> str:
-    """Block for effective-n (MR-11 section 2): the creator's funder when that funder is
-    dedicated, otherwise the launch day. 'F:' and 'D:' prefixes keep the two kinds apart."""
+def block_id(creator_row: dict[str, Any] | None, creator: str, **kw) -> str:
+    """Block for effective-n (MR-11 section 2, fallback per MR-12 ruling 5): the creator's funder
+    when that funder links, otherwise the creator wallet itself, so each unlinked creator is its
+    own block. 'F:' and 'C:' prefixes keep the two kinds apart."""
     if creator_row:
-        kind = classify_funder(creator_row.get("funder"), creator_row.get("fan_out"), **kw)
-        if kind == "dedicated":
+        cls = classify_funder(creator_row.get("funder"), creator_row.get("fan_out"), **kw)
+        if cls in LINKING:
             return f"F:{creator_row['funder']}"
-    return f"D:{launch_day}"
+    return f"C:{creator}"

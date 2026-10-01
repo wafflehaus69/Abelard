@@ -1,13 +1,13 @@
--- Heavy tier B1a: aligned-set members with funding records, graduations 2025-06-09 .. 2025-06-09.
+-- Heavy tier B1a: aligned-set members with funding records, graduations 2026-09-01 .. 2026-09-01.
 -- Rows name wallets: run with --private-rows. No threshold, no classification, no verdict here.
 WITH comp AS (
   SELECT mint, evt_block_time AS ct FROM pumpdotfun_solana.pump_evt_completeevent
-  WHERE evt_block_date BETWEEN DATE '2025-06-09' AND DATE '2025-06-09'),
+  WHERE evt_block_date BETWEEN DATE '2026-09-01' AND DATE '2026-09-01'),
 pc AS (
   SELECT base_mint AS mint, quote_mint, pool, evt_block_time AS pt,
          row_number() OVER (PARTITION BY base_mint ORDER BY evt_block_time) AS rn
   FROM pumpdotfun_solana.pump_amm_evt_createpoolevent
-  WHERE evt_block_date BETWEEN DATE '2025-06-09' AND DATE '2025-06-10'),
+  WHERE evt_block_date BETWEEN DATE '2026-09-01' AND DATE '2026-09-02'),
 u AS (
   SELECT c.mint, p.pt AS grad_time, p.pool
   FROM comp c JOIN pc p ON p.mint = c.mint AND p.rn = 1 AND p.pt >= c.ct AND p.pt < c.ct + INTERVAL '1' DAY
@@ -15,7 +15,7 @@ u AS (
 cr AS (
   SELECT mint, arbitrary(COALESCE(creator, "user")) AS creator, min(evt_block_time) AS t0, min(evt_block_slot) AS s0
   FROM pumpdotfun_solana.pump_evt_createevent
-  WHERE evt_block_date BETWEEN DATE '2025-06-06' AND DATE '2025-06-09' AND mint IN (SELECT mint FROM u)
+  WHERE evt_block_date BETWEEN DATE '2026-08-29' AND DATE '2026-09-01' AND mint IN (SELECT mint FROM u)
   GROUP BY 1),
 base AS (SELECT u.mint, u.grad_time, u.pool, cr.creator, cr.t0, cr.s0 FROM u JOIN cr ON cr.mint = u.mint),
 bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, plus chain supply
@@ -34,14 +34,14 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
           CASE WHEN t.from_owner IS NULL THEN CAST(t.amount AS double)
                WHEN t.to_owner IS NULL THEN -CAST(t.amount AS double) ELSE 0e0 END],
     ARRAY['to', 'from', 'sup']) AS x(w, d, tag)
-  WHERE t.block_date BETWEEN DATE '2025-06-06' AND DATE '2025-06-18'
+  WHERE t.block_date BETWEEN DATE '2026-08-29' AND DATE '2026-09-10'
     AND t.token_mint_address IN (SELECT mint FROM base) AND x.w IS NOT NULL
   GROUP BY 1, 2),
 buyers0 AS (
   -- no is_buy filter: NULL on every 2025 trade event; a creation-slot seller acquired in that slot
   SELECT DISTINCT b.mint, t.user AS w, b.t0
   FROM pumpdotfun_solana.pump_evt_tradeevent t JOIN base b ON t.mint = b.mint AND t.evt_block_slot = b.s0
-  WHERE t.evt_block_date BETWEEN DATE '2025-06-06' AND DATE '2025-06-09'),
+  WHERE t.evt_block_date BETWEEN DATE '2026-08-29' AND DATE '2026-09-01'),
 keys AS (
   SELECT mint, creator AS k, 'F' AS role, t0 FROM base
   UNION ALL
@@ -54,7 +54,7 @@ hit AS (
   FROM tokens_solana.sol_transfers s
   CROSS JOIN UNNEST(ARRAY[s.from_owner, s.to_owner], ARRAY['F', 'B']) AS x(addr, role)
   JOIN keys k ON k.k = x.addr AND k.role = x.role
-  WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-11 00:00:00'
+  WHERE s.block_time >= TIMESTAMP '2026-08-28 00:00:00' AND s.block_time < TIMESTAMP '2026-09-03 00:00:00'
     AND CAST(s.amount AS double) >= 1e6
     AND ((k.role = 'F' AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0 + INTERVAL '24' HOUR)
       OR (k.role = 'B' AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0))
@@ -83,7 +83,7 @@ inb0 AS (   -- one row per (member, sender): first and last transfer before the 
   SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_time) AS t_last,
          max_by(CAST(s.amount AS double), s.block_time) / 1e9 AS last_sol
   FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
-  WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-11 00:00:00'
+  WHERE s.block_time >= TIMESTAMP '2026-08-28 00:00:00' AND s.block_time < TIMESTAMP '2026-09-03 00:00:00'
     AND CAST(s.amount AS double) >= 1e6
     AND s.from_owner <> m.w AND s.block_time < m.t_act
   GROUP BY 1, 2, 3),
@@ -94,7 +94,7 @@ inb AS (    -- funder = the last sender before the first action; funded_ts = tha
 fan AS (
   SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
   FROM tokens_solana.sol_transfers s
-  WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-11 00:00:00'
+  WHERE s.block_time >= TIMESTAMP '2026-08-28 00:00:00' AND s.block_time < TIMESTAMP '2026-09-03 00:00:00'
     AND CAST(s.amount AS double) >= 1e6
   GROUP BY 1)
 SELECT m.mint, m.w, m.is_creator, m.is_funded, m.is_bundle, m.cr_sol, m.n_all, m.n_funded_all, m.n_bundle_all,

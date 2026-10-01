@@ -209,5 +209,11 @@ SELECT
   f.mk_g60,
   f.mk_g240,
   f.n_7d,
-  f.qv_7d
+  f.qv_7d,
+  CAST(NULL AS double) AS seta_lat_s,
+  CAST(NULL AS varchar) AS blk,
+  CAST(NULL AS integer) AS seta_actors,
+  CAST(NULL AS integer) AS cluster_actors,
+  CAST(NULL AS integer) AS org1_actors_7d,
+  CAST(NULL AS integer) AS org2_actors_7d
 FROM f

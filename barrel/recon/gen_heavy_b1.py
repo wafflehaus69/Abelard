@@ -18,7 +18,7 @@ n_all and otherwise dropped; the owner that received the initial mint (the bondi
 dropped. Without this every token shows a "funded" set of four or more (a3_seta_day, 2026-10-01).
 
 Funder of a member = sender of the last SOL transfer of at least 0.001 SOL received strictly
-before the member's first action (creation time for the creator, first acquisition of the token
+before the member's first action; the latency runs from that funder's FIRST transfer (MR-12.2) (creation time for the creator, first acquisition of the token
 for everyone else), inside the scanned window. No such transfer = funding unknown.
 """
 import datetime as dt
@@ -124,14 +124,17 @@ mm0 AS (
   FROM seta s JOIN base bs ON bs.mint = s.mint
   LEFT JOIN bal b ON b.mint = s.mint AND b.w = s.w),
 mm AS (SELECT * FROM mm0 WHERE (is_creator OR first_in IS NOT NULL) AND NOT coalesce(got_mint, false)),
-inb AS (
-  SELECT m.mint, m.w, max_by(s.from_owner, s.block_time) AS funder, max(s.block_time) AS funded_ts,
-         max_by(CAST(s.amount AS double), s.block_time) / 1e9 AS funded_sol,
-         approx_distinct(s.from_owner) AS n_senders
+inb0 AS (   -- one row per (member, sender): first and last transfer before the member's first action
+  SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_time) AS t_last,
+         max_by(CAST(s.amount AS double), s.block_time) / 1e9 AS last_sol
   FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
   WHERE {bounds}
     AND s.from_owner <> m.w AND s.block_time < m.t_act
-  GROUP BY 1, 2),
+  GROUP BY 1, 2, 3),
+inb AS (    -- funder = the last sender before the first action; funded_ts = that funder's FIRST transfer (MR-12.2)
+  SELECT mint, w, max_by(sender, t_last) AS funder, max_by(t_first, t_last) AS funded_ts,
+         max_by(last_sol, t_last) AS funded_sol, count(*) AS n_senders
+  FROM inb0 GROUP BY 1, 2),
 fan AS (
   SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
   FROM tokens_solana.sol_transfers s
@@ -174,7 +177,8 @@ FROM rk GROUP BY 1"""
 
 if __name__ == "__main__":
     out = ROOT / "recon" / "sql"
-    for tag, (a, b) in {"day": ("2025-06-09", "2025-06-09"), "week": ("2025-06-09", "2025-06-15")}.items():
+    for tag, (a, b) in {"day": ("2025-06-09", "2025-06-09"), "week": ("2025-06-09", "2025-06-15"),
+                      "pbday": ("2026-09-01", "2026-09-01")}.items():
         (out / f"heavy_b1a_members_{tag}.sql").write_text(members(a, b), encoding="utf-8")
         (out / f"heavy_b1b_c06_{tag}.sql").write_text(c06(a, b), encoding="utf-8")
     print("written: heavy_b1a_members_{day,week}.sql, heavy_b1b_c06_{day,week}.sql")

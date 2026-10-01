@@ -1,6 +1,6 @@
 """Generate the frozen pt_features schema (MR-9, 2026-09-30).
 
-Single source of truth for the 87-column per-token table (85 frozen 2026-09-30 + 2 by MR-11): writes
+Single source of truth for the 91-column per-token table (85 frozen 2026-09-30 + 2 by MR-11 + 4 collapsed-count twins by MR-12.3): writes
 recon/pt_features_schema.json (the public<->internal name mapping, repo only)
 and docs/PT_FEATURES_SCHEMA.md (generated from it). The public names are the
 only names that ever reach Dune.
@@ -76,7 +76,7 @@ c("c10", "s10_sellable_30m", "boolean", "feature", "any non-creator, non-migrato
 # control (1)
 c("adj_applied", "owner_correction_applied", "boolean", "control", "false in Dune always; set true locally after the unsaved owner-participation query is applied")
 # RUG-A inputs (4)
-c("seta_n", "aligned_set_size", "integer", "rug_a", "creator + 1-hop funded + c08 bundle wallets + c07b fee-share (when present)")
+c("seta_n", "aligned_set_size", "integer", "rug_a", "RAW wallet count: creator + wallets it funded within 24h + c08 bundle wallets, restricted to wallets that ever held the token; bonding curve excluded (MR-12.6). c07b fee-share is out of M0")
 c("seta_hold_g240", "aligned_holdings_entry", "double", "rug_a", "set balance at G240, raw units")
 c("seta_flow_d0_7", "aligned_net_flow_d0_7", "array(double)", "rug_a", "8 elements: net token flow per day 0-7, raw units, sells negative")
 c("seta_sf_7d", "aligned_sell_fraction_7d", "double", "rug_a", "cumulative sold / holdings at entry (RUG-A X input; thresholds set in v1.2)")
@@ -99,12 +99,17 @@ for g in G:
     c(f"mk_{g}", f"markup_{g}", "double", "cost", f"px_{g} / px_grad (MR-8.4)")
 c("n_7d", "n_swaps_7d", "bigint", "cost", "swaps in (grad, grad + 7d]")
 c("qv_7d", "quote_volume_7d", "double", "cost", "quote volume in (grad, grad + 7d]")
-# MR-11 (CONSENSUS crossover, 2026-10-01): two additions ordered by the Architect. Definition lines await signature.
-c("seta_lat_s", "fund_to_first_buy_s", "double", "rug_a", "median seconds from a set member's funding to its first acquisition of the token, over members where both were measured; NULL = measured for nobody, never 0 (MR-11)")
-c("blk", "block_id", "varchar", "control", "block for effective-n: 'F:' + the creator's funder when that funder is dedicated, else 'D:' + launch day (MR-11 section 2)")
+# MR-11 (CONSENSUS crossover, 2026-10-01): two additions ordered by the Architect; definitions signed by MR-12.
+c("seta_lat_s", "fund_to_first_buy_s", "double", "rug_a", "seconds from a set member's first SOL inflow from its classified funder to its first acquisition of the token; per token, the median across set members; NULL when the funder is unknown (MR-12.2)")
+c("blk", "block_id", "varchar", "control", "block for effective-n: 'F:' + the creator's funder when that funder links (purpose-built, or factory once shipped), else 'C:' + the creator wallet (MR-11 s2, fallback per MR-12.5)")
+# MR-12 ruling 3: every count column carries its collapsed twin. Collapsed is what the hypotheses read; NULL = unresolved, never the raw count.
+c("seta_actors", "aligned_set_actors", "integer", "rug_a", "seta_n after funding-mesh collapse; NULL when any member's funding is unknown")
+c("cluster_actors", "syndicate_cluster_actors", "integer", "h2", "cluster_n after collapse; NULL when unresolved")
+c("org1_actors_7d", "organic_v1_actors_7d", "integer", "activity", "org1_n_7d after collapse; NULL when unresolved")
+c("org2_actors_7d", "organic_v2_actors_7d", "integer", "activity", "org2_n_7d after collapse; NULL when unresolved")
 
-assert len(cols) == 87, len(cols)
-assert len({x["public"] for x in cols}) == 87, "duplicate public name"
+assert len(cols) == 91, len(cols)
+assert len({x["public"] for x in cols}) == 91, "duplicate public name"
 for i, x in enumerate(cols, 1):
     x["n"] = i
 
@@ -119,7 +124,7 @@ spec = {"table": "result_pt_features", "frozen": "2026-09-30", "ruling": "docs/R
 (ROOT / "recon" / "pt_features_schema.json").write_text(json.dumps(spec, indent=1), encoding="utf-8")
 
 md = [
-    "# `pt_features` — per-token schema, 87 columns: 85 frozen 2026-09-30, plus 2 ordered by MR-11 (2026-10-01) awaiting signature of their definition lines", "",
+    "# `pt_features` — per-token schema, 91 columns: 85 frozen 2026-09-30, plus 2 by MR-11 and 4 collapsed-count twins by MR-12 ruling 3 (2026-10-01)", "",
     "**Frozen by:** `RULINGS_2026-09-30.md` (Architect sign-off with three changes). "
     "**Source of truth:** `recon/pt_features_schema.json`, written with this page by `recon/gen_pt_features_schema.py`. "
     "The **public name** is the only name that exists in Dune; internal names and definitions live only in this repo.", "",

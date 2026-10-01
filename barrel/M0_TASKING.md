@@ -189,6 +189,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-9 → [`docs/RULINGS_2026-09-30.md`](docs/RULINGS_2026-09-30.md) | Architect via Mando | 2026-09-30 | Per-token schema **frozen at 85 columns, neutral names** (`pt_features`); public-table recommendation (accept); verdicts/thresholds never in a saved query |
 | MR-10 → [`docs/RULINGS_2026-10-01.md`](docs/RULINGS_2026-10-01.md) | Architect via Mando | 2026-10-01 | Runner cap is hard for unproven patterns; **two designs** (export-first / in-warehouse) chosen at checkout by Analyst's export rate; heavy tier measured on the trial; `c07b` **out of M0** with H1 limitation; monthly chunks; **no more than two paid months before a re-ruling** |
 | MR-11 → [`docs/RULINGS_2026-10-01_CROSSOVER.md`](docs/RULINGS_2026-10-01_CROSSOVER.md) | Architect via Mando | 2026-10-01 | CONSENSUS crossover: funder kind + actor collapse on every wallet-count column; `resolution.py` is the UNKNOWN chokepoint; **block definition for effective-n is binding**; schema 85 → 87 (`seta_lat_s`, `blk`) |
+| MR-12 → [`docs/RULINGS_2026-10-01_B.md`](docs/RULINGS_2026-10-01_B.md) | Architect via Mando | 2026-10-01 | Label-first funder classifier (400 provisional; factory class pre-registered); **block fallback = creator wallet**; raw + collapsed count columns (schema 91); column 86 defined; corrected aligned set stands; **purchase rule: one Plus month uncut if month-to-month at ≤ ~$400, else Analyst two months with the cut** |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
@@ -644,3 +645,18 @@ Full text: `docs/RULINGS_2026-10-01_CROSSOVER.md`. Builder's response and measur
 * **Not ported:** m5's one-directional funder rule; collapse of c06 and of organic-v2 taker counts. Listed in `docs/CROSSOVER_MR11.md` §5.
 * **M1 / M2 carry-overs noted for their specs, no M0 effect:** raw-response cache with replay; a heartbeat from day one (a run that never starts must be reported); alert thresholds recalibrated on a rolling window.
 * **Orders 5–7 are CONSENSUS work** and are outside this workstream.
+
+---
+
+### MR-12 — Rulings (Architect via Mando, 2026-10-01, second set)
+
+Full text: `docs/RULINGS_2026-10-01_B.md`. Effects on this document:
+
+* **§6, block for effective-n (amends MR-11):** the fallback is **the creator wallet**, not the launch day. Block = the creator's funder when that funder links, else the creator. Every H1–H4 cell reports raw n and block n; UNDERPOWERED reads block n. Measured: 1,287 blocks for 1,523 tokens on the calibration week (`docs/CROSSOVER_MR11.md` §8).
+* **§4, funder classifier — label-first:** labelled exchange → exchange, never links, whatever its fan-out; unlabelled with fan-out ≥ 400 → hub, never links; unlabelled below 400 → purpose-built, links. **400 is provisional; v1.2 freezes it**, with 32 and 8,192 reported as sensitivity on the calibration slice.
+* **Pre-registered now: the factory class.** Unlabelled, high fan-out, recipients' first actions concentrated on the same tokens within 24 h. **Factories link.** It ships in v1.2 if the populations separate; the measurement says they do (`docs/FACTORY_CLASS.md`). Not in force until v1.2 defines the rule.
+* **Schema, count columns:** raw and collapsed side by side, every one. **The hypotheses read the collapsed value**; raw is diagnostic. Schema is 91 columns.
+* **Column 86 (`seta_lat_s`):** seconds from a set member's first SOL inflow from its classified funder to its first acquisition of the token; per token, the median across members; NULL when the funder is unknown.
+* **Aligned set (c07, c08, `seta_*`, RUG-A):** the corrected definition (wallets that held the token) stands; the readiness figures are struck. A median set of one wallet is accepted: RUG-A is about what that wallet does.
+* **Purchase rule:** if Plus is available month-to-month at ≤ ~$400, buy one Plus month, uncut; the kill criterion becomes *table and heavy tier built by day 15 inside 15,000 credits*. If Plus is yearly-only, Analyst for two months with the cut (`c07b` and `cluster_*` out), and a third month needs its own ruling. **Nobody presses "Keep Plus".** Costed in `docs/PURCHASE_DECISION.md`.
+* **Post-BOOST day run authorized (≤ 250) and done:** 170.7 credits; the heavy queries cost 1.41× the June day (`docs/HEAVY_TIER_UNITS.md` §4).

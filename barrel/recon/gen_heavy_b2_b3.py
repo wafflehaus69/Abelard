@@ -122,7 +122,8 @@ LEFT JOIN sells sl ON sl.mint = g.mint AND sl.funder = g.funder"""
 
 if __name__ == "__main__":
     out = ROOT / "recon" / "sql"
-    for tag, (a, b) in {"day": ("2025-06-09", "2025-06-09"), "week": ("2025-06-09", "2025-06-15")}.items():
+    for tag, (a, b) in {"day": ("2025-06-09", "2025-06-09"), "week": ("2025-06-09", "2025-06-15"),
+                      "pbday": ("2026-09-01", "2026-09-01")}.items():
         (out / f"heavy_b2_auth_{tag}.sql").write_text(auth(a, b), encoding="utf-8")
         (out / f"heavy_b3_cluster_{tag}.sql").write_text(cluster(a, b), encoding="utf-8")
     print("written: heavy_b2_auth_{day,week}.sql, heavy_b3_cluster_{day,week}.sql")
