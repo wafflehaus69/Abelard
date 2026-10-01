@@ -1,4 +1,4 @@
-# `pt_features` — frozen per-token schema, 85 columns (2026-09-30)
+# `pt_features` — per-token schema, 87 columns: 85 frozen 2026-09-30, plus 2 ordered by MR-11 (2026-10-01) awaiting signature of their definition lines
 
 **Frozen by:** `RULINGS_2026-09-30.md` (Architect sign-off with three changes). **Source of truth:** `recon/pt_features_schema.json`, written with this page by `recon/gen_pt_features_schema.py`. The **public name** is the only name that exists in Dune; internal names and definitions live only in this repo.
 
@@ -104,3 +104,5 @@ Dune table: `dune.<user>.result_pt_features` (view names must start with `result
 | 83 | `mk_g240` | double | `markup_g240` | px_g240 / px_grad (MR-8.4) |
 | 84 | `n_7d` | bigint | `n_swaps_7d` | swaps in (grad, grad + 7d] |
 | 85 | `qv_7d` | double | `quote_volume_7d` | quote volume in (grad, grad + 7d] |
+| 86 | `seta_lat_s` | double | `fund_to_first_buy_s` | median seconds from a set member's funding to its first acquisition of the token, over members where both were measured; NULL = measured for nobody, never 0 (MR-11) |
+| 87 | `blk` | varchar | `block_id` | block for effective-n: 'F:' + the creator's funder when that funder is dedicated, else 'D:' + launch day (MR-11 section 2) |

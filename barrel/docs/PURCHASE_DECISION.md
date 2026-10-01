@@ -1,74 +1,83 @@
-# BARREL M0 — purchase decision (burn-down item 5)
+# BARREL M0 — purchase decision, revised with the heavy tier measured
 
-**Author:** ClaudeCode · **Date:** 2026-09-30 · **For:** Architect review, Mando's decision
-**Trial ends:** 2026-10-06 (account becomes view-only). **Trial balance:** 1,500.7 of 2,500 used; 819 spendable above the 180 reserve.
+**Author:** ClaudeCode · **Revised:** 2026-10-01 (first issued 2026-09-30) · **For:** Architect review, Mando's decision
+**Orders:** `RULINGS_2026-10-01.md` order 6 (MR-10). **Measurements:** `MATERIALIZATION_UNITS.md`, `HEAVY_TIER_UNITS.md`. **Designs:** `STORAGE_DESIGNS.md`.
+**Trial ends:** 2026-10-06 (view-only after). **Balance:** 1,842.6 of 2,500 used; **477.4 spendable** above the 180 reserve.
 
-## Recommendation, in one line
+## One line
 
-**Buy Analyst, month-to-month, with a scope cut:** fee-share recipients (`c07b`) leave M0, and the heavy gate columns are bought only after a day-10 measurement.
+**Buy with a cut: Analyst, month-to-month, two months, with `c07b` and the four `cluster_*` columns out of the first build.** The ratified kill criterion's comparison (a single Plus month) is triggered by the measured heavy tier and should be priced at checkout before paying.
 
 ---
 
-## 1. What was measured (item 3, `MATERIALIZATION_UNITS.md`)
+## 1. What changed since the first version
 
-| Unit | Measured |
-|---|---|
-| Build, 60 event-derived columns, one week of P (1,573 tokens) | 32.4 credits |
-| Same query, one graduation day (241 tokens) | 27.4 credits |
-| Refresh | 33.3 credits (a full rebuild) |
-| Stored size | 368 bytes per token row |
-| Full-table read | 0.028 credits |
-| Export | about 1 credit per MB of JSON returned (3.0 credits for the week's 3.25 MB) |
-| Per-swap rows, one day | 4.27M rows, 480 MB, 7.5 credits to build |
+| | 2026-09-30 | Now |
+|---|---|---|
+| Heavy columns, full window | 2,500–7,000, resting on a run that returned nothing | **7,100 measured** (monthly chunks, June-2025 volume), plus organic-v2 at 900–1,800 unmeasured in chunk form |
+| The 85-credit aligned-set query | "scales to about 7,000" | 14.65 after rewriting it to scan each table once |
+| What cost follows | days scanned (event columns only) | **days scanned, confirmed on the heavy tier**: the per-token model over-predicts the week by 4× |
+| Largest single line in the heavy tier | unknown | the aligned-set funding query (178 per monthly chunk), then the early-buyer groups (151) |
+| Era coverage | one era | **still one era** (June 2025). The open risk. |
 
-Three facts follow. Build cost follows the days scanned, not the tokens. Storage is a non-issue for the per-token table (about 66–130 MB of Analyst's 1 GB) and a hard wall for per-swap rows on every plan. Export is roughly 40× cheaper than the earlier budget assumed.
+## 2. Projected credits for M0 without H3
 
-## 2. Projected credits for M0 without H3, by phase
-
-Low and high are both stated because the builder's estimates in this project have run over three times (840, 85 and 85 credits against expectations of 8, 25 and 25). Planning should use the high column.
+Monthly chunks, 20 of them. "Plan on the high column" is a project rule (MR-10).
 
 | Phase | Low | High | Basis |
 |---|---|---|---|
-| **A. Materialize P, 60 event-derived columns** | 400 | 1,000 | Low: one pass over the window (two-point fit, and it may exceed the engine's limits). High: 19 monthly chunks. |
-| **B. Heavy columns** (c01–c06, c07, c08, `seta_*`, `cluster_*`, org2) | 2,500 | 7,000 | Low: readiness scan units. High: today's one-day run of the funding + ledger + bonding-curve join cost 85 credits, which scales to about 7,000 if it is as scan-bound as the event query. **The least certain line here.** |
-| **C. `c07b` fee-share recipients** | 7,000 | 7,000 | 11.6 credits per day of raw fee-program calls. **Cut from M0.** |
-| **D. Gate 0 census** | 30 | 100 | Counts over the small create / complete / pool tables. |
-| **E. H1, H2, H4 passes** | 0 | 0 | Computed locally from the exported table. Verdicts and thresholds never go into Dune anyway (order 6). |
-| **F. Export of the table** | 375 | 1,900 | Low: Analyst bills like the trial. High: the documented 5× Analyst rate. Exporting only the needed columns cuts it proportionally. |
-| **Total without `c07b`** | **3,300** | **10,000** | |
-| Total with `c07b` | 10,300 | 17,000 | |
+| **A. 60 event-derived columns** | 1,000 | 1,500 | Measured twice on the week (32.4, 35.0). High allows for post-BOOST volume. |
+| **B1. Aligned set, funding, concentration, authorities** (c01, c02, c06, c07, c08, `seta_*`, `seta_lat_s`, `blk`) | 4,050 | 6,100 | Measured, day and week. 200 per chunk. High = ×1.5 for the unmeasured era. |
+| **B2. Early-buyer groups** (`cluster_*`, H2 only) | 3,050 | 4,600 | Measured, day and week. 151 per chunk. **Proposed cut.** |
+| **B3. Organic-v2** (`org2_*`) | 900 | 1,800 | Readiness: 43.6 for one post-BOOST week. Not re-measured in chunk form. |
+| **B4. c03, c04** (Token-2022 extensions) | 0 | 100 | None in the measured week. Late-window only. |
+| **C. `c07b`** | 7,000 | 7,000 | **Cut from M0** (MR-10). |
+| **D. Gate 0 census** | 30 | 100 | Small tables. |
+| **E. H1, H2, H4 passes** | 0 | 100 | Local under export-first; a few credits each under in-warehouse. |
+| **F. Getting the table out** | 50 | 1,900 | 50: in-warehouse, result grids only. 375: export-first at 1 credit/MB. 1,900: export-first at the documented Analyst rate. Decided at checkout (`STORAGE_DESIGNS.md`). |
+| **Total, with the cut (no B2, no C)** | **6,000** | **11,600** | |
+| Total with early-buyer groups | 9,100 | 16,200 | |
+| Total with everything, `c07b` included | 16,100 | 23,200 | |
 
-**Months of Analyst (4,000 credits each): one at the low end, three at the high end.** The spread is almost entirely phase B.
+**Months of Analyst at 4,000 credits each:** with the cut, **two at the low end, three at the high end.** With the early-buyer groups, three to five.
 
-## 3. The scope cut, and why it is staged
+## 3. Why the cut falls on `cluster_*`
 
-Phases A, D and F together are **800–3,000 credits and fit inside the first month on any reading.** That table alone answers the second of M0's three questions (naive expectancy at each entry lag, net of real fees), plus the bot-layer markup, reserve decay, and the cost model per era. It does **not** answer H1 (the gate) or produce the RUG-A label, which need phase B.
+* They serve H2 only. The Architect's crossover memo of the same day classes H2 as an observation edge, presumptively dead until a backtest says otherwise.
+* They are 3,050–4,600 credits, the second-largest line.
+* **As specified, the column does not measure what it is named for.** On 1,529 of 1,573 tokens the largest group of early buyers sharing a funder shares an exchange or a hub. With funder kind applied, the median group falls from 142 to between 3 and 9 depending on a threshold that has not been ruled (`CROSSOVER_MR11.md` §3). Building it for the full window before that ruling buys a number that will be redefined.
+* Nothing else depends on it. H1 (the gate, RUG-A), H4 and the cost model are complete without it.
 
-So month one buys A + D + F, and in its first ten days also measures phase B's unit on **one calendar month of the window**, built as a chunk. That replaces the 2,500–7,000 range with a number before any second month is paid for.
+It stays cheap to add later: one query per chunk, already written and measured.
 
-`c07b` is cut because its 7,000 credits exceed everything else combined, the column is designed to be NULL-able, and the aligned set works without it (creator, funded wallets, bundle wallets).
+## 4. Kill criterion, against the measured numbers
 
-## 4. Kill criterion, restated against these numbers
+As ratified: by **day 10** of the first Analyst month, (1) the event-derived table for the full window is built and exported for 3,000 credits or less, and (2) the heavy tier is measured on one month of the window; if it projects above **8,000** for the whole window, the comparison becomes the sampled window or a single Plus month, and no third month is bought blind.
 
-By **day 10** of the first Analyst month:
+Where that stands today:
 
-1. **The event-derived table for the full P window is built and exported for 3,000 credits or less.** If not: no renewal, and M0 is re-scoped.
-2. **Phase B's unit is measured on one month of the window.** If it projects above **8,000 credits** for the whole window (two further Analyst months), the gate is run on the pre-defined sampled window instead (one contiguous 90-day block per era, chosen before any result is seen, every cell labelled SAMPLED), and no third month is bought blindly.
+* **Clause 2 is already answered for one era.** The whole heavy tier (B1 + B2 + B3) projects at **8,000–8,900** at June-2025 volume. That is over the line. With the cut it is **4,950–5,850**, under it.
+* **So the comparison the criterion names is live now, not on day 10.** One Plus month is 25,000 credits, private queries (no public table), export at a fifth of Analyst's documented rate, and it finishes M0 in one month instead of two to four, with `cluster_*` and `c07b` included (23,200 at the high end). Analyst with the cut is two to three months.
+* **The rule for choosing, to apply at checkout:** read both monthly prices with yearly billing switched off. If one Plus month costs no more than three Analyst months, the Plus month is the cheaper way to the same table and removes the public-table and export-rate questions. If it costs more, buy Analyst with the cut. The screen showed $349 for Plus and $65 for Analyst, both yearly-billed; neither monthly price has been read. **This is a recommendation to price it, not to press "Keep Plus".**
+* **Two-month rule** (MR-10): no third Analyst month without a re-ruling on what the first two measured.
+* **Day 10 now checks the era**, which the trial could not unless §6 is authorized: the first chunk built in the paid month should be a post-BOOST month, so the largest unknown is measured first.
 
-## 5. Analyst versus Plus, and the public table
+## 5. What must be read at checkout
 
-Plus is $349 a month billed yearly, with 25,000 credits, 15 GB, private queries and export at a fifth of Analyst's rate. One Plus month would cover everything in the table above, `c07b` included. Analyst at month-to-month pricing is about $65–75 a month, so two months is roughly $130–150 and three is $195–225. **Analyst is cheaper unless phase B lands at the top of its range**, which is exactly what the day-10 measurement decides: if it projects above 8,000 credits, a single Plus month costs less than three further Analyst months, and that becomes the comparison to rule on. What Plus adds beyond credits is not needed: per-swap storage does not fit on Plus either (a 60-day slice is 27–81 GB), and Mando has accepted the public table. The public table's mitigations are in place: neutral column names with the mapping kept only in the repo, no owner wallet in any saved query, and no verdict, threshold or hypothesis logic ever saved to Dune.
+1. Analyst's **monthly** price with "Billed yearly" off. The $65 is the yearly-billed rate.
+2. Plus's monthly price the same way, for the comparison in §4.
+3. Whether overage past the allowance bills automatically. If it does, the runner gets a hard stop at the allowance.
+4. **Analyst's export rate.** ≤ 3 credits/MB → export-first; the documented 10 → in-warehouse (`STORAGE_DESIGNS.md`).
+5. Do not press "Keep Plus".
 
-## 6. What must be read at checkout before paying
+## 6. One use left for the expiring credits
 
-1. **The monthly price with "Billed yearly" switched off.** The $65 shown is the yearly-billed rate, a $780 commitment that defeats the kill criterion.
-2. **Whether Analyst bills overage past 4,000 credits automatically.** If it does, the runner gets a hard stop at the allowance.
-3. **Analyst's export rate**, if shown. It moves phase F between 375 and 1,900.
-4. Do not press "Keep Plus".
+477 spendable credits lapse on 2026-10-06. The single measurement that would most tighten this document is **one post-BOOST graduation day of the two large heavy queries**, 90–250 credits, both proven patterns. It would replace the ×1.5 in the high column with a number. It was not ordered, so it has not been run. **Requested: authorization for up to 250.**
 
-## 7. What is not settled
+## 7. Not settled
 
-* **Phase B's cost**, the dominant uncertainty. It is deliberately left to a paid measurement on one month of data, with a pre-defined fallback.
-* **Whether one pass over the whole window runs at all** on Analyst's engine. If not, phase A costs the high figure.
-* **Item 4 (calibration distributions) did not complete on the trial.** 4a's one-day run cost 85 credits and returned nothing, because the deployer column is empty in 2025 create events; the query is fixed and not rerun, pending a ruling. 4b was not started. Neither affects the purchase arithmetic: they are distributions for v1.2, not cost units.
-* **M0b (H3)** has no workable storage design on any self-serve plan and needs one before it is costed.
+* **Era scaling of the heavy tier** (§6).
+* **Organic-v2 in chunk form.** One readiness figure, not re-measured.
+* **Three definitions awaiting signature** (`CROSSOVER_MR11.md` §6): the latency column's definition line, whether count columns carry raw and collapsed side by side, and the fan-out threshold with the launch-day fallback.
+* **Columns that older events never filled.** Three found so far: `creator`, `is_buy` (with the trade amounts), `token_program`. Each has a replacement source. Every chunk's validation run null-counts its inputs per era (E35).
+* **M0b (H3)** has no storage design on any self-serve plan.

@@ -1,0 +1,105 @@
+-- Heavy tier B1a: aligned-set members with funding records, graduations 2025-06-09 .. 2025-06-09.
+-- Rows name wallets: run with --private-rows. No threshold, no classification, no verdict here.
+WITH comp AS (
+  SELECT mint, evt_block_time AS ct FROM pumpdotfun_solana.pump_evt_completeevent
+  WHERE evt_block_date BETWEEN DATE '2025-06-09' AND DATE '2025-06-09'),
+pc AS (
+  SELECT base_mint AS mint, quote_mint, pool, evt_block_time AS pt,
+         row_number() OVER (PARTITION BY base_mint ORDER BY evt_block_time) AS rn
+  FROM pumpdotfun_solana.pump_amm_evt_createpoolevent
+  WHERE evt_block_date BETWEEN DATE '2025-06-09' AND DATE '2025-06-10'),
+u AS (
+  SELECT c.mint, p.pt AS grad_time, p.pool
+  FROM comp c JOIN pc p ON p.mint = c.mint AND p.rn = 1 AND p.pt >= c.ct AND p.pt < c.ct + INTERVAL '1' DAY
+  WHERE p.quote_mint = 'So11111111111111111111111111111111111111112'),
+cr AS (
+  SELECT mint, arbitrary(COALESCE(creator, "user")) AS creator, min(evt_block_time) AS t0, min(evt_block_slot) AS s0
+  FROM pumpdotfun_solana.pump_evt_createevent
+  WHERE evt_block_date BETWEEN DATE '2025-06-06' AND DATE '2025-06-09' AND mint IN (SELECT mint FROM u)
+  GROUP BY 1),
+base AS (SELECT u.mint, u.grad_time, u.pool, cr.creator, cr.t0, cr.s0 FROM u JOIN cr ON cr.mint = u.mint),
+bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, plus chain supply
+  SELECT t.token_mint_address AS mint, x.w,
+    sum(x.d) FILTER (WHERE t.block_time <= b.grad_time + INTERVAL '15' MINUTE) AS b15,
+    sum(x.d) FILTER (WHERE t.block_time <= b.grad_time + INTERVAL '60' MINUTE) AS b60,
+    sum(x.d) FILTER (WHERE t.block_time <= b.grad_time + INTERVAL '240' MINUTE) AS b240,
+    sum(x.d) FILTER (WHERE t.block_time > b.grad_time + INTERVAL '240' MINUTE AND t.block_time < b.grad_time + INTERVAL '8' DAY) AS net_after,
+    min(t.block_time) FILTER (WHERE x.d > 0) AS first_in,
+    bool_or(x.tag = 'to' AND t.from_owner IS NULL) AS got_mint
+  FROM tokens_solana.transfers t
+  JOIN base b ON b.mint = t.token_mint_address
+  CROSS JOIN UNNEST(
+    ARRAY[t.to_owner, t.from_owner, '#SUPPLY'],
+    ARRAY[CAST(t.amount AS double), -CAST(t.amount AS double),
+          CASE WHEN t.from_owner IS NULL THEN CAST(t.amount AS double)
+               WHEN t.to_owner IS NULL THEN -CAST(t.amount AS double) ELSE 0e0 END],
+    ARRAY['to', 'from', 'sup']) AS x(w, d, tag)
+  WHERE t.block_date BETWEEN DATE '2025-06-06' AND DATE '2025-06-18'
+    AND t.token_mint_address IN (SELECT mint FROM base) AND x.w IS NOT NULL
+  GROUP BY 1, 2),
+buyers0 AS (
+  -- no is_buy filter: NULL on every 2025 trade event; a creation-slot seller acquired in that slot
+  SELECT DISTINCT b.mint, t.user AS w, b.t0
+  FROM pumpdotfun_solana.pump_evt_tradeevent t JOIN base b ON t.mint = b.mint AND t.evt_block_slot = b.s0
+  WHERE t.evt_block_date BETWEEN DATE '2025-06-06' AND DATE '2025-06-09'),
+keys AS (
+  SELECT mint, creator AS k, 'F' AS role, t0 FROM base
+  UNION ALL
+  SELECT mint, w, 'B', t0 FROM buyers0),
+hit AS (
+  SELECT k.mint, k.role,
+         CASE k.role WHEN 'F' THEN s.to_owner ELSE k.k END AS w,
+         CASE k.role WHEN 'B' THEN s.from_owner END AS funder,
+         sum(CAST(s.amount AS double)) / 1e9 AS sol
+  FROM tokens_solana.sol_transfers s
+  CROSS JOIN UNNEST(ARRAY[s.from_owner, s.to_owner], ARRAY['F', 'B']) AS x(addr, role)
+  JOIN keys k ON k.k = x.addr AND k.role = x.role
+  WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-11 00:00:00'
+    AND CAST(s.amount AS double) >= 1e6
+    AND ((k.role = 'F' AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0 + INTERVAL '24' HOUR)
+      OR (k.role = 'B' AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0))
+  GROUP BY 1, 2, 3, 4),
+memb AS (
+  SELECT mint, role, w, sol, count(*) OVER (PARTITION BY mint, role, funder) AS n_same_funder FROM hit),
+seta AS (
+  SELECT mint, w, bool_or(src = 'C') AS is_creator, bool_or(src = 'F') AS is_funded, bool_or(src = 'B') AS is_bundle,
+         sum(sol) FILTER (WHERE src = 'F') AS cr_sol
+  FROM (SELECT mint, creator AS w, 'C' AS src, CAST(NULL AS double) AS sol FROM base
+        UNION ALL
+        SELECT mint, w, role, sol FROM memb WHERE role = 'F' OR n_same_funder >= 5)
+  WHERE w IS NOT NULL AND __NOT_OWNER(w)__
+  GROUP BY 1, 2),
+mm0 AS (
+  SELECT s.mint, s.w, s.is_creator, s.is_funded, s.is_bundle, s.cr_sol,
+         bs.grad_time, bs.t0, b.first_in, b.b15, b.b60, b.b240, b.net_after, b.got_mint,
+         CASE WHEN s.is_creator THEN bs.t0 ELSE b.first_in END AS t_act,
+         count(*) OVER (PARTITION BY s.mint) AS n_all,
+         count_if(s.is_funded) OVER (PARTITION BY s.mint) AS n_funded_all,
+         count_if(s.is_bundle) OVER (PARTITION BY s.mint) AS n_bundle_all
+  FROM seta s JOIN base bs ON bs.mint = s.mint
+  LEFT JOIN bal b ON b.mint = s.mint AND b.w = s.w),
+mm AS (SELECT * FROM mm0 WHERE (is_creator OR first_in IS NOT NULL) AND NOT coalesce(got_mint, false)),
+inb AS (
+  SELECT m.mint, m.w, max_by(s.from_owner, s.block_time) AS funder, max(s.block_time) AS funded_ts,
+         max_by(CAST(s.amount AS double), s.block_time) / 1e9 AS funded_sol,
+         approx_distinct(s.from_owner) AS n_senders
+  FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
+  WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-11 00:00:00'
+    AND CAST(s.amount AS double) >= 1e6
+    AND s.from_owner <> m.w AND s.block_time < m.t_act
+  GROUP BY 1, 2),
+fan AS (
+  SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
+  FROM tokens_solana.sol_transfers s
+  WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-11 00:00:00'
+    AND CAST(s.amount AS double) >= 1e6
+  GROUP BY 1)
+SELECT m.mint, m.w, m.is_creator, m.is_funded, m.is_bundle, m.cr_sol, m.n_all, m.n_funded_all, m.n_bundle_all,
+       m.grad_time, m.t0, m.first_in, m.b15, m.b60, m.b240, m.net_after,
+       i.funder, i.funded_ts, i.funded_sol, i.n_senders, f.fan_out, f.n_out,
+       date_diff('second', i.funded_ts, m.first_in) AS fund_to_first_buy_s,
+       sup.b15 AS supply15, sup.b60 AS supply60, sup.b240 AS supply240
+FROM mm m
+LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
+LEFT JOIN fan f ON f.a = i.funder
+LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'

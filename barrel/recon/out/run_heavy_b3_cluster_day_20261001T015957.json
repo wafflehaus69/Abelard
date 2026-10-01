@@ -1,0 +1,28 @@
+{
+ "file": "barrel/recon/sql/heavy_b3_cluster_day.sql",
+ "label": "heavy B3 cluster inputs, one day (new pattern, hard cap)",
+ "execution_id": "01M3TK15XWH7240QTF284H7Y59",
+ "state": "QUERY_STATE_FAILED",
+ "credits": 0.0,
+ "cap": 60.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.0
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T01:59:57.62846Z",
+ "rows": null,
+ "error": {
+  "type": "FAILED_TYPE_EXECUTION_FAILED",
+  "message": "line 19:30: mismatched input '__'. Expecting: '%', ')', '*', '+', '-', '.', '/', 'AND', 'AT', 'EXCEPT', 'FETCH', 'FILTER', 'GROUP', 'HAVING', 'IGNORE', 'INTERSECT', 'LIMIT', 'OFFSET', 'OR', 'ORDER', 'OVER', 'RESPECT', 'UNION', 'WINDOW', '[', '||', <predicate> at line 19, position 30 [Execution ID: 01M3TK15XWH7240QTF284H7Y59]",
+  "metadata": {
+   "line": 19,
+   "column": 30
+  }
+ },
+ "rows_private": true,
+ "n_rows": 0
+}

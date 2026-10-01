@@ -688,6 +688,22 @@
    "group": "cost",
    "definition": "quote volume in (grad, grad + 7d]",
    "n": 85
+  },
+  {
+   "public": "seta_lat_s",
+   "internal": "fund_to_first_buy_s",
+   "type": "double",
+   "group": "rug_a",
+   "definition": "median seconds from a set member's funding to its first acquisition of the token, over members where both were measured; NULL = measured for nobody, never 0 (MR-11)",
+   "n": 86
+  },
+  {
+   "public": "blk",
+   "internal": "block_id",
+   "type": "varchar",
+   "group": "control",
+   "definition": "block for effective-n: 'F:' + the creator's funder when that funder is dedicated, else 'D:' + launch day (MR-11 section 2)",
+   "n": 87
   }
  ]
 }

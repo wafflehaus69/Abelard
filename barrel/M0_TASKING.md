@@ -188,6 +188,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | Trial burn-down → [`docs/TRIAL_BURNDOWN_ORDERS.md`](docs/TRIAL_BURNDOWN_ORDERS.md) | Architect via Mando | 2026-09-30 | ~1,199 trial credits → measured materialization units before checkout; 180 reserve; H3 = M0b; nothing bought until `PURCHASE_DECISION.md` |
 | MR-9 → [`docs/RULINGS_2026-09-30.md`](docs/RULINGS_2026-09-30.md) | Architect via Mando | 2026-09-30 | Per-token schema **frozen at 85 columns, neutral names** (`pt_features`); public-table recommendation (accept); verdicts/thresholds never in a saved query |
 | MR-10 → [`docs/RULINGS_2026-10-01.md`](docs/RULINGS_2026-10-01.md) | Architect via Mando | 2026-10-01 | Runner cap is hard for unproven patterns; **two designs** (export-first / in-warehouse) chosen at checkout by Analyst's export rate; heavy tier measured on the trial; `c07b` **out of M0** with H1 limitation; monthly chunks; **no more than two paid months before a re-ruling** |
+| MR-11 → [`docs/RULINGS_2026-10-01_CROSSOVER.md`](docs/RULINGS_2026-10-01_CROSSOVER.md) | Architect via Mando | 2026-10-01 | CONSENSUS crossover: funder kind + actor collapse on every wallet-count column; `resolution.py` is the UNKNOWN chokepoint; **block definition for effective-n is binding**; schema 85 → 87 (`seta_lat_s`, `blk`) |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
@@ -628,3 +629,18 @@ Full text: `docs/RULINGS_2026-10-01.md` (morning orders, then the revision; the 
 * **Runner:** a query pattern not previously run at one-partition scope gets `--expect` as its hard cap; only a proven pattern gets 3×. Polling every 2 s. Incident and fix: `docs/TRIAL_BURNDOWN_ORDERS.md`, execution status, and the header of `recon/dune_run_sql.py`.
 * **Doctrine:** the null-count-per-era rule is E35 in `doctrine/ENGINEERING.md` (main, `1e43499`).
 * **Trial:** corrected 4a (one day, ≤ 90) and the heavy-tier measurement (≤ 350) run on the expiring trial credits; 4b is skipped and runs in the paid month. Reserve 180 untouched. Nothing is bought until the revised decision document lands.
+
+---
+
+### MR-11 — CONSENSUS crossover (Architect via Mando, 2026-10-01)
+
+Full text: `docs/RULINGS_2026-10-01_CROSSOVER.md`. Builder's response and measurements: `docs/CROSSOVER_MR11.md`. Effects on this document:
+
+* **§6 hypotheses, every H1–H4 cell — BINDING pre-registration change.** Before any cell is evaluated, each token is assigned to a block: the funder of its creator when that funder is classed as dedicated, otherwise its launch day. **Every cell reports raw n and block n, and the UNDERPOWERED rule applies to block n.** Implementation: `recon/actors.py::block_id`; column 87 (`blk`).
+* **§4 gate, wallet-count columns.** A funder links two wallets only when it is classed `dedicated`. An exchange, a high-fan-out funder, an infrastructure address or an unclassified funder never links. A set with any member whose funding was not found is **UNRESOLVED**, not a count. The classifier and `collapse_actors` are pure functions in `recon/actors.py`; "not measured" is decided only by CONSENSUS's `resolution.py`, loaded from its own file.
+* **Aligned set (c07, c08, `seta_*`, RUG-A).** Members are restricted to wallets that ever held the token, and the bonding curve is excluded. The readiness definition (every recipient of creator SOL within ± 24 h) counted fee, tip and rent accounts on every token and is withdrawn.
+* **Schema:** 85 → 87. Column 86 `seta_lat_s` (funding to first acquisition, seconds) and column 87 `blk`. Definition lines await the Architect's signature.
+* **Awaiting signature, not in force:** the fan-out threshold (measured at 32, 400, 8,192; none chosen); the launch-day fallback's granularity; whether count columns carry raw and collapsed values side by side; whether `cluster_*` is built before the threshold is ruled (`docs/PURCHASE_DECISION.md` proposes not).
+* **Not ported:** m5's one-directional funder rule; collapse of c06 and of organic-v2 taker counts. Listed in `docs/CROSSOVER_MR11.md` §5.
+* **M1 / M2 carry-overs noted for their specs, no M0 effect:** raw-response cache with replay; a heartbeat from day one (a run that never starts must be reported); alert thresholds recalibrated on a rolling window.
+* **Orders 5–7 are CONSENSUS work** and are outside this workstream.

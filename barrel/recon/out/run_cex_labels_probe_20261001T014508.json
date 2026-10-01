@@ -1,0 +1,28 @@
+{
+ "file": "barrel/recon/sql/cex_labels_probe.sql",
+ "label": "labelled Solana exchange wallets: exists?",
+ "execution_id": "01M3TJ61SXTZAC6S5M3WQNZTVS",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.04320646,
+ "cap": 2.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.6,
+   0.04320646
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T01:45:08.66972Z",
+ "rows": [
+  {
+   "address_filled": 166,
+   "addrs": 166,
+   "max_len": 44,
+   "min_len": 34,
+   "n": 166,
+   "names": 27
+  }
+ ],
+ "error": null
+}

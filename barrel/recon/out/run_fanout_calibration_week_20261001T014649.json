@@ -1,0 +1,222 @@
+{
+ "file": "barrel/recon/sql/fanout_calibration_week.sql",
+ "label": "fan-out histogram, calibration week, labelled exchanges marked (hard cap)",
+ "execution_id": "01M3TJ6HT5087H3XACD2WAD0BH",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 11.50132353,
+ "cap": 30.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.0025
+  ],
+  [
+   3.1,
+   0.22477644
+  ],
+  [
+   5.7,
+   0.479921818
+  ],
+  [
+   8.1,
+   0.730333244
+  ],
+  [
+   10.5,
+   0.976853421
+  ],
+  [
+   13.1,
+   1.237794118
+  ],
+  [
+   23.4,
+   3.171911765
+  ],
+  [
+   33.8,
+   5.706029412
+  ],
+  [
+   44.2,
+   8.254264706
+  ],
+  [
+   54.5,
+   9.70132353
+  ],
+  [
+   64.5,
+   10.936617648
+  ],
+  [
+   77.3,
+   11.331911765
+  ],
+  [
+   82.6,
+   11.50132353
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-01T01:45:25.062012Z",
+ "rows": [
+  {
+   "hi": 1,
+   "labelled_cex": 8,
+   "lo": 1,
+   "log2_bucket": 0,
+   "senders": 17142258
+  },
+  {
+   "hi": 3,
+   "labelled_cex": 3,
+   "lo": 2,
+   "log2_bucket": 1,
+   "senders": 3293412
+  },
+  {
+   "hi": 7,
+   "labelled_cex": 4,
+   "lo": 4,
+   "log2_bucket": 2,
+   "senders": 1383782
+  },
+  {
+   "hi": 15,
+   "labelled_cex": 1,
+   "lo": 8,
+   "log2_bucket": 3,
+   "senders": 665109
+  },
+  {
+   "hi": 31,
+   "labelled_cex": 0,
+   "lo": 16,
+   "log2_bucket": 4,
+   "senders": 294059
+  },
+  {
+   "hi": 63,
+   "labelled_cex": 0,
+   "lo": 32,
+   "log2_bucket": 5,
+   "senders": 136791
+  },
+  {
+   "hi": 127,
+   "labelled_cex": 0,
+   "lo": 64,
+   "log2_bucket": 6,
+   "senders": 106558
+  },
+  {
+   "hi": 255,
+   "labelled_cex": 1,
+   "lo": 128,
+   "log2_bucket": 7,
+   "senders": 60772
+  },
+  {
+   "hi": 511,
+   "labelled_cex": 0,
+   "lo": 256,
+   "log2_bucket": 8,
+   "senders": 43202
+  },
+  {
+   "hi": 1023,
+   "labelled_cex": 0,
+   "lo": 512,
+   "log2_bucket": 9,
+   "senders": 17687
+  },
+  {
+   "hi": 2047,
+   "labelled_cex": 1,
+   "lo": 1024,
+   "log2_bucket": 10,
+   "senders": 8273
+  },
+  {
+   "hi": 4094,
+   "labelled_cex": 1,
+   "lo": 2048,
+   "log2_bucket": 11,
+   "senders": 3249
+  },
+  {
+   "hi": 8191,
+   "labelled_cex": 0,
+   "lo": 4097,
+   "log2_bucket": 12,
+   "senders": 1655
+  },
+  {
+   "hi": 16345,
+   "labelled_cex": 2,
+   "lo": 8198,
+   "log2_bucket": 13,
+   "senders": 1068
+  },
+  {
+   "hi": 32749,
+   "labelled_cex": 4,
+   "lo": 16405,
+   "log2_bucket": 14,
+   "senders": 661
+  },
+  {
+   "hi": 65032,
+   "labelled_cex": 4,
+   "lo": 32796,
+   "log2_bucket": 15,
+   "senders": 254
+  },
+  {
+   "hi": 130356,
+   "labelled_cex": 0,
+   "lo": 65562,
+   "log2_bucket": 16,
+   "senders": 70
+  },
+  {
+   "hi": 260137,
+   "labelled_cex": 1,
+   "lo": 133064,
+   "log2_bucket": 17,
+   "senders": 24
+  },
+  {
+   "hi": 488047,
+   "labelled_cex": 0,
+   "lo": 274740,
+   "log2_bucket": 18,
+   "senders": 19
+  },
+  {
+   "hi": 1045376,
+   "labelled_cex": 0,
+   "lo": 526334,
+   "log2_bucket": 19,
+   "senders": 15
+  },
+  {
+   "hi": 1165382,
+   "labelled_cex": 0,
+   "lo": 1165382,
+   "log2_bucket": 20,
+   "senders": 1
+  },
+  {
+   "hi": 3569237,
+   "labelled_cex": 0,
+   "lo": 2665766,
+   "log2_bucket": 21,
+   "senders": 2
+  }
+ ],
+ "error": null
+}

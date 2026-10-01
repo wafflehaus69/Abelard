@@ -1,6 +1,6 @@
 """Generate the frozen pt_features schema (MR-9, 2026-09-30).
 
-Single source of truth for the 85-column per-token table: writes
+Single source of truth for the 87-column per-token table (85 frozen 2026-09-30 + 2 by MR-11): writes
 recon/pt_features_schema.json (the public<->internal name mapping, repo only)
 and docs/PT_FEATURES_SCHEMA.md (generated from it). The public names are the
 only names that ever reach Dune.
@@ -99,9 +99,12 @@ for g in G:
     c(f"mk_{g}", f"markup_{g}", "double", "cost", f"px_{g} / px_grad (MR-8.4)")
 c("n_7d", "n_swaps_7d", "bigint", "cost", "swaps in (grad, grad + 7d]")
 c("qv_7d", "quote_volume_7d", "double", "cost", "quote volume in (grad, grad + 7d]")
+# MR-11 (CONSENSUS crossover, 2026-10-01): two additions ordered by the Architect. Definition lines await signature.
+c("seta_lat_s", "fund_to_first_buy_s", "double", "rug_a", "median seconds from a set member's funding to its first acquisition of the token, over members where both were measured; NULL = measured for nobody, never 0 (MR-11)")
+c("blk", "block_id", "varchar", "control", "block for effective-n: 'F:' + the creator's funder when that funder is dedicated, else 'D:' + launch day (MR-11 section 2)")
 
-assert len(cols) == 85, len(cols)
-assert len({x["public"] for x in cols}) == 85, "duplicate public name"
+assert len(cols) == 87, len(cols)
+assert len({x["public"] for x in cols}) == 87, "duplicate public name"
 for i, x in enumerate(cols, 1):
     x["n"] = i
 
@@ -116,7 +119,7 @@ spec = {"table": "result_pt_features", "frozen": "2026-09-30", "ruling": "docs/R
 (ROOT / "recon" / "pt_features_schema.json").write_text(json.dumps(spec, indent=1), encoding="utf-8")
 
 md = [
-    "# `pt_features` — frozen per-token schema, 85 columns (2026-09-30)", "",
+    "# `pt_features` — per-token schema, 87 columns: 85 frozen 2026-09-30, plus 2 ordered by MR-11 (2026-10-01) awaiting signature of their definition lines", "",
     "**Frozen by:** `RULINGS_2026-09-30.md` (Architect sign-off with three changes). "
     "**Source of truth:** `recon/pt_features_schema.json`, written with this page by `recon/gen_pt_features_schema.py`. "
     "The **public name** is the only name that exists in Dune; internal names and definitions live only in this repo.", "",
