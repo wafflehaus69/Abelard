@@ -15,3 +15,10 @@ def dune_key() -> str:
 def helius_rpc_url() -> str | None:
     v = _read("HELIUS_API_KEY")
     return f"https://mainnet.helius-rpc.com/?api-key={v}" if v else None
+
+def dune_rw_key() -> str:
+    """Read/Write key: used ONLY to create/refresh/delete saved queries and materialized views
+    (burn-down item 3). Every other call uses the read-only key."""
+    v = _read("DUNE_API_KEY_RW")
+    if not v: raise SystemExit("DUNE_API_KEY_RW not set (barrel/private/dune.env). Nothing was run.")
+    return v
