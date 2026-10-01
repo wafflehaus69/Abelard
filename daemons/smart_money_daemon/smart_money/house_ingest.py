@@ -27,8 +27,10 @@ import zipfile
 import pdfplumber
 import requests
 
+from . import dates
 from . import db as dbmod
-from .efd_ingest import AMOUNT_BANDS, IngestError, load_env, norm_ticker
+from .efd_ingest import (AMOUNT_BANDS, MARKET_ASSET_TYPE, IngestError, load_env,
+                         norm_ticker)
 
 RAW_DIR_DEFAULT = "data/raw/house"
 UNPARSED_DIR = "data/raw/house_unparsed"
@@ -404,23 +406,30 @@ def ingest_filing(con, filing, year, raw_dir, ua):
         record("unparsed_layout", 0)
         return "unparsed_layout"
     person_id = upsert_person(con, filing)
+    calendar = dates.Calendar.load(con)
     for i, row in enumerate(rows, 1):
         n = normalize_row(row, doc_id)
-        lag = (
-            dt.date.fromisoformat(disclosure) - dt.date.fromisoformat(n["tx_date"])
-        ).days
+        # strptime's %Y accepts any four digits, so a Clerk PDF reading 3031-04-30 or
+        # 2220-04-07 parses cleanly. Kept as written and marked, never corrected -- and
+        # judged against this filing's own disclosure date, which a trade cannot follow.
+        # The mark is on the TRADE clock only: the row stays a full disclosure.
+        flag, sub, sugg = dates.judge(
+            n["tx_date"], disclosure, calendar,
+            market_execution=(n["asset_type"] == MARKET_ASSET_TYPE))
+        lag = dates.lag_days(disclosure, n["tx_date"])
         con.execute(
             "INSERT OR REPLACE INTO congress_trades("
             "person_id, ticker, side, amt_low, amt_high, tx_date, disclosure_date,"
             "lag_days, chamber, source, raw_ref, owner, asset_name, asset_type,"
-            "comment, filing_id, filing_status, clerk_line_id)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "comment, filing_id, filing_status, clerk_line_id, date_flag,"
+            "date_subclass, tx_date_suggested)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 person_id, n["ticker"], n["side"], n["amt_low"], n["amt_high"],
                 n["tx_date"], disclosure, lag, "house", "house_clerk",
                 "{}#{}".format(doc_id, i), n["owner"], n["asset_name"],
                 n["asset_type"], n["comment"], doc_id, n["filing_status"],
-                n["clerk_line_id"],
+                n["clerk_line_id"], flag, sub, sugg,
             ),
         )
     record("electronic", len(rows))

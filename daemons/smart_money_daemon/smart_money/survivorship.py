@@ -12,6 +12,7 @@ import datetime as dt
 import sys
 import time
 
+from . import dates
 from . import db as dbmod
 from . import prices
 
@@ -31,21 +32,34 @@ def tickers_without_series(con):
 
 
 def _last_trade(con, ticker):
+    """The latest trade date that can be true. A single House row reading 2220-04-07
+    made MMP -- Magellan Midstream, acquired in 2023 -- look like it traded two
+    centuries from now, so `stale` was False and it was cached as a data gap."""
+    rng, params = dates.sane_sql("tx_date")
     r = con.execute(
-        "SELECT MAX(tx_date) FROM congress_trades WHERE ticker=?", (ticker,)
+        "SELECT MAX(tx_date) FROM congress_trades WHERE ticker=? AND date_flag IS NULL "
+        "AND " + rng, [ticker] + params,
     ).fetchone()
     return r[0] if r and r[0] else None
 
 
-def classify(con, today=None, probe=True) -> dict:
+def classify(con, today=None, probe=True, tickers=None, force=False) -> dict:
+    """`tickers` limits the pass; `force` re-classifies them even when cached.
+
+    The cache is why a corrected input changes nothing on its own: every ticker with a
+    full-probe verdict is skipped forever. A verdict computed from a quarantined date
+    has to be recomputed deliberately, and `force` is how."""
     today = today or dt.date.today().isoformat()
     stale_before = (
         dt.date.fromisoformat(today) - dt.timedelta(days=STALE_MONTHS * 30)
     ).isoformat()
     todo = tickers_without_series(con)
+    if tickers is not None:
+        wanted = set(tickers)
+        todo = [t for t in todo if t in wanted]
     # A real probe refines PROVISIONAL recency-only rows; a full probe result is
-    # never re-probed.
-    done = {
+    # never re-probed unless forced.
+    done = set() if force else {
         r[0]
         for r in con.execute(
             "SELECT ticker FROM ticker_status WHERE heuristic != ?", (RECENCY_ONLY,)

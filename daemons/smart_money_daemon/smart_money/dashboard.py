@@ -2026,7 +2026,10 @@ _SENTINEL_CSV_COLS = ["event_date", "src", "seed", "role", "ticker", "action",
                       "value", "shares", "cusip", "issuer", "value_scale",
                       "shares_type", "instrument_class", "issuer_id", "thesis",
                       "discretionary", "plan_flag", "tx_date", "period",
-                      "amt_low", "amt_high", "lag_days", "owner"]
+                      "amt_low", "amt_high", "lag_days", "owner",
+                      # Why a congressional row's lag is blank: its trade date is off
+                      # the trade clock. The mark leaves with the data.
+                      "date_note"]
 
 
 def _build_sentinels_csv(con, p, full):

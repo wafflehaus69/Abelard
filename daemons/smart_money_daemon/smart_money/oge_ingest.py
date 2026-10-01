@@ -28,6 +28,7 @@ import urllib.parse
 
 import requests
 
+from . import dates
 from . import db as dbmod
 from .house_fd_ingest import _parse_band
 
@@ -166,19 +167,39 @@ def parse_278e(pdf_bytes):
     return out
 
 
+def filed_iso(raw):
+    """The report label's date as ISO, or None when it will not parse OR cannot be true.
+
+    The PAS label writes M/D/YYYY, and until 2026-09 it was stored verbatim, so all 362
+    rows sorted and compared as text: '12/01/2025' after '04/10/2026'. Accepts an
+    already-ISO value too, so a caller that normalised first is not refused. A
+    well-formed date that cannot be true ('1/14/0025') is refused like a malformed one;
+    either way the label's own string survives in filed_date_raw."""
+    iso = dates.iso10(raw) or dates.iso_mdy(raw)
+    return None if (iso is None or dates.date_flag(iso)) else iso
+
+
 def ingest(con, doc_id, filer, report_type, filed_date, rows, source_url):
     """Land rows. `use_restriction` is NOT NULL in the schema, so the tag is attached to
-    EVERY row by construction — it cannot be omitted."""
+    EVERY row by construction — it cannot be omitted.
+
+    The date is normalised HERE, in the only writer, rather than by the caller: a guard
+    that lives in main() is bypassed by every other path into this function, the suite's
+    own fixture among them. The label's string is kept in filed_date_raw either way, so
+    a date that will not parse is refused without losing what the filer wrote."""
+    iso = filed_iso(filed_date)
     n = 0
     for r in rows:
         con.execute(
             "INSERT OR REPLACE INTO oge_holdings(doc_id, filer, report_type, filed_date, "
             "line_no, description, ticker, eif, value_lo, value_hi, income_type, "
-            "income_lo, income_hi, use_restriction, source_url, ingested_at_unix) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (doc_id, filer, report_type, filed_date, r["line_no"], r["description"],
+            "income_lo, income_hi, use_restriction, source_url, ingested_at_unix, "
+            "filed_date_raw) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (doc_id, filer, report_type, iso, r["line_no"], r["description"],
              r["ticker"], r["eif"], r["value_lo"], r["value_hi"], r["income_type"],
-             r["income_lo"], r["income_hi"], RESTRICTION, source_url, int(time.time())))
+             r["income_lo"], r["income_hi"], RESTRICTION, source_url, int(time.time()),
+             filed_date))
         n += 1
     con.commit()
     return n

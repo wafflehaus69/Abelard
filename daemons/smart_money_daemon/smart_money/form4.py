@@ -9,6 +9,8 @@ import xml.etree.ElementTree as ET
 
 import requests
 
+from . import dates
+
 UA_TMPL = "Abelard-SmartMoney mdiba personal research {}"
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 DAILY_IDX = "https://www.sec.gov/Archives/edgar/daily-index/{y}/QTR{q}/form.{ymd}.idx"
@@ -286,6 +288,7 @@ def persist_transactions(con, accession, parsed, ticker, filed_date,
             (parsed["owner"], cik, parsed.get("role") or None),
         )
     n = 0
+    calendar = dates.Calendar.load(con)
     for i, t in enumerate(parsed.get("txns", [])):
         shares = _f(t.get("shares"))
         price = _f(t.get("price"))
@@ -299,23 +302,36 @@ def persist_transactions(con, accession, parsed, ticker, filed_date,
                                  high_price_ok=high_price_exempt(ticker),
                                  security_title=title)
         if flag is None and price and price > 0 and not _title_is_non_common(title):
+            # Deliberately the RAW date. For a timezone-suffixed value it matches no
+            # prices row, so the close check is skipped -- as it always has been.
+            # Passing the normalised date would switch the check on for ~800 such rows,
+            # and it flags prices far BELOW the close, which a later reverse split
+            # produces from a perfectly good filing (a nominal price against a
+            # split-adjusted close). That wants its own ruling before the check reaches
+            # more rows, not a side effect of a date fix.
             close = eod_close(con, ticker, t.get("date"))
             if close and not (close / CLOSE_RATIO_MAX <= price <= close * CLOSE_RATIO_MAX):
                 flag = "price_vs_close"
+        tx_date, _ = dates.normalise(t.get("date"))
+        # Only an open-market purchase or sale is judged against the session calendar;
+        # an award or a withholding lands on whatever day the vesting schedule says.
+        date_flag, date_sub, date_sugg = dates.judge(
+            t.get("date"), filed_date, calendar,
+            market_execution=(t.get("code") or "").upper() in OPEN_MARKET)
         con.execute(
             "INSERT OR IGNORE INTO form4_transactions("
             "accession, tx_index, reporting_person, reporting_cik, issuer,"
             "issuer_cik, ticker, code, plan_flag, shares, price, value,"
             "ownership_after, tx_date, filed_date, role, ingest_regime, value_flag,"
-            "security_title)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "security_title, date_flag, date_subclass, tx_date_suggested)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (accession, i, parsed.get("owner"), cik, parsed.get("issuer"),
              parsed.get("issuer_cik") or None, ticker,
              t.get("code"), 1 if parsed.get("plan_flag") else 0, shares, price,
-             None if flag else value, _f(t.get("owned_after")), t.get("date"),
+             None if flag else value, _f(t.get("owned_after")), tx_date,
              filed_date, parsed.get("role") or None, regime, flag,
              # Parsed since the module was written, dropped here until now.
-             t.get("security_title") or None),
+             t.get("security_title") or None, date_flag, date_sub, date_sugg),
         )
         n += 1
     return n, bool(parsed.get("owner"))
@@ -330,22 +346,31 @@ def persist_derivatives(con, accession, parsed, ticker, filed_date,
     derivative-only filings). Returns rows_persisted."""
     cik = parsed.get("owner_cik") or None
     n = 0
+    calendar = dates.Calendar.load(con)
     for i, t in enumerate(parsed.get("deriv_txns", [])):
+        # date_flag speaks for the TRADE date and its filing -- the clocks that place the
+        # row in time. Exercise and expiration dates are forward-looking and legitimately
+        # run decades out, so they are stored as filed and never judged against today.
+        # No derivative is a market execution: a grant dated on a Saturday is ordinary.
+        tx_date, _ = dates.normalise(t.get("date"))
+        date_flag, date_sub, date_sugg = dates.judge(t.get("date"), filed_date, calendar)
         con.execute(
             "INSERT OR IGNORE INTO form4_derivatives("
             "accession, tx_index, reporting_person, reporting_cik, issuer,"
             "issuer_cik, ticker, security_title, code, plan_flag, shares, price,"
             "exercise_price, tx_date, exercise_date, expiration_date,"
-            "underlying_title, underlying_shares, filed_date, role, ingest_regime)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "underlying_title, underlying_shares, filed_date, role, ingest_regime,"
+            "date_flag, date_subclass, tx_date_suggested)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (accession, i, parsed.get("owner"), cik, parsed.get("issuer"),
              parsed.get("issuer_cik") or None, ticker,
              t.get("security_title") or None, t.get("code"),
              1 if parsed.get("plan_flag") else 0, _f(t.get("shares")),
-             _f(t.get("price")), _f(t.get("exercise_price")), t.get("date"),
+             _f(t.get("price")), _f(t.get("exercise_price")), tx_date,
              t.get("exercise_date") or None, t.get("expiration_date") or None,
              t.get("underlying_title") or None, _f(t.get("underlying_shares")),
-             filed_date, parsed.get("role") or None, regime),
+             filed_date, parsed.get("role") or None, regime, date_flag, date_sub,
+             date_sugg),
         )
         n += 1
     return n

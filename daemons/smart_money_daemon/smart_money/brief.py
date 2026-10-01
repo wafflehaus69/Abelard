@@ -45,19 +45,6 @@ def _money(v):
         return "-"
 
 
-def _corpus_windows(con):
-    def mm(sql):
-        r = con.execute(sql).fetchone()
-        return (r[0], r[1]) if r else (None, None)
-    return {
-        "form4": mm("SELECT MIN(substr(tx_date,1,10)), MAX(substr(tx_date,1,10)) "
-                    "FROM form4_transactions"),
-        "congress": mm("SELECT MIN(tx_date), MAX(tx_date) FROM congress_trades "
-                       "WHERE asset_type='Stock'"),
-        "thirteenf": mm("SELECT MIN(period), MAX(period) FROM thirteenf_holdings"),
-    }
-
-
 # ---------------------------------------------------------------- sections
 def _sec_sentinels(con, styles, window, anchor):
     res = q.q_sentinel_log(con, window=window, anchor=anchor)
@@ -169,7 +156,6 @@ def _sec_sell_context(con, styles, window, anchor):
 def _sec_footer(con, styles):
     from .mojibake import scan_mojibake
     mj = scan_mojibake(con)
-    cw = _corpus_windows(con)
     n_prices = con.execute("SELECT COUNT(DISTINCT ticker) FROM prices "
                            "WHERE price_type='eod'").fetchone()[0]
     n_delisted = con.execute("SELECT COUNT(*) FROM ticker_status WHERE verdict="
@@ -178,9 +164,8 @@ def _sec_footer(con, styles):
         "Data quality. Suspected mojibake {} across name columns, {} legitimate "
         "non-ASCII, detected not fixed.".format(mj["total_suspected_mojibake"],
                                                 mj["total_non_ascii"]),
-        "Corpus windows. Form 4 {}..{}. Congress {}..{}. 13F {}..{}.".format(
-            cw["form4"][0], cw["form4"][1], cw["congress"][0], cw["congress"][1],
-            cw["thirteenf"][0], cw["thirteenf"][1]),
+        "Corpus windows, over rows whose dates can be true.",
+    ] + q.corpus_window_lines(q.q_corpus_windows(con)) + [
         "Price coverage. {} tickers with cached EOD series, {} presumed delisted. "
         "Returns never imputed for a missing series.".format(n_prices, n_delisted),
     ]

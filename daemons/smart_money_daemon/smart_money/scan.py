@@ -11,6 +11,7 @@ import pathlib
 import sys
 import time
 
+from . import dates
 from . import db as dbmod
 from . import form4, form4_universal, thirteenf, watermarks
 from .events import load_registry, make_event
@@ -104,7 +105,8 @@ def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
     rows = con.execute(
         "SELECT ct.person_id, p.name, p.cik_or_chamber, ct.ticker, ct.side, "
         "ct.amt_low, ct.amt_high, ct.tx_date, ct.disclosure_date, ct.lag_days, "
-        "ct.filing_id, ct.chamber FROM congress_trades ct "
+        "ct.filing_id, ct.chamber, ct.date_flag, ct.date_subclass, "
+        "ct.tx_date_suggested FROM congress_trades ct "
         "JOIN persons p USING(person_id) "
         "JOIN ingested_filings f ON f.filing_id = ct.filing_id "
         "WHERE ct.superseded = 0 AND f.ingested_at_unix >= ?",
@@ -113,14 +115,17 @@ def leg_congress(con, scan_id, scan_start, overlay, reg, ua, raw_dir):
 
     newest_disc = None
     for (pid, name, chamber, ticker, side, lo, hi, tx, disc, lag, fid,
-         cham) in rows:
+         cham, dflag, dsub, dsugg) in rows:
         rentry = reg["by_name"].get(name)
+        # Emitted whatever dflag says: the disclosure is real. make_event withholds
+        # only what is computed on the trade clock.
         ev = make_event(
             scan_id, "congress", name,
             rentry["role"] if rentry else None,
             rentry["status"] if rentry else None,
             ticker, side, "stock", (lo, hi), tx, disc, lag, None,
             "efd" if cham == "senate" else "house_clerk", fid, overlay, con,
+            date_flag=dflag, date_subclass=dsub, tx_date_suggested=dsugg,
         )
         events.append(ev)
         if disc and (newest_disc is None or disc > newest_disc):
@@ -163,6 +168,7 @@ def leg_form4(con, scan_id, overlay, reg, contact):
     events = []
     counts = {"open_market": 0, "counted_only": 0, "filings_matched": 0}
     ua = UA_TMPL.format(contact)
+    calendar = dates.Calendar.load(con)
     try:
         overlay_tickers = overlay.conviction | overlay.watchlist
         insider_ciks = {e.get("cik") for e in reg["entries"]
@@ -201,12 +207,18 @@ def leg_form4(con, scan_id, overlay, reg, contact):
                     side = "purchase" if code == "P" else "sale"
                     shares = float(t["shares"] or 0)
                     price = float(t["price"] or 0)
+                    # Judged by the same function, on the same strings, that
+                    # persist_transactions just used for this row -- so the event and
+                    # the stored row cannot disagree about the trade date.
+                    dflag, dsub, dsugg = dates.judge(
+                        t["date"], row["date"], calendar, market_execution=True)
                     ev = make_event(
                         scan_id, "form4", parsed["owner"], "insider", None,
                         ticker, side, "stock", None, t["date"], d.isoformat(),
                         None, parsed["plan_flag"], "edgar_form4",
                         row["path"], overlay, con,
                         shares=shares, value=round(shares * price, 2),
+                        date_flag=dflag, date_subclass=dsub, tx_date_suggested=dsugg,
                     )
                     events.append(ev)
         sources.append(_src("edgar_form4", "OK", items=counts["open_market"]))

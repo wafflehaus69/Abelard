@@ -403,20 +403,22 @@ def _render(con, anchor, overlay, a, b, c, d, f):
     # method + data with as-of
     m.append("## Method + data (as-of)")
     m.append("")
-    per = con.execute("SELECT MIN(period), MAX(period) FROM thirteenf_holdings").fetchone()
-    f4d = con.execute("SELECT MIN(tx_date), MAX(tx_date) FROM form4_transactions").fetchone()
-    cgd = con.execute("SELECT MIN(tx_date), MAX(tx_date) FROM congress_trades WHERE asset_type='Stock'").fetchone()
+    # The windows come from the same function the brief's footer uses. This render had
+    # its own raw MIN/MAX -- with no substr, weaker than the brief's -- and wrote
+    # 'tx 2012-09-13..3031-04-30' into PHASE4_OVERLAP_20260723.md.
+    from .queries import corpus_window_lines, q_corpus_windows
+    cw = q_corpus_windows(con)
     m.append("- **13F holdings**: {} rows, periods {}..{} (as-of = filing period end; "
              "STALE ~45d by construction). Confirmed filer set only.".format(
                  con.execute("SELECT COUNT(*) FROM thirteenf_holdings").fetchone()[0],
-                 per[0], per[1]))
-    m.append("- **Form 4 corpus**: {} rows, tx {}..{}. Backfilled issuer set "
+                 cw["thirteenf"]["lo"], cw["thirteenf"]["hi"]))
+    m.append("- **Form 4 corpus**: {} rows. Backfilled issuer set "
              "(overlay + registry + trump_network), 36-month depth.".format(
-                 con.execute("SELECT COUNT(*) FROM form4_transactions").fetchone()[0],
-                 f4d[0], f4d[1]))
-    m.append("- **Congress**: {} stock rows, tx {}..{}.".format(
-        con.execute("SELECT COUNT(*) FROM congress_trades WHERE asset_type='Stock'").fetchone()[0],
-        cgd[0], cgd[1]))
+                 con.execute("SELECT COUNT(*) FROM form4_transactions").fetchone()[0]))
+    m.append("- **Congress**: {} stock rows.".format(
+        con.execute("SELECT COUNT(*) FROM congress_trades WHERE asset_type='Stock'").fetchone()[0]))
+    for line in corpus_window_lines(cw):
+        m.append("- {}".format(line))
     m.append("- Join key = uppercased ticker across surfaces (13F OpenFIGI / Form 4 "
              "issuer symbol / congress normalized). Cross-source symbol mismatch is "
              "a coverage limit — see gaps.")

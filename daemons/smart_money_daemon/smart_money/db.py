@@ -754,3 +754,30 @@ def _migrate(con):
         # Existing rows stay NULL until re-parsed (scripts/reparse_corrupt_form4).
         con.execute("ALTER TABLE form4_transactions ADD COLUMN value_flag TEXT")
         con.commit()
+    # date_flag: why a row cannot be placed on the TRADE clock (dates.row_flag). NULL
+    # means trusted there -- never "checked and clean", since rows written before this
+    # column existed stay NULL until repair_dates marks them. It says nothing about the
+    # DISCLOSURE clock: a trade dated after its own filing is flagged here and remains a
+    # perfectly good disclosure. The date itself is kept exactly as filed -- the flag
+    # quarantines, it never rewrites the evidence. No CHECK constraint: a constraint
+    # refuses the row, and doctrine is mark, never drop.
+    # date_subclass: what the date STRING looks like (dates.subclass), never an assumed
+    # cause. It can be set with date_flag NULL: 'non_trading_day' on an open-market trade
+    # is a mark, not a quarantine.
+    # tx_date_suggested: a labelled hypothesis for the year-slip pattern only
+    # (dates.SUGGESTION_RULE). tx_date is never changed to it.
+    for table in ("form4_transactions", "form4_derivatives", "congress_trades"):
+        tcols = {r[1] for r in con.execute("PRAGMA table_info({})".format(table))}
+        for col in ("date_flag", "date_subclass", "tx_date_suggested"):
+            if tcols and col not in tcols:
+                con.execute("ALTER TABLE {} ADD COLUMN {} TEXT".format(table, col))
+                con.commit()
+    # OGE filed dates arrived as the PDF label's M/D/YYYY and were stored verbatim, so
+    # the column was never once comparable or sortable. They are now stored ISO -- and
+    # the label's own string is kept beside them, the congress_holdings pattern
+    # (filing_date ISO + period raw), because the conversion must not overwrite the
+    # only copy of what the filer wrote.
+    gcols = {r[1] for r in con.execute("PRAGMA table_info(oge_holdings)")}
+    if gcols and "filed_date_raw" not in gcols:
+        con.execute("ALTER TABLE oge_holdings ADD COLUMN filed_date_raw TEXT")
+        con.commit()

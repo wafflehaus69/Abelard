@@ -15,8 +15,13 @@ import re
 import sys
 import time
 
+from . import dates
 from . import db as dbmod
 from .efd_session import bootstrap, get_ptr_html, post_data
+
+# The one congressional asset type that is a market execution. Only these rows are
+# judged against the session calendar; a muni or a private fund trades when it trades.
+MARKET_ASSET_TYPE = "Stock"
 
 RAW_DIR_DEFAULT = "data/raw/efd"
 PACE_SECONDS = 0.5
@@ -253,19 +258,27 @@ def ingest_filing(con, sess, filing, raw_dir: pathlib.Path) -> str:
     person_id = upsert_person(con, filing)
     rows = parse_ptr_table(raw, uuid)
     disclosure = filing["filed"]
+    calendar = dates.Calendar.load(con)
     inserted = 0
     for cells in rows:
         idx, tx_date, owner, ticker, asset_name, asset_type, side, amount, comment = (
             cells
         )
         tx_iso = _iso(tx_date)
+        # Kept as the filer wrote it and marked when it cannot be true on the TRADE
+        # clock -- including a trade dated after the disclosure that reports it. The row
+        # stays a full disclosure. See house_ingest, which has the same %Y permissiveness.
+        tx_flag, tx_sub, tx_sugg = dates.judge(
+            tx_iso, disclosure, calendar,
+            market_execution=(asset_type == MARKET_ASSET_TYPE))
         low, high = norm_amount(amount, uuid)
-        lag = (dt.date.fromisoformat(disclosure) - dt.date.fromisoformat(tx_iso)).days
+        lag = dates.lag_days(disclosure, tx_iso)
         con.execute(
             "INSERT OR REPLACE INTO congress_trades("
             "person_id, ticker, side, amt_low, amt_high, tx_date, disclosure_date,"
             "lag_days, chamber, source, raw_ref, owner, asset_name, asset_type,"
-            "comment, filing_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "comment, filing_id, date_flag, date_subclass, tx_date_suggested) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 person_id,
                 norm_ticker(ticker),
@@ -283,6 +296,7 @@ def ingest_filing(con, sess, filing, raw_dir: pathlib.Path) -> str:
                 asset_type,
                 None if comment == "--" else comment,
                 uuid,
+                tx_flag, tx_sub, tx_sugg,
             ),
         )
         inserted += 1

@@ -26,6 +26,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 
+from . import dates
 from . import db as dbmod  # path constants + find_artifact ONLY — never connect()
 
 # phase4_joins (join engines) and overlay are LAZY-imported inside the two
@@ -125,11 +126,19 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
     amendment-deduped. plan: 'discretionary' (plan_flag=0, the default used by the
     flow/cluster/sell aggregates), 'planned' (plan_flag=1, 10b5-1), or 'all'."""
     ph = ",".join("?" for _ in codes)
+    # A row whose dates cannot be true cannot be placed in any window, the all-time one
+    # included. Two halves, because they fail differently: date_flag carries what only
+    # the writer or the repair can know (a trade dated after its own filing), and the
+    # window itself is clamped to the range the flag enforces, so the rule holds on a
+    # database the repair has not reached yet. WHERE clauses, not columns -- _F4_COLS
+    # and the SELECT below stay in lockstep untouched.
+    start = max(start, dates.FLOOR)
+    anchor = min(anchor, dates.ceiling())
     q = ("SELECT accession, reporting_cik, reporting_person, issuer_cik, ticker, "
          "tx_date, code, plan_flag, shares, value, price, filed_date, ingest_regime, "
          "value_flag, issuer, security_title, ownership_after "
          "FROM form4_transactions WHERE code IN ({}) "
-         "AND ticker IS NOT NULL AND substr(tx_date,1,10)>=? "
+         "AND ticker IS NOT NULL AND date_flag IS NULL AND substr(tx_date,1,10)>=? "
          "AND substr(tx_date,1,10)<=?".format(ph))
     params = list(codes) + [start, anchor]
     if plan == "discretionary":
@@ -151,6 +160,211 @@ def _fetch_f4(con, codes, start, anchor, ticker=None, plan="discretionary"):
         r["filed_date"] = _iso10(r["filed_date"]) or r["tx_date"]
         rows.append(r)
     return _dedup_amendments(rows)
+
+
+# The statutory reporting deadlines, as calendar days. Form 4 is due before the end of
+# the second business day after the trade, which a weekend plus a holiday stretches to
+# five. A periodic transaction report is due within 45 days (STOCK Act).
+FORM4_DEADLINE_DAYS = 5
+PTR_DEADLINE_DAYS = 45
+
+
+def q_corpus_windows(con):
+    """What period each corpus covers, stated so that no endpoint lies.
+
+    The nightly brief printed 'Form 4 0025-07-25..2028-03-19. Congress
+    2012-09-13..3031-04-30' -- raw MIN/MAX, so eleven filer typos out of ~400,000 rows
+    set the endpoints and the footer described the typos rather than the corpus. So did
+    PHASE4_OVERLAP, from its own copy of the same two queries.
+
+    Excluding the quarantined rows is necessary and NOT sufficient, twice over.
+
+    First, over sane rows the Form 4 window opens 2002-02-24 -- for a corpus whose first
+    filing is 2021-08-24, set by rows that are themselves probable year slips. Printing a
+    quarantine count beside that endpoint would assert the rest are clean. So each window
+    names where collection begins and how many trades are dated earlier than any on-time
+    report could be.
+
+    Second, the mark only exists once repair_dates has run. A first cut trusted date_flag
+    alone, and on a migrated but unrepaired database printed '0025-07-25..2028-03-19;
+    none quarantined' under a heading claiming every row could be true -- worse than the
+    footer it replaced, which at least claimed nothing. So the range half of the rule is
+    applied here directly, and a date that cannot be true but carries no mark yet is
+    its own state, stated as such: 'not yet marked'."""
+    def one(sql, params=()):
+        return con.execute(sql, params).fetchone()
+
+    rng, rng_p = dates.sane_sql("{tx}")
+
+    def corpus(table, tx, anchor, where, deadline):
+        w = "WHERE " + where + " AND " if where else "WHERE "
+        in_range = rng.format(tx=tx)
+        absent = "({tx} IS NULL OR trim({tx}) = '')".format(tx=tx)
+        lo, hi = one("SELECT MIN(substr({tx},1,10)), MAX(substr({tx},1,10)) FROM {t} "
+                     "{w}date_flag IS NULL AND {r}".format(tx=tx, t=table, w=w, r=in_range),
+                     rng_p)
+        out = {
+            "lo": lo, "hi": hi, "deadline_days": deadline,
+            "quarantined": one("SELECT COUNT(*) FROM {t} {w}date_flag IS NOT NULL"
+                               .format(t=table, w=w))[0],
+            "not_yet_marked": one(
+                "SELECT COUNT(*) FROM {t} {w}date_flag IS NULL AND NOT {a} AND NOT {r}"
+                .format(t=table, w=w, a=absent, r=in_range), rng_p)[0],
+            "absent": one("SELECT COUNT(*) FROM {t} {w}{a}".format(t=table, w=w, a=absent))[0],
+            # Why each quarantined row is off the trade clock, and how many market
+            # executions carry the non-trading-day MARK without being quarantined.
+            "by_rule": dict(con.execute(
+                "SELECT date_flag, COUNT(*) FROM {t} {w}date_flag IS NOT NULL "
+                "GROUP BY date_flag".format(t=table, w=w)).fetchall()),
+            "non_trading_marked": one(
+                "SELECT COUNT(*) FROM {t} {w}date_flag IS NULL AND date_subclass=?"
+                .format(t=table, w=w), (dates.NON_TRADING_DAY,))[0],
+        }
+        # Where collection begins, read off the reporting clock -- and only off values of
+        # that clock that are dates in range, so one malformed filed date sorting first
+        # cannot become the corpus start (or crash the footer that parses it).
+        start = dates.iso10(one("SELECT MIN(substr({a},1,10)) FROM {t} {w}{r}".format(
+            a=anchor, t=table, w=w, r=rng.format(tx=anchor)), rng_p)[0])
+        out["collection_starts"] = start
+        out["dated_before_collection"] = 0
+        if start:
+            cut = (dt.date.fromisoformat(start) - dt.timedelta(days=deadline)).isoformat()
+            out["dated_before_collection"] = one(
+                "SELECT COUNT(*) FROM {t} {w}date_flag IS NULL AND {r} "
+                "AND substr({tx},1,10) < ?".format(t=table, w=w, r=in_range, tx=tx),
+                rng_p + [cut])[0]
+        return out
+
+    form4 = corpus("form4_transactions", "tx_date", "filed_date", "", FORM4_DEADLINE_DAYS)
+    # 93% of the Form 4 rows come from the universal sweep, which began long after the
+    # issuer-scoped backfill did. One start date for both would overstate the depth.
+    form4["collection_by_regime"] = [
+        (reg, dates.iso10(first)) for reg, first in con.execute(
+            "SELECT ingest_regime, MIN(substr(filed_date,1,10)) FROM form4_transactions "
+            "WHERE " + rng.format(tx="filed_date") + " GROUP BY ingest_regime "
+            "ORDER BY 2", rng_p)]
+    deriv = corpus("form4_derivatives", "tx_date", "filed_date", "", FORM4_DEADLINE_DAYS)
+    form4["derivatives_quarantined"] = deriv["quarantined"]
+    form4["derivatives_not_yet_marked"] = deriv["not_yet_marked"]
+    # The reasons printed beside the count must add up to it, derivative rows included.
+    for rule, n in deriv["by_rule"].items():
+        form4["by_rule"][rule] = form4["by_rule"].get(rule, 0) + n
+    congress = corpus("congress_trades", "tx_date", "disclosure_date",
+                      "asset_type='Stock'", PTR_DEADLINE_DAYS)
+    # The WINDOW is over stock trades; the QUARANTINE is counted over every asset type,
+    # so a quarantined bond or option row is not left out of the only sentence that
+    # reports the quarantine.
+    every = corpus("congress_trades", "tx_date", "disclosure_date", "", PTR_DEADLINE_DAYS)
+    for k in ("quarantined", "not_yet_marked", "by_rule"):
+        congress[k] = every[k]
+    periods = [r[0] for r in con.execute(
+        "SELECT DISTINCT period FROM thirteenf_holdings WHERE period IS NOT NULL")]
+    thirteenf = {
+        "lo": min(periods) if periods else None, "hi": max(periods) if periods else None,
+        "off_quarter": sorted(p for p in periods if not dates.is_quarter_end(p)),
+    }
+    return {"form4": form4, "congress": congress, "thirteenf": thirteenf}
+
+
+_RULE_WORDS = (
+    (dates.AFTER_FILING, "dated after their own filing and still valid on the "
+                         "disclosure clock"),
+    # Only a row with no filing date to judge against can carry this, and the wording
+    # is about when it was judged: "after tomorrow" would go false as time passed.
+    (dates.AFTER_CEILING, "dated in the future when judged, with no filing date to "
+                          "test against"),
+    (dates.BEFORE_FLOOR, "dated before {}".format(dates.FLOOR[:4])),
+    (dates.UNPARSEABLE, "not a date"),
+)
+
+
+def _quarantine_reasons(by_rule):
+    """'31 dated after their own filing ..., 5 dated after tomorrow' -- every rule that
+    fired, in a fixed order, with anything unrecognised named rather than dropped."""
+    left = dict(by_rule)
+    out = []
+    for rule, words in _RULE_WORDS:
+        n = left.pop(rule, 0)
+        if n:
+            out.append("{:,} {}".format(n, words))
+    filed = sum(n for r, n in left.items() if (r or "").startswith("filed_"))
+    if filed:
+        out.append("{:,} with a filing date that cannot be true".format(filed))
+    other = sum(n for r, n in left.items() if not (r or "").startswith("filed_"))
+    if other:
+        out.append("{:,} for another reason".format(other))
+    return ", ".join(out)
+
+
+def corpus_window_lines(cw):
+    """The footer's sentences, shared by the brief and PHASE4_OVERLAP so the two
+    printers cannot describe the same corpus differently."""
+    def trades(label, w, collected, marked_what, rows_word):
+        if w["lo"]:
+            bits = ["{} trades {}..{}".format(label, w["lo"], w["hi"])]
+        else:
+            bits = ["{}: no trades with a usable date".format(label)]
+        if w["collection_starts"]:
+            regimes = w.get("collection_by_regime") or []
+            where = " ({})".format(", ".join(
+                "{} from {}".format(r, s) for r, s in regimes if s)) if len(regimes) > 1 else ""
+            bits.append("{} collected from {}{}".format(collected, w["collection_starts"], where))
+        if w["dated_before_collection"]:
+            # Three causes, and no range check can tell them apart: a genuinely late
+            # report, an amendment of an old filing, and a date error that stays in range
+            # (a year slip, or a filed date stamped wrong -- NWIN's 2010 filing is stored
+            # as filed in 2026).
+            bits.append("{:,} trades are dated more than {} days before that - past any "
+                        "on-time deadline - and are late reports, amendments of old "
+                        "filings, or date errors no range check can catch".format(
+                            w["dated_before_collection"], w["deadline_days"]))
+        marked = []
+        if w["quarantined"]:
+            marked.append("{:,} {}".format(w["quarantined"], rows_word))
+        if w.get("derivatives_quarantined"):
+            marked.append("{:,} derivative rows".format(w["derivatives_quarantined"]))
+        pending = w["not_yet_marked"] + w.get("derivatives_not_yet_marked", 0)
+        if marked:
+            # The trade clock only. A trade dated after its own filing cannot be placed
+            # in time, and is still a disclosure that was made, on that day, about that
+            # security -- so the sentence says which clock, and that nothing was hidden
+            # from the other one.
+            why = _quarantine_reasons(w.get("by_rule") or {})
+            bits.append("{} quarantined on the trade clock{}".format(
+                " and ".join(marked), " ({})".format(why) if why else ""))
+        if pending:
+            bits.append("{:,} more cannot be true and are NOT YET MARKED - the date "
+                        "repair has not been applied".format(pending))
+        if not marked and not pending:
+            bits.append("none quarantined")
+        if w.get("non_trading_marked"):
+            # What the string shows. Not "the market was closed", which would be an
+            # assumed cause: among these are Taipei trades on US Labor Day, merger
+            # cash-outs closing on a Sunday and private-fund subscriptions.
+            bits.append("{:,} {} are dated on a day with no US session - kept on every "
+                        "board, marked non_trading_day".format(
+                            w["non_trading_marked"], marked_what))
+        if w["absent"]:
+            bits.append("{:,} carry no trade date at all".format(w["absent"]))
+        return "; ".join(bits) + "."
+
+    t = cw["thirteenf"]
+    if not t["lo"]:
+        thirteen = "13F: no periods."
+    elif t["off_quarter"]:
+        thirteen = "13F periods {}..{}; {} NOT a quarter-end: {}.".format(
+            t["lo"], t["hi"], len(t["off_quarter"]), ", ".join(t["off_quarter"][:5]))
+    else:
+        thirteen = "13F periods {}..{}, every one a quarter-end.".format(t["lo"], t["hi"])
+    # The congressional window has always been over STOCK trades only; the label now
+    # says so. Its quarantine count covers every asset type, and says that too --
+    # scoped to stock it reported 19 of 27 quarantined rows and counted the other eight
+    # (bonds, options, untyped) nowhere.
+    return [trades("Form 4", cw["form4"], "filings",
+                   "purchases and sales (code P or S)", "transactions"),
+            trades("Congress stock", cw["congress"], "disclosures",
+                   "stock trades", "congressional rows of every asset type"),
+            thirteen]
 
 
 _PEER_MIN = 3
@@ -1018,6 +1232,26 @@ def _load_registry():
     return data.get("entries", []), data.get("as_of")
 
 
+def date_note(flag, sub, suggested):
+    """What a reader needs to know about a row's trade date, in one line, or None.
+
+    Says which clock is affected and what the string looks like. A suggestion is always
+    labelled as one: it is a hypothesis with its rule, never the date."""
+    if not flag and not sub:
+        return None
+    if not flag:
+        # What the string shows, and no more. It is not a claim that the date is wrong:
+        # a private transaction or a foreign listing trades on days with no US session.
+        return "trade dated on a day with no US session ({})".format(sub)
+    bits = ["trade date off the trade clock: {}".format(flag)]
+    if sub:
+        bits.append(sub)
+    if suggested:
+        bits.append("suggested {} = same day, prior year - a hypothesis, not a "
+                    "correction".format(suggested))
+    return "; ".join(bits)
+
+
 def q_sentinel_log(con, window=180, anchor=None, entries=None):
     """SM-R1: activity by every registry seed person/entity, newest first. Shape-A
     (congress person_id) -> congress_trades; Shape-B (SEC entity cik) ->
@@ -1036,18 +1270,24 @@ def q_sentinel_log(con, window=180, anchor=None, entries=None):
             if not con.execute("SELECT 1 FROM persons WHERE person_id=?", (pid,)).fetchone():
                 raise QueryError("registry person_id {} ({}) orphaned in persons "
                                  "table — a merge ran after the registry froze".format(pid, name))
-            for tk, side, lo, hi, txd, disc, lag, owner, aname in con.execute(
+            for tk, side, lo, hi, txd, disc, lag, owner, aname, dflag, dsub, dsugg in \
+                    con.execute(
                 "SELECT ticker, side, amt_low, amt_high, tx_date, disclosure_date, "
-                "lag_days, owner, asset_name FROM congress_trades WHERE person_id=? "
+                "lag_days, owner, asset_name, date_flag, date_subclass, "
+                "tx_date_suggested FROM congress_trades WHERE person_id=? "
                 "AND superseded=0 AND disclosure_date>=? ORDER BY disclosure_date DESC",
                 (pid, start)):
                 # asset_name distinguishes the many non-equity (ticker NULL) trades
                 # a single PTR can list — otherwise they render identically.
+                # This feed runs on the DISCLOSURE clock (event_date), so a row whose
+                # trade date is quarantined stays in it, whole. What it loses is the
+                # lag: a number computed from a trade date that cannot be true.
                 rows.append({"seed": name, "role": role, "src": "congress",
                              "event_date": disc, "tx_date": txd,
                              "ticker": tk or (aname or "")[:40],
                              "action": side, "amt_low": lo, "amt_high": hi,
-                             "lag_days": lag, "owner": owner})
+                             "lag_days": None if dflag else lag, "owner": owner,
+                             "date_note": date_note(dflag, dsub, dsugg)})
         elif role == "manager_13f":
             # value_usd, not value: 13F VALUE units differ per FILING and the filing
             # never states them. This page read raw and rendered a thousands filer
@@ -1353,13 +1593,22 @@ def q_ticker_panel(con, ticker, pressure_window=180, sparkline_days=180, anchor=
     congress = annotate_potential_amendments(
         [{"name": nm, "side": sd, "amt_low": lo, "amt_high": hi,
           "tx_date": txd, "disclosure_date": disc, "owner": ow,
-          "filing_id": fid, "filing_status": fst}
-         for nm, sd, lo, hi, txd, disc, ow, fid, fst in con.execute(
+          "filing_id": fid, "filing_status": fst,
+          "_date_note": date_note(dflag, dsub, dsugg)}
+         for nm, sd, lo, hi, txd, disc, ow, fid, fst, dflag, dsub, dsugg in con.execute(
             "SELECT p.name, ct.side, ct.amt_low, ct.amt_high, ct.tx_date, "
-            "ct.disclosure_date, ct.owner, ct.filing_id, ct.filing_status "
+            "ct.disclosure_date, ct.owner, ct.filing_id, ct.filing_status, "
+            "ct.date_flag, ct.date_subclass, ct.tx_date_suggested "
             "FROM congress_trades ct JOIN persons p "
             "USING(person_id) WHERE UPPER(ct.ticker)=? AND ct.superseded=0 "
-            "ORDER BY ct.tx_date DESC", (tk,))])
+            "ORDER BY ct.disclosure_date DESC, ct.tx_date DESC", (tk,))])
+    # The table is ordered on the DISCLOSURE clock now. Ordered on tx_date, IBM's panel
+    # opened with a trade dated 3031-04-30. Every disclosure is still listed; one whose
+    # trade date cannot be true says so in its note, with any suggestion labelled.
+    for r in congress:
+        dn = r.pop("_date_note")
+        if dn:
+            r["note"] = "; ".join(x for x in (r.get("note"), dn) if x)
     net13f = defaultdict(float)
     # value_usd: this panel prints every filer's dollars in ONE column, so an
     # unscaled thousands filer does not merely render small — it inverts the
@@ -1472,10 +1721,14 @@ def q_surface_tension(con, ticker, window=180, anchor=None):
     start = _win(end, window)
     legs = {}
 
+    # Both trade legs below are windows on the TRADE clock, so a row whose trade date
+    # cannot be true is in neither: it would vote on direction from wherever its
+    # mistyped date landed, and could set the leg's as-of date.
     buys, sells, last = 0, 0, None
     for code, sh, txd in con.execute(
             "SELECT code, shares, substr(tx_date,1,10) FROM form4_transactions "
             "WHERE UPPER(ticker)=? AND code IN ('P','S') AND plan_flag=0 "
+            "AND date_flag IS NULL "
             "AND substr(tx_date,1,10)>=? AND substr(tx_date,1,10)<=?", (tk, start, end)):
         if code == "P":
             buys += sh or 0
@@ -1513,7 +1766,8 @@ def q_surface_tension(con, ticker, window=180, anchor=None):
     clast = None
     for side, txd in con.execute(
             "SELECT side, tx_date FROM congress_trades WHERE UPPER(ticker)=? "
-            "AND superseded=0 AND tx_date>=? AND tx_date<=?", (tk, start, end)):
+            "AND superseded=0 AND date_flag IS NULL "
+            "AND tx_date>=? AND tx_date<=?", (tk, start, end)):
         if (side or "").lower().startswith("purchase"):
             cb += 1
         else:
@@ -2361,8 +2615,12 @@ def q_member_fusion(con, member_key=None):
     if pid:
         for tk, side, alo, ahi, tx, owner in con.execute(
                 "SELECT ticker, side, amt_low, amt_high, tx_date, owner "
+                # date_flag IS NULL: these flows are placed AFTER the annual anchor by
+                # trade date. Unfiltered, a purchase dated 2026-12-26 on a February
+                # disclosure would enter its member's flows the day that date arrived.
                 "FROM congress_trades WHERE person_id=? AND superseded=0 AND "
-                "ticker IS NOT NULL AND tx_date > ? AND tx_date <= ?",
+                "ticker IS NOT NULL AND date_flag IS NULL "
+                "AND tx_date > ? AND tx_date <= ?",
                 (pid, flow_after, _as_of()[:10])):
             k = (tk.upper(), _OWNER_LABEL.get(owner, "self"))
             fl = flows[k]

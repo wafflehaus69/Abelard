@@ -13,6 +13,7 @@ import time
 
 import requests
 
+from . import dates
 from . import db as dbmod
 from . import filing_scale
 from . import thirteenf
@@ -83,6 +84,14 @@ def list_13f_filings(cik, contact, limit=8):
     for form, acc, fdate, rdate in zip(
             d["form"], d["accessionNumber"], d["filingDate"], rdates):
         if form == "13F-HR":
+            # A 13F period is a calendar quarter-end by rule. The fallback above swaps in
+            # FILING dates for the whole list when reportDate is absent, and none of those
+            # is a quarter-end -- every holding would be filed under a period that does
+            # not exist. Refuse the filer loudly rather than store a guessed period; the
+            # callers already turn a raise into a per-filer failure with its reason.
+            if not dates.is_quarter_end(rdate):
+                raise ValueError("13F {} for CIK {}: period {!r} is not a quarter-end"
+                                 .format(acc, cik, rdate))
             out.append({"accession": acc, "period": rdate, "filed": fdate})
         if len(out) >= limit:
             break
