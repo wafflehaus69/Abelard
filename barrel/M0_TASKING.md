@@ -187,6 +187,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-8 → [`docs/RULINGS_2026-09-28.md`](docs/RULINGS_2026-09-28.md) | Architect via Mando | 2026-09-28 | Two-source P admission ratified; **S9 → feature**, **S10 → feature**, **RUG-A sole outcome variable**; bot-layer markup metric added to §5 per era; §1 complete-as-amended contingent on 1.6 per-era fee pricing |
 | Trial burn-down → [`docs/TRIAL_BURNDOWN_ORDERS.md`](docs/TRIAL_BURNDOWN_ORDERS.md) | Architect via Mando | 2026-09-30 | ~1,199 trial credits → measured materialization units before checkout; 180 reserve; H3 = M0b; nothing bought until `PURCHASE_DECISION.md` |
 | MR-9 → [`docs/RULINGS_2026-09-30.md`](docs/RULINGS_2026-09-30.md) | Architect via Mando | 2026-09-30 | Per-token schema **frozen at 85 columns, neutral names** (`pt_features`); public-table recommendation (accept); verdicts/thresholds never in a saved query |
+| MR-10 → [`docs/RULINGS_2026-10-01.md`](docs/RULINGS_2026-10-01.md) | Architect via Mando | 2026-10-01 | Runner cap is hard for unproven patterns; **two designs** (export-first / in-warehouse) chosen at checkout by Analyst's export rate; heavy tier measured on the trial; `c07b` **out of M0** with H1 limitation; monthly chunks; **no more than two paid months before a re-ruling** |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
@@ -613,3 +614,17 @@ Full text: `docs/RULINGS_2026-09-28.md`. Effects on this document:
 
 
 **MR-8 addendum (Mando, 2026-09-30):** no billing account on the GCP project (MR-5.3 confirmed); the GCP budget alert in the readiness orders §4 is moot because the free-tier hard stop is stronger. Overage controls move to the Dune purchase screen.
+
+---
+
+### MR-10 — Rulings and orders (Architect via Mando, 2026-10-01)
+
+Full text: `docs/RULINGS_2026-10-01.md` (morning orders, then the revision; the revision governs). Effects on this document:
+
+* **§4 gate / §6 H1 — `c07b` (fee-share recipients) is out of M0.** Limitation, to be carried into every H1 statement: **the aligned set that defines RUG-A is missing one member class** (wallets that receive a share of the creator fee without being the deployer, a funded wallet or a bundle wallet). A dump by such a wallet is not counted as aligned selling, so RUG-A labels fewer tokens than the full definition would. **That biases RUG-A's measured recall downward, not upward**, which is the safe direction: the gate cannot look better than it is because of this cut.
+* **§2 data source, storage design — two designs, neither chosen yet.** Export-first (ad-hoc chunks to the repo; no view, no Read/Write key, nothing public) and in-warehouse (materialized view on Dune, passes run ad hoc against it, only result grids exported). **Rule at checkout: Analyst export rate ≤ 3 credits/MB → export-first; the documented 10 → in-warehouse.** In both, the 85-column table is exported at most once, and only the analysis columns are pulled on repeat. Detail: `docs/STORAGE_DESIGNS.md`.
+* **Build plan:** monthly chunks are the default. A single pass over the 610-day window is a hypothesis about engine limits and is not planned on.
+* **Spend rules (project-wide):** plan on the high column of any builder estimate; **no more than two paid months are committed before a re-ruling on measured numbers.** The day-10 kill criterion in `docs/PURCHASE_DECISION.md` stands as written.
+* **Runner:** a query pattern not previously run at one-partition scope gets `--expect` as its hard cap; only a proven pattern gets 3×. Polling every 2 s. Incident and fix: `docs/TRIAL_BURNDOWN_ORDERS.md`, execution status, and the header of `recon/dune_run_sql.py`.
+* **Doctrine:** the null-count-per-era rule is E35 in `doctrine/ENGINEERING.md` (main, `1e43499`).
+* **Trial:** corrected 4a (one day, ≤ 90) and the heavy-tier measurement (≤ 350) run on the expiring trial credits; 4b is skipped and runs in the paid month. Reserve 180 untouched. Nothing is bought until the revised decision document lands.

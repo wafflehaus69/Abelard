@@ -12,7 +12,7 @@ ALLOWANCE = 2500.0; RESERVE = 0.15
 def consumed():
     m = re.search(r"Total consumed: ([\d.]+)", LEDGER.read_text(encoding="utf-8")); return float(m.group(1)) if m else 0.0
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true")
+    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
     # Owner-wallet exclusion (MR-3.4): SQL files write __NOT_OWNER(col)__; the addresses are read
     # from barrel/private/ at run time and reach only the query text sent to Dune, never the repo.
@@ -24,35 +24,67 @@ def main():
         allowance, used, src = float(u["credits_included"]), float(u["credits_used"]), "api"
     else:
         allowance, used, src = ALLOWANCE, consumed(), "ledger"
-    usable = (allowance - used) * (1 - RESERVE)
+    # Trial burn-down ground rule: a HARD reserve of 180 credits stays untouched, whichever is stricter.
+    usable = min((allowance - used) * (1 - RESERVE), allowance - used - 180.0)
     if a.expect > usable:
         print(f"REFUSED: expect {a.expect} > usable {usable:.1f} ({src}: allowance {allowance:.0f}, used {used:.2f}, reserve {RESERVE:.0%})"); sys.exit(2)
     print(f"meter[{src}]: used {used:.2f} / {allowance:.0f}, usable {usable:.1f}, this run expects {a.expect}")
     # HARD CAP (added 2026-09-23 after a runaway: expect 8, billed 840). A query is cancelled the
     # moment Dune's in-flight execution_cost_credits exceeds max(3 x expect, 5). --expect above 25
     # needs --confirm, which is only given after the same SQL has run at one-partition scope.
-    cap = max(3.0 * a.expect, 5.0)
+    # CAP RULE (RULINGS_2026-10-01, order 1). Incident: on 2026-09-30 `a3_seta_day.sql` ran with
+    # --expect 25, cap 3x = 75, and billed 85.1 for an empty result; the query finished without the
+    # in-flight counter ever being seen above the cap. So:
+    #   * a pattern NOT previously run at one-partition scope gets --expect as its HARD cap;
+    #   * only --proven (the same pattern already measured at one-partition scope) gets 3x;
+    #   * polling every 2 s; a wall-clock ceiling (--max-seconds) backs up the credit counter,
+    #     because Dune's in-flight execution_cost_credits can lag the true cost.
+    # Every in-flight sample is recorded, so how the counter behaves is evidence, not a guess.
+    cap = max(3.0 * a.expect, 5.0) if a.proven else a.expect
     if a.expect > 25 and not a.confirm:
         print(f"REFUSED: --expect {a.expect} > 25 without --confirm (run the pattern at one-partition scope first)"); sys.exit(2)
     key = rt.api_key(); e = rt.dune("POST", "/sql/execute", key, {"sql": sql, "performance": "medium"})
     eid = e.get("execution_id")
     if not eid: print("submission refused:", e); sys.exit(1)
-    t0 = time.time(); st = {}; killed = False
+    t0 = time.time(); st = {}; killed = None; samples = []
     while time.time() - t0 < 900:
         st = rt.dune("GET", f"/execution/{eid}/status", key)
         spent = float(st.get("execution_cost_credits") or 0)
-        if not st.get("is_execution_finished") and spent > cap:
+        el = time.time() - t0
+        if not samples or samples[-1][1] != spent:
+            samples.append((round(el, 1), spent))
+        if not st.get("is_execution_finished") and (spent > cap or el > a.max_seconds):
             rt.dune("POST", f"/execution/{eid}/cancel", key, {})
-            killed = True
-            print(f"WATCHDOG: cancelled {eid} at {spent:.1f} credits (cap {cap:.1f})")
+            killed = f"credits {spent:.1f} > cap {cap:.1f}" if spent > cap else f"elapsed {el:.0f}s > {a.max_seconds}s"
+            print(f"WATCHDOG: cancelled {eid}: {killed}")
             time.sleep(3); st = rt.dune("GET", f"/execution/{eid}/status", key); break
         if st.get("is_execution_finished"): break
-        time.sleep(3)
+        time.sleep(2)
     res = rt.dune("GET", f"/execution/{eid}/results", key) if st.get("is_execution_finished") else {}
     cost = float(st.get("execution_cost_credits") or 0)
-    rec = {"file": a.sql, "label": a.label, "execution_id": eid, "state": ("CANCELLED BY WATCHDOG" if killed else st.get("state", "NOT RUN (15 min)")), "credits": cost,
-           "submitted_at": st.get("submitted_at"), "rows": (res.get("result") or {}).get("rows"), "error": res.get("error")}
+    rows = (res.get("result") or {}).get("rows")
+    # A result larger than one page comes back with next_offset; fetch every page (export is billed per MB).
+    off = res.get("next_offset")
+    while rows is not None and off:
+        pg = rt.dune("GET", f"/execution/{eid}/results?limit=1000&offset={off}", key)
+        rows += (pg.get("result") or {}).get("rows") or []
+        off = pg.get("next_offset")
+    # Owner wallets never reach the repo: drop any fetched row naming one, and say so.
+    dropped = 0
+    if rows:
+        ow = set(owner_wallets.owner_wallets())
+        keep = [r for r in rows if not any(isinstance(v, str) and v in ow for v in r.values())]
+        dropped, rows = len(rows) - len(keep), keep
+    rec = {"file": a.sql, "label": a.label, "execution_id": eid, "state": (f"CANCELLED BY WATCHDOG ({killed})" if killed else st.get("state", "NOT RUN (15 min)")), "credits": cost,
+           "cap": cap, "proven": a.proven, "inflight_samples": samples, "rows_dropped_owner": dropped,
+           "submitted_at": st.get("submitted_at"), "rows": rows, "error": res.get("error")}
     name = pathlib.Path(a.sql).stem + "_" + dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S")
+    # --private-rows: the rows name wallets. They go to barrel/private/out (gitignored); the
+    # committed run file keeps the cost, the samples and the row count only.
+    if a.private_rows:
+        pdir = ROOT / "private" / "out"; pdir.mkdir(parents=True, exist_ok=True)
+        (pdir / f"rows_{name}.json").write_text(json.dumps(rows, default=str), encoding="utf-8")
+        rec["rows"] = None; rec["rows_private"] = True; rec["n_rows"] = len(rows or [])
     (OUT / f"run_{name}.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
     # append to ledger
     txt = LEDGER.read_text(encoding="utf-8"); n = txt.count("\n| ") ; total = used + cost
@@ -65,5 +97,8 @@ def main():
     txt += f"\n_API says used: {api_used:.3f} of {ALLOWANCE:.0f} (authoritative; ledger undercounts pre-ledger probes)_"
     LEDGER.write_text(txt, encoding="utf-8")
     print(f"state={rec['state']} credits={cost:.3f} error={rec['error']}")
-    for r in rec["rows"] or []: print("  ", r)
+    print(f"cap={cap:.1f} proven={a.proven} in-flight samples={samples[-6:]} rows={len(rows or [])} dropped_owner={dropped}")
+    if a.private_rows: print(f"rows written to barrel/private/out/rows_{name}.json")
+    if not a.quiet and not a.private_rows:
+        for r in rec["rows"] or []: print("  ", r)
 if __name__ == "__main__": main()
