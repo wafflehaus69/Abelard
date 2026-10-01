@@ -1,0 +1,583 @@
+BARREL M0 -- TRIAL RESULTS, DATA VALUE AND PURCHASE ROI -- REPORT FOR ARCHITECT REVIEW
+Prepared by: ClaudeCode (Builder).  Date: 2026-10-01.
+Repo: branch barrel-m0-recon (pushed at 4227a91), worktree Abelard-barrel, folder barrel/.
+Dune balance at time of writing: 2,052.5 of 2,500 trial credits used; 267.5 spendable
+above the 180 reserve; trial ends 2026-10-06. Cash spent on data to date: $0.
+
+Reading guide
+  Section 1   one-page summary
+  Section 2   where the 2,052.5 credits went, including what was wasted
+  Section 3   every datapoint produced, by area, with what can be extrapolated from it
+  Section 4   what is on disk now
+  Section 5   monetary value of the data collected (three bases)
+  Section 6   projected cost and ROI of the paid build (Analyst, with Plus beside it)
+  Section 7   limits: what is one sample, one era, or an assumption
+  Section 8   provenance
+
+Status of each number is marked where it matters:
+  [M]  measured on Dune and, where stated, reconciled against the chain
+  [D]  derived by arithmetic from measured numbers
+  [A]  assumption or estimate; not measured
+
+Nothing in this report is a hypothesis verdict. No H1-H4 cell has been evaluated. The
+price-path figures in 3.7 are descriptive statistics of ONE week inside the calibration
+slice, which is excluded from evaluation by ruling.
+
+
+==========================================================================================
+1. SUMMARY
+==========================================================================================
+
+- The trial bought four things: a source that passes the known-transaction test; a
+  validated universe of about 180,543 stratum-P tokens; a fill and fee model that
+  reproduces executed swaps exactly; and measured unit costs for every column group of
+  the per-token table. All four are complete enough to buy against.
+
+- Of 2,052.5 credits used, about 889 produced data and about 1,163 (57%) were lost to
+  five events: one runaway query (840), two watchdog cancellations (164), one query
+  that ran on an empty column (85), and two oversized result fetches (73). Each loss
+  produced a rule that is now enforced in the runner. Section 2 lists them.
+
+- The most decision-relevant datapoints, in the builder's judgement:
+    (a) Graduates are traded by bots within one second, and the price at a 15 to 240
+        minute lag sits far below the graduation price: median 55% / 12% / 7% of it at
+        15 / 60 / 240 minutes in June 2025, 32% / 15% / 10% on a post-BOOST day. [M]
+    (b) In the calibration week, a token bought at any of the three lags and held seven
+        days was above its entry price 5-7% of the time; the mean price ratio was 0.54,
+        0.73 and 0.84 before any cost. One week, one era, mid prices. [M]
+    (c) Trading cost per leg went from about 30 bps in June 2025 to 112-119 bps from
+        October 2025 on. Round trip about 0.6% then, about 2.3% now. [M]
+    (d) 89% of graduates lose 80% of their pool reserves within seven days, so reserve
+        drain cannot label a rug. The label is the aligned set's selling (RUG-A). [M]
+    (e) The aligned set is one wallet on the median token. It holds anything at entry on
+        34% of tokens, and on 22% of those it sells essentially all of it in a week. [M]
+    (f) Wallet counts are mostly exchanges and hubs. The largest group of early buyers
+        sharing a funder has a median of 142 wallets; restricted to funders that can
+        link, 3 to 9. [M]
+    (g) Seven of the ten pre-registered gate checks have no discriminating power on
+        pump.fun graduates: they pass by construction or flag almost everything. [M]
+
+- Value of the data collected (Section 5): replacement cost $29-38 in credits ($12-17 for
+  the productive part); it has already removed roughly 30,000 credits ($420-560) of
+  spend that the pre-measurement plan would have incurred; its decision value is
+  bounded by the $2,000 bankroll.
+
+- Paid build (Section 6): Analyst with the ruled cut is 6,300-10,900 credits, two to
+  three months, about $150-225 if the monthly price is near $75 [A]. One Plus month is
+  19,900-25,900 credits of ruled scope against 25,000, about $349-400 [A]. On a $2,000
+  bankroll the purchase is 7.5% to 20% of capital. It pays for itself if it prevents
+  one blind deployment cycle, or if it finds a gated net edge of 2-5% per seven-day
+  cycle that persists for a few cycles. The data in hand leans toward the first.
+
+
+==========================================================================================
+2. WHERE THE CREDITS WENT
+==========================================================================================
+
+2.1 By purpose (ledger rows, barrel/docs/credits.md) [M]
+
+  Purpose                                            Runs   Credits
+  -------------------------------------------------  ----   -------
+  Source admission (round-trip, table metadata)        19      28.3
+  Universe and strata P / P_alt / R / N                23      30.9
+  Census and organic takers                             5      62.5
+  Gate checks S1-S4 (authorities, extensions)          16      15.0
+  Holder ledger, S6 / c06                               5      34.9
+  Fee-share recipients S7b                              4      19.3
+  Aligned set S7 / S8 / RUG-A inputs                   15     398.1   (79.2 + 85.1 lost)
+  S9 / S10                                              1       2.8
+  Fill model, fees per era, bot-layer markup           10       6.3
+  A3 calibration (reserve decay, venue share)           3      87.5   (85.1 lost)
+  Event-column table and storage sizing                 3      90.2
+  Early-buyer groups (H2 inputs)                        5     159.0
+  Funder classification (labels, fan-out, factory)      5      50.8
+  -------------------------------------------------  ----   -------
+  Ledger rows                                         114     985.3
+  Runaway query, 2026-09-23 (not a ledger row)                 840.3
+  Burn-down item 3, materialized views (own log)               113.1
+  Result fetches and pre-ledger probes                         113.8
+  -------------------------------------------------         -------
+  Total, per Dune's usage API                                2,052.5
+
+2.2 Credits that produced nothing, and the rule each one bought [M]
+
+  Event                                                  Credits   Rule now enforced
+  -----------------------------------------------------  -------   -----------------------
+  slippage_sell_txids: IN(subquery) + OR on partition      840.3   literal partition bounds,
+                                                                   plain AND; in-flight cap
+  S8 bundle sample: time window only in the join             79.2   literal block_time bounds
+                                                                   on every SOL-transfer query
+  Venue share on dex_solana.trades, two days                 85.1   unified trades table is not
+                                                                   used ad hoc
+  Aligned-set v1: deployer column NULL in 2025               85.1   E35: null-count every input
+                                                                   column per era first
+  Fetching 77,000 and 114,000 row results                    73.3   cost runs do not fetch rows
+  -----------------------------------------------------  -------
+  Total                                                   1,163.0   (56.7% of all credits used)
+
+  Productive credits: about 889.
+
+2.3 What the losses imply for the paid month [D]
+  The same failure classes at paid scale would cost more, not less. The controls are in
+  place: expected cost is a hard cap for any unproven query, every new query runs at
+  one-day scope first, every input column is null-counted per era, and results are not
+  fetched when only the cost is wanted. One caution stands: Dune's in-flight cost
+  counter moves in steps of up to 56 credits, so cancellation cannot stop a fast
+  overrun. The one-day-first rule is the real protection.
+
+
+==========================================================================================
+3. DATAPOINTS PRODUCED, AND WHAT EACH SUPPORTS
+==========================================================================================
+
+3.1 Source fitness
+  Datapoints [M]
+    - Dune passes the known-transaction round-trip on four chain specimens: routed swap
+      0 outer / 6 inner instructions exactly as on chain; decoded lp, protocol and
+      creator fee equal an independent decode of the chain bytes, 4 of 4.
+    - BigQuery's public Solana set failed the same test (no inner instructions, empty
+      logs). Flipside is dead.
+    - Fee proportions hold across 26 million events on one day: LP exactly 25.0 bps,
+      protocol exactly 5.0 bps.
+    - 18% of PumpSwap pools on 2026-09-01 are not SOL-quoted and carry half the event
+      count (13.4M of 26.3M).
+    - Curated tables lag raw tables by up to a day.
+    - Dune's buy-event decoder pins an older layout: no virtual_quote_reserves.
+  Extrapolation
+    - The source question is closed for M0. For M1 (live), a one-day lag on curated
+      tables means Dune cannot be the live store.
+    - Any SOL-denominated figure must filter on quote mint, or it is wrong by orders of
+      magnitude. P_alt (non-SOL pools) is a population the same size as P by flow and is
+      outside M0.
+
+3.2 Universe
+  Datapoints [M]
+    - Stratum P over the window: 97,613 tokens to June 2026 by the complete-to-pool
+      rule, 82,930 from July to September 2026 by the migration event; about 180,543.
+    - The two admission sources agree to 0.04% on the overlap month and exactly
+      (1,154 of 1,154) on 2026-09-01. Complete-to-pool lag: p50 1 s, p90 2 s.
+    - Monthly P graduates run 2,500 to 11,400 before BOOST; June 2026 7,212, July 2026
+      21,666.
+    - Graduation rate: 0.72% of launches pre-BOOST week, 3.39% post-BOOST week (4.7x).
+    - Stratum R (pre-2025-03-20, Raydium): 339 of 339 matched on a sample day, one
+      signer. Stratum N: 197 admitted on a sample day across three venues; CLMM
+      coverage on Dune is stale.
+    - Migration calls outnumber migrations 2,693 to 1,209 on one day: bots race a
+      permissionless instruction.
+  Extrapolation
+    - About 46% of the P universe graduated in the last three months of the window.
+      Any pooled statistic is dominated by the post-BOOST era unless split by era,
+      which the schema does.
+    - 180,543 tokens are fewer independent observations than they look: see blocks, 3.9.
+
+3.3 Census and organic activity
+  Datapoints [M]
+    - Every graduate is traded within seven days: 100.0% in both eras. The original
+      census metric carries no information and was withdrawn.
+    - Organic takers, definition v1 (not creator, migrator or same-slot buyer), one
+      post-BOOST week of 7,236 tokens: p10 18, p50 420, p90 3,202. First organic swap
+      within 60 seconds on 7,221 of 7,236.
+    - Definition v2 (adds wallet age 24 h and not bot-shaped): p50 207; 127 tokens with
+      none; first within 60 seconds on 6,558 of 7,236 (91%).
+    - June 2025 week, v1: p50 1,402 takers, first organic swap at 0 seconds at the
+      median.
+  Extrapolation
+    - No manual entry lag precedes the organic layer. At G = 15 minutes the entry is
+      behind it on about 97% of tokens. "Be early" is not an available strategy at any
+      pre-registered lag; the question M0 can answer is whether being late and
+      selective pays.
+
+3.4 The safety gate, check by check
+  Datapoints [M]
+    - S1 mint authority, S2 freeze authority: 5 of 5 sample mints reconciled to chain;
+      differential test 7 of 7 on stratum N. On P: revoked in the creation transaction
+      on 236 of 236 (day) and 1,523 of 1,523 (week). PASS by construction.
+    - S3 extensions, S4 transfer fee: 10 of 10 reconciled. One live failure found, a
+      500 bps transfer tax on a stratum-N mint. On P, only the metadata pointer.
+    - S5 LP: burned by the migration itself on P. PASS by construction.
+    - S6 top-10 holders: ledger reconciled to chain supply to the lamport and to chain
+      balances exactly on a test mint. Top-10 share of supply at G = 240 min, week:
+      median 12.9%, 90th percentile 24.4%. One day: median 14.6%, 99th 48.9%.
+      Median holders at entry: 142.
+    - S7 linked supply: median 0%, 90th percentile 0.6%, 99th 26.7%, maximum 91%.
+    - S8 bundle at creation: 43 of 1,523 tokens (2.8%).
+    - S9b round-trip share of day-one volume: p50 0.89; 1,116 of 1,154 flagged. Vacuous
+      at the registered 30%. S9a flags 5% by construction.
+    - S10 sellable within 30 minutes: 1,151 of 1,154, and 1,573 of 1,573 in the June
+      week. Near-vacuous.
+  Extrapolation
+    - On stratum P the gate reduces to three checks with any spread: S6 concentration,
+      S7 linked supply, S8 bundles. S1-S5 pass by construction, S9 and S10 were demoted
+      to features. H1's recall will be decided by those three plus RUG-A's definition.
+    - At the pre-registered thresholds, on the calibration week [M]: S6 above 40% on 28
+      of 1,523 tokens (1.8%); S7 above 15% on 26 (1.7%); S8 on 43 (2.8%). A gate that
+      flags at most 6.4% of tokens can only matter if those are disproportionately the
+      ones that dump.
+    - The gate's untapped power is in strata R and N, where authorities and transfer
+      taxes are live.
+
+3.5 Fill model and fees
+  Datapoints [M]
+    - Constant-product fill with pre-swap reserves reproduces base_out on 10 of 10
+      executed buys and quote_out on 10 of 10 executed sells to 0.0000%, both eras.
+      Post-BOOST pools carry a 17.585 SOL virtual quote reserve; omitting it gives
+      errors of 0.3% to 23%.
+    - Trader cost per leg, median: 119 bps (2025-10-15), 115 bps (2026-04-15),
+      112 bps (2026-09-01). Creator fee median 82 / 60 / 31 bps. An unnamed leg grows:
+      residual p90 0 / 30 / 53 bps.
+    - June 2025 week: buy cost median 29.9 bps, sell 30.0 bps, creator fee 5 bps,
+      residual 0.
+    - Pool depth at G = 240 min, June week: median 23.4 SOL of quote reserve, 10th
+      percentile 19.5, 90th 105.9.
+  Extrapolation
+    - Cost per leg roughly quadrupled between June and October 2025. A result from the
+      early part of the window does not carry to the current fee regime without
+      re-pricing; the per-era cost columns exist for that.
+    - Round trip at current fees is about 2.3% before price impact. A $20 ticket
+      against 23 SOL of depth moves the price by roughly half a percent, so fees
+      dominate impact at this ticket size. [D]
+    - The fill model is exact, so simulated fills carry no model error; the remaining
+      error is in choosing the block and in the unnamed fee leg, which is stored.
+
+3.6 What happens to price and reserves after graduation
+  Datapoints [M]
+    - Price at lag G divided by graduation price (bot-layer markup):
+        post-BOOST day, 1,154 tokens:  G15 p50 0.32   G60 p50 0.15   G240 p50 0.10
+        June 2025 week, 1,573 tokens:  G15 p50 0.55   G60 p50 0.12   G240 p50 0.07
+      Upper tail: p90 2.7-3.0 at G15, 1.2-1.4 at G240.
+    - Price 24 hours after graduation over graduation price, June week: median 0.056.
+    - Quote reserves relative to graduation: post-BOOST day p50 0.17 at 1 h, 0.07 at
+      24 h, 0.05 at 7 d; 1,031 of 1,154 (89%) down 80% or more within 7 days. June
+      week p50 0.23 at 7 d.
+    - Depth-floor ratio for a $20 ticket: p50 0.93; 2 of 1,154 below the 20% floor.
+  Extrapolation
+    - The graduation price is a spike, not a level. The registered expectation that the
+      bot layer is the largest cost was wrong in sign at the median: the lagged entry
+      is cheaper than graduation on about two thirds to nine tenths of tokens.
+    - Reserve drain is the base rate of a graduate's first week and cannot define a
+      rug. This is why RUG-A is the sole outcome variable.
+
+3.7 Price paths after entry, calibration week (June 2025, 1,573 tokens)
+  Descriptive only. Calibration slice; mid price to mid price; no fills, no costs, no
+  gate. One week, pre-BOOST. This is not the H4 result.
+  Datapoints [M]
+                                   Entry at G15   Entry at G60   Entry at G240
+    Price at 7 d / entry, median       0.16           0.60           0.80
+    Price at 7 d / entry, mean         0.54           0.73           0.84
+    Share of tokens above entry        5.3%           5.6%           7.2%
+    Peak within 7 d / entry, median    1.36           1.23           1.18
+    Share reaching 2x at any time      29.8%          22.6%          20.7%
+    Peak within 24 h / entry, median   1.32           1.18           1.11
+    Max drawdown within 7 d, median    92%            74%            46%
+  Extrapolation
+    - Buying every graduate and holding seven days lost 16% to 46% of capital on average
+      in this week before costs. The later the entry, the smaller the loss, because
+      most of the fall has already happened.
+    - The whole distribution is the left tail plus a thin right tail (99th percentile
+      4.6x to 4.9x). For a gate to turn the mean positive it has to select from the 5-7%
+      that hold their price, not merely avoid the worst.
+    - One fifth to three tenths of tokens trade at twice the entry price at some point
+      in the week. That is a statement about paths, not a strategy: it is only
+      capturable with an exit rule defined in advance, and the 24-hour peak columns
+      exist so that a time-stop can be tested without look-ahead.
+    - If the full window looks like this week, the expected M0 verdict on naive
+      expectancy is NO at every lag, and the value of M0 is in knowing that and in
+      whether the gated subset differs.
+
+3.8 The aligned set and the RUG-A input
+  Datapoints [M]
+    - Set = creator + wallets the creator funded within 24 h + creation-slot bundle
+      wallets, restricted to wallets that ever held the token. Median size 1; 90th
+      percentile 3; 414 of 1,523 tokens have more than one member; one token has 1,391.
+    - The earlier definition (every recipient of creator SOL) gave a median of 28 and a
+      minimum of 5, all fee, tip and rent accounts. Struck by ruling.
+    - Set holds nothing at G = 240 min on 1,000 of 1,523 tokens (66%).
+    - Of the 523 that hold: 342 sold none in 7 days; 26 sold under half; 19 sold
+      50-99.9%; 114 sold 99.9% or more; 22 bought more.
+    - On a post-BOOST day a few tokens have sets of about 3,800 wallets; the median is
+      still 1.
+  Extrapolation
+    - On two thirds of tokens the insiders are already out before any registered
+      entry. RUG-A can only fire on the remaining third, and does fire, by any
+      plausible threshold, on roughly 7.5% of all tokens (114 of 1,523). [D]
+    - The sell-fraction distribution is bimodal (nothing or everything), so the choice
+      of threshold X will barely move the label. That is a favourable property for a
+      pre-registered outcome variable.
+    - Fee-share recipients (c07b) are outside the set by ruling, which can only lower
+      measured recall.
+
+3.9 Funders, actor collapse, blocks, factories
+  Datapoints [M]
+    - Fan-out on Solana SOL transfers, 12 days: 16 of 30 active labelled exchange
+      wallets paid 15 or fewer recipients; about 15,300 unlabelled senders paid more
+      than 1,000. Fan-out alone does not classify. Ruled: label first, 400 provisional.
+    - Member funders found inside the scanned window: 63% of members, 92% of creators
+      (1,401 of 1,523).
+    - Set states at 400: 1,024 solo, 236 independent, 55 collapsed, 208 unresolved
+      (14%); post-BOOST day 35% unresolved.
+    - Multi-wallet sets that resolve: 1,426 wallets become 737 actors at 400 (943 at 32,
+      668 at 8,192).
+    - Funding to first acquisition: median 886 s per member; 199 of 2,683 within 10 s.
+      Measured under the earlier definition (last inflow); the ruled one (first inflow)
+      is not re-measured.
+    - Blocks, creator-wallet fallback: 1,287 for 1,523 tokens (0.845); post-BOOST day
+      871 for 1,087 (0.801). Largest block 12 and 16 tokens. Threshold moves it by
+      under 3%.
+    - Factory test: among senders with 100 or more recipients that then traded, 130 had
+      under 10% of them on one token and 84 had 100% on one token; 20 in between. All
+      12 labelled exchanges in that group are in the first cluster.
+  Extrapolation
+    - Effective sample size is about 80-85% of the token count. The 180,543-token
+      universe is roughly 145,000 to 153,000 blocks if the ratio holds. [D] Power is
+      not the constraint for pooled cells; it may be for era-by-lag-by-gate cells.
+    - The factory class is real and separable where there is enough evidence. It will
+      matter most for the early-buyer groups, where hubs dominate.
+    - One set in seven (one in three post-BOOST) cannot be collapsed with a four-day
+      funding lookback. Lengthening the lookback costs credits one-for-one in days
+      scanned; the unresolved rate is the price of the current design.
+
+3.10 Early-buyer groups (H2 inputs)
+  Datapoints [M]
+    - Buyers in the first 30 minutes: median 966 per token, 90th percentile 2,260.
+    - Largest group sharing any funder: median 142. On 1,529 of 1,573 tokens that
+      funder has a fan-out above 8,192; on 64 it is a labelled exchange.
+    - Restricted to linking funders: median 3 at threshold 32, 5 at 400, 9 at 8,192.
+      Tokens with a linking group of 5 or more: 176 / 879 / 1,214.
+  Extrapolation
+    - The H2 input as originally specified measured exchange withdrawals. Its corrected
+      form depends strongly on a threshold not yet frozen: the count of tokens with a
+      "cluster" moves sevenfold across the sensitivity range. H2 cannot be read until
+      v1.2 fixes that on the calibration slice, which supports leaving cluster columns
+      out of an Analyst build.
+
+3.11 Unit costs and how they scale
+  Datapoints [M]
+    - 60 event columns, one week: 32.4 and 35.0 credits. One day: 27.4.
+    - Heavy queries, week of 1,573 tokens: aligned set + funding 76.7; early-buyer
+      groups 61.8; holder concentration 8.8; authorities 0.1. Total 147.4.
+    - Same four, one June day (241 tokens) 89.0; one post-BOOST day (1,154 tokens)
+      125.4.
+    - Per-swap rows: 4.27 million rows and 480 MB for one day; 7.94 billion in the
+      window.
+    - Stored size 368 bytes per token row. Full read 0.028 credits per 1,573 rows.
+      Export about 1 credit per MB at the trial rate. A refresh costs a full rebuild.
+    - Fee-share extraction 11.6 credits per day scanned. Organic-v2 43.6 per week.
+  Extrapolation [D]
+    - Cost follows days of large table scanned, not tokens: 6.5x the tokens cost 1.66x
+      (June day to week), 4.8x the tokens cost 1.41x (June day to post-BOOST day).
+    - Window in 20 monthly chunks: event columns about 1,000-1,500; the four heavy
+      queries about 7,500-10,000; fee-share about 7,000.
+    - Per-swap storage is impossible on any self-serve plan; H3 needs a different
+      design before it can be costed.
+
+3.12 Defects found in the source, each with its replacement
+  [M]
+    - creator is NULL on all 2025 create events (28,102 of 28,102 on one day); the
+      deployer is in "user". 211 of 36,202 differ in 2026.
+    - is_buy, sol_amount, token_amount, virtual_sol_reserves and ix_name are NULL on
+      every 2025 bonding-curve trade event. Direction and size come from the ledger.
+    - token_program is NULL on 2025 create events; taken from mint initialisation.
+    - The migration event has no rows before mid-May 2026.
+    - Transfer-fee and transfer-hook decoded tables carry no mint column.
+    - The fee program has no decoded tables; two discriminators are missing from the
+      pinned IDL.
+    - CLMM pool-creation table: 0 rows for three weeks of September 2026.
+  Extrapolation
+    - Three of seven were silent: the query ran and returned a plausible empty answer.
+      Decoded tables are built from the newest layout. Any column used for a join or a
+      filter must be counted in every era first. This is doctrine entry E35.
+
+
+==========================================================================================
+4. WHAT IS ON DISK
+==========================================================================================
+
+  In the repo (public chain data and aggregates only)
+    - One week of the per-token table: 1,573 rows x 91 columns, 59 filled
+      (recon/out/pt_features_w_2025-06-09_tierA.json).
+    - 114 ledgered run files with cost, in-flight samples and result rows.
+    - Holder concentration for 1,523 + 1,087 tokens; authority history for 1,573 +
+      1,154; aligned-set aggregates for one day; fan-out and factory histograms; 166
+      labelled exchange wallets; the 20-token reconciliation list; pinned IDLs.
+    - 60-odd parameterised queries and their generators; the metered runner; the
+      actor-collapse module with 14 tests; 12 validation documents; 12 ruling records.
+  Outside the repo (gitignored, names wallets)
+    - Aligned-set member records with funders: 4,411 rows (week), 76,999 (post-BOOST
+      day), 461 (June day). Early-buyer group records: 113,709 rows (week).
+  Not held
+    - Anything for the other 86 weeks of the window. No per-swap rows. No H3 data.
+
+
+==========================================================================================
+5. MONETARY VALUE OF THE DATA COLLECTED
+==========================================================================================
+
+Three bases, kept separate because they answer different questions.
+
+5.1 Replacement cost: what it would cost to buy these credits [D]
+    Price per credit    Plus, yearly-billed   $349 / 25,000   = $0.0140
+                        Analyst, yearly-billed $65 / 4,000    = $0.0163
+                        Analyst, monthly guess $75 / 4,000    = $0.0188   [A]
+
+                                   Credits    at $0.0140   at $0.0163   at $0.0188
+    All credits used                2,052.5      $28.65       $33.35       $38.48
+    Productive credits                889        $12.41       $14.45       $16.67
+    Lost credits                    1,163        $16.24       $18.90       $21.81
+
+    The trial itself is 14 days of Plus, list value about $163 [D]. It was free.
+    Replacement cost is the floor: the data could be regenerated for under $20 by
+    someone who already had the queries.
+
+5.2 What the queries and rules are worth: avoided spend in the paid month [D]
+    These are credits the pre-measurement plan would have spent and the current plan
+    does not.
+      - Aligned-set and funding queries rewritten to scan each table once: 85.1 to
+        14.65 credits on the same day. At the old ratio the same column group would be
+        about 25,000 credits over the window instead of 4,300.      saves ~20,700
+      - Fee-share recipients priced at 7,000 and cut from M0.        saves   7,000
+      - Export re-measured at 1 credit per MB instead of 1 per 1,000
+        datapoints: 375 instead of 4,500-9,000.                      saves 4,100-8,600
+      - Per-swap storage shown impossible before a plan was bought
+        for it.                                                      not priced
+      Total identifiable: about 31,800 to 36,300 credits, or $445 to $680 at the rates
+      above. Without the first item no plan under 25,000 credits would have held M0.
+    This is the most defensible dollar figure for the work: it is spend that will not
+    happen.
+
+5.3 Decision value: what the findings are worth to the bankroll [A]
+    Bankroll $2,000, ticket $20, so 100 positions is one full deployment.
+    Using the calibration week as the only evidence available (3.7), a blind deployment
+    of the whole bankroll for one seven-day cycle, before costs:
+        entries at G15:   mean ratio 0.54   expected loss about $920
+        entries at G60:   mean ratio 0.73   expected loss about $540
+        entries at G240:  mean ratio 0.84   expected loss about $320
+    Round-trip cost adds $12 (June 2025 fees) to $46 (current fees) per deployment.
+    If these figures hold outside one week, the data already in hand is worth roughly
+    one avoided cycle, $330 to $970, to anyone who would otherwise have deployed. It is
+    worth nothing in dollars to someone who would not have. It is one week; treat the
+    figure as an order of magnitude.
+    Hard ceiling: no finding can be worth more than the capital it protects plus the
+    edge it finds, and the capital is $2,000.
+
+5.4 Summary
+    Replacement cost            $29-38    ($12-17 productive)
+    Avoided paid-month spend    $445-680
+    Decision value, indicative  $330-970 per avoided blind cycle, capped by bankroll
+    Cash paid                   $0
+
+
+==========================================================================================
+6. PROJECTED COST AND ROI OF THE PAID BUILD
+==========================================================================================
+
+6.1 What is being bought
+    The per-token table for the full window: about 180,543 rows, of which the
+    calibration slice (to 2025-07-10) is excluded from evaluation. From it, locally and
+    at no further credit cost under export-first:
+      - H1: the gate's recall and false-positive rate against RUG-A, per era
+      - naive expectancy at G = 15 / 60 / 240, net of realised fees and the depth fill
+      - H4, the cost model per era, bot-layer markup and reserve decay as distributions
+      - Gate 0 census
+    With the Analyst cut: no H2 inputs, no fee-share recipients, no collapsed organic
+    counts.
+
+6.2 Cost
+                                   Analyst, 2-3 months, cut     Plus, 1 month, uncut
+    Credits needed, low                    6,300                      19,900
+    Credits needed, high                  10,900                      25,900
+    Credits available                 8,000 (2 mo) / 12,000 (3)       25,000
+    Price [A, unread]                 ~$75/mo: $150-225               $349-400
+    Dollars per token row             $0.0008-0.0012                  $0.0019-0.0022
+    Calendar time                     2-3 months                      1 month
+    Fits?                             2 months at low; 3rd needs      low yes; high is 900
+                                      a ruling                        over with item G
+    Prices are the working figures from the pricing screen and the Architect's ruling.
+    Neither monthly price has been read with yearly billing switched off.
+
+    Composition, Analyst path [D]: event columns 1,000-1,500; aligned set, funding,
+    concentration, authorities 4,300-5,400; organic-v2 900-1,800 [A]; small items
+    30-300; getting the table out 50-1,900 depending on Analyst's unread export rate.
+
+6.3 Return, stated as conditions rather than a forecast
+    Outlay D = $150-225 (Analyst) or $349-400 (Plus). 7.5% to 20% of the bankroll.
+
+    Outcome NO (no cell passes; the calibration week points this way)
+      Value = losses not taken. One blind full deployment is $330-970 on the 3.7
+      figures.
+        Analyst: return on outlay about 0.5x to 5.5x if it prevents one such cycle
+        Plus:    about -0.2x to 1.8x
+      If no deployment would have happened anyway, the financial return is -100% and
+      what was bought is a closed question and a method that M1 and later projects
+      reuse.
+
+    Outcome GO (a gated cell shows positive net expectancy)
+      Net edge e per seven-day cycle on $2,000 fully deployed earns $2,000 x e.
+        e = 2%:  $40 per cycle.  Payback 4-6 cycles (Analyst), 9-10 (Plus).
+        e = 5%:  $100 per cycle. Payback 2-3 cycles (Analyst), 4 (Plus).
+        e = 10%: $200 per cycle. Payback about 1 cycle (Analyst), 2 (Plus).
+      These assume the edge persists, the bankroll stays fully deployed, and M1 (the
+      live tooling) exists. M0 is advisory and builds none of that. The evidence so far
+      gives no reason to expect an edge of this size: a gated subset would have to
+      come from the 5-7% of tokens that hold their price.
+
+    Outcome INCONCLUSIVE (cells underpowered, or era results conflict)
+      Value near zero, cost in full. Risk is highest for cells split by era, lag and
+      gate; pooled cells have about 150,000 blocks.
+
+6.4 The builder's read
+    - As a trading investment on $2,000, the purchase is hard to justify on expected
+      profit: the outlay is a tenth of the bankroll and the data in hand leans NO.
+    - As loss insurance it clears its cost if it stops one blind cycle.
+    - As infrastructure it is cheap: under a quarter of a cent per token row, for a
+      table that the calibration week shows can be built correctly, and whose queries
+      and controls carry into M1.
+    - Analyst against Plus: Analyst is cheaper in cash and slower, and under the cut it
+      leaves H2 unanswered, which the crossover memo already treats as presumptively
+      dead. Plus buys the whole ruled scope in one month and removes the public-table
+      and export-rate questions, at about twice the cash. The ruling's condition
+      (month-to-month at about $400 or less) is the right test. If only the gate and
+      the naive expectancy are wanted, Analyst with the cut delivers both.
+    - The cheapest thing that would sharpen this section is free: 267 trial credits
+      remain until 2026-10-06, and the 3.7 statistics could be repeated on one
+      post-BOOST calibration-style week of event columns (about 35-50 credits) to see
+      whether the price-path picture holds in the current era. That week would have to
+      be chosen inside the calibration slice or declared burned for evaluation. Not
+      run; it needs a ruling.
+
+
+==========================================================================================
+7. LIMITS
+==========================================================================================
+
+  - One week (2025-06-09 to 06-15) carries most of the per-token findings. One
+    post-BOOST day (2026-09-01) carries the era comparison. Two points per scaling
+    fit.
+  - 3.7 is mid-price arithmetic on the calibration slice. No fills, fees, depth floor,
+    exit rule or gate were applied. It is not H4 and must not be cited as a verdict.
+  - Funding is searched four days back. 14-35% of sets are unresolved as a result.
+  - Latency figures use the pre-ruling definition.
+  - Organic-v2, fee-share and collapsed organic counts are priced from one readiness
+    run or from an assumption, not from the chunked build.
+  - Plan prices are unread at monthly billing. Analyst's export rate and overage policy
+    are unread.
+  - The window length of about 610 days and 20 monthly chunks is carried from the
+    readiness documents.
+  - Section 5.3 and 6.3 are arithmetic on a stated bankroll and one week of data. They
+    are not a forecast and not advice on whether to trade.
+
+
+==========================================================================================
+8. PROVENANCE
+==========================================================================================
+
+  Credits: Dune usage API at time of writing; barrel/docs/credits.md; recon/out/
+  burn_3a.json and burn_3b.json; the 2026-09-23 incident note.
+  Sections 3.1-3.6: A1_DUNE_FITNESS, VALIDATION_1_2 / 1_4 / 1_5_* / 1_6, M0_FEE_LEGS
+  Part 4, all under barrel/docs/.
+  Section 3.7 and the June-week figures in 3.3, 3.5, 3.6: computed for this report from
+  recon/out/pt_features_w_2025-06-09_tierA.json (no credits).
+  Sections 3.8-3.11: HEAVY_TIER_UNITS, CROSSOVER_MR11, FACTORY_CLASS,
+  MATERIALIZATION_UNITS.
+  Section 6 costs: PURCHASE_DECISION (third version), RULINGS_2026-10-01_B.
+  No trader wallet address is reproduced here. Owner wallets were excluded from every
+  query. No token name, symbol or metadata was read at any point.
