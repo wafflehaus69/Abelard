@@ -1,0 +1,126 @@
+{
+ "query_id": 8873238,
+ "mv_create_response": {
+  "name": "dune.wafflehouse.result_pt_features_w",
+  "execution_id": "01M3TE47TEXJF0BRSYPR8B28HE"
+ },
+ "create": {
+  "name": "dune.wafflehouse.result_pt_features_w",
+  "execution_id": "01M3TE47TEXJF0BRSYPR8B28HE",
+  "state": "QUERY_STATE_COMPLETED",
+  "credits": 32.364852942,
+  "cancelled_at": null,
+  "usage_before": 1328.756,
+  "usage_after": 1361.121,
+  "status": {
+   "execution_id": "01M3TE47TEXJF0BRSYPR8B28HE",
+   "query_id": 8873238,
+   "is_execution_finished": true,
+   "state": "QUERY_STATE_COMPLETED",
+   "submitted_at": "2026-10-01T00:34:14.990773Z",
+   "expires_at": "2026-12-30T00:35:06.555228Z",
+   "execution_started_at": "2026-10-01T00:34:16.483560495Z",
+   "execution_ended_at": "2026-10-01T00:35:06.555211881Z",
+   "result_metadata": {
+    "column_names": [
+     "rows"
+    ],
+    "column_types": [
+     "bigint"
+    ],
+    "row_count": 1,
+    "result_set_bytes": 8,
+    "total_row_count": 1,
+    "total_result_set_bytes": 8,
+    "datapoint_count": 1,
+    "pending_time_millis": 1492,
+    "execution_time_millis": 50071
+   },
+   "execution_cost_credits": 32.364852942
+  }
+ },
+ "measure": {
+  "view": {
+   "id": "",
+   "sql_id": "dune.wafflehouse.result_pt_features_w",
+   "query_id": 8873238,
+   "is_private": true,
+   "last_execution_ids": [
+    "01M3TE47TEXJF0BRSYPR8B28HE"
+   ],
+   "table_size_bytes": 578658,
+   "schedule": {
+    "cron_expression": "0 0 * * 0",
+    "performance": "medium",
+    "expires_at": "2026-10-03T12:00:00Z"
+   }
+  },
+  "usage_bytes": 578658,
+  "read": {
+   "execution_id": "01M3TE66FE2RPKB43W3RFRX0EZ",
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.028355265,
+   "rows": 1573,
+   "datapoints": 133705,
+   "result_bytes": 904049
+  },
+  "export": {
+   "rows_fetched": 100,
+   "columns": 85,
+   "datapoints_fetched": 8500,
+   "usage_before": 1361.121,
+   "usage_after": 1361.149,
+   "credits_delta": 0.028
+  },
+  "counts": {
+   "credits": 0.029564355,
+   "rows": [
+    {
+     "has_create": 1548,
+     "has_mdd24": 1573,
+     "has_px_g240": 1573,
+     "n": 1573
+    }
+   ]
+  },
+  "export_2": {
+   "rows_fetched": 600,
+   "datapoints_fetched": 51000,
+   "usage_before": 1361.179,
+   "usage_after": 1362.179,
+   "credits_delta": 1.0,
+   "waited_s": 90
+  },
+  "export_full": {
+   "rows_fetched": 1573,
+   "datapoints_fetched": 133705,
+   "json_bytes": 3246539,
+   "result_set_bytes": 904049,
+   "usage_before": 1362.179,
+   "usage_after": 1365.179,
+   "credits_delta": 3.0,
+   "file": "pt_features_w_2025-06-09_tierA.json"
+  }
+ },
+ "refresh": {
+  "execution_id": "01M3TEGV7HMWZGYYXS7AQMR8PY",
+  "state": "QUERY_STATE_COMPLETED",
+  "credits": 33.324852942,
+  "cancelled_at": null,
+  "usage_before": 1365.179,
+  "usage_after": 1398.504
+ },
+ "cleanup": {
+  "delete_view": {
+   "message": "ok"
+  },
+  "archive_query": {
+   "query_id": 8873238
+  },
+  "view_after": {
+   "_http_error": 404,
+   "_body": "{\"error\":\"matview not found\"}"
+  },
+  "usage_bytes_after": 0
+ }
+}

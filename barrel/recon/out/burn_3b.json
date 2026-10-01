@@ -1,0 +1,104 @@
+{
+ "validate": {
+  "state": "QUERY_STATE_COMPLETED",
+  "credits": 3.997794118,
+  "rows": [
+   {
+    "identity_ok": 4272532,
+    "mints": 10634,
+    "n": 4272532,
+    "wallets": 285353
+   }
+  ],
+  "error": null
+ },
+ "query_id": 8873272,
+ "mv_create_response": {
+  "name": "dune.wafflehouse.result_tr_day",
+  "execution_id": "01M3TEQ5STSW2N1JWA97BQQVN6"
+ },
+ "create": {
+  "name": "dune.wafflehouse.result_tr_day",
+  "execution_id": "01M3TEQ5STSW2N1JWA97BQQVN6",
+  "state": "QUERY_STATE_COMPLETED",
+  "credits": 7.50132353,
+  "cancelled_at": null,
+  "usage_before": 1402.501,
+  "usage_after": 1410.003
+ },
+ "measure": {
+  "view": {
+   "id": "",
+   "sql_id": "dune.wafflehouse.result_tr_day",
+   "query_id": 8873272,
+   "is_private": true,
+   "last_execution_ids": [
+    "01M3TEQ5STSW2N1JWA97BQQVN6"
+   ],
+   "table_size_bytes": 479795467,
+   "schedule": {
+    "cron_expression": "0 0 * * 0",
+    "performance": "medium",
+    "expires_at": "2026-10-03T12:00:00Z"
+   }
+  },
+  "usage_bytes": 479795467,
+  "read": {
+   "state": "QUERY_STATE_COMPLETED",
+   "credits": 0.411447369,
+   "rows": [
+    {
+     "ba": 3469529670091233000,
+     "bp": 0,
+     "buys": 2454972,
+     "cf": 1020649536597,
+     "dg": 0,
+     "era": "pre_boost",
+     "g": 2048006949488892,
+     "lp": 4089950729442,
+     "mints": 10634,
+     "n": 4272532,
+     "nq": 2041873859931834,
+     "ok": 4272532,
+     "pf": 1022489291019,
+     "pg": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+     "pools": 10689,
+     "qm": "So11111111111111111111111111111111111111112",
+     "rs": 0,
+     "s": 345979181,
+     "sigs": 3949670,
+     "st": "P",
+     "t": "2025-06-10 23:59:59.000 UTC",
+     "tc": 6133089557058,
+     "ti": 3462,
+     "wallets": 285353
+    }
+   ]
+  },
+  "export": {
+   "select_credits": 0.064571053,
+   "rows_fetched": 5000,
+   "columns": 23,
+   "datapoints_fetched": 115000,
+   "json_bytes": 3740811,
+   "usage_before": 1410.479,
+   "usage_after": 1414.479,
+   "credits_delta": 4.0,
+   "owner_wallet_in_sample": false,
+   "rows_saved_to_repo": 0
+  }
+ },
+ "cleanup": {
+  "delete_view": {
+   "message": "ok"
+  },
+  "archive_query": {
+   "query_id": 8873272
+  },
+  "view_after": {
+   "_http_error": 404,
+   "_body": "{\"error\":\"matview not found\"}"
+  },
+  "usage_bytes_after": 0
+ }
+}

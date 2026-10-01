@@ -1,0 +1,29 @@
+{
+ "file": "barrel/recon/sql/pt_features_a_day.sql",
+ "label": "3a tier A, one graduation day (validation)",
+ "execution_id": "01M3TE07T6HPNH7PD8S3GBCC2Z",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 27.355441177,
+ "submitted_at": "2026-10-01T00:32:03.911154Z",
+ "rows": [
+  {
+   "c10_true": 241,
+   "cb_p50_p50": 29.910315726302166,
+   "has_create": 240,
+   "has_mdd": 241,
+   "has_px_7d": 241,
+   "has_px_g240": 241,
+   "has_px_grad": 241,
+   "has_qres_g15": 241,
+   "has_token_program": 0,
+   "mdd_7d_g15_p50": 0.925613272622838,
+   "mk_g15_p50": 0.5930555703252456,
+   "mk_g240_p50": 0.07157347544822659,
+   "org1_p50": 1380,
+   "peak24_over_entry_p50": 1.2962809759556404,
+   "reserve_ratio_7d_p50": 0.23495127350452846,
+   "tokens": 241
+  }
+ ],
+ "error": null
+}
