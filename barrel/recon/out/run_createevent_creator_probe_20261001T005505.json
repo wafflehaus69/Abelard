@@ -1,0 +1,32 @@
+{
+ "file": "barrel/recon/sql/createevent_creator_probe.sql",
+ "label": "creator vs user on create events",
+ "execution_id": "01M3TFA6BXSC7XV4WZPDTX226G",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.060681819,
+ "submitted_at": "2026-10-01T00:54:58.686222Z",
+ "rows": [
+  {
+   "creator_equals_user": 0,
+   "d": "2025-06-09",
+   "has_creator": 0,
+   "has_user": 28102,
+   "n": 28102
+  },
+  {
+   "creator_equals_user": 0,
+   "d": "2025-10-15",
+   "has_creator": 0,
+   "has_user": 13836,
+   "n": 13836
+  },
+  {
+   "creator_equals_user": 35991,
+   "d": "2026-09-01",
+   "has_creator": 36202,
+   "has_user": 36202,
+   "n": 36202
+  }
+ ],
+ "error": null
+}

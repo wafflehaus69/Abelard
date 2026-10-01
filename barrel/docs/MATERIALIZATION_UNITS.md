@@ -80,3 +80,13 @@ Day: **2025-06-10. 4,272,532 swap rows, 10,634 tokens, 285,353 wallets.** Cost i
 * **Item 4 will not read the 3a view.** Order 2 said to delete the view on completion, and item 4 says to run against it; the builder followed the delete, because a view left standing carries a cron. Item 4 rebuilds the identical token set from the same admission logic (1,573 tokens, checked by count).
 * The week's rows are in the repo. They contain token mints and deployer addresses, which are public chain data, and no trader wallets.
 * The meter misread the balance for one run on 2026-09-30: Dune began returning a placeholder billing period for after the trial, and `dune_usage.py` took the last period in the list. It failed safe (refused to run). Fixed to select the period containing today.
+
+---
+
+## Defect found after the measurements (2026-09-30) — `creator` is empty in the exported week
+
+pump.fun's create events carry the deployer in `creator` only in the newer layout. Probe (`recon/sql/createevent_creator_probe.sql`, 1.1 credits): `creator` is NULL on **all** 28,102 creations of 2025-06-09 and all 13,836 of 2025-10-15, and populated on 2026-09-01; `user` is populated in every era. In 2026 the two differ on 211 of 36,202 creations.
+
+**Effect on item 3:** none on the cost, size or export figures, which measure scans and bytes. **Effect on the exported week** (`pt_features_w_2025-06-09_tierA.json`): the `creator` column is NULL on all 1,573 rows, and `c10` and `org1_*` were computed excluding only the migrator, not the deployer. Those three columns in that file are not to be used. The validation run counted creation *times*, which were present, and never counted creators; that is the check that should have caught it.
+
+**Fix:** both generators now take `COALESCE(creator, "user")`. Rule for the paid build: every column drawn from a decoded event is null-counted per era in the validation run, because decoded tables keep a column that older layouts never filled.

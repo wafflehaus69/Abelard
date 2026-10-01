@@ -81,7 +81,7 @@ u AS (
   FROM comp c JOIN pc p ON p.mint = c.mint AND p.rn = 1 AND p.pt >= c.ct AND p.pt < c.ct + INTERVAL '1' DAY
   WHERE p.quote_mint = '{WSOL}'),
 cr AS (
-  SELECT mint, arbitrary(creator) AS creator, min(evt_block_time) AS create_time, arbitrary(token_program) AS token_program
+  SELECT mint, arbitrary(COALESCE(creator, "user")) AS creator, min(evt_block_time) AS create_time, arbitrary(token_program) AS token_program
   FROM pumpdotfun_solana.pump_evt_createevent
   WHERE evt_block_date BETWEEN DATE '{cr_start}' AND DATE '{gd1}' AND mint IN (SELECT mint FROM u)
   GROUP BY 1),
