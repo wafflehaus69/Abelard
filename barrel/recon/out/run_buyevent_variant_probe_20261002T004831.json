@@ -1,0 +1,72 @@
+{
+ "file": "barrel/recon/sql/buyevent_variant_probe.sql",
+ "label": "buy-event variant mapping per era (defect probe)",
+ "execution_id": "01M3X1AVZ0VD2SPAQGT1EHQEM2",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.315441177,
+ "cap": 4.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   0.0025
+  ],
+  [
+   2.8,
+   0.152492879
+  ],
+  [
+   5.2,
+   0.390957775
+  ],
+  [
+   7.5,
+   0.629612095
+  ],
+  [
+   10.0,
+   1.315441177
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T00:48:24.032818Z",
+ "rows": [
+  {
+   "d": "2026-08-10",
+   "equal_": 688,
+   "gap_bps_p50": 29.91063421459174,
+   "ix_name": null,
+   "n": 141186,
+   "qin_gt_user": 62920,
+   "qin_lt_user": 77578
+  },
+  {
+   "d": "2026-04-15",
+   "equal_": 0,
+   "gap_bps_p50": 29.910269195342668,
+   "ix_name": null,
+   "n": 88246,
+   "qin_gt_user": 23450,
+   "qin_lt_user": 64796
+  },
+  {
+   "d": "2025-10-15",
+   "equal_": 0,
+   "gap_bps_p50": 29.910269203678457,
+   "ix_name": null,
+   "n": 71617,
+   "qin_gt_user": 0,
+   "qin_lt_user": 71617
+  },
+  {
+   "d": "2025-06-09",
+   "equal_": 0,
+   "gap_bps_p50": 24.937655882700668,
+   "ix_name": null,
+   "n": 118473,
+   "qin_gt_user": 0,
+   "qin_lt_user": 118473
+  }
+ ],
+ "error": null
+}

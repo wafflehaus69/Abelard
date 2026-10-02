@@ -1,0 +1,35 @@
+{
+ "file": "barrel/recon/sql/fees_per_era_v2.sql",
+ "label": "fee pricing per era v2: variant-free gross/net, by side",
+ "execution_id": "01M3X1BYSZWHGCB4F0N7C8CREX",
+ "state": "CANCELLED BY WATCHDOG (credits 4.6 > cap 4.0)",
+ "credits": 2.3066146,
+ "cap": 4.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.254066452
+  ],
+  [
+   2.9,
+   1.347411331
+  ],
+  [
+   5.3,
+   2.431049154
+  ],
+  [
+   7.6,
+   3.512837705
+  ],
+  [
+   10.0,
+   4.599438356
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T00:48:59.71155Z",
+ "rows": null,
+ "error": null
+}

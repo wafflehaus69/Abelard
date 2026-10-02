@@ -16,7 +16,8 @@ State convention: event reserves are PRE-swap (validated, 1.6). The state at a
 time T is the POST-swap state of the last event before T:
   buy : q_post = q + net_quote + lp_fee     b_post = b - base_out
   sell: q_post = q - quote_out + lp_fee     b_post = b + base_in
-Price = (q + virtual_quote_reserves) / b; virtual = 0 pre-BOOST (this slice).
+Price = (q + virtual_quote_reserves) / b; virtual = 0 on pools born before 2026-07-21,
+the BOOST-init constant after (era-aware since 2026-10-01).
 """
 import datetime as dt
 import json
@@ -26,6 +27,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = json.loads((ROOT / "recon" / "pt_features_schema.json").read_text(encoding="utf-8"))
 WSOL = "So11111111111111111111111111111111111111112"
 GS = (15, 60, 240)
+VQR = 17584505500   # lamports; BOOST-init virtual quote reserve, mid of the observed range
 
 
 def build(gd0: str, gd1: str) -> str:
@@ -88,8 +90,10 @@ cr AS (
 ev AS (
   SELECT pool, evt_block_time AS t, evt_block_slot AS slot, 'buy' AS side, user AS w,
          CAST(pool_quote_token_reserves AS double) AS q, CAST(pool_base_token_reserves AS double) AS b,
-         CASE WHEN ix_name = 'buy_exact_quote_in' THEN CAST(quote_amount_in AS double) ELSE CAST(user_quote_amount_in AS double) END AS gross,
-         CASE WHEN ix_name = 'buy_exact_quote_in' THEN CAST(user_quote_amount_in AS double) ELSE CAST(quote_amount_in AS double) END AS net,
+         -- ix_name is NULL on every decoded buy event (buyevent_variant_probe.sql): gross is the larger
+         -- of the two quote fields and net the smaller, whichever variant emitted the event
+         greatest(CAST(quote_amount_in AS double), CAST(user_quote_amount_in AS double)) AS gross,
+         least(CAST(quote_amount_in AS double), CAST(user_quote_amount_in AS double)) AS net,
          CAST(base_amount_out AS double) AS base_amt, CAST(lp_fee AS double) AS lp,
          CAST(protocol_fee AS double) AS prot, CAST(coin_creator_fee AS double) AS cre
   FROM pumpdotfun_solana.pump_amm_evt_buyevent
@@ -103,13 +107,16 @@ ev AS (
   WHERE evt_block_date BETWEEN DATE '{gd0}' AND DATE '{ev_end}' AND pool IN (SELECT pool FROM u)),
 e AS (
   SELECT u.mint, u.grad_time, u.grad_slot, u.migrator, cr.creator, ev.*,
+         -- virtual quote reserve: a BOOST-init constant on pools born from 2026-07-21, 0 before
+         -- (VALIDATION_1_6: 17,584,505,288 .. 17,584,506,258 lamports on every post-BOOST pool read)
+         CASE WHEN u.grad_time >= TIMESTAMP '2026-07-21 00:00:00' THEN {VQR}e0 ELSE 0e0 END AS v,
          CASE WHEN ev.side = 'buy' THEN ev.q + ev.net + ev.lp ELSE ev.q - ev.gross + ev.lp END AS q_post,
          CASE WHEN ev.side = 'buy' THEN ev.b - ev.base_amt ELSE ev.b + ev.base_amt END AS b_post
   FROM ev JOIN u ON u.pool = ev.pool
   LEFT JOIN cr ON cr.mint = u.mint
   WHERE ev.t >= u.grad_time AND ev.t < u.grad_time + INTERVAL '8' DAY),
 ep AS (
-  SELECT *, q / NULLIF(b, 0) AS px_pre, q_post / NULLIF(b_post, 0) AS px_post FROM e),
+  SELECT *, (q + v) / NULLIF(b, 0) AS px_pre, (q_post + v) / NULLIF(b_post, 0) AS px_post FROM e),
 snap AS (
   SELECT mint, grad_time,
     min_by(px_pre, t) AS px_grad, min_by(q, t) AS qres_grad,
@@ -158,7 +165,7 @@ f AS (
     'P' AS stratum, 'complete_to_pool_1d' AS adm_src, false AS birth_proxy,
     CAST(u.grad_time AS date) BETWEEN DATE '2025-08-05' AND DATE '2025-08-11' AS degraded,
     u.pool, u.quote_mint, cr.token_program, cr.create_time, u.grad_time, u.grad_slot, cr.creator,
-    CAST(0 AS double) AS vqr,
+    CASE WHEN u.grad_time >= TIMESTAMP '2026-07-21 00:00:00' THEN {VQR}e0 ELSE 0e0 END AS vqr,
     s.px_grad, s.qres_grad,
     s.px_g15, s.px_g60, s.px_g240, s.qres_g15, s.qres_g60, s.qres_g240, s.bres_g15, s.bres_g60, s.bres_g240,
     s.px_1h, s.px_4h, s.px_24h, s.px_7d, s.qres_1h, s.qres_4h, s.qres_24h, s.qres_7d,

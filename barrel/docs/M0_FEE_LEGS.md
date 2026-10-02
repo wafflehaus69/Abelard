@@ -330,3 +330,15 @@ Still true, and still binding:
 **Correction to Part 2's reading of the admin history.** Part 2 inferred that per-token creator fees became configurable only on 2026-09-09 and that "essentially none of the M0 window is priced like today". Realized fees say otherwise: **creator fees were near-universal at ~82 bps median in October 2025** — set through the fee program's market-cap tiers, not the 5 bps in `GlobalConfig`. The admin-event timeline dated *config* changes; it did not price swaps. This is exactly why MR-3.3 prices §5 from realized fees and uses config history for era dates only.
 
 **What §5 carries:** median cost per leg ~112–119 bps in every era (~2.3% round trip before slippage and markup); the unnamed leg grows through the eras (residual p90 0 → 30 → 53 bps; identity 100% → 85% → 80%) and stays in `residual`. Slice-scope distributions run in the paid month against the materialized table.
+
+# Part 5 — correction to Part 4: the buy variant cannot be read from `ix_name` (2026-10-01)
+
+`ix_name` is NULL on every decoded PumpSwap buy event in every era sampled (`recon/sql/buyevent_variant_probe.sql`). Part 4's query chose gross and net by `ix_name` and so took one branch on every row. Re-measured with gross = the larger quote field and net = the smaller (`recon/sql/fees_per_era_v2.sql`), by side:
+
+| era | sample day | buy cost p50 | sell cost p50 | creator p50 buy / sell | identity holds buy / sell | residual p90 buy / sell |
+|---|---|---|---|---|---|---|
+| 1 | 2025-10-15 | 118.4 | 120.0 | 83 / 79 | 100% / 100% | 0 / 0 |
+| 2 | 2026-04-15 | 114.7 | 115.4 | 74 / 54 | 87% / 85% | 29 / 30 |
+| 3 | 2026-09-01 | **99.1** | **119.5** | 21 / 34 | 83% / 75% | 39 / 73 |
+
+Part 4's pooled medians (119 / 115 / 112) stand to within a few bps, and its swap totals equal these, so it dropped no rows on those days. The post-BOOST buy leg is cheaper than the sell leg, and the unnamed leg is larger on sells. Detail and what else the defect touched: `PRICEPATH_BURNED_WEEK.md`.

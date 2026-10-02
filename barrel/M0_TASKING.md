@@ -190,6 +190,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-10 → [`docs/RULINGS_2026-10-01.md`](docs/RULINGS_2026-10-01.md) | Architect via Mando | 2026-10-01 | Runner cap is hard for unproven patterns; **two designs** (export-first / in-warehouse) chosen at checkout by Analyst's export rate; heavy tier measured on the trial; `c07b` **out of M0** with H1 limitation; monthly chunks; **no more than two paid months before a re-ruling** |
 | MR-11 → [`docs/RULINGS_2026-10-01_CROSSOVER.md`](docs/RULINGS_2026-10-01_CROSSOVER.md) | Architect via Mando | 2026-10-01 | CONSENSUS crossover: funder kind + actor collapse on every wallet-count column; `resolution.py` is the UNKNOWN chokepoint; **block definition for effective-n is binding**; schema 85 → 87 (`seta_lat_s`, `blk`) |
 | MR-12 → [`docs/RULINGS_2026-10-01_B.md`](docs/RULINGS_2026-10-01_B.md) | Architect via Mando | 2026-10-01 | Label-first funder classifier (400 provisional; factory class pre-registered); **block fallback = creator wallet**; raw + collapsed count columns (schema 91); column 86 defined; corrected aligned set stands; **purchase rule: one Plus month uncut if month-to-month at ≤ ~$400, else Analyst two months with the cut** |
+| MR-13 → [`docs/RUNBOOK_ARCHITECT_2026-10-01.md`](docs/RUNBOOK_ARCHITECT_2026-10-01.md) | Architect via Mando | 2026-10-01 | Paid-month launch runbook: standing rules, phases A–E with budgets and gates, contingencies C1–C7; **burned week 2026-08-10 → 08-16**; **H5 winners' study and actor registry v0 pre-registered**; chatter hypothesis pre-registered for a forward collector. Operational version: `docs/RUNBOOK_v1.md` |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
@@ -660,3 +661,18 @@ Full text: `docs/RULINGS_2026-10-01_B.md`. Effects on this document:
 * **Aligned set (c07, c08, `seta_*`, RUG-A):** the corrected definition (wallets that held the token) stands; the readiness figures are struck. A median set of one wallet is accepted: RUG-A is about what that wallet does.
 * **Purchase rule:** if Plus is available month-to-month at ≤ ~$400, buy one Plus month, uncut; the kill criterion becomes *table and heavy tier built by day 15 inside 15,000 credits*. If Plus is yearly-only, Analyst for two months with the cut (`c07b` and `cluster_*` out), and a third month needs its own ruling. **Nobody presses "Keep Plus".** Costed in `docs/PURCHASE_DECISION.md`.
 * **Post-BOOST day run authorized (≤ 250) and done:** 170.7 credits; the heavy queries cost 1.41× the June day (`docs/HEAVY_TIER_UNITS.md` §4).
+
+---
+
+### MR-13 — Paid-month launch runbook (Architect via Mando, 2026-10-01)
+
+Full text: `docs/RUNBOOK_ARCHITECT_2026-10-01.md`. Operational version, with the points that need the Architect's answer before purchase: `docs/RUNBOOK_v1.md`. Effects on this document:
+
+* **§3 window, excluded data.** Besides the calibration slice (to 2025-07-10), the **burned week, graduations 2026-08-10 → 2026-08-16**, is excluded from every hypothesis evaluation. Chosen by seed 20261001 and committed before it was queried.
+* **§6 hypotheses, new: H5 winners' study.** Winner = 24 h peak ≥ 3× entry at G240 **and** 7-day price ≥ entry. Exploratory comparison on the calibration slice only; a marker that separates there is tested on the holdout as a one-sided hypothesis. Candidate markers, closed list: creator track record (prior tokens' RUG-A rate), aligned-set state at entry, concentration, pool depth, bundle, organic-v2 takers in the first hour, factory funding. No other marker without re-registration.
+* **§9 deliverables, new: actor registry v0.** From the exported aligned-set and funding records: a persistent actor per collapsed funder, with tokens deployed, funded and bundled, cadence, hold time, dump timing and RUG-A rate. One hop only in M0.
+* **Pre-registered for a later forward collector (not M0):** tokens with measurable chatter before graduation have higher 7-day survival and a higher winner rate than matched tokens without. Compliance and terms-of-service check before any collector runs.
+* **Standing rule, sharpened:** verdicts and thresholds never enter Dune at all, saved or not. Reading proposed in `docs/RUNBOOK_v1.md` §1 point 5, awaiting confirmation.
+* **Contingency C1's sampled window,** by the same seed: pre-BOOST 2025-10-30 → 2026-01-27; post-BOOST the whole era less the burned week, because no 90-day block exists.
+* **Build plan:** 19 calendar chunks (not 20), 2025-03-20 → 2026-09-20; core build projected at 4,808 credits (`recon/chunks_manifest.json`).
+* **Out of scope for the paid month, as placed by the runbook:** multi-hop funding and H3 (M0b), live syndicate tracking (M1), chatter (M1/M2).

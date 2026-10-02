@@ -119,8 +119,12 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 112 | barrel/recon/sql/heavy_b2_auth_pbday.sql (MR-12 r1: heavy B2 authorities, post-BOOST day) | `01M3W900N9BC…` | 0.138 | 2005.73 |
 | 113 | barrel/recon/sql/factory_overlap_day.sql (MR-12 order 2: factory overlap, one day (new pattern, hard cap)) | `01M3W923TEJD…` | 5.127 | 2018.42 |
 | 114 | barrel/recon/sql/factory_overlap_week.sql (MR-12 order 2: factory overlap, calibration week (hard cap; 60 total with the day run)) | `01M3W930Q115…` | 34.033 | 2052.46 |
+| 115 | barrel/recon/sql/pricepath_burned_week.sql (MR-13 s1: price paths, burned post-BOOST week 2026-08-10 (hard cap 48)) | `01M3X17SFBJT…` | 44.050 | 2096.52 |
+| 116 | barrel/recon/sql/buyevent_variant_probe.sql (buy-event variant mapping per era (defect probe)) | `01M3X1AVZ0VD…` | 1.315 | 2097.84 |
+| 117 | barrel/recon/sql/fees_per_era_v2.sql (fee pricing per era v2: variant-free gross/net, by side) | `01M3X1BYSZWH…` | 2.307 | 2100.15 |
+| 118 | barrel/recon/sql/fees_per_era_v2.sql (fee pricing per era v2 (retry; in-flight counter overshot the billed cost on the first try)) | `01M3X1CP7BHC…` | 1.787 | 2099.63 |
 
-**Total consumed: 2052.46 credits. Remaining: 448. Usable after 15% reserve: 380.**
+**Total consumed: 2099.63 credits. Remaining: 400. Usable after 15% reserve: 340.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _INCIDENT 2026-09-23: `slippage_sell_txids.sql` (expect 8) billed **840.28 credits** — a `pool IN (subquery)` joined with an OR on the partition column defeated pruning and scanned the sell-event history. Cancel arrived after completion. Runner now cancels in flight above max(3×expect, 5) and refuses --expect > 25 without --confirm. Free tier after: 1,010.7 / 2,500 used._
@@ -130,4 +134,4 @@ _API says used (pre-incident line, superseded above): 1010.738 of 2500 (authorit
 _2026-09-30: `swap_rows_by_month.sql` billed 27.86 against an expectation of 10 (cap 30) — near-miss, recorded. Correction: the 2,500 credits are a one-time 14-day Plus trial ending 2026-10-06, not a recurring free tier; the account becomes view-only after._
 
 _2026-09-30, burn-down item 3: usage 1,301.4 → 1,414.5 (113.1 credits). Authoritative per-step figures are in `recon/out/burn_3a.json` and `burn_3b.json`; these runs did not go through `dune_run_sql.py`, so they have no rows in the table above._
-_API says used: 2052.475 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 2100.350 of 2500 (authoritative; ledger undercounts pre-ledger probes)_

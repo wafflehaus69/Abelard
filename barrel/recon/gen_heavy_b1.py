@@ -60,6 +60,14 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
     sum(x.d) FILTER (WHERE t.block_time <= b.grad_time + INTERVAL '60' MINUTE) AS b60,
     sum(x.d) FILTER (WHERE t.block_time <= b.grad_time + INTERVAL '240' MINUTE) AS b240,
     sum(x.d) FILTER (WHERE t.block_time > b.grad_time + INTERVAL '240' MINUTE AND t.block_time < b.grad_time + INTERVAL '8' DAY) AS net_after,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '0' DAY AND t.block_time < b.grad_time + INTERVAL '1' DAY) AS f0,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '1' DAY AND t.block_time < b.grad_time + INTERVAL '2' DAY) AS f1,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '2' DAY AND t.block_time < b.grad_time + INTERVAL '3' DAY) AS f2,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '3' DAY AND t.block_time < b.grad_time + INTERVAL '4' DAY) AS f3,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '4' DAY AND t.block_time < b.grad_time + INTERVAL '5' DAY) AS f4,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '5' DAY AND t.block_time < b.grad_time + INTERVAL '6' DAY) AS f5,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '6' DAY AND t.block_time < b.grad_time + INTERVAL '7' DAY) AS f6,
+    sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '7' DAY AND t.block_time < b.grad_time + INTERVAL '8' DAY) AS f7,
     min(t.block_time) FILTER (WHERE x.d > 0) AS first_in,
     bool_or(x.tag = 'to' AND t.from_owner IS NULL) AS got_mint
   FROM tokens_solana.transfers t
@@ -116,7 +124,8 @@ seta AS (
   GROUP BY 1, 2),
 mm0 AS (
   SELECT s.mint, s.w, s.is_creator, s.is_funded, s.is_bundle, s.cr_sol,
-         bs.grad_time, bs.t0, b.first_in, b.b15, b.b60, b.b240, b.net_after, b.got_mint,
+         bs.grad_time, bs.t0, bs.creator, b.first_in, b.b15, b.b60, b.b240, b.net_after, b.got_mint,
+         b.f0, b.f1, b.f2, b.f3, b.f4, b.f5, b.f6, b.f7,
          CASE WHEN s.is_creator THEN bs.t0 ELSE b.first_in END AS t_act,
          count(*) OVER (PARTITION BY s.mint) AS n_all,
          count_if(s.is_funded) OVER (PARTITION BY s.mint) AS n_funded_all,
@@ -149,6 +158,34 @@ FROM mm m
 LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
 LEFT JOIN fan f ON f.a = i.funder
 LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'"""
+
+
+def members_grouped(gd0: str, gd1: str) -> str:
+    """Build form of B1a: one row per (token, funder) instead of one per member, so a set of
+    thousands of wallets behind one funder is one row. Everything the local collapse, the block
+    and the registry need survives the grouping: members per funder, the funder's fan-out, summed
+    balances and flows, and whether the creator is in the group. Members with no funder found
+    are the group with funder NULL. NEW PATTERN: not yet run; one-day scope first."""
+    full = members(gd0, gd1)
+    fsum = ", ".join(f"sum(m.f{k}) AS f{k}" for k in range(8))
+    cut = full.index("SELECT m.mint, m.w, m.is_creator")
+    return (full[:cut].replace("-- Heavy tier B1a: aligned-set members with funding records",
+                               "-- Heavy tier B1a (build form): aligned-set members grouped by funder")
+            + f"""SELECT m.mint, i.funder, arbitrary(m.creator) AS creator,
+       count(*) AS n_members, count_if(m.is_creator) AS n_creator, count_if(m.is_funded) AS n_funded, count_if(m.is_bundle) AS n_bundle,
+       max(m.n_all) AS n_all, max(m.n_funded_all) AS n_funded_all, max(m.n_bundle_all) AS n_bundle_all,
+       max(f.fan_out) AS fan_out, max(i.n_senders) AS n_senders_max,
+       sum(m.b15) AS b15, sum(m.b60) AS b60, sum(m.b240) AS b240, sum(m.net_after) AS net_after,
+       {fsum},
+       approx_percentile(date_diff('second', i.funded_ts, m.first_in), 0.5) AS lat_p50,
+       count(i.funded_ts) FILTER (WHERE m.first_in IS NOT NULL) AS n_lat,
+       min(m.first_in) AS first_in_min, arbitrary(m.grad_time) AS grad_time, arbitrary(m.t0) AS t0,
+       arbitrary(sup.b15) AS supply15, arbitrary(sup.b60) AS supply60, arbitrary(sup.b240) AS supply240
+FROM mm m
+LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
+LEFT JOIN fan f ON f.a = i.funder
+LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'
+GROUP BY 1, 2""")
 
 
 def c06(gd0: str, gd1: str) -> str:

@@ -1,0 +1,679 @@
+[
+ {
+  "chunk": "2025-03",
+  "from": "2025-03-20",
+  "to": "2025-03-31",
+  "days": 12,
+  "era": "pre_boost",
+  "contains": [
+   "calibration slice (to 2025-07-10)"
+  ],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-03_events.sql",
+    "projected_credits": 37.4,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-03_b1a.sql",
+    "projected_credits": 95.1,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-03_b1b.sql",
+    "projected_credits": 11.0,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-03_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-03_b3.sql",
+    "projected_credits": 81.1,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-04",
+  "from": "2025-04-01",
+  "to": "2025-04-30",
+  "days": 30,
+  "era": "pre_boost",
+  "contains": [
+   "calibration slice (to 2025-07-10)"
+  ],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-04_events.sql",
+    "projected_credits": 52.4,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-04_b1a.sql",
+    "projected_credits": 177.9,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-04_b1b.sql",
+    "projected_credits": 19.3,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-04_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-04_b3.sql",
+    "projected_credits": 150.6,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-05",
+  "from": "2025-05-01",
+  "to": "2025-05-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [
+   "calibration slice (to 2025-07-10)"
+  ],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-05_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-05_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-05_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-05_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-05_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-06",
+  "from": "2025-06-01",
+  "to": "2025-06-30",
+  "days": 30,
+  "era": "pre_boost",
+  "contains": [
+   "calibration slice (to 2025-07-10)"
+  ],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-06_events.sql",
+    "projected_credits": 52.4,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-06_b1a.sql",
+    "projected_credits": 177.9,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-06_b1b.sql",
+    "projected_credits": 19.3,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-06_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-06_b3.sql",
+    "projected_credits": 150.6,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-07",
+  "from": "2025-07-01",
+  "to": "2025-07-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [
+   "calibration slice (to 2025-07-10)"
+  ],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-07_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-07_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-07_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-07_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-07_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-08",
+  "from": "2025-08-01",
+  "to": "2025-08-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-08_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-08_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-08_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-08_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-08_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-09",
+  "from": "2025-09-01",
+  "to": "2025-09-30",
+  "days": 30,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-09_events.sql",
+    "projected_credits": 52.4,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-09_b1a.sql",
+    "projected_credits": 177.9,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-09_b1b.sql",
+    "projected_credits": 19.3,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-09_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-09_b3.sql",
+    "projected_credits": 150.6,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-10",
+  "from": "2025-10-01",
+  "to": "2025-10-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-10_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-10_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-10_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-10_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-10_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-11",
+  "from": "2025-11-01",
+  "to": "2025-11-30",
+  "days": 30,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-11_events.sql",
+    "projected_credits": 52.4,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-11_b1a.sql",
+    "projected_credits": 177.9,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-11_b1b.sql",
+    "projected_credits": 19.3,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-11_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-11_b3.sql",
+    "projected_credits": 150.6,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2025-12",
+  "from": "2025-12-01",
+  "to": "2025-12-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2025-12_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2025-12_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2025-12_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2025-12_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2025-12_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-01",
+  "from": "2026-01-01",
+  "to": "2026-01-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-01_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-01_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-01_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-01_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-01_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-02",
+  "from": "2026-02-01",
+  "to": "2026-02-28",
+  "days": 28,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-02_events.sql",
+    "projected_credits": 50.7,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-02_b1a.sql",
+    "projected_credits": 168.7,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-02_b1b.sql",
+    "projected_credits": 18.4,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-02_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-02_b3.sql",
+    "projected_credits": 142.9,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-03",
+  "from": "2026-03-01",
+  "to": "2026-03-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-03_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-03_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-03_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-03_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-03_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-04",
+  "from": "2026-04-01",
+  "to": "2026-04-30",
+  "days": 30,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-04_events.sql",
+    "projected_credits": 52.4,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-04_b1a.sql",
+    "projected_credits": 177.9,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-04_b1b.sql",
+    "projected_credits": 19.3,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-04_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-04_b3.sql",
+    "projected_credits": 150.6,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-05",
+  "from": "2026-05-01",
+  "to": "2026-05-31",
+  "days": 31,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-05_events.sql",
+    "projected_credits": 53.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-05_b1a.sql",
+    "projected_credits": 182.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-05_b1b.sql",
+    "projected_credits": 19.8,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-05_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-05_b3.sql",
+    "projected_credits": 154.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-06",
+  "from": "2026-06-01",
+  "to": "2026-06-30",
+  "days": 30,
+  "era": "pre_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-06_events.sql",
+    "projected_credits": 52.4,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-06_b1a.sql",
+    "projected_credits": 177.9,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-06_b1b.sql",
+    "projected_credits": 19.3,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-06_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-06_b3.sql",
+    "projected_credits": 150.6,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-07",
+  "from": "2026-07-01",
+  "to": "2026-07-31",
+  "days": 31,
+  "era": "both",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-07_events.sql",
+    "projected_credits": 58.9,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-07_b1a.sql",
+    "projected_credits": 204.5,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-07_b1b.sql",
+    "projected_credits": 21.4,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-07_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-07_b3.sql",
+    "projected_credits": 182.4,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-08",
+  "from": "2026-08-01",
+  "to": "2026-08-31",
+  "days": 31,
+  "era": "post_boost",
+  "contains": [
+   "burned week 2026-08-10"
+  ],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-08_events.sql",
+    "projected_credits": 69.2,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-08_b1a.sql",
+    "projected_credits": 244.6,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-08_b1b.sql",
+    "projected_credits": 24.3,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-08_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-08_b3.sql",
+    "projected_credits": 233.2,
+    "review": "ok"
+   }
+  }
+ },
+ {
+  "chunk": "2026-09",
+  "from": "2026-09-01",
+  "to": "2026-09-20",
+  "days": 20,
+  "era": "post_boost",
+  "contains": [],
+  "queries": {
+   "events": {
+    "file": "recon/sql/chunks/2026-09_events.sql",
+    "projected_credits": 57.3,
+    "review": "ok"
+   },
+   "b1a": {
+    "file": "recon/sql/chunks/2026-09_b1a.sql",
+    "projected_credits": 176.7,
+    "review": "ok"
+   },
+   "b1b": {
+    "file": "recon/sql/chunks/2026-09_b1b.sql",
+    "projected_credits": 18.1,
+    "review": "ok"
+   },
+   "b2": {
+    "file": "recon/sql/chunks/2026-09_b2.sql",
+    "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "b3": {
+    "file": "recon/sql/chunks/2026-09_b3.sql",
+    "projected_credits": 169.1,
+    "review": "ok"
+   }
+  }
+ }
+]

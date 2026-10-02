@@ -114,6 +114,25 @@ def token_record(rows: list[dict[str, Any]], **kw) -> dict[str, Any]:
     return rec
 
 
+def token_record_grouped(groups: list[dict[str, Any]], **kw) -> dict[str, Any]:
+    """Same record as token_record, from the build form of the aligned-set query: one row per
+    (token, funder) with ``n_members``. A group with funder None is members whose funding was
+    not found, which makes the set unresolved. A linking funder's group is one actor; any other
+    group counts each member."""
+    n_wallets = sum(g["n_members"] for g in groups)
+    unknown = sum(g["n_members"] for g in groups if not g.get("funder"))
+    actors = None
+    if groups and not unknown:
+        actors = 0
+        for g in groups:
+            cls = classify_funder(g["funder"], g.get("fan_out"), **kw)
+            actors += 1 if cls in LINKING else g["n_members"]
+    rec = {"n_wallets": n_wallets, ACTORS_KEY: actors, "n_funding_unknown": unknown}
+    rec["collapse_state"] = resolution.collapse_state(rec, [None] * n_wallets)
+    rec["u_codes"] = [] if actors is not None else [U_SET_FUNDING]
+    return rec
+
+
 def fund_to_first_buy_s(rows: list[dict[str, Any]]) -> float | None:
     """Median seconds from a member's funding to its first acquisition of the token, over the
     members where both were measured. None when it was measured for nobody; never 0."""

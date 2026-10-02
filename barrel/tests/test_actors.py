@@ -72,6 +72,16 @@ def test_a_factory_links_where_a_hub_does_not():
     assert actors.block_id(row("cr", "BIG", 5000), "cr", factories={"BIG"}, **KW) == "F:BIG"
 
 
+def test_grouped_rows_give_the_same_record_as_member_rows():
+    members = [row("a", "F1", 3), row("b", "F1", 3), row("c", "BIG", 5000), row("d", "BIG", 5000), row("e", "EXCH", 2)]
+    groups = [{"funder": "F1", "fan_out": 3, "n_members": 2}, {"funder": "BIG", "fan_out": 5000, "n_members": 2},
+              {"funder": "EXCH", "fan_out": 2, "n_members": 1}]
+    a, b = actors.token_record(members, **KW), actors.token_record_grouped(groups, **KW)
+    assert (a["n_wallets"], a[actors.ACTORS_KEY], a["collapse_state"]) == (b["n_wallets"], b[actors.ACTORS_KEY], b["collapse_state"]) == (5, 4, "collapsed")
+    unk = actors.token_record_grouped(groups + [{"funder": None, "fan_out": None, "n_members": 3}], **KW)
+    assert actors.resolution.actor_count(unk) is None and unk["collapse_state"] == "unresolved" and unk["n_wallets"] == 8
+
+
 def test_parity_with_consensus_m10():
     root = pathlib.Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(root / "consensus"), str(root / "daemons" / "common")]

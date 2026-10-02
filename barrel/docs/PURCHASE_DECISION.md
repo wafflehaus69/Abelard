@@ -109,3 +109,10 @@ Getting the table out (F) depends on the plan and is in each path.
 * Organic-v2 in chunk form.
 * Columns that older events never filled: `creator`, `is_buy` with the trade amounts, `token_program`. Each has a replacement source; every chunk null-counts its inputs per era (E35).
 * M0b (H3) has no storage design on any self-serve plan.
+
+## 8. Amendment, 2026-10-01 — after the chunk list and the burned week
+
+* **The window is 19 calendar chunks, not 20.** With every chunk's query generated (`recon/chunks_manifest.json`), the Analyst core build (event columns, aligned set and funding, concentration, authorities) projects at **4,808 credits**, about 6,200 if every chunk costs the post-BOOST rate. Section 2's B1 and A lines were computed on 20 chunks and are about 5% high.
+* **On Analyst, getting the table out is the binding item,** not the build: 1,100 credits at 3 per MB, 3,700 at the documented rate, for the event table alone. In-warehouse analysis is the expected design on that plan (`RUNBOOK_v1.md` §1 point 3). On Plus it is about 375.
+* **The burned post-BOOST week agrees with the June 2025 week** (`PRICEPATH_BURNED_WEEK.md`): mean seven-day price ratio 0.50 / 0.66 / 0.78 at the three lags, 4–8% of tokens above entry. The decision-value reasoning in the trial report rests on two weeks in two eras now, not one.
+* **Fees re-measured** after a mapping defect: about 2.2–2.4% round trip since October 2025; post-BOOST buys 99 bps, sells 120.

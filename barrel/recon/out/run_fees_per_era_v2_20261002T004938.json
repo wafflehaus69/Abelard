@@ -1,0 +1,134 @@
+{
+ "file": "barrel/recon/sql/fees_per_era_v2.sql",
+ "label": "fee pricing per era v2 (retry; in-flight counter overshot the billed cost on the first try)",
+ "execution_id": "01M3X1CP7BHC8KZJT2EM6NF4T6",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.786710527,
+ "cap": 12.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   0.19268362
+  ],
+  [
+   2.8,
+   1.285036639
+  ],
+  [
+   5.2,
+   2.38413934
+  ],
+  [
+   7.7,
+   3.482038498
+  ],
+  [
+   10.2,
+   4.602585713
+  ],
+  [
+   12.6,
+   1.0375
+  ],
+  [
+   17.7,
+   1.786710527
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T00:49:23.691793Z",
+ "rows": [
+  {
+   "cost_bps_p10": 94.32389997894954,
+   "cost_bps_p50": 118.425647122845,
+   "cost_bps_p90": 123.4569822560473,
+   "cre_bps_p50": 83.34291469281477,
+   "cre_bps_p90": 93.87361078996963,
+   "era": "era1_pre_creator_overhaul",
+   "lp_bps_p50": 19.76327113243846,
+   "pct_identity_holds": "100.000000000000000",
+   "pct_with_creator_fee": "99.700000000000000",
+   "prot_bps_p50": 4.9464114036565165,
+   "residual_bps_p90": 0,
+   "side": "buy",
+   "swaps": 576067
+  },
+  {
+   "cost_bps_p10": 95.08805125441272,
+   "cost_bps_p50": 119.95387631593854,
+   "cost_bps_p90": 125.00038725892045,
+   "cre_bps_p50": 79.47000610320507,
+   "cre_bps_p90": 95.00006515249058,
+   "era": "era1_pre_creator_overhaul",
+   "lp_bps_p50": 20.000007523009526,
+   "pct_identity_holds": "100.000000000000000",
+   "pct_with_creator_fee": "99.700000000000000",
+   "prot_bps_p50": 5.000075811399386,
+   "residual_bps_p90": 0,
+   "side": "sell",
+   "swaps": 480805
+  },
+  {
+   "cost_bps_p10": 34.90228683182426,
+   "cost_bps_p50": 114.71934106348426,
+   "cost_bps_p90": 123.45688332799249,
+   "cre_bps_p50": 74.06432688472876,
+   "cre_bps_p90": 93.87362440669263,
+   "era": "era2_pre_boost",
+   "lp_bps_p50": 19.77120580288568,
+   "pct_identity_holds": "86.900000000000000",
+   "pct_with_creator_fee": "86.900000000000000",
+   "prot_bps_p50": 4.948201695360696,
+   "residual_bps_p90": 29.33588692273223,
+   "side": "buy",
+   "swaps": 1616910
+  },
+  {
+   "cost_bps_p10": 31.90415029581376,
+   "cost_bps_p50": 115.40623623581097,
+   "cost_bps_p90": 125.00018780117014,
+   "cre_bps_p50": 54.0772013572337,
+   "cre_bps_p90": 95.0000090784921,
+   "era": "era2_pre_boost",
+   "lp_bps_p50": 20.000005997562738,
+   "pct_identity_holds": "85.400000000000000",
+   "pct_with_creator_fee": "85.400000000000000",
+   "prot_bps_p50": 5.000046438447901,
+   "residual_bps_p90": 30.06982020222223,
+   "side": "sell",
+   "swaps": 1244322
+  },
+  {
+   "cost_bps_p10": 29.910419670023174,
+   "cost_bps_p50": 99.13627495294392,
+   "cost_bps_p90": 122.90357987796553,
+   "cre_bps_p50": 21.432117949196808,
+   "cre_bps_p90": 93.87353590363415,
+   "era": "era3_post_boost",
+   "lp_bps_p50": 19.800394804256044,
+   "pct_identity_holds": "82.900000000000000",
+   "pct_with_creator_fee": "82.100000000000000",
+   "prot_bps_p50": 4.967301003035912,
+   "residual_bps_p90": 39.112445790843296,
+   "side": "buy",
+   "swaps": 4189582
+  },
+  {
+   "cost_bps_p10": 44.53538147598075,
+   "cost_bps_p50": 119.5432551830965,
+   "cost_bps_p90": 125.00067929075979,
+   "cre_bps_p50": 33.5133124204849,
+   "cre_bps_p90": 95.00001456570043,
+   "era": "era3_post_boost",
+   "lp_bps_p50": 20.00000627454724,
+   "pct_identity_holds": "75.400000000000000",
+   "pct_with_creator_fee": "74.800000000000000",
+   "prot_bps_p50": 5.000109503059091,
+   "residual_bps_p90": 73.08173670705197,
+   "side": "sell",
+   "swaps": 2579196
+  }
+ ],
+ "error": null
+}
