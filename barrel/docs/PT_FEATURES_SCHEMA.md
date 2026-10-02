@@ -32,7 +32,7 @@ Dune table: `dune.<user>.result_pt_features` (view names must start with `result
 | 11 | `grad_time` | timestamp | `grad_time` | graduation (pool birth for N) |
 | 12 | `grad_slot` | bigint | `grad_slot` | graduation slot |
 | 13 | `creator` | varchar | `creator` | deployer wallet |
-| 14 | `vqr` | double | `virtual_quote_reserves` | per pool; 17.585 SOL post-BOOST, 0 before (1.6) |
+| 14 | `vqr` | double | `virtual_quote_reserves` | per pool, lamports, derived from the pool's own buy events (MR-14): 0 before BOOST and on mayhem-mode pools, about 17.58 SOL otherwise; NULL when the pool has no buy to derive it from |
 | 15 | `px_grad` | double | `price_grad` | first post-graduation event, pre-swap reserves |
 | 16 | `qres_grad` | double | `quote_res_grad` | quote reserve at graduation |
 | 17 | `px_g15` | double | `entry_price_g15` | effective quote reserve / base reserve, last event before grad + 15 min |

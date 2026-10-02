@@ -41,6 +41,9 @@ quote_out = (pool_quote_token_reserves + virtual_quote_reserves) * base_in / (po
 **Exit-fill rule for §5, as it will be coded:** `quote_out` from the inverted curve against the exit block's pre-swap reserves; net proceeds = `quote_out × (1 − r)` where `r` is the token's own observed (gross − net)/gross ratio on sells in its history, never a constant. Under MR-3.2 the exit is the worse of next-block price and this depth-implied fill.
 
 ## Bot-layer markup (MR-8 ruling 4) — dry run, one day (`bot_layer_markup_day.sql`, 1.2 credits)
+
+> **STRUCK 2026-10-01 (`VQR_CHECK.md`).** This table added the 17.58 SOL virtual reserve to every pool. About a third of post-BOOST pools (mayhem mode) have none. The figures are not reliable and are re-measured with the per-pool derived reserve once the halt is lifted. The fill-model validation above is unaffected.
+
 price at G ÷ graduation price, 1,154 P graduates of 2026-09-01 (post-BOOST; effective quote reserve includes the 17.585 SOL virtual constant on both sides):
 
 | G | p10 | p50 | p90 | tokens above 1.0 |

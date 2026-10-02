@@ -12,6 +12,8 @@ functions applied locally (recon/actors.py), so no threshold is in any query.
 B1a output rows name trader wallets. The runner writes them to barrel/private/ (--private-rows),
 never to the repo.
 
+Candidates are the creator, wallets the creator funded, and creation-slot traders with their
+same-funder count; whether that count makes a bundle is decided locally (MR-14 ruling 5).
 A member "matters" when it is the creator or it ever held the token. Recipients of creator SOL
 that never touch the token (fee accounts, tip accounts, rent for new accounts) are counted in
 n_all and otherwise dropped; the owner that received the initial mint (the bonding curve) is
@@ -115,41 +117,48 @@ hit AS (
 memb AS (
   SELECT mint, role, w, sol, count(*) OVER (PARTITION BY mint, role, funder) AS n_same_funder FROM hit),
 seta AS (
-  SELECT mint, w, bool_or(src = 'C') AS is_creator, bool_or(src = 'F') AS is_funded, bool_or(src = 'B') AS is_bundle,
+  -- bundle_n = how many creation-slot traders share this wallet's funder (itself included).
+  -- Whether that makes a bundle is decided locally (MR-14 ruling 5); every candidate is returned.
+  SELECT mint, w, bool_or(src = 'C') AS is_creator, bool_or(src = 'F') AS is_funded,
+         max(nsf) FILTER (WHERE src = 'B') AS bundle_n,
          sum(sol) FILTER (WHERE src = 'F') AS cr_sol
-  FROM (SELECT mint, creator AS w, 'C' AS src, CAST(NULL AS double) AS sol FROM base
+  FROM (SELECT mint, creator AS w, 'C' AS src, CAST(NULL AS double) AS sol, CAST(NULL AS bigint) AS nsf FROM base
         UNION ALL
-        SELECT mint, w, role, sol FROM memb WHERE role = 'F' OR n_same_funder >= 5)
+        SELECT mint, w, role, sol, n_same_funder FROM memb)
   WHERE w IS NOT NULL AND __NOT_OWNER(w)__
   GROUP BY 1, 2),
 mm0 AS (
-  SELECT s.mint, s.w, s.is_creator, s.is_funded, s.is_bundle, s.cr_sol,
+  SELECT s.mint, s.w, s.is_creator, s.is_funded, s.bundle_n, s.cr_sol,
          bs.grad_time, bs.t0, bs.creator, b.first_in, b.b15, b.b60, b.b240, b.net_after, b.got_mint,
          b.f0, b.f1, b.f2, b.f3, b.f4, b.f5, b.f6, b.f7,
          CASE WHEN s.is_creator THEN bs.t0 ELSE b.first_in END AS t_act,
          count(*) OVER (PARTITION BY s.mint) AS n_all,
          count_if(s.is_funded) OVER (PARTITION BY s.mint) AS n_funded_all,
-         count_if(s.is_bundle) OVER (PARTITION BY s.mint) AS n_bundle_all
+         max(s.bundle_n) OVER (PARTITION BY s.mint) AS bundle_n_max
   FROM seta s JOIN base bs ON bs.mint = s.mint
   LEFT JOIN bal b ON b.mint = s.mint AND b.w = s.w),
 mm AS (SELECT * FROM mm0 WHERE (is_creator OR first_in IS NOT NULL) AND NOT coalesce(got_mint, false)),
 inb0 AS (   -- one row per (member, sender): first and last transfer before the member's first action
-  SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_time) AS t_last,
-         max_by(CAST(s.amount AS double), s.block_time) / 1e9 AS last_sol
+  SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_slot) AS slot_last,
+         max_by(CAST(s.amount AS double), s.block_slot) / 1e9 AS last_sol
   FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
   WHERE {bounds}
     AND s.from_owner <> m.w AND s.block_time < m.t_act
   GROUP BY 1, 2, 3),
-inb AS (    -- funder = the last sender before the first action; funded_ts = that funder's FIRST transfer (MR-12.2)
-  SELECT mint, w, max_by(sender, t_last) AS funder, max_by(t_first, t_last) AS funded_ts,
-         max_by(last_sol, t_last) AS funded_sol, count(*) AS n_senders
-  FROM inb0 GROUP BY 1, 2),
+inb AS (    -- funder = the last sender before the first action; funded_ts = that funder's FIRST transfer (MR-12.2).
+            -- "Last" is by slot, then by address: block_time is whole seconds and two senders can share one
+            -- (found on 2025-06-09: two transfers in the same second, one slot apart, gave two different funders).
+  SELECT mint, w, sender AS funder, t_first AS funded_ts, last_sol AS funded_sol, n_senders
+  FROM (SELECT *, row_number() OVER (PARTITION BY mint, w ORDER BY slot_last DESC, sender DESC) AS rn,
+               count(*) OVER (PARTITION BY mint, w) AS n_senders
+        FROM inb0)
+  WHERE rn = 1),
 fan AS (
   SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
   FROM tokens_solana.sol_transfers s
   WHERE {bounds}
   GROUP BY 1)
-SELECT m.mint, m.w, m.is_creator, m.is_funded, m.is_bundle, m.cr_sol, m.n_all, m.n_funded_all, m.n_bundle_all,
+SELECT m.mint, m.w, m.is_creator, m.is_funded, m.bundle_n, m.cr_sol, m.n_all, m.n_funded_all, m.bundle_n_max,
        m.grad_time, m.t0, m.first_in, m.b15, m.b60, m.b240, m.net_after,
        i.funder, i.funded_ts, i.funded_sol, i.n_senders, f.fan_out, f.n_out,
        date_diff('second', i.funded_ts, m.first_in) AS fund_to_first_buy_s,
@@ -171,9 +180,13 @@ def members_grouped(gd0: str, gd1: str) -> str:
     cut = full.index("SELECT m.mint, m.w, m.is_creator")
     return (full[:cut].replace("-- Heavy tier B1a: aligned-set members with funding records",
                                "-- Heavy tier B1a (build form): aligned-set members grouped by funder")
-            + f"""SELECT m.mint, i.funder, arbitrary(m.creator) AS creator,
-       count(*) AS n_members, count_if(m.is_creator) AS n_creator, count_if(m.is_funded) AS n_funded, count_if(m.is_bundle) AS n_bundle,
-       max(m.n_all) AS n_all, max(m.n_funded_all) AS n_funded_all, max(m.n_bundle_all) AS n_bundle_all,
+            + f"""SELECT m.mint, i.funder,
+       -- b_only_n: NULL for the creator and wallets the creator funded (always in the set); for a
+       -- wallet that is a candidate only as a creation-slot trader, its same-funder count
+       CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS b_only_n,
+       arbitrary(m.creator) AS creator,
+       count(*) AS n_members, count_if(m.is_creator) AS n_creator, count_if(m.is_funded) AS n_funded,
+       max(m.n_all) AS n_all, max(m.n_funded_all) AS n_funded_all, max(m.bundle_n_max) AS bundle_n_max,
        max(f.fan_out) AS fan_out, max(i.n_senders) AS n_senders_max,
        sum(m.b15) AS b15, sum(m.b60) AS b60, sum(m.b240) AS b240, sum(m.net_after) AS net_after,
        {fsum},
@@ -185,7 +198,7 @@ FROM mm m
 LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
 LEFT JOIN fan f ON f.a = i.funder
 LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'
-GROUP BY 1, 2""")
+GROUP BY 1, 2, 3""")
 
 
 def c06(gd0: str, gd1: str) -> str:
@@ -218,4 +231,5 @@ if __name__ == "__main__":
                       "pbday": ("2026-09-01", "2026-09-01")}.items():
         (out / f"heavy_b1a_members_{tag}.sql").write_text(members(a, b), encoding="utf-8")
         (out / f"heavy_b1b_c06_{tag}.sql").write_text(c06(a, b), encoding="utf-8")
+        (out / f"heavy_b1a_grouped_{tag}.sql").write_text(members_grouped(a, b), encoding="utf-8")
     print("written: heavy_b1a_members_{day,week}.sql, heavy_b1b_c06_{day,week}.sql")

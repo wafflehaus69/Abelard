@@ -1,0 +1,60 @@
+{
+ "file": "barrel/recon/sql/createpool_columns_probe.sql",
+ "label": "createpool event columns (one row)",
+ "execution_id": "01M3X3ZHBGHBW7RKR8VRAKM2ZP",
+ "state": "CANCELLED BY WATCHDOG (credits 1.4 > cap 1.0)",
+ "credits": 1.338858852,
+ "cap": 1.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.226489555
+  ],
+  [
+   3.2,
+   1.436440442
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T01:34:38.448899Z",
+ "rows": [
+  {
+   "base_amount_in": "200000000000",
+   "base_mint": "So11111111111111111111111111111111111111112",
+   "base_mint_decimals": 9,
+   "coin_creator": "11111111111111111111111111111111",
+   "creator": "5GSUwYHbDbuM992jJrXHhDNXk7S1sVHjAXahPT5aoMLD",
+   "evt_block_date": "2026-09-01",
+   "evt_block_hash": "4sC89Kf6jMBxTsWN7pRU7nrHZmnrNyDWpBS2k9k9ZZug",
+   "evt_block_slot": 443282284,
+   "evt_block_time": "2026-09-01 00:00:59.000 UTC",
+   "evt_executing_account": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+   "evt_inner_executing_account": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+   "evt_inner_instruction_index": 12,
+   "evt_is_inner": true,
+   "evt_outer_executing_account": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+   "evt_outer_instruction_index": 6,
+   "evt_tx_id": "4Sm7SAE1g8ofj2ytMbrSSfq1oPmpjdGUHbksC8WbCwajn7mubvuhPGKT3pWRKMZyrHPfJLJu9NfkF5QJgVEpqeHg",
+   "evt_tx_index": 1412,
+   "evt_tx_signer": "5GSUwYHbDbuM992jJrXHhDNXk7S1sVHjAXahPT5aoMLD",
+   "index": 0,
+   "initial_liquidity": "6323764148037",
+   "is_mayhem_mode": false,
+   "lp_mint": "FL4TWYdAf11E7mEDCTQptUCRjwmwwHt1mqVNm1Lpc3vg",
+   "lp_token_amount_out": "6323764147937",
+   "minimum_liquidity": "100",
+   "pool": "J9a8kiFpx2B894ZmVjrD1kVT91C2NKDQ4WSbZAUFxzsf",
+   "pool_base_amount": "200000000000",
+   "pool_bump": 255,
+   "pool_quote_amount": "199949965000000",
+   "quote_amount_in": "199949965000000",
+   "quote_mint": "98uYESuwx6o2D4LC2tS3h7bb2F7bQjgta4VYaRwVSK6Y",
+   "quote_mint_decimals": 6,
+   "timestamp": 1788220859,
+   "user_base_token_account": "7nFgcmK73UfhduU2E6NYUqvLkm477R4EDfEgDMefWmMi",
+   "user_quote_token_account": "GdSaucLfpMirDjG3tgPyJe3dZe6VCkftd6sPDapFVxu5"
+  }
+ ],
+ "error": null
+}

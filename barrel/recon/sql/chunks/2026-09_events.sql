@@ -38,9 +38,13 @@ ev AS (
   WHERE evt_block_date BETWEEN DATE '2026-09-01' AND DATE '2026-09-29' AND pool IN (SELECT pool FROM u)),
 e AS (
   SELECT u.mint, u.grad_time, u.grad_slot, u.migrator, cr.creator, ev.*,
-         -- virtual quote reserve: a BOOST-init constant on pools born from 2026-07-21, 0 before
-         -- (VALIDATION_1_6: 17,584,505,288 .. 17,584,506,258 lamports on every post-BOOST pool read)
-         CASE WHEN u.grad_time >= TIMESTAMP '2026-07-21 00:00:00' THEN 17584505500e0 ELSE 0e0 END AS v,
+         -- Virtual quote reserve, DERIVED per pool from its own buys (MR-14 order 2). It is not one
+         -- constant: post-BOOST pools in mayhem mode carry 0, the rest about 17.58 SOL, fixed for the
+         -- pool's life, and Dune's mayhem flag is empty before late August 2026. The fill model gives
+         -- V = B * x / base_out - Q - x on every buy; taken at the pool's largest buy it matched the
+         -- pool account on 35 of 35 pools to within 77 lamports (vqr_implied_probe.sql).
+         max_by(CASE WHEN ev.side = 'buy' AND ev.base_amt > 0 THEN ev.b * ev.net / ev.base_amt - ev.q - ev.net END,
+                CASE WHEN ev.side = 'buy' AND ev.base_amt > 0 THEN ev.net END) OVER (PARTITION BY ev.pool) AS v,
          CASE WHEN ev.side = 'buy' THEN ev.q + ev.net + ev.lp ELSE ev.q - ev.gross + ev.lp END AS q_post,
          CASE WHEN ev.side = 'buy' THEN ev.b - ev.base_amt ELSE ev.b + ev.base_amt END AS b_post
   FROM ev JOIN u ON u.pool = ev.pool
@@ -50,7 +54,7 @@ ep AS (
   SELECT *, (q + v) / NULLIF(b, 0) AS px_pre, (q_post + v) / NULLIF(b_post, 0) AS px_post FROM e),
 snap AS (
   SELECT mint, grad_time,
-    min_by(px_pre, t) AS px_grad, min_by(q, t) AS qres_grad,
+    min_by(px_pre, t) AS px_grad, min_by(q, t) AS qres_grad, arbitrary(v) AS vqr,
     max_by(px_post, t) FILTER (WHERE t < grad_time + INTERVAL '15' MINUTE) AS px_g15,
     max_by(q_post,  t) FILTER (WHERE t < grad_time + INTERVAL '15' MINUTE) AS qres_g15,
     max_by(b_post,  t) FILTER (WHERE t < grad_time + INTERVAL '15' MINUTE) AS bres_g15,
@@ -117,7 +121,7 @@ f AS (
     'P' AS stratum, 'complete_to_pool_1d' AS adm_src, false AS birth_proxy,
     CAST(u.grad_time AS date) BETWEEN DATE '2025-08-05' AND DATE '2025-08-11' AS degraded,
     u.pool, u.quote_mint, cr.token_program, cr.create_time, u.grad_time, u.grad_slot, cr.creator,
-    CASE WHEN u.grad_time >= TIMESTAMP '2026-07-21 00:00:00' THEN 17584505500e0 ELSE 0e0 END AS vqr,
+    s.vqr,
     s.px_grad, s.qres_grad,
     s.px_g15, s.px_g60, s.px_g240, s.qres_g15, s.qres_g60, s.qres_g240, s.bres_g15, s.bres_g60, s.bres_g240,
     s.px_1h, s.px_4h, s.px_24h, s.px_7d, s.qres_1h, s.qres_4h, s.qres_24h, s.qres_7d,

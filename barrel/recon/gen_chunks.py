@@ -29,6 +29,7 @@ import gen_heavy_b1 as b1
 import gen_heavy_b2_b3 as b23
 import gen_pt_features_tier_a as ta
 import seeded_selections as ss
+import verdict_constants
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WINDOW_START = dt.date(2025, 3, 20)
@@ -80,6 +81,8 @@ def review(kind: str, sql: str, d0: dt.date, d1: dt.date) -> list[str]:
         problems.append("wallet-bearing query without the owner filter")
     if f"DATE '{d0.isoformat()}'" not in sql or f"DATE '{d1.isoformat()}'" not in sql:
         problems.append("chunk bounds not found in the query text")
+    if kind != "b3":   # b3 is unscheduled and keeps a group-size cut; the runner refuses it as it stands
+        problems += [f"verdict constant: line {no}: {text}" for _n, no, text in verdict_constants.hits(sql)]
     if re.search(r"\b(CREATE|INSERT|DELETE|UPDATE)\b", sql):
         problems.append("statement other than SELECT")
     if re.search(r"block_date[^\n]*\bOR\b|\bOR\b[^\n]*block_date", sql):

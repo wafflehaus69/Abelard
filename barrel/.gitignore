@@ -7,3 +7,7 @@ private/
 # Data-source credentials (Dune API key etc.). Created by Mando, never by the
 # builder; read from the environment, never printed or logged.
 .env
+
+# Exported build rows (MR-14 ruling 6): too large for git, and the aligned-set funder groups
+# name wallets. The manifest of checksums, row counts and null counts is what gets committed.
+data/

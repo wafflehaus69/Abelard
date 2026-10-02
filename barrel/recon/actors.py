@@ -51,6 +51,7 @@ KINDS = ("nonpersonal", "cex", "factory", "hub", "dedicated", "unknown")
 LINKING = ("dedicated", "factory")
 FANOUT_PROVISIONAL = 400                          # MR-12 ruling 4; v1.2 freezes it
 FANOUT_SENSITIVITY = (32, 8192)
+BUNDLE_MIN = 5                                    # S8: creation-slot traders sharing one funder; applied here, never in a query
 ACTORS_KEY = "actor_count_post_collapse"          # the key resolution.actor_count reads
 U_SET_FUNDING = "SETA_FUNDING_UNKNOWN"            # u_codes entry when a set cannot be collapsed
 
@@ -114,6 +115,19 @@ def token_record(rows: list[dict[str, Any]], **kw) -> dict[str, Any]:
     return rec
 
 
+def in_aligned_set(row: dict[str, Any], bundle_min: int = BUNDLE_MIN) -> bool:
+    """Set membership, decided locally from what the query returned. Member rows carry
+    is_creator / is_funded / bundle_n; group rows carry b_only_n (None for creator and
+    creator-funded members, the same-funder count for a wallet that is only a bundle candidate)."""
+    if "b_only_n" in row:
+        return row["b_only_n"] is None or row["b_only_n"] >= bundle_min
+    return bool(row.get("is_creator") or row.get("is_funded") or (row.get("bundle_n") or 0) >= bundle_min)
+
+
+def aligned(rows: list[dict[str, Any]], bundle_min: int = BUNDLE_MIN) -> list[dict[str, Any]]:
+    return [r for r in rows if in_aligned_set(r, bundle_min)]
+
+
 def token_record_grouped(groups: list[dict[str, Any]], **kw) -> dict[str, Any]:
     """Same record as token_record, from the build form of the aligned-set query: one row per
     (token, funder) with ``n_members``. A group with funder None is members whose funding was
@@ -123,10 +137,13 @@ def token_record_grouped(groups: list[dict[str, Any]], **kw) -> dict[str, Any]:
     unknown = sum(g["n_members"] for g in groups if not g.get("funder"))
     actors = None
     if groups and not unknown:
-        actors = 0
-        for g in groups:
-            cls = classify_funder(g["funder"], g.get("fan_out"), **kw)
-            actors += 1 if cls in LINKING else g["n_members"]
+        linking, standalone = set(), 0
+        for g in groups:      # one funder can appear in several groups; it is still one actor
+            if classify_funder(g["funder"], g.get("fan_out"), **kw) in LINKING:
+                linking.add(g["funder"])
+            else:
+                standalone += g["n_members"]
+        actors = len(linking) + standalone
     rec = {"n_wallets": n_wallets, ACTORS_KEY: actors, "n_funding_unknown": unknown}
     rec["collapse_state"] = resolution.collapse_state(rec, [None] * n_wallets)
     rec["u_codes"] = [] if actors is not None else [U_SET_FUNDING]

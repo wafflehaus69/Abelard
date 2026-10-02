@@ -1,0 +1,424 @@
+{
+ "file": "barrel/recon/sql/vqr_implied_probe.sql",
+ "label": "implied virtual reserve from buy events, 35 pools of known account value (hard cap 20)",
+ "execution_id": "01M3X42153EVPXXG3E8CDWHHYC",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 3.828382353,
+ "cap": 20.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.2427743
+  ],
+  [
+   3.2,
+   1.400593998
+  ],
+  [
+   5.9,
+   2.649955843
+  ],
+  [
+   8.3,
+   3.795192509
+  ],
+  [
+   10.9,
+   4.942321846
+  ],
+  [
+   13.3,
+   0.90376759
+  ],
+  [
+   15.8,
+   2.057247973
+  ],
+  [
+   18.5,
+   3.224139249
+  ],
+  [
+   21.0,
+   4.393686689
+  ],
+  [
+   23.8,
+   0.993026316
+  ],
+  [
+   39.1,
+   1.656540359
+  ],
+  [
+   41.9,
+   2.820428832
+  ],
+  [
+   44.6,
+   4.124669999
+  ],
+  [
+   47.1,
+   5.290500648
+  ],
+  [
+   49.7,
+   6.456441535
+  ],
+  [
+   52.3,
+   0.024583143
+  ],
+  [
+   54.9,
+   0.289773978
+  ],
+  [
+   57.5,
+   0.543176259
+  ],
+  [
+   59.9,
+   0.794274029
+  ],
+  [
+   62.3,
+   1.035817841
+  ],
+  [
+   65.0,
+   0.473558824
+  ],
+  [
+   75.6,
+   1.068382353
+  ],
+  [
+   85.8,
+   1.534264706
+  ],
+  [
+   95.5,
+   1.993088236
+  ],
+  [
+   105.5,
+   2.430735295
+  ],
+  [
+   115.7,
+   2.910735295
+  ],
+  [
+   126.2,
+   3.362500001
+  ],
+  [
+   139.0,
+   3.736617648
+  ],
+  [
+   149.7,
+   3.807205883
+  ],
+  [
+   160.3,
+   3.814264706
+  ],
+  [
+   170.8,
+   3.82132353
+  ],
+  [
+   194.4,
+   3.828382353
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T01:36:00.163546Z",
+ "rows": [
+  {
+   "n_buys": 27,
+   "pool": "128FEej5gjPhpUXXhvHTTDZM8kQUky3PU9FSAehnhxrf",
+   "v_at_largest_buy": 4.358945220708847,
+   "v_max": 14651.976822718978,
+   "v_median": 11.430710315704346,
+   "v_min": 2.149410929530859
+  },
+  {
+   "n_buys": 1350,
+   "pool": "12sNtzzY3mdxMc1DDzB7BJnkvZRb4fQU2pNsTDdQehUS",
+   "v_at_largest_buy": 17584505378.85956,
+   "v_max": 17593281223.890625,
+   "v_median": 17584505671.51799,
+   "v_min": 17584505370.000137
+  },
+  {
+   "n_buys": 2497,
+   "pool": "12D68sS8qUkcgt8h6P9urw3XePpmeykYLypzFJhKkNhX",
+   "v_at_largest_buy": 17584505289.012344,
+   "v_max": 17593719792.538177,
+   "v_median": 17584505418.62389,
+   "v_min": 17584505289.000595
+  },
+  {
+   "n_buys": 99,
+   "pool": "12kaapxghz9SKykaDgkcedZNEdBvvuV4m3mqWrBuTGdi",
+   "v_at_largest_buy": 5.364418029785156e-07,
+   "v_max": 3136.4122657105327,
+   "v_median": 12.825243906583637,
+   "v_min": 7.450580596923828e-09
+  },
+  {
+   "n_buys": 731,
+   "pool": "12tHZJ1Qa8Nr4kXcAA5zaG43j4xxtLW54HYQUd58zwD",
+   "v_at_largest_buy": 17584505306.21733,
+   "v_max": 17593423512.572296,
+   "v_median": 17584505391.45348,
+   "v_min": 17584505289.000046
+  },
+  {
+   "n_buys": 10599,
+   "pool": "143e89VSvmN5Ef9gRMqXQXGsamTZpgE4xQQraZUPTrM",
+   "v_at_largest_buy": 17584505288.000732,
+   "v_max": 17613256161.77771,
+   "v_median": 17584509279.27067,
+   "v_min": 17584505288.000484
+  },
+  {
+   "n_buys": 14,
+   "pool": "12c4VMix53aYTh2GyEsgUSHZyME6zovNzZY2FZVkZwuu",
+   "v_at_largest_buy": 2.359060063958168,
+   "v_max": 2958.450852446258,
+   "v_median": 9.459731858223677,
+   "v_min": 2.359060063958168
+  },
+  {
+   "n_buys": 60,
+   "pool": "13rErrxFVxnDVctqKGAuLKLPZSwK3A1gTy3wLHrrJRhF",
+   "v_at_largest_buy": 0.31164634227752686,
+   "v_max": 9839.890769720078,
+   "v_median": 4.247885207335154,
+   "v_min": 2.9802322387695312e-08
+  },
+  {
+   "n_buys": 345,
+   "pool": "1238RuSA3nidB7GZn16FQb896VFXCchZPWwSmC8vsPxV",
+   "v_at_largest_buy": 17584505440.68596,
+   "v_max": 17592781629.108414,
+   "v_median": 17584505706.046772,
+   "v_min": 17584505433.00162
+  },
+  {
+   "n_buys": 73,
+   "pool": "12MLbtqYYDvMSaTZzhpCggKAh6xjCfuabaytAdZRx6fC",
+   "v_at_largest_buy": 17584505309.57689,
+   "v_max": 17593595414.152267,
+   "v_median": 17584505425.355877,
+   "v_min": 17584505308.010727
+  },
+  {
+   "n_buys": 995,
+   "pool": "13BnR4LV5Z5enCZeoA3wguTG1afsLrtYfgVxiV4N1k5n",
+   "v_at_largest_buy": 17584505292.691895,
+   "v_max": 17593266986.629913,
+   "v_median": 17584505644.997215,
+   "v_min": 17584505290.00821
+  },
+  {
+   "n_buys": 2398,
+   "pool": "12ceqGmDVVf5UTqPNosw8c6GgXMMkkFg9XmoPx4Wo5bR",
+   "v_at_largest_buy": 17584505362.00508,
+   "v_max": 17593379741.84111,
+   "v_median": 17584505641.772224,
+   "v_min": 17584505362.000175
+  },
+  {
+   "n_buys": 17102,
+   "pool": "12ECe1qhWGFZfNcG9i1fUz3YBLTA3SaviC45WWNw6Bpe",
+   "v_at_largest_buy": 17584505311.864685,
+   "v_max": 17964130728.22223,
+   "v_median": 17584505840.04969,
+   "v_min": 17584505305.00029
+  },
+  {
+   "n_buys": 85,
+   "pool": "12iFDjXYEgQg6gqsU6aunHYhrzuhHfKpuBzzauWtEGCs",
+   "v_at_largest_buy": 17584505294.13452,
+   "v_max": 17653416415.18567,
+   "v_median": 17584505354.585155,
+   "v_min": 17584505294.00532
+  },
+  {
+   "n_buys": 2055,
+   "pool": "24uLFBZvLN8GFNeZz4sGQTQPHD5b4nEoDTvJD7b4R3GR",
+   "v_at_largest_buy": 5.8436126708984375,
+   "v_max": 8970651.164459229,
+   "v_median": 233.0069445795358,
+   "v_min": 3.0517578125e-05
+  },
+  {
+   "n_buys": 122,
+   "pool": "12VoFmpBdZPr2huCDsAoFi7jZBeAfA6MRbMf8XzPtteS",
+   "v_at_largest_buy": 5.066394805908203e-07,
+   "v_max": 2858.638935483992,
+   "v_median": 6.134053934669616,
+   "v_min": 7.450580596923828e-09
+  },
+  {
+   "n_buys": 18705,
+   "pool": "11EsYdciwN5F3dAGZfb8z3M14EiB8U9XAHSrXRqme48",
+   "v_at_largest_buy": 17584505288.040527,
+   "v_max": 17892547426.59912,
+   "v_median": 17586782731.71776,
+   "v_min": 17584505288.0297
+  },
+  {
+   "n_buys": 272,
+   "pool": "14QnuB6biQR6CKDDfdd7MepkbeFgpUdJv4FBcac4jF5N",
+   "v_at_largest_buy": 1.6391277313232422e-05,
+   "v_max": 7559.287129625678,
+   "v_median": 7.393487072998175,
+   "v_min": 4.470348358154297e-08
+  },
+  {
+   "n_buys": 15,
+   "pool": "12GfsxfM7MNxM4pTmH4yXo919UzfVYzsRYUCvU4a8QaZ",
+   "v_at_largest_buy": 6.840787507593632,
+   "v_max": 8088.783076480031,
+   "v_median": 6.199738100171089,
+   "v_min": 1.862645149230957e-09
+  },
+  {
+   "n_buys": 12017,
+   "pool": "14bSLAH7s4ru6ZDBS34F8tC6n8fxKGwzkQcX9Vq8ZwUz",
+   "v_at_largest_buy": 17584505288.04834,
+   "v_max": 17633303008.556335,
+   "v_median": 17588893351.559956,
+   "v_min": 17584505288.003693
+  },
+  {
+   "n_buys": 390,
+   "pool": "13FGS2GLTTmksKbyqJtsVxLWdpCbhQomSZU3sAVPAS8Z",
+   "v_at_largest_buy": 1.5947933197021484,
+   "v_max": 212974.9513373375,
+   "v_median": 40.17136971865382,
+   "v_min": 2.86102294921875e-06
+  },
+  {
+   "n_buys": 90,
+   "pool": "134nfzUwZMcEKt2EEaYysUzskpVQfdYWZZBVJGWtZr9s",
+   "v_at_largest_buy": 17584505365.002533,
+   "v_max": 17593231472.465195,
+   "v_median": 17584505502.25837,
+   "v_min": 17584505365.001465
+  },
+  {
+   "n_buys": 41,
+   "pool": "12FcEfxp3iTEXi8pQgS7cMZbVe8U3Szuk9dXLLXjbFro",
+   "v_at_largest_buy": 17584505381.87526,
+   "v_max": 17593362768.139374,
+   "v_median": 17584505484.769073,
+   "v_min": 17584505329.011078
+  },
+  {
+   "n_buys": 51,
+   "pool": "12V2fbcBmQUqeamaqAm7vLmArvCNpzU9r5vFZ3QcKXdB",
+   "v_at_largest_buy": 17584505391.842453,
+   "v_max": 17593225933.451996,
+   "v_median": 17584505508.76162,
+   "v_min": 17584505315.01367
+  },
+  {
+   "n_buys": 62,
+   "pool": "13JMpGciEgtbbgtqjJ7XMvmKxDVV4qcTUdtjUQ7oPvNA",
+   "v_at_largest_buy": 17584505322.65464,
+   "v_max": 17593324495.024094,
+   "v_median": 17584505400.449165,
+   "v_min": 17584505289.014862
+  },
+  {
+   "n_buys": 31,
+   "pool": "123bfLXyJvUD4X9PqJ651BySXYLo3YckvwwJ2iQxYkqN",
+   "v_at_largest_buy": 0.47832056879997253,
+   "v_max": 8692.962661996484,
+   "v_median": 10.929045729339123,
+   "v_min": 8.195638656616211e-08
+  },
+  {
+   "n_buys": 379667,
+   "pool": "128zGxBdPQ8ngAmguVuBqpwqkH2DSRo7C7vCpuqVjxRF",
+   "v_at_largest_buy": 17584505288.03369,
+   "v_max": 19802682668.871338,
+   "v_median": 17585872663.809807,
+   "v_min": 17584505288.00012
+  },
+  {
+   "n_buys": 166,
+   "pool": "12RGmtpZFRJfx9UR1sjW4MQVnFnri5Ae3yQ28HLft9kj",
+   "v_at_largest_buy": 0.1652257889509201,
+   "v_max": 4367.310469828546,
+   "v_median": 3.8480754592455924,
+   "v_min": 3.725290298461914e-09
+  },
+  {
+   "n_buys": 12013,
+   "pool": "13REcbvvnURGZCjrnL1Z6HV8i8126ooHjdxUJRgCgm2J",
+   "v_at_largest_buy": 17584505288.288147,
+   "v_max": 17865211728.102478,
+   "v_median": 17584506793.56396,
+   "v_min": 17584505288.003036
+  },
+  {
+   "n_buys": 71,
+   "pool": "12MKfj5EaqMVU18JgzCdR1WFeWG47ke7XP232C7jhd2j",
+   "v_at_largest_buy": 17584505298.456024,
+   "v_max": 17682284107.227966,
+   "v_median": 17584505506.03268,
+   "v_min": 17584505288.03763
+  },
+  {
+   "n_buys": 58,
+   "pool": "12KgmB7vaAY1Mu236fzEzFxLd1vi1HzZou2NuJnBiC4Z",
+   "v_at_largest_buy": 2.6226043701171875e-06,
+   "v_max": 74015.2780393362,
+   "v_median": 10.954658463597298,
+   "v_min": 2.9802322387695312e-08
+  },
+  {
+   "n_buys": 22645,
+   "pool": "12V2DxFKyMMwrtQzNyEcKou2XdRrpvqdhWfgqgd1y8Gw",
+   "v_at_largest_buy": 17584505288.043945,
+   "v_max": 4919273770287,
+   "v_median": 17584988251.935463,
+   "v_min": 17584505288.00102
+  },
+  {
+   "n_buys": 1317,
+   "pool": "12z3NtPUix7kSjGfmo7mbVi5cJuawRQbC6KHamB7nWES",
+   "v_at_largest_buy": 17584505288.182373,
+   "v_max": 17623734993.29492,
+   "v_median": 17584505822.418415,
+   "v_min": 17584505288.007088
+  },
+  {
+   "n_buys": 93,
+   "pool": "13JDt9tq1M2F6hLFrWLAnYUKvbrpXMmRZN9fAcymFZKS",
+   "v_at_largest_buy": 1.825648307800293,
+   "v_max": 185486.9249305725,
+   "v_median": 71.43612983822823,
+   "v_min": 1.9550323486328125e-05
+  },
+  {
+   "n_buys": 202,
+   "pool": "13KPsjh6zCTkt6iVA7e9kqLipsCQTGWdbi9QCYyepMb2",
+   "v_at_largest_buy": 7.867813110351562e-06,
+   "v_max": 28914.435014009476,
+   "v_median": 19.885748715134415,
+   "v_min": 4.76837158203125e-07
+  }
+ ],
+ "error": null
+}

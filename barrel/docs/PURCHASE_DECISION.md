@@ -114,5 +114,11 @@ Getting the table out (F) depends on the plan and is in each path.
 
 * **The window is 19 calendar chunks, not 20.** With every chunk's query generated (`recon/chunks_manifest.json`), the Analyst core build (event columns, aligned set and funding, concentration, authorities) projects at **4,808 credits**, about 6,200 if every chunk costs the post-BOOST rate. Section 2's B1 and A lines were computed on 20 chunks and are about 5% high.
 * **On Analyst, getting the table out is the binding item,** not the build: 1,100 credits at 3 per MB, 3,700 at the documented rate, for the event table alone. In-warehouse analysis is the expected design on that plan (`RUNBOOK_v1.md` §1 point 3). On Plus it is about 375.
-* **The burned post-BOOST week agrees with the June 2025 week** (`PRICEPATH_BURNED_WEEK.md`): mean seven-day price ratio 0.50 / 0.66 / 0.78 at the three lags, 4–8% of tokens above entry. The decision-value reasoning in the trial report rests on two weeks in two eras now, not one.
+* ~~The burned post-BOOST week agrees with the June 2025 week.~~ **Struck the same day** (`VQR_CHECK.md`): the post-BOOST prices assumed a virtual reserve that a third of pools do not have. The decision-value reasoning in the trial report rests on one pre-BOOST week until the burned week is re-counted.
 * **Fees re-measured** after a mapping defect: about 2.2–2.4% round trip since October 2025; post-BOOST buys 99 bps, sells 120.
+
+## 9. Amendment, 2026-10-01 — after MR-14
+
+* **Phase A is 400 / 500** and runs the whole 2026-08 chunk. On Analyst the table is analysed in the warehouse; only the aligned-set funder groups are exported, always.
+* **One blocker stands between this document and a purchase:** post-BOOST price columns are halted (`VQR_CHECK.md`). The fix is written and matched the chain on 35 of 35 pools; it needs the Architect's acceptance and one post-BOOST day at a hard cap (30–50 trial credits, requested). Nothing else in `RUNBOOK_v1.md` is open on the builder's side.
+* The plan paths, their costs and the checkout steps above are unchanged.

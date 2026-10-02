@@ -1,0 +1,403 @@
+{
+ "summary": {
+  "source": "run_vqr_pool_sample_20261002T012703.json",
+  "n_post": 31,
+  "n_post_read": 31,
+  "post_distinct_values": 13,
+  "post_min": 0,
+  "post_max": 17584505433,
+  "post_spread_lamports": 17584505433,
+  "post_spread_relative": 1.0,
+  "pre_values": [
+   0
+  ],
+  "pre_absent": 0
+ },
+ "pools": [
+  {
+   "pool": "24uLFBZvLN8GFNeZz4sGQTQPHD5b4nEoDTvJD7b4R3GR",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-07-06",
+   "era": "pre_boost",
+   "real_quote_now": 19267166110
+  },
+  {
+   "pool": "13rErrxFVxnDVctqKGAuLKLPZSwK3A1gTy3wLHrrJRhF",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-07-13",
+   "era": "pre_boost",
+   "real_quote_now": 12720402
+  },
+  {
+   "pool": "13FGS2GLTTmksKbyqJtsVxLWdpCbhQomSZU3sAVPAS8Z",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-07-19",
+   "era": "pre_boost",
+   "real_quote_now": 840109680
+  },
+  {
+   "pool": "14QnuB6biQR6CKDDfdd7MepkbeFgpUdJv4FBcac4jF5N",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-07-20",
+   "era": "pre_boost",
+   "real_quote_now": 21275238
+  },
+  {
+   "pool": "12MKfj5EaqMVU18JgzCdR1WFeWG47ke7XP232C7jhd2j",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-07-21",
+   "era": "post_boost",
+   "real_quote_now": 804660877
+  },
+  {
+   "pool": "12V2fbcBmQUqeamaqAm7vLmArvCNpzU9r5vFZ3QcKXdB",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505315,
+   "status": "ok",
+   "grad_day": "2026-07-23",
+   "era": "post_boost",
+   "real_quote_now": 9279176710
+  },
+  {
+   "pool": "12FcEfxp3iTEXi8pQgS7cMZbVe8U3Szuk9dXLLXjbFro",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505329,
+   "status": "ok",
+   "grad_day": "2026-07-25",
+   "era": "post_boost",
+   "real_quote_now": 7543806753
+  },
+  {
+   "pool": "12iFDjXYEgQg6gqsU6aunHYhrzuhHfKpuBzzauWtEGCs",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505294,
+   "status": "ok",
+   "grad_day": "2026-07-27",
+   "era": "post_boost",
+   "real_quote_now": 9578336124
+  },
+  {
+   "pool": "123bfLXyJvUD4X9PqJ651BySXYLo3YckvwwJ2iQxYkqN",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-07-29",
+   "era": "post_boost",
+   "real_quote_now": 8970557
+  },
+  {
+   "pool": "1238RuSA3nidB7GZn16FQb896VFXCchZPWwSmC8vsPxV",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505433,
+   "status": "ok",
+   "grad_day": "2026-07-31",
+   "era": "post_boost",
+   "real_quote_now": 8490997143
+  },
+  {
+   "pool": "12MLbtqYYDvMSaTZzhpCggKAh6xjCfuabaytAdZRx6fC",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505308,
+   "status": "ok",
+   "grad_day": "2026-08-02",
+   "era": "post_boost",
+   "real_quote_now": 1770586521
+  },
+  {
+   "pool": "13JDt9tq1M2F6hLFrWLAnYUKvbrpXMmRZN9fAcymFZKS",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-08-04",
+   "era": "post_boost",
+   "real_quote_now": 1690108455
+  },
+  {
+   "pool": "12V2DxFKyMMwrtQzNyEcKou2XdRrpvqdhWfgqgd1y8Gw",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-08-06",
+   "era": "post_boost",
+   "real_quote_now": 388934151
+  },
+  {
+   "pool": "11EsYdciwN5F3dAGZfb8z3M14EiB8U9XAHSrXRqme48",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-08-08",
+   "era": "post_boost",
+   "real_quote_now": 692847352
+  },
+  {
+   "pool": "13KPsjh6zCTkt6iVA7e9kqLipsCQTGWdbi9QCYyepMb2",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-08-10",
+   "era": "post_boost",
+   "real_quote_now": 141385700
+  },
+  {
+   "pool": "12sNtzzY3mdxMc1DDzB7BJnkvZRb4fQU2pNsTDdQehUS",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505370,
+   "status": "ok",
+   "grad_day": "2026-08-12",
+   "era": "post_boost",
+   "real_quote_now": 4884065797
+  },
+  {
+   "pool": "12ECe1qhWGFZfNcG9i1fUz3YBLTA3SaviC45WWNw6Bpe",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505305,
+   "status": "ok",
+   "grad_day": "2026-08-14",
+   "era": "post_boost",
+   "real_quote_now": 5955351270
+  },
+  {
+   "pool": "13REcbvvnURGZCjrnL1Z6HV8i8126ooHjdxUJRgCgm2J",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-08-16",
+   "era": "post_boost",
+   "real_quote_now": 3533930959
+  },
+  {
+   "pool": "14bSLAH7s4ru6ZDBS34F8tC6n8fxKGwzkQcX9Vq8ZwUz",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-08-18",
+   "era": "post_boost",
+   "real_quote_now": 541873495
+  },
+  {
+   "pool": "12c4VMix53aYTh2GyEsgUSHZyME6zovNzZY2FZVkZwuu",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-08-20",
+   "era": "post_boost",
+   "real_quote_now": 5264020
+  },
+  {
+   "pool": "12KgmB7vaAY1Mu236fzEzFxLd1vi1HzZou2NuJnBiC4Z",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-08-22",
+   "era": "post_boost",
+   "real_quote_now": 65104058
+  },
+  {
+   "pool": "13BnR4LV5Z5enCZeoA3wguTG1afsLrtYfgVxiV4N1k5n",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505290,
+   "status": "ok",
+   "grad_day": "2026-08-24",
+   "era": "post_boost",
+   "real_quote_now": 2305619315
+  },
+  {
+   "pool": "12GfsxfM7MNxM4pTmH4yXo919UzfVYzsRYUCvU4a8QaZ",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-08-26",
+   "era": "post_boost",
+   "real_quote_now": 11143920
+  },
+  {
+   "pool": "12z3NtPUix7kSjGfmo7mbVi5cJuawRQbC6KHamB7nWES",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-08-28",
+   "era": "post_boost",
+   "real_quote_now": 418153777
+  },
+  {
+   "pool": "12kaapxghz9SKykaDgkcedZNEdBvvuV4m3mqWrBuTGdi",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-08-30",
+   "era": "post_boost",
+   "real_quote_now": 3872176
+  },
+  {
+   "pool": "12RGmtpZFRJfx9UR1sjW4MQVnFnri5Ae3yQ28HLft9kj",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-09-01",
+   "era": "post_boost",
+   "real_quote_now": 3325454
+  },
+  {
+   "pool": "12VoFmpBdZPr2huCDsAoFi7jZBeAfA6MRbMf8XzPtteS",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-09-03",
+   "era": "post_boost",
+   "real_quote_now": 8376712
+  },
+  {
+   "pool": "13JMpGciEgtbbgtqjJ7XMvmKxDVV4qcTUdtjUQ7oPvNA",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505289,
+   "status": "ok",
+   "grad_day": "2026-09-05",
+   "era": "post_boost",
+   "real_quote_now": 2804742894
+  },
+  {
+   "pool": "128FEej5gjPhpUXXhvHTTDZM8kQUky3PU9FSAehnhxrf",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 0,
+   "status": "ok",
+   "grad_day": "2026-09-07",
+   "era": "post_boost",
+   "real_quote_now": 10617845
+  },
+  {
+   "pool": "12tHZJ1Qa8Nr4kXcAA5zaG43j4xxtLW54HYQUd58zwD",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505289,
+   "status": "ok",
+   "grad_day": "2026-09-09",
+   "era": "post_boost",
+   "real_quote_now": 1097979167
+  },
+  {
+   "pool": "128zGxBdPQ8ngAmguVuBqpwqkH2DSRo7C7vCpuqVjxRF",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-09-11",
+   "era": "post_boost",
+   "real_quote_now": 208017143
+  },
+  {
+   "pool": "12D68sS8qUkcgt8h6P9urw3XePpmeykYLypzFJhKkNhX",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505289,
+   "status": "ok",
+   "grad_day": "2026-09-13",
+   "era": "post_boost",
+   "real_quote_now": 2173355657
+  },
+  {
+   "pool": "134nfzUwZMcEKt2EEaYysUzskpVQfdYWZZBVJGWtZr9s",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505365,
+   "status": "ok",
+   "grad_day": "2026-09-15",
+   "era": "post_boost",
+   "real_quote_now": 54245812729
+  },
+  {
+   "pool": "12ceqGmDVVf5UTqPNosw8c6GgXMMkkFg9XmoPx4Wo5bR",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505362,
+   "status": "ok",
+   "grad_day": "2026-09-17",
+   "era": "post_boost",
+   "real_quote_now": 1387783731
+  },
+  {
+   "pool": "143e89VSvmN5Ef9gRMqXQXGsamTZpgE4xQQraZUPTrM",
+   "owner_is_pumpswap": true,
+   "len": 301,
+   "disc_ok": true,
+   "virtual_quote_reserves": 17584505288,
+   "status": "ok",
+   "grad_day": "2026-09-19",
+   "era": "post_boost",
+   "real_quote_now": 1743747023
+  }
+ ]
+}

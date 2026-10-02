@@ -82,6 +82,26 @@ def test_grouped_rows_give_the_same_record_as_member_rows():
     assert actors.resolution.actor_count(unk) is None and unk["collapse_state"] == "unresolved" and unk["n_wallets"] == 8
 
 
+def test_a_linking_funder_split_across_groups_is_one_actor():
+    # found on 2025-06-09: the same funder behind a creator-funded wallet and 16 bundle-only wallets
+    groups = [{"funder": "HUB", "fan_out": 11240, "n_members": 1, "b_only_n": None},
+              {"funder": "F1", "fan_out": 19, "n_members": 1, "b_only_n": None},
+              {"funder": "F1", "fan_out": 19, "n_members": 16, "b_only_n": 17}]
+    rec = actors.token_record_grouped(groups, **KW)
+    assert (rec["n_wallets"], actors.resolution.actor_count(rec)) == (18, 2)
+
+
+def test_bundle_cut_is_local_and_the_same_for_member_and_group_rows():
+    members = [{"w": "cr", "is_creator": True, "is_funded": False, "bundle_n": None},
+               {"w": "f1", "is_creator": False, "is_funded": True, "bundle_n": 2},
+               {"w": "b1", "is_creator": False, "is_funded": False, "bundle_n": 5},
+               {"w": "b2", "is_creator": False, "is_funded": False, "bundle_n": 4}]
+    assert [m["w"] for m in actors.aligned(members)] == ["cr", "f1", "b1"]
+    groups = [{"b_only_n": None, "n_members": 2}, {"b_only_n": 5, "n_members": 1}, {"b_only_n": 4, "n_members": 1}]
+    assert sum(g["n_members"] for g in actors.aligned(groups)) == 3
+    assert sum(g["n_members"] for g in actors.aligned(groups, bundle_min=4)) == 4
+
+
 def test_parity_with_consensus_m10():
     root = pathlib.Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(root / "consensus"), str(root / "daemons" / "common")]

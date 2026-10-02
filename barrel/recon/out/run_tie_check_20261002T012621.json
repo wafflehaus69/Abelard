@@ -1,0 +1,138 @@
+{
+ "file": "C:/Users/mdiba/AppData/Local/Temp/claude/C--Users-mdiba-Code-Abelard/d60baae7-ec4f-4124-a86f-20228bbefd0d/scratchpad/tie_check.sql",
+ "label": "tie check: one member's inbound SOL in the hour before first acquisition (query kept out of the repo)",
+ "execution_id": "01M3X3FP6MBM92Z4M0H52M791Q",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.724147059,
+ "cap": 4.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   0.0025
+  ],
+  [
+   10.2,
+   0.022008312
+  ],
+  [
+   12.6,
+   0.266134519
+  ],
+  [
+   15.0,
+   0.508714982
+  ],
+  [
+   17.6,
+   0.759219915
+  ],
+  [
+   20.0,
+   1.009972819
+  ],
+  [
+   22.5,
+   1.224991265
+  ],
+  [
+   24.9,
+   0.724147059
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T01:25:59.125704Z",
+ "rows": [
+  {
+   "block_slot": 345557893,
+   "sender": "other",
+   "sol": 0.008933937,
+   "t": "2025-06-09 01:35:36.000 UTC"
+  },
+  {
+   "block_slot": 345558057,
+   "sender": "other",
+   "sol": 0.005002647,
+   "t": "2025-06-09 01:36:41.000 UTC"
+  },
+  {
+   "block_slot": 345558058,
+   "sender": "other",
+   "sol": 0.001423881,
+   "t": "2025-06-09 01:36:41.000 UTC"
+  },
+  {
+   "block_slot": 345558941,
+   "sender": "other",
+   "sol": 0.026706644,
+   "t": "2025-06-09 01:42:28.000 UTC"
+  },
+  {
+   "block_slot": 345558942,
+   "sender": "other",
+   "sol": 0.001423881,
+   "t": "2025-06-09 01:42:29.000 UTC"
+  },
+  {
+   "block_slot": 345559312,
+   "sender": "other",
+   "sol": 0.007618605,
+   "t": "2025-06-09 01:44:54.000 UTC"
+  },
+  {
+   "block_slot": 345561332,
+   "sender": "other",
+   "sol": 0.00142388,
+   "t": "2025-06-09 01:58:11.000 UTC"
+  },
+  {
+   "block_slot": 345561333,
+   "sender": "other",
+   "sol": 0.001423881,
+   "t": "2025-06-09 01:58:11.000 UTC"
+  },
+  {
+   "block_slot": 345561332,
+   "sender": "other",
+   "sol": 0.031988994,
+   "t": "2025-06-09 01:58:11.000 UTC"
+  },
+  {
+   "block_slot": 345561536,
+   "sender": "other",
+   "sol": 0.00142388,
+   "t": "2025-06-09 01:59:31.000 UTC"
+  },
+  {
+   "block_slot": 345561535,
+   "sender": "other",
+   "sol": 0.005486239,
+   "t": "2025-06-09 01:59:31.000 UTC"
+  },
+  {
+   "block_slot": 345562025,
+   "sender": "other",
+   "sol": 0.01024504,
+   "t": "2025-06-09 02:02:45.000 UTC"
+  },
+  {
+   "block_slot": 345562452,
+   "sender": "other",
+   "sol": 0.019512624,
+   "t": "2025-06-09 02:05:35.000 UTC"
+  },
+  {
+   "block_slot": 345562456,
+   "sender": "member-form funder",
+   "sol": 0.00142388,
+   "t": "2025-06-09 02:05:36.000 UTC"
+  },
+  {
+   "block_slot": 345562455,
+   "sender": "grouped-form funder",
+   "sol": 0.001423881,
+   "t": "2025-06-09 02:05:36.000 UTC"
+  }
+ ],
+ "error": null
+}

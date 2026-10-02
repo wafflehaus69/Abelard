@@ -191,6 +191,7 @@ Define weekly regime from three series: (a) pump.fun launches/week, (b) graduati
 | MR-11 → [`docs/RULINGS_2026-10-01_CROSSOVER.md`](docs/RULINGS_2026-10-01_CROSSOVER.md) | Architect via Mando | 2026-10-01 | CONSENSUS crossover: funder kind + actor collapse on every wallet-count column; `resolution.py` is the UNKNOWN chokepoint; **block definition for effective-n is binding**; schema 85 → 87 (`seta_lat_s`, `blk`) |
 | MR-12 → [`docs/RULINGS_2026-10-01_B.md`](docs/RULINGS_2026-10-01_B.md) | Architect via Mando | 2026-10-01 | Label-first funder classifier (400 provisional; factory class pre-registered); **block fallback = creator wallet**; raw + collapsed count columns (schema 91); column 86 defined; corrected aligned set stands; **purchase rule: one Plus month uncut if month-to-month at ≤ ~$400, else Analyst two months with the cut** |
 | MR-13 → [`docs/RUNBOOK_ARCHITECT_2026-10-01.md`](docs/RUNBOOK_ARCHITECT_2026-10-01.md) | Architect via Mando | 2026-10-01 | Paid-month launch runbook: standing rules, phases A–E with budgets and gates, contingencies C1–C7; **burned week 2026-08-10 → 08-16**; **H5 winners' study and actor registry v0 pre-registered**; chatter hypothesis pre-registered for a forward collector. Operational version: `docs/RUNBOOK_v1.md` |
+| MR-14 → [`docs/RULINGS_2026-10-01_C.md`](docs/RULINGS_2026-10-01_C.md) | Architect via Mando | 2026-10-01 | Rulings on RUNBOOK_v1: 19 chunks and window end **2026-09-20 signed**; phase A 400 / 500; in-warehouse expected on Analyst, **`b1a` output always exported, never materialized**; **threshold rule confirmed, enforced by a grep in the runner**; **depth floor rewritten against withdrawable reserve**; virtual-reserve check → **HALT** (`docs/VQR_CHECK.md`) |
 | Execution record, MR-5 orders 2–3 → [`docs/A1_DUNE_FITNESS.md`](docs/A1_DUNE_FITNESS.md) | ClaudeCode | 2026-09-22 | Dune **PASSES** the E34 round-trip on every item BigQuery failed; ~37 free credits; projection delivered; **stopped, awaiting spend authorization** |
 
 *Numbering note.* v1.1 numbers its own sections A1–A7, which collides with the A1 below.
@@ -676,3 +677,27 @@ Full text: `docs/RUNBOOK_ARCHITECT_2026-10-01.md`. Operational version, with the
 * **Contingency C1's sampled window,** by the same seed: pre-BOOST 2025-10-30 → 2026-01-27; post-BOOST the whole era less the burned week, because no 90-day block exists.
 * **Build plan:** 19 calendar chunks (not 20), 2025-03-20 → 2026-09-20; core build projected at 4,808 credits (`recon/chunks_manifest.json`).
 * **Out of scope for the paid month, as placed by the runbook:** multi-hop funding and H3 (M0b), live syndicate tracking (M1), chatter (M1/M2).
+
+---
+
+### MR-14 — Rulings on the runbook and pre-purchase orders (Architect via Mando, 2026-10-01)
+
+Full text: `docs/RULINGS_2026-10-01_C.md`. Operational effect: `docs/RUNBOOK_v1.md` (revised). Effects on this document:
+
+* **§3 window:** stratum P is graduations **2025-03-20 → 2026-09-20**, signed. 19 calendar chunks.
+* **Standing rule on thresholds (confirmed, supersedes the looser wording before it):** a definition of what is counted may live in a query; anything that decides pass or fail may not, saved or unsaved. **The bundle's "five" is a verdict:** the aligned-set query returns each creation-slot trader's same-funder count and the cut is applied locally (`recon/actors.py`, `BUNDLE_MIN`). **Enforcement:** `recon/dune_run_sql.py` refuses any query that matches the registered list in `recon/verdict_constants.py`; there is no override; a newly ruled threshold is added to that list in the commit that records the ruling. The burned-week query is the regression test.
+* **§5 cost model, depth floor — rewritten (supersedes MR-4 item 3 and `H3_AMENDMENT_v1.1.md` R3 where they differ).** For a position of `base_in` tokens in a pool with real quote reserve `q` (the vault balance), virtual quote reserve `v` and base reserve `B`, at the exit block's pre-swap state:
+  * spot-marked value = `base_in × (q + v) / B`;
+  * curve proceeds = `(q + v) × base_in / (B + base_in)`;
+  * **exit-adjusted value = the smaller of the curve proceeds and `q`**, then net of the token's own observed sell cost. The virtual term sets the price but cannot be withdrawn, so no exit can pay out more than the real reserve.
+  * The position is marked at zero when exit-adjusted ÷ spot-marked is below F. F is set in v1.2; no value of F is in any query.
+  * "Deepest pool" in the routing rule (MR-3.2, MR-4 item 2) means deepest by **real** quote reserve.
+  * `v` is the pool's own derived value (below), 0 before BOOST and on mayhem-mode pools.
+  * **Consequence for v1.2:** the calibration slice is entirely pre-BOOST, where `v = 0` and the cap can never bind on a small position. F set there says nothing about post-BOOST pools, where the median real reserve four hours after graduation is 1.4 SOL. Gate 0 therefore reports the ratio's distribution per era, and the post-BOOST distribution comes from the burned week, not the slice.
+  * **Struck:** the dry run in `docs/VALIDATION_1_4_CENSUS.md` ("p50 0.93; 2 tokens below F = 20%"). It used base reserves only, ignored the cap, and priced every post-BOOST pool without its virtual term.
+* **§5 cost model, virtual quote reserve.** It is not one constant (`docs/VQR_CHECK.md`): post-BOOST pools in mayhem mode carry 0, the others about 17.58 SOL, fixed for the pool's life. `vqr` is derived per pool from its own buy events by the validated fill model. **Post-BOOST price columns are halted** until that derivation is accepted and has run at one-day scope. Post-BOOST price results reported before 2026-10-01 are struck (list in `docs/VQR_CHECK.md`).
+* **Storage (amends MR-10):** on Analyst the table is analysed in the warehouse; the real export rate is measured on day 0. **The aligned-set funder-group output is always exported and never materialized**, whatever the rate: a public view naming wallets is not acceptable. Exported rows live in gitignored `barrel/data/`; the manifest of checksums, row counts and null counts is committed the same day.
+* **Contingency C1's sampled window:** approved as recorded in MR-13.
+* **Phase A budget:** 400 / 500, taken from phase C, and it runs the whole 2026-08 chunk including the aligned-set query.
+* **Recorded for the first paid chunk (order 4):** why the burned week shows the swapped buy fields on most buys and the single sampled days do not. Probe written, not run: `recon/sql/buy_field_swap_by_day.sql`.
+* **Open:** ruling 6 refers to "one addition for Mando below" that is not in the relayed text.

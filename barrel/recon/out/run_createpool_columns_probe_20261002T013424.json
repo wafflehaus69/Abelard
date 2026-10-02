@@ -1,0 +1,23 @@
+{
+ "file": "barrel/recon/sql/createpool_columns_probe.sql",
+ "label": "createpool event columns",
+ "execution_id": "01M3X3Z32BJ5XR9WQY2J88WK6B",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.070919177,
+ "cap": 1.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.0025
+  ],
+  [
+   3.1,
+   0.070919177
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T01:34:23.820125Z",
+ "rows": [],
+ "error": null
+}

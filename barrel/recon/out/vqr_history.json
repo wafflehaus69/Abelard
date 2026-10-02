@@ -1,0 +1,2168 @@
+[
+ {
+  "signatures": 197,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1784658535,
+    "slot": 434355027,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 74321307131,
+    "body_len": 457
+   },
+   {
+    "t": 1784658535,
+    "slot": 434355027,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 81115832385,
+    "body_len": 472
+   },
+   {
+    "t": 1784658535,
+    "slot": 434355027,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 82601010250,
+    "body_len": 472
+   },
+   {
+    "t": 1784658536,
+    "slot": 434355028,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 82898045822,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1785445283,
+    "slot": 436224720,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 888075803,
+    "body_len": 409
+   },
+   {
+    "t": 1784905329,
+    "slot": 434943031,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 937579867,
+    "body_len": 409
+   },
+   {
+    "t": 1784701656,
+    "slot": 434457760,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 939592304,
+    "body_len": 409
+   },
+   {
+    "t": 1784662136,
+    "slot": 434363606,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 944548258,
+    "body_len": 409
+   }
+  ],
+  "pool": "12MKfj5EaqMVU18JgzCdR1WFeWG47ke7XP232C7jhd2j",
+  "grad_day": "2026-07-21",
+  "account_vqr_now": 17584505288
+ },
+ {
+  "signatures": 95,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1784823039,
+    "slot": 434746929,
+    "event": "BuyEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 67405853870,
+    "body_len": 472
+   },
+   {
+    "t": 1784823039,
+    "slot": 434746929,
+    "event": "BuyEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 68512247943,
+    "body_len": 472
+   },
+   {
+    "t": 1784823039,
+    "slot": 434746930,
+    "event": "BuyEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 68512267745,
+    "body_len": 457
+   },
+   {
+    "t": 1784823039,
+    "slot": 434746930,
+    "event": "BuyEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 68512305143,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1784826697,
+    "slot": 434755648,
+    "event": "SellEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 9293508534,
+    "body_len": 409
+   },
+   {
+    "t": 1784824040,
+    "slot": 434749307,
+    "event": "SellEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 9302796437,
+    "body_len": 409
+   },
+   {
+    "t": 1784823780,
+    "slot": 434748696,
+    "event": "SellEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 9303506418,
+    "body_len": 409
+   },
+   {
+    "t": 1784823415,
+    "slot": 434747828,
+    "event": "BuyEvent",
+    "vqr": 17584505315,
+    "vqr_absent": false,
+    "q": 9297096612,
+    "body_len": 472
+   }
+  ],
+  "pool": "12V2fbcBmQUqeamaqAm7vLmArvCNpzU9r5vFZ3QcKXdB",
+  "grad_day": "2026-07-23",
+  "account_vqr_now": 17584505315
+ },
+ {
+  "signatures": 93,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1785020932,
+    "slot": 435218315,
+    "event": "BuyEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 67405853923,
+    "body_len": 472
+   },
+   {
+    "t": 1785020932,
+    "slot": 435218315,
+    "event": "BuyEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 68324556144,
+    "body_len": 457
+   },
+   {
+    "t": 1785020932,
+    "slot": 435218315,
+    "event": "BuyEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 68812678854,
+    "body_len": 472
+   },
+   {
+    "t": 1785020933,
+    "slot": 435218316,
+    "event": "BuyEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 68812698610,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1785021251,
+    "slot": 435219074,
+    "event": "SellEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 61919280369,
+    "body_len": 409
+   },
+   {
+    "t": 1785021250,
+    "slot": 435219073,
+    "event": "BuyEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 60443371341,
+    "body_len": 472
+   },
+   {
+    "t": 1785021239,
+    "slot": 435219047,
+    "event": "SellEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 61738504991,
+    "body_len": 409
+   },
+   {
+    "t": 1785021239,
+    "slot": 435219047,
+    "event": "SellEvent",
+    "vqr": 17584505329,
+    "vqr_absent": false,
+    "q": 61788441151,
+    "body_len": 409
+   }
+  ],
+  "pool": "12FcEfxp3iTEXi8pQgS7cMZbVe8U3Szuk9dXLLXjbFro",
+  "grad_day": "2026-07-25",
+  "account_vqr_now": 17584505329
+ },
+ {
+  "signatures": 191,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1785132967,
+    "slot": 435484950,
+    "event": "BuyEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 67405853788,
+    "body_len": 457
+   },
+   {
+    "t": 1785132967,
+    "slot": 435484950,
+    "event": "BuyEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 68392756308,
+    "body_len": 457
+   },
+   {
+    "t": 1785132967,
+    "slot": 435484950,
+    "event": "BuyEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 660820203166,
+    "body_len": 472
+   },
+   {
+    "t": 1785132967,
+    "slot": 435484950,
+    "event": "BuyEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 660820223046,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788023029,
+    "slot": 442658732,
+    "event": "SellEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 9589555853,
+    "body_len": 409
+   },
+   {
+    "t": 1787250871,
+    "slot": 440525718,
+    "event": "SellEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 9597881816,
+    "body_len": 409
+   },
+   {
+    "t": 1785225160,
+    "slot": 435703865,
+    "event": "SellEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 9651727246,
+    "body_len": 409
+   },
+   {
+    "t": 1785208692,
+    "slot": 435664716,
+    "event": "SellEvent",
+    "vqr": 17584505294,
+    "vqr_absent": false,
+    "q": 9660091360,
+    "body_len": 409
+   }
+  ],
+  "pool": "12iFDjXYEgQg6gqsU6aunHYhrzuhHfKpuBzzauWtEGCs",
+  "grad_day": "2026-07-27",
+  "account_vqr_now": 17584505294
+ },
+ {
+  "signatures": 164,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1785285508,
+    "slot": 435846522,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 80908664,
+    "body_len": 472
+   },
+   {
+    "t": 1785285508,
+    "slot": 435846522,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 85823226,
+    "body_len": 472
+   },
+   {
+    "t": 1785285508,
+    "slot": 435846523,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 85842982,
+    "body_len": 472
+   },
+   {
+    "t": 1785285508,
+    "slot": 435846524,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 85852860,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1787214259,
+    "slot": 440437680,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 10131711,
+    "body_len": 409
+   },
+   {
+    "t": 1786585300,
+    "slot": 438925248,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 10136809,
+    "body_len": 409
+   },
+   {
+    "t": 1785429910,
+    "slot": 436188334,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 10235552,
+    "body_len": 409
+   },
+   {
+    "t": 1785429897,
+    "slot": 436188304,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 10136768,
+    "body_len": 472
+   }
+  ],
+  "pool": "123bfLXyJvUD4X9PqJ651BySXYLo3YckvwwJ2iQxYkqN",
+  "grad_day": "2026-07-29",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 1019,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1785468296,
+    "slot": 436279331,
+    "event": "BuyEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 67405854324,
+    "body_len": 472
+   },
+   {
+    "t": 1785468296,
+    "slot": 436279331,
+    "event": "SellEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 67415634056,
+    "body_len": 409
+   },
+   {
+    "t": 1785468296,
+    "slot": 436279331,
+    "event": "SellEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 66129355515,
+    "body_len": 409
+   },
+   {
+    "t": 1785468296,
+    "slot": 436279331,
+    "event": "BuyEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 65602358630,
+    "body_len": 457
+   }
+  ],
+  "newest": [
+   {
+    "t": 1787146145,
+    "slot": 440274166,
+    "event": "SellEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 8495832430,
+    "body_len": 409
+   },
+   {
+    "t": 1785797272,
+    "slot": 437058426,
+    "event": "SellEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 8537912782,
+    "body_len": 409
+   },
+   {
+    "t": 1785707349,
+    "slot": 436845705,
+    "event": "SellEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 8547933411,
+    "body_len": 409
+   },
+   {
+    "t": 1785663122,
+    "slot": 436740872,
+    "event": "SellEvent",
+    "vqr": 17584505433,
+    "vqr_absent": false,
+    "q": 8583933254,
+    "body_len": 409
+   }
+  ],
+  "pool": "1238RuSA3nidB7GZn16FQb896VFXCchZPWwSmC8vsPxV",
+  "grad_day": "2026-07-31",
+  "account_vqr_now": 17584505433
+ },
+ {
+  "signatures": 128,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1786911374,
+    "slot": 439708986,
+    "event": "SellEvent",
+    "vqr": 17584505308,
+    "vqr_absent": false,
+    "q": 1779622602,
+    "body_len": 409
+   },
+   {
+    "t": 1785641229,
+    "slot": 436688944,
+    "event": "SellEvent",
+    "vqr": 17584505308,
+    "vqr_absent": false,
+    "q": 1785590081,
+    "body_len": 409
+   },
+   {
+    "t": 1785638729,
+    "slot": 436683029,
+    "event": "SellEvent",
+    "vqr": 17584505308,
+    "vqr_absent": false,
+    "q": 1797284249,
+    "body_len": 409
+   },
+   {
+    "t": 1785638645,
+    "slot": 436682828,
+    "event": "SellEvent",
+    "vqr": 17584505308,
+    "vqr_absent": false,
+    "q": 1798749103,
+    "body_len": 409
+   }
+  ],
+  "pool": "12MLbtqYYDvMSaTZzhpCggKAh6xjCfuabaytAdZRx6fC",
+  "grad_day": "2026-08-02",
+  "account_vqr_now": 17584505308
+ },
+ {
+  "signatures": 7729,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1785836719,
+    "slot": 437151756,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3648835281,
+    "body_len": 472
+   },
+   {
+    "t": 1785836719,
+    "slot": 437151756,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3663504881,
+    "body_len": 472
+   },
+   {
+    "t": 1785836720,
+    "slot": 437151757,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3663524637,
+    "body_len": 457
+   },
+   {
+    "t": 1785836735,
+    "slot": 437151792,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3663554583,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1787754775,
+    "slot": 441887291,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 2950326151,
+    "body_len": 409
+   },
+   {
+    "t": 1787439750,
+    "slot": 441025525,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3040818131,
+    "body_len": 409
+   },
+   {
+    "t": 1787345067,
+    "slot": 440767482,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3177915857,
+    "body_len": 409
+   },
+   {
+    "t": 1787330944,
+    "slot": 440728929,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3244011457,
+    "body_len": 409
+   }
+  ],
+  "pool": "13JDt9tq1M2F6hLFrWLAnYUKvbrpXMmRZN9fAcymFZKS",
+  "grad_day": "2026-08-04",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 11996,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1789709218,
+    "slot": 447988572,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 388934501,
+    "body_len": 425
+   },
+   {
+    "t": 1788495851,
+    "slot": 444153008,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 453525194,
+    "body_len": 409
+   },
+   {
+    "t": 1787329267,
+    "slot": 440724344,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 463469621,
+    "body_len": 409
+   },
+   {
+    "t": 1786736420,
+    "slot": 439288271,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 470040425,
+    "body_len": 409
+   }
+  ],
+  "pool": "12V2DxFKyMMwrtQzNyEcKou2XdRrpvqdhWfgqgd1y8Gw",
+  "grad_day": "2026-08-06",
+  "account_vqr_now": 17584505288
+ },
+ {
+  "signatures": 11948,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1789276282,
+    "slot": 446619716,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 692847754,
+    "body_len": 425
+   },
+   {
+    "t": 1787584068,
+    "slot": 441420476,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 692850204,
+    "body_len": 409
+   },
+   {
+    "t": 1787407139,
+    "slot": 440936790,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 703081191,
+    "body_len": 409
+   },
+   {
+    "t": 1786631414,
+    "slot": 439035774,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 754346360,
+    "body_len": 409
+   }
+  ],
+  "pool": "11EsYdciwN5F3dAGZfb8z3M14EiB8U9XAHSrXRqme48",
+  "grad_day": "2026-08-08",
+  "account_vqr_now": 17584505288
+ },
+ {
+  "signatures": 2328,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1786369258,
+    "slot": 438411872,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 586743580,
+    "body_len": 409
+   },
+   {
+    "t": 1786369258,
+    "slot": 438411872,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 511816426,
+    "body_len": 472
+   },
+   {
+    "t": 1786369259,
+    "slot": 438411873,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 571087536,
+    "body_len": 472
+   },
+   {
+    "t": 1786369259,
+    "slot": 438411873,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 571107292,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1786447338,
+    "slot": 438597004,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 154813752,
+    "body_len": 409
+   },
+   {
+    "t": 1786439665,
+    "slot": 438578738,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 163574505,
+    "body_len": 409
+   },
+   {
+    "t": 1786429428,
+    "slot": 438554467,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 169158718,
+    "body_len": 409
+   },
+   {
+    "t": 1786418721,
+    "slot": 438529050,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 180811022,
+    "body_len": 409
+   }
+  ],
+  "pool": "13KPsjh6zCTkt6iVA7e9kqLipsCQTGWdbi9QCYyepMb2",
+  "grad_day": "2026-08-10",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 5182,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1790213545,
+    "slot": 449880352,
+    "event": "SellEvent",
+    "vqr": 17584505370,
+    "vqr_absent": false,
+    "q": 4884852781,
+    "body_len": 425
+   },
+   {
+    "t": 1787772657,
+    "slot": 441936153,
+    "event": "SellEvent",
+    "vqr": 17584505370,
+    "vqr_absent": false,
+    "q": 4885230278,
+    "body_len": 409
+   },
+   {
+    "t": 1786798556,
+    "slot": 439437724,
+    "event": "SellEvent",
+    "vqr": 17584505370,
+    "vqr_absent": false,
+    "q": 4885771708,
+    "body_len": 409
+   },
+   {
+    "t": 1786798313,
+    "slot": 439437132,
+    "event": "SellEvent",
+    "vqr": 17584505370,
+    "vqr_absent": false,
+    "q": 4888809076,
+    "body_len": 409
+   }
+  ],
+  "pool": "12sNtzzY3mdxMc1DDzB7BJnkvZRb4fQU2pNsTDdQehUS",
+  "grad_day": "2026-08-12",
+  "account_vqr_now": 17584505370
+ },
+ {
+  "signatures": 10426,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1790809622,
+    "slot": 452107623,
+    "event": "SellEvent",
+    "vqr": 17584505305,
+    "vqr_absent": false,
+    "q": 5955646311,
+    "body_len": 425
+   },
+   {
+    "t": 1790720468,
+    "slot": 451774427,
+    "event": "SellEvent",
+    "vqr": 17584505305,
+    "vqr_absent": false,
+    "q": 6067876624,
+    "body_len": 425
+   },
+   {
+    "t": 1790643793,
+    "slot": 451487972,
+    "event": "SellEvent",
+    "vqr": 17584505305,
+    "vqr_absent": false,
+    "q": 6094992847,
+    "body_len": 425
+   },
+   {
+    "t": 1790330985,
+    "slot": 450321609,
+    "event": "SellEvent",
+    "vqr": 17584505305,
+    "vqr_absent": false,
+    "q": 6096902291,
+    "body_len": 425
+   }
+  ],
+  "pool": "12ECe1qhWGFZfNcG9i1fUz3YBLTA3SaviC45WWNw6Bpe",
+  "grad_day": "2026-08-14",
+  "account_vqr_now": 17584505305
+ },
+ {
+  "signatures": 11920,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1790727279,
+    "slot": 451799815,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 3534655801,
+    "body_len": 425
+   },
+   {
+    "t": 1790573485,
+    "slot": 451225625,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 3541157973,
+    "body_len": 425
+   },
+   {
+    "t": 1790573485,
+    "slot": 451225623,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 3541197887,
+    "body_len": 425
+   },
+   {
+    "t": 1790537687,
+    "slot": 451092337,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 3548889505,
+    "body_len": 425
+   }
+  ],
+  "pool": "13REcbvvnURGZCjrnL1Z6HV8i8126ooHjdxUJRgCgm2J",
+  "grad_day": "2026-08-16",
+  "account_vqr_now": 17584505288
+ },
+ {
+  "signatures": 11989,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1788305790,
+    "slot": 443549687,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 541980168,
+    "body_len": 409
+   },
+   {
+    "t": 1788276052,
+    "slot": 443455928,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 551998801,
+    "body_len": 409
+   },
+   {
+    "t": 1787870539,
+    "slot": 442203567,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 552001934,
+    "body_len": 409
+   },
+   {
+    "t": 1787280624,
+    "slot": 440597338,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 564674482,
+    "body_len": 409
+   }
+  ],
+  "pool": "14bSLAH7s4ru6ZDBS34F8tC6n8fxKGwzkQcX9Vq8ZwUz",
+  "grad_day": "2026-08-18",
+  "account_vqr_now": 17584505288
+ },
+ {
+  "signatures": 607,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1787269742,
+    "slot": 440571164,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 48632865,
+    "body_len": 472
+   },
+   {
+    "t": 1787269742,
+    "slot": 440571165,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 58412597,
+    "body_len": 472
+   },
+   {
+    "t": 1787269742,
+    "slot": 440571165,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 58432353,
+    "body_len": 472
+   },
+   {
+    "t": 1787269755,
+    "slot": 440571195,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 58452109,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1789107899,
+    "slot": 446088141,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 9104931,
+    "body_len": 409
+   },
+   {
+    "t": 1787543740,
+    "slot": 441309888,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 9236777,
+    "body_len": 409
+   },
+   {
+    "t": 1787336723,
+    "slot": 440744713,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 11268192,
+    "body_len": 409
+   },
+   {
+    "t": 1787336722,
+    "slot": 440744712,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 14445225,
+    "body_len": 409
+   }
+  ],
+  "pool": "12c4VMix53aYTh2GyEsgUSHZyME6zovNzZY2FZVkZwuu",
+  "grad_day": "2026-08-20",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 1155,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1787395483,
+    "slot": 440904983,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 577071630,
+    "body_len": 472
+   },
+   {
+    "t": 1787395483,
+    "slot": 440904984,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 626464221,
+    "body_len": 472
+   },
+   {
+    "t": 1787395483,
+    "slot": 440904984,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 626483977,
+    "body_len": 457
+   },
+   {
+    "t": 1787395483,
+    "slot": 440904985,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 765124881,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1787464515,
+    "slot": 441093087,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 67031342,
+    "body_len": 409
+   },
+   {
+    "t": 1787430100,
+    "slot": 440999279,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 70095504,
+    "body_len": 409
+   },
+   {
+    "t": 1787429511,
+    "slot": 440997683,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 76332913,
+    "body_len": 409
+   },
+   {
+    "t": 1787429511,
+    "slot": 440997683,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 81182481,
+    "body_len": 409
+   }
+  ],
+  "pool": "12KgmB7vaAY1Mu236fzEzFxLd1vi1HzZou2NuJnBiC4Z",
+  "grad_day": "2026-08-22",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 2931,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1787588474,
+    "slot": 441432485,
+    "event": "SellEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 67405853777,
+    "body_len": 409
+   },
+   {
+    "t": 1787588475,
+    "slot": 441432486,
+    "event": "BuyEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 67105108415,
+    "body_len": 472
+   },
+   {
+    "t": 1787588475,
+    "slot": 441432486,
+    "event": "BuyEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 67500249154,
+    "body_len": 472
+   },
+   {
+    "t": 1787588475,
+    "slot": 441432486,
+    "event": "BuyEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 68967209154,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788366575,
+    "slot": 443742694,
+    "event": "SellEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 2311485182,
+    "body_len": 409
+   },
+   {
+    "t": 1788335306,
+    "slot": 443643408,
+    "event": "SellEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 2312076297,
+    "body_len": 409
+   },
+   {
+    "t": 1788078060,
+    "slot": 442832343,
+    "event": "SellEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 2313622164,
+    "body_len": 409
+   },
+   {
+    "t": 1787796342,
+    "slot": 442000786,
+    "event": "SellEvent",
+    "vqr": 17584505290,
+    "vqr_absent": false,
+    "q": 2609859944,
+    "body_len": 409
+   }
+  ],
+  "pool": "13BnR4LV5Z5enCZeoA3wguTG1afsLrtYfgVxiV4N1k5n",
+  "grad_day": "2026-08-24",
+  "account_vqr_now": 17584505290
+ },
+ {
+  "signatures": 394,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1787740839,
+    "slot": 441849219,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 107559343,
+    "body_len": 409
+   },
+   {
+    "t": 1787740840,
+    "slot": 441849220,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 79876720,
+    "body_len": 472
+   },
+   {
+    "t": 1787740840,
+    "slot": 441849221,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 79886598,
+    "body_len": 472
+   },
+   {
+    "t": 1787740842,
+    "slot": 441849225,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 79906354,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1787768493,
+    "slot": 441924782,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 12686962,
+    "body_len": 409
+   },
+   {
+    "t": 1787768492,
+    "slot": 441924781,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 14726063,
+    "body_len": 409
+   },
+   {
+    "t": 1787741185,
+    "slot": 441850164,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 17100639,
+    "body_len": 409
+   },
+   {
+    "t": 1787741115,
+    "slot": 441849975,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 14725177,
+    "body_len": 472
+   }
+  ],
+  "pool": "12GfsxfM7MNxM4pTmH4yXo919UzfVYzsRYUCvU4a8QaZ",
+  "grad_day": "2026-08-26",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 1771,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1787936300,
+    "slot": 442385420,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 67405853768,
+    "body_len": 457
+   },
+   {
+    "t": 1787936300,
+    "slot": 442385420,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 68393530155,
+    "body_len": 457
+   },
+   {
+    "t": 1787936300,
+    "slot": 442385421,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 370177647765,
+    "body_len": 472
+   },
+   {
+    "t": 1787936300,
+    "slot": 442385421,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 370177746972,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788939920,
+    "slot": 445557281,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 428103369,
+    "body_len": 409
+   },
+   {
+    "t": 1788199794,
+    "slot": 443215915,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 429678405,
+    "body_len": 409
+   },
+   {
+    "t": 1788192249,
+    "slot": 443192200,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 466851570,
+    "body_len": 409
+   },
+   {
+    "t": 1788019506,
+    "slot": 442647658,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 466752786,
+    "body_len": 472
+   }
+  ],
+  "pool": "12z3NtPUix7kSjGfmo7mbVi5cJuawRQbC6KHamB7nWES",
+  "grad_day": "2026-08-28",
+  "account_vqr_now": 17584505288
+ },
+ {
+  "signatures": 189,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1788066862,
+    "slot": 442796955,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 30972068,
+    "body_len": 472
+   },
+   {
+    "t": 1788066863,
+    "slot": 442796956,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 30981946,
+    "body_len": 472
+   },
+   {
+    "t": 1788066863,
+    "slot": 442796956,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 36909056,
+    "body_len": 472
+   },
+   {
+    "t": 1788066863,
+    "slot": 442796956,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 36928812,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788528412,
+    "slot": 444256316,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 4894405,
+    "body_len": 409
+   },
+   {
+    "t": 1788528410,
+    "slot": 444256312,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 6650076,
+    "body_len": 409
+   },
+   {
+    "t": 1788528409,
+    "slot": 444256308,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 7226135,
+    "body_len": 409
+   },
+   {
+    "t": 1788528408,
+    "slot": 444256305,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 8103616,
+    "body_len": 409
+   }
+  ],
+  "pool": "12kaapxghz9SKykaDgkcedZNEdBvvuV4m3mqWrBuTGdi",
+  "grad_day": "2026-08-30",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 1063,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1788299407,
+    "slot": 443529521,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 31566893,
+    "body_len": 409
+   },
+   {
+    "t": 1788299407,
+    "slot": 443529521,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 29306705,
+    "body_len": 472
+   },
+   {
+    "t": 1788299408,
+    "slot": 443529524,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 35233815,
+    "body_len": 409
+   },
+   {
+    "t": 1788299408,
+    "slot": 443529524,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 27426003,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788913705,
+    "slot": 445474518,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3406971,
+    "body_len": 409
+   },
+   {
+    "t": 1788654563,
+    "slot": 444656517,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 3325419,
+    "body_len": 472
+   },
+   {
+    "t": 1788654443,
+    "slot": 444656131,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 4390390,
+    "body_len": 409
+   },
+   {
+    "t": 1788422861,
+    "slot": 443921523,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 4402406,
+    "body_len": 409
+   }
+  ],
+  "pool": "12RGmtpZFRJfx9UR1sjW4MQVnFnri5Ae3yQ28HLft9kj",
+  "grad_day": "2026-09-01",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 1449,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1788476529,
+    "slot": 444091699,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 70711660,
+    "body_len": 409
+   },
+   {
+    "t": 1788476529,
+    "slot": 444091699,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 56442049,
+    "body_len": 457
+   },
+   {
+    "t": 1788476529,
+    "slot": 444091699,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 56460974,
+    "body_len": 472
+   },
+   {
+    "t": 1788476529,
+    "slot": 444091700,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 56480730,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788711970,
+    "slot": 444837731,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 9305176,
+    "body_len": 409
+   },
+   {
+    "t": 1788554408,
+    "slot": 444338601,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 10365148,
+    "body_len": 409
+   },
+   {
+    "t": 1788554406,
+    "slot": 444338595,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 10932651,
+    "body_len": 409
+   },
+   {
+    "t": 1788553365,
+    "slot": 444335270,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 9944800,
+    "body_len": 472
+   }
+  ],
+  "pool": "12VoFmpBdZPr2huCDsAoFi7jZBeAfA6MRbMf8XzPtteS",
+  "grad_day": "2026-09-03",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 106,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1788602832,
+    "slot": 444492435,
+    "event": "BuyEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 67405853772,
+    "body_len": 457
+   },
+   {
+    "t": 1788602832,
+    "slot": 444492435,
+    "event": "BuyEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 67901764461,
+    "body_len": 472
+   },
+   {
+    "t": 1788602832,
+    "slot": 444492435,
+    "event": "BuyEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 67925821989,
+    "body_len": 472
+   },
+   {
+    "t": 1788602832,
+    "slot": 444492435,
+    "event": "BuyEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 68123392358,
+    "body_len": 457
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788603228,
+    "slot": 444493685,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 2846476545,
+    "body_len": 409
+   },
+   {
+    "t": 1788603228,
+    "slot": 444493685,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 3682822082,
+    "body_len": 409
+   },
+   {
+    "t": 1788603228,
+    "slot": 444493684,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 25600836553,
+    "body_len": 409
+   },
+   {
+    "t": 1788603228,
+    "slot": 444493684,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 25986838378,
+    "body_len": 409
+   }
+  ],
+  "pool": "13JMpGciEgtbbgtqjJ7XMvmKxDVV4qcTUdtjUQ7oPvNA",
+  "grad_day": "2026-09-05",
+  "account_vqr_now": 17584505289
+ },
+ {
+  "signatures": 463,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1788799048,
+    "slot": 445112460,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 101398510,
+    "body_len": 472
+   },
+   {
+    "t": 1788799048,
+    "slot": 445112461,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 112156216,
+    "body_len": 472
+   },
+   {
+    "t": 1788799048,
+    "slot": 445112462,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 112175972,
+    "body_len": 472
+   },
+   {
+    "t": 1788799049,
+    "slot": 445112463,
+    "event": "BuyEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 112185850,
+    "body_len": 472
+   }
+  ],
+  "newest": [
+   {
+    "t": 1788897792,
+    "slot": 445424404,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 12059095,
+    "body_len": 409
+   },
+   {
+    "t": 1788897792,
+    "slot": 445424404,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 13953123,
+    "body_len": 409
+   },
+   {
+    "t": 1788818867,
+    "slot": 445175041,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 14326152,
+    "body_len": 409
+   },
+   {
+    "t": 1788802786,
+    "slot": 445124270,
+    "event": "SellEvent",
+    "vqr": 0,
+    "vqr_absent": false,
+    "q": 15892466,
+    "body_len": 409
+   }
+  ],
+  "pool": "128FEej5gjPhpUXXhvHTTDZM8kQUky3PU9FSAehnhxrf",
+  "grad_day": "2026-09-07",
+  "account_vqr_now": 0
+ },
+ {
+  "signatures": 5136,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1788972975,
+    "slot": 445661750,
+    "event": "BuyEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 72345113032,
+    "body_len": 472
+   },
+   {
+    "t": 1788972975,
+    "slot": 445661750,
+    "event": "BuyEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 74820409474,
+    "body_len": 457
+   },
+   {
+    "t": 1788972975,
+    "slot": 445661750,
+    "event": "BuyEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 75320535408,
+    "body_len": 457
+   },
+   {
+    "t": 1788972975,
+    "slot": 445661750,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 75464423980,
+    "body_len": 409
+   }
+  ],
+  "newest": [
+   {
+    "t": 1790824676,
+    "slot": 452163858,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 1097979360,
+    "body_len": 425
+   },
+   {
+    "t": 1790819124,
+    "slot": 452143112,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 1097979553,
+    "body_len": 425
+   },
+   {
+    "t": 1790818153,
+    "slot": 452139487,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 1097979746,
+    "body_len": 425
+   },
+   {
+    "t": 1790816858,
+    "slot": 452134654,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 1097979939,
+    "body_len": 425
+   }
+  ],
+  "pool": "12tHZJ1Qa8Nr4kXcAA5zaG43j4xxtLW54HYQUd58zwD",
+  "grad_day": "2026-09-09",
+  "account_vqr_now": 17584505289
+ },
+ {
+  "signatures": 11899,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1790128051,
+    "slot": 449558261,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 212694786,
+    "body_len": 425
+   },
+   {
+    "t": 1790041290,
+    "slot": 449233232,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 222529542,
+    "body_len": 425
+   },
+   {
+    "t": 1789699557,
+    "slot": 447957422,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 270234671,
+    "body_len": 425
+   },
+   {
+    "t": 1789699181,
+    "slot": 447956243,
+    "event": "BuyEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 261007710,
+    "body_len": 473
+   }
+  ],
+  "pool": "128zGxBdPQ8ngAmguVuBqpwqkH2DSRo7C7vCpuqVjxRF",
+  "grad_day": "2026-09-11",
+  "account_vqr_now": 17584505288
+ },
+ {
+  "signatures": 6481,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1790821755,
+    "slot": 452152924,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 2173355696,
+    "body_len": 425
+   },
+   {
+    "t": 1790819127,
+    "slot": 452143122,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 2173355735,
+    "body_len": 425
+   },
+   {
+    "t": 1790818158,
+    "slot": 452139506,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 2173355754,
+    "body_len": 425
+   },
+   {
+    "t": 1790816873,
+    "slot": 452134708,
+    "event": "SellEvent",
+    "vqr": 17584505289,
+    "vqr_absent": false,
+    "q": 2173355793,
+    "body_len": 425
+   }
+  ],
+  "pool": "12D68sS8qUkcgt8h6P9urw3XePpmeykYLypzFJhKkNhX",
+  "grad_day": "2026-09-13",
+  "account_vqr_now": 17584505289
+ },
+ {
+  "signatures": 280,
+  "reached_birth": true,
+  "oldest": [
+   {
+    "t": 1789475251,
+    "slot": 447249846,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 67405854062,
+    "body_len": 488
+   },
+   {
+    "t": 1789475251,
+    "slot": 447249847,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 68294920728,
+    "body_len": 488
+   },
+   {
+    "t": 1789475251,
+    "slot": 447249847,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 68294940484,
+    "body_len": 488
+   },
+   {
+    "t": 1789475251,
+    "slot": 447249847,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 68294989875,
+    "body_len": 473
+   }
+  ],
+  "newest": [
+   {
+    "t": 1790893822,
+    "slot": 452422184,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 54170707504,
+    "body_len": 473
+   },
+   {
+    "t": 1790893744,
+    "slot": 452421895,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 54095591633,
+    "body_len": 473
+   },
+   {
+    "t": 1790886190,
+    "slot": 452393797,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 54015784047,
+    "body_len": 473
+   },
+   {
+    "t": 1790817500,
+    "slot": 452137055,
+    "event": "BuyEvent",
+    "vqr": 17584505365,
+    "vqr_absent": false,
+    "q": 53977807092,
+    "body_len": 473
+   }
+  ],
+  "pool": "134nfzUwZMcEKt2EEaYysUzskpVQfdYWZZBVJGWtZr9s",
+  "grad_day": "2026-09-15",
+  "account_vqr_now": 17584505365
+ },
+ {
+  "signatures": 7600,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1790802253,
+    "slot": 452080103,
+    "event": "SellEvent",
+    "vqr": 17584505362,
+    "vqr_absent": false,
+    "q": 1413307302,
+    "body_len": 425
+   },
+   {
+    "t": 1790802061,
+    "slot": 452079381,
+    "event": "SellEvent",
+    "vqr": 17584505362,
+    "vqr_absent": false,
+    "q": 1416042687,
+    "body_len": 425
+   },
+   {
+    "t": 1790793976,
+    "slot": 452049260,
+    "event": "SellEvent",
+    "vqr": 17584505362,
+    "vqr_absent": false,
+    "q": 1437847050,
+    "body_len": 425
+   },
+   {
+    "t": 1790793971,
+    "slot": 452049241,
+    "event": "BuyEvent",
+    "vqr": 17584505362,
+    "vqr_absent": false,
+    "q": 1421983751,
+    "body_len": 473
+   }
+  ],
+  "pool": "12ceqGmDVVf5UTqPNosw8c6GgXMMkkFg9XmoPx4Wo5bR",
+  "grad_day": "2026-09-17",
+  "account_vqr_now": 17584505362
+ },
+ {
+  "signatures": 9633,
+  "reached_birth": false,
+  "oldest": [],
+  "newest": [
+   {
+    "t": 1790280648,
+    "slot": 450132903,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 1744223264,
+    "body_len": 425
+   },
+   {
+    "t": 1789968972,
+    "slot": 448962525,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 1744234632,
+    "body_len": 425
+   },
+   {
+    "t": 1789922233,
+    "slot": 448787639,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 1753749109,
+    "body_len": 425
+   },
+   {
+    "t": 1789845189,
+    "slot": 448498603,
+    "event": "SellEvent",
+    "vqr": 17584505288,
+    "vqr_absent": false,
+    "q": 1773577566,
+    "body_len": 425
+   }
+  ],
+  "pool": "143e89VSvmN5Ef9gRMqXQXGsamTZpgE4xQQraZUPTrM",
+  "grad_day": "2026-09-19",
+  "account_vqr_now": 17584505288
+ }
+]

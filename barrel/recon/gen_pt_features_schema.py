@@ -34,7 +34,7 @@ c("grad_time", "grad_time", "timestamp", "identity", "graduation (pool birth for
 c("grad_slot", "grad_slot", "bigint", "identity", "graduation slot")
 c("creator", "creator", "varchar", "identity", "deployer wallet")
 # prices and reserves (23)
-c("vqr", "virtual_quote_reserves", "double", "prices", "per pool; 17.585 SOL post-BOOST, 0 before (1.6)")
+c("vqr", "virtual_quote_reserves", "double", "prices", "per pool, lamports, derived from the pool's own buy events (MR-14): 0 before BOOST and on mayhem-mode pools, about 17.58 SOL otherwise; NULL when the pool has no buy to derive it from")
 c("px_grad", "price_grad", "double", "prices", "first post-graduation event, pre-swap reserves")
 c("qres_grad", "quote_res_grad", "double", "prices", "quote reserve at graduation")
 for g in G:

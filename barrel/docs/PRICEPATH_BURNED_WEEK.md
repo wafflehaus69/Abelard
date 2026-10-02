@@ -1,5 +1,7 @@
 # Price paths after entry — burned post-BOOST week (runbook §1, MR-13)
 
+> **STRUCK 2026-10-01, later the same day (`VQR_CHECK.md`).** Every price ratio in this file, the 2× share and the H5 base rate were computed with a 17.58 SOL virtual reserve on every pool. About a third of post-BOOST pools have none, and adding a phantom constant to both ends of a ratio pulls it toward 1. **Do not use the price table or the readings drawn from it.** What stands: the real quote reserves at entry, the sell-cost median, and the buy-variant defect section. The week stays burned. It is re-counted from per-token rows when the halt is lifted.
+
 **Date:** 2026-10-01 · **Week:** graduations 2026-08-10 → 08-16, chosen by seed and committed before the run (`RUNBOOK_ARCHITECT_2026-10-01.md`, commit `f3cfc07`) · **Tokens:** 7,225 stratum-P
 **Spent:** 44.05 of the 50 allowed, plus 5.4 on the defect probes it triggered (below).
 **Evidence:** `recon/out/run_pricepath_burned_week_*.json`. Query: `recon/sql/pricepath_burned_week.sql`.

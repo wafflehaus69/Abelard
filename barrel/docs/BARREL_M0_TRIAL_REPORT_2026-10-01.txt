@@ -581,3 +581,27 @@ Three bases, kept separate because they answer different questions.
   Section 6 costs: PURCHASE_DECISION (third version), RULINGS_2026-10-01_B.
   No trader wallet address is reproduced here. Owner wallets were excluded from every
   query. No token name, symbol or metadata was read at any point.
+
+
+==========================================================================================
+ERRATA, 2026-10-01 (added after the report was delivered)
+==========================================================================================
+
+  E1. Section 3.6, post-BOOST entry price over graduation price (0.32 / 0.15 / 0.10 on
+      2026-09-01): STRUCK. It added a 17.58 SOL virtual reserve to every pool. About a
+      third of post-BOOST pools (mayhem mode) have none. docs/VQR_CHECK.md.
+  E2. Section 3.6, depth-floor ratio for a $20 ticket (p50 0.93; 2 of 1,154 below the
+      floor): STRUCK. It ignored that an exit cannot pay out more than the real quote
+      reserve. The rule is rewritten in M0_TASKING.md MR-14.
+  E3. Section 3.5 and summary item (c), cost per leg since October 2025: re-measured after
+      a field-mapping defect. Buy / sell medians: 118 / 120 bps (2025-10-15), 115 / 115
+      (2026-04-15), 99 / 120 (2026-09-01). The round-trip figure of about 2.3% stands at
+      2.2-2.4%. docs/M0_FEE_LEGS.md Part 5.
+  E4. Section 6.4's suggestion (repeat the price-path statistics post-BOOST) was run on a
+      seeded burned week and its price results are themselves STRUCK for the reason in
+      E1. Sections 5.3 and 6.3 therefore still rest on ONE week, June 2025, pre-BOOST.
+  E5. Section 3.4, bundle at creation and every count of set members: the cut of five is
+      now applied locally, not in the query; the numbers do not change (checked on one
+      day, 236 of 236 tokens).
+  Unaffected: everything pre-BOOST, including all of section 3.7; the fill model; the
+  aligned set, funders, blocks and factory results; every credit and cost figure.

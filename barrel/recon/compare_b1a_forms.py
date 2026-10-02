@@ -1,0 +1,88 @@
+"""MR-14 order 1: do the member form and the grouped (build) form of the aligned-set query agree?
+
+Compares, per token, for one graduation day:
+  set size        members in the aligned set
+  holdings        set balance at each entry lag, and net flow after entry
+  funders         which funder, how many members behind it, and its fan-out
+The member rows were produced on 2026-10-01 by the earlier query, which applied the bundle cut
+in SQL; the grouped rows by the build query, which returns same-funder counts and leaves the
+cut to actors.aligned(). Agreement therefore also tests that the local cut reproduces the old one.
+
+Reads barrel/private/out (rows name wallets); prints and writes counts only.
+  python barrel/recon/compare_b1a_forms.py day
+"""
+import collections
+import glob
+import json
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import actors
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+PRIV = ROOT / "private" / "out"
+
+
+def latest(pattern: str) -> str:
+    return sorted(glob.glob(str(PRIV / pattern)))[-1]
+
+
+def close(a, b, rel=1e-9) -> bool:
+    a, b = a or 0.0, b or 0.0
+    return abs(a - b) <= rel * max(1.0, abs(a), abs(b))
+
+
+def main(tag: str) -> None:
+    mfile, gfile = latest(f"rows_heavy_b1a_members_{tag}_*.json"), latest(f"rows_heavy_b1a_grouped_{tag}_*.json")
+    members, groups = json.load(open(mfile)), json.load(open(gfile))
+    bm, bg = collections.defaultdict(list), collections.defaultdict(list)
+    for r in members:
+        bm[r["mint"]].append(r)
+    for r in actors.aligned(groups):
+        bg[r["mint"]].append(r)
+    dropped = len(groups) - sum(len(v) for v in bg.values())
+    res = collections.Counter()
+    mism = collections.defaultdict(list)
+    for mint in sorted(set(bm) | set(bg)):
+        m, g = bm.get(mint, []), bg.get(mint, [])
+        res["tokens"] += 1
+        if not m or not g:
+            res["token missing in one form"] += 1
+            mism["missing"].append(mint)
+            continue
+        checks = {
+            "set size": len(m) == sum(x["n_members"] for x in g),
+            "creator present": sum(bool(x["is_creator"]) for x in m) == sum(x["n_creator"] for x in g),
+            "holdings g15": close(sum(x["b15"] or 0 for x in m), sum(x["b15"] or 0 for x in g)),
+            "holdings g60": close(sum(x["b60"] or 0 for x in m), sum(x["b60"] or 0 for x in g)),
+            "holdings g240": close(sum(x["b240"] or 0 for x in m), sum(x["b240"] or 0 for x in g)),
+            "net flow after entry": close(sum(x["net_after"] or 0 for x in m), sum(x["net_after"] or 0 for x in g)),
+            "supply at g240": close(m[0]["supply240"], g[0]["supply240"]),
+        }
+        fm = collections.Counter(x["funder"] for x in m)
+        fg = collections.Counter()
+        for x in g:
+            fg[x["funder"]] += x["n_members"]
+        checks["funders and members per funder"] = fm == fg
+        fan_m = {x["funder"]: x["fan_out"] for x in m if x["funder"]}
+        fan_g = {x["funder"]: x["fan_out"] for x in g if x["funder"]}
+        checks["fan-out per funder"] = fan_m == fan_g
+        kw = dict(fanout_threshold=actors.FANOUT_PROVISIONAL)
+        a, b = actors.token_record(m, **kw), actors.token_record_grouped(g, **kw)
+        checks["actors after collapse"] = (a[actors.ACTORS_KEY], a["collapse_state"]) == (b[actors.ACTORS_KEY], b["collapse_state"])
+        for k, ok in checks.items():
+            res[f"{k}: agree"] += ok
+            if not ok:
+                mism[k].append(mint)
+    out = {"day": tag, "member_rows": len(members), "group_rows": len(groups),
+           "group_rows_outside_the_set_after_the_local_cut": dropped, "result": dict(res),
+           "tokens_disagreeing": {k: len(v) for k, v in mism.items()}}
+    (ROOT / "recon" / "out" / f"b1a_forms_agreement_{tag}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    print(json.dumps(out, indent=1))
+    for k, v in mism.items():
+        print(f"  DISAGREE {k}: {len(v)} tokens, e.g. {[x[:8] for x in v[:4]]}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1] if len(sys.argv) > 1 else "day")

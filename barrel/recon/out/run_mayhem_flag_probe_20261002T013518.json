@@ -1,0 +1,427 @@
+{
+ "file": "barrel/recon/sql/mayhem_flag_probe.sql",
+ "label": "mayhem flag: sampled pools and fill per era",
+ "execution_id": "01M3X40DYHD3J90YQ2NNNGP4RA",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 1.104735295,
+ "cap": 4.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.6,
+   0.0025
+  ],
+  [
+   3.2,
+   0.184349442
+  ],
+  [
+   5.8,
+   0.442839888
+  ],
+  [
+   8.4,
+   0.706741916
+  ],
+  [
+   11.1,
+   0.969004623
+  ],
+  [
+   13.6,
+   1.104735295
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T01:35:07.729946Z",
+ "rows": [
+  {
+   "d": "2026-07-06",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "24uLFBZvLN8GFNeZz4sGQTQPHD5b4nEoDTvJD7b4R3GR"
+  },
+  {
+   "d": "2026-08-28",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12z3NtPUix7kSjGfmo7mbVi5cJuawRQbC6KHamB7nWES"
+  },
+  {
+   "d": "2026-08-30",
+   "filled": null,
+   "is_mayhem_mode": true,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12kaapxghz9SKykaDgkcedZNEdBvvuV4m3mqWrBuTGdi"
+  },
+  {
+   "d": "2026-09-01",
+   "filled": null,
+   "is_mayhem_mode": true,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12RGmtpZFRJfx9UR1sjW4MQVnFnri5Ae3yQ28HLft9kj"
+  },
+  {
+   "d": "2026-09-03",
+   "filled": null,
+   "is_mayhem_mode": true,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12VoFmpBdZPr2huCDsAoFi7jZBeAfA6MRbMf8XzPtteS"
+  },
+  {
+   "d": "2026-09-05",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "13JMpGciEgtbbgtqjJ7XMvmKxDVV4qcTUdtjUQ7oPvNA"
+  },
+  {
+   "d": "2026-09-07",
+   "filled": null,
+   "is_mayhem_mode": true,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "128FEej5gjPhpUXXhvHTTDZM8kQUky3PU9FSAehnhxrf"
+  },
+  {
+   "d": "2026-09-09",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12tHZJ1Qa8Nr4kXcAA5zaG43j4xxtLW54HYQUd58zwD"
+  },
+  {
+   "d": "2026-09-11",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "128zGxBdPQ8ngAmguVuBqpwqkH2DSRo7C7vCpuqVjxRF"
+  },
+  {
+   "d": "2026-09-13",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12D68sS8qUkcgt8h6P9urw3XePpmeykYLypzFJhKkNhX"
+  },
+  {
+   "d": "2026-09-15",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "134nfzUwZMcEKt2EEaYysUzskpVQfdYWZZBVJGWtZr9s"
+  },
+  {
+   "d": "2026-09-17",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12ceqGmDVVf5UTqPNosw8c6GgXMMkkFg9XmoPx4Wo5bR"
+  },
+  {
+   "d": "2026-09-19",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "143e89VSvmN5Ef9gRMqXQXGsamTZpgE4xQQraZUPTrM"
+  },
+  {
+   "d": "2026-07-13",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "13rErrxFVxnDVctqKGAuLKLPZSwK3A1gTy3wLHrrJRhF"
+  },
+  {
+   "d": "2026-07-19",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "13FGS2GLTTmksKbyqJtsVxLWdpCbhQomSZU3sAVPAS8Z"
+  },
+  {
+   "d": "2026-07-20",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "14QnuB6biQR6CKDDfdd7MepkbeFgpUdJv4FBcac4jF5N"
+  },
+  {
+   "d": "2026-07-21",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12MKfj5EaqMVU18JgzCdR1WFeWG47ke7XP232C7jhd2j"
+  },
+  {
+   "d": "2026-07-23",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12V2fbcBmQUqeamaqAm7vLmArvCNpzU9r5vFZ3QcKXdB"
+  },
+  {
+   "d": "2026-07-25",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12FcEfxp3iTEXi8pQgS7cMZbVe8U3Szuk9dXLLXjbFro"
+  },
+  {
+   "d": "2026-07-27",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12iFDjXYEgQg6gqsU6aunHYhrzuhHfKpuBzzauWtEGCs"
+  },
+  {
+   "d": "2026-07-29",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "123bfLXyJvUD4X9PqJ651BySXYLo3YckvwwJ2iQxYkqN"
+  },
+  {
+   "d": "2026-07-31",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "1238RuSA3nidB7GZn16FQb896VFXCchZPWwSmC8vsPxV"
+  },
+  {
+   "d": "2026-08-02",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12MLbtqYYDvMSaTZzhpCggKAh6xjCfuabaytAdZRx6fC"
+  },
+  {
+   "d": "2026-08-04",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "13JDt9tq1M2F6hLFrWLAnYUKvbrpXMmRZN9fAcymFZKS"
+  },
+  {
+   "d": "2026-08-06",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12V2DxFKyMMwrtQzNyEcKou2XdRrpvqdhWfgqgd1y8Gw"
+  },
+  {
+   "d": "2026-08-08",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "11EsYdciwN5F3dAGZfb8z3M14EiB8U9XAHSrXRqme48"
+  },
+  {
+   "d": "2026-08-10",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "13KPsjh6zCTkt6iVA7e9kqLipsCQTGWdbi9QCYyepMb2"
+  },
+  {
+   "d": "2026-08-12",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12sNtzzY3mdxMc1DDzB7BJnkvZRb4fQU2pNsTDdQehUS"
+  },
+  {
+   "d": "2026-08-14",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12ECe1qhWGFZfNcG9i1fUz3YBLTA3SaviC45WWNw6Bpe"
+  },
+  {
+   "d": "2026-08-16",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "13REcbvvnURGZCjrnL1Z6HV8i8126ooHjdxUJRgCgm2J"
+  },
+  {
+   "d": "2026-08-18",
+   "filled": null,
+   "is_mayhem_mode": null,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "14bSLAH7s4ru6ZDBS34F8tC6n8fxKGwzkQcX9Vq8ZwUz"
+  },
+  {
+   "d": "2026-08-20",
+   "filled": null,
+   "is_mayhem_mode": true,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12c4VMix53aYTh2GyEsgUSHZyME6zovNzZY2FZVkZwuu"
+  },
+  {
+   "d": "2026-08-22",
+   "filled": null,
+   "is_mayhem_mode": true,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12KgmB7vaAY1Mu236fzEzFxLd1vi1HzZou2NuJnBiC4Z"
+  },
+  {
+   "d": "2026-08-24",
+   "filled": null,
+   "is_mayhem_mode": false,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "13BnR4LV5Z5enCZeoA3wguTG1afsLrtYfgVxiV4N1k5n"
+  },
+  {
+   "d": "2026-08-26",
+   "filled": null,
+   "is_mayhem_mode": true,
+   "kind": "pool",
+   "mayhem": null,
+   "n": null,
+   "pool": "12GfsxfM7MNxM4pTmH4yXo919UzfVYzsRYUCvU4a8QaZ"
+  },
+  {
+   "d": "2026-07-13",
+   "filled": 0,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 0,
+   "n": 528,
+   "pool": null
+  },
+  {
+   "d": "2026-07-20",
+   "filled": 0,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 0,
+   "n": 714,
+   "pool": null
+  },
+  {
+   "d": "2026-07-21",
+   "filled": 0,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 0,
+   "n": 798,
+   "pool": null
+  },
+  {
+   "d": "2025-10-15",
+   "filled": 0,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 0,
+   "n": 211,
+   "pool": null
+  },
+  {
+   "d": "2026-04-15",
+   "filled": 0,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 0,
+   "n": 317,
+   "pool": null
+  },
+  {
+   "d": "2026-08-10",
+   "filled": 0,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 0,
+   "n": 1084,
+   "pool": null
+  },
+  {
+   "d": "2025-06-09",
+   "filled": 0,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 0,
+   "n": 1442,
+   "pool": null
+  },
+  {
+   "d": "2026-09-01",
+   "filled": 1179,
+   "is_mayhem_mode": null,
+   "kind": "day",
+   "mayhem": 381,
+   "n": 1179,
+   "pool": null
+  }
+ ],
+ "error": null
+}

@@ -1,0 +1,23 @@
+{
+ "day": "day",
+ "member_rows": 461,
+ "group_rows": 563,
+ "group_rows_outside_the_set_after_the_local_cut": 251,
+ "result": {
+  "tokens": 236,
+  "set size: agree": 236,
+  "creator present: agree": 236,
+  "holdings g15: agree": 236,
+  "holdings g60: agree": 236,
+  "holdings g240: agree": 236,
+  "net flow after entry: agree": 236,
+  "supply at g240: agree": 236,
+  "funders and members per funder: agree": 235,
+  "fan-out per funder: agree": 235,
+  "actors after collapse: agree": 236
+ },
+ "tokens_disagreeing": {
+  "funders and members per funder": 1,
+  "fan-out per funder": 1
+ }
+}
