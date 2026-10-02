@@ -17,7 +17,7 @@ def test_the_burned_week_query_is_refused():
     assert any("3x" in n for n in names) and any("7 days judged" in n for n in names)
 
 
-@pytest.mark.parametrize("kind", ["events", "b1a", "b1b", "b2"])
+@pytest.mark.parametrize("kind", ["events", "b1a", "b1b", "b2", "fan"])
 def test_every_scheduled_chunk_query_passes(kind):
     files = sorted((SQL / "chunks").glob(f"*_{kind}.sql"))
     assert len(files) == 19
@@ -94,5 +94,14 @@ def test_b3_is_refused_and_the_manifest_says_so():
     man = json.loads((ROOT / "recon" / "chunks_manifest.json").read_text(encoding="utf-8"))
     for row in man:
         assert row["queries"]["b3"]["review"] != "ok" and "NOT SCHEDULED" in row["queries"]["b3"]["review"][0]
-        assert all(row["queries"][k]["review"] == "ok" for k in ("events", "b1a", "b1b", "b2"))
+        assert all(row["queries"][k]["review"] == "ok" for k in ("events", "b1a", "b1b", "b2", "fan"))
     assert vc.hits((SQL / "chunks" / "2026-08_b3.sql").read_text(encoding="utf-8"))
+
+
+def test_the_fan_out_query_needs_its_funder_list(monkeypatch):
+    import dune_run_sql as r
+    monkeypatch.setattr(r.rt, "dune", lambda *a, **k: (_ for _ in ()).throw(AssertionError("reached the network")))
+    monkeypatch.setattr(sys, "argv", ["dune_run_sql.py", str(SQL / "chunks" / "2026-08_fan.sql"), "--expect", "1"])
+    with pytest.raises(SystemExit) as e:
+        r.main()
+    assert "--funders-from" in str(e.value)

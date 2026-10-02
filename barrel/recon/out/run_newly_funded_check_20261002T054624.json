@@ -1,0 +1,65 @@
+{
+ "file": "C:/Users/mdiba/AppData/Local/Temp/claude/C--Users-mdiba-Code-Abelard/d60baae7-ec4f-4124-a86f-20228bbefd0d/scratchpad/newly_funded_check.sql",
+ "label": "MR-15 B2 follow-up: what the creator sent the members that gained it as funder (query kept out of the repo)",
+ "execution_id": "01M3XJ84Z2TJTCWZMWS6KF1BBF",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 3.164852942,
+ "cap": 8.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.7,
+   0.0025
+  ],
+  [
+   3.2,
+   0.234337053
+  ],
+  [
+   5.7,
+   0.4843759
+  ],
+  [
+   8.3,
+   0.738159908
+  ],
+  [
+   10.8,
+   0.992735445
+  ],
+  [
+   13.4,
+   3.094264706
+  ],
+  [
+   146.6,
+   3.164852942
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T05:44:00.739675Z",
+ "rows": [
+  {
+   "members": 295,
+   "size": "rent-sized (< 0.0025 SOL)",
+   "sol_p50": 0.00203928,
+   "timing": "in the same second",
+   "transfers": 295
+  },
+  {
+   "members": 2,
+   "size": "0.0025 - 0.01 SOL",
+   "sol_p50": 0.00718272,
+   "timing": "in the same second",
+   "transfers": 2
+  },
+  {
+   "members": 1,
+   "size": "0.01 - 0.1 SOL",
+   "sol_p50": 0.01163712,
+   "timing": "in the same second",
+   "transfers": 1
+  }
+ ],
+ "error": null
+}

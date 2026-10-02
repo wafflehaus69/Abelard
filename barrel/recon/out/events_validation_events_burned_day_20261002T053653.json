@@ -1,0 +1,389 @@
+{
+ "file": "events_burned_day_20261002T053653.json",
+ "tokens": 1055,
+ "reserve_check": {
+  "pools": 35,
+  "match": 35,
+  "derived_null": 0,
+  "account_unreadable": 0,
+  "max_abs_diff_lamports": 46.20770263671875,
+  "sample_mayhem": 6,
+  "detail": [
+   {
+    "pool": "95qcABCm3Kn6nEFbxeX7dckEk6CgPpp2b1ahjUZN1gjr",
+    "account_vqr": 17584505549,
+    "mayhem": false,
+    "derived_vqr": 17584505560.16028,
+    "diff": 11.1602783203125,
+    "match": true
+   },
+   {
+    "pool": "2hhQE1b1zFphN34tV2BDCm68vBcZhxSijsVJmSZNVwfP",
+    "account_vqr": 17584505288,
+    "mayhem": false,
+    "derived_vqr": 17584505288.291565,
+    "diff": 0.29156494140625,
+    "match": true
+   },
+   {
+    "pool": "9heZmoLe1PAHM9QXuSv2EKW4xUB9Q5TgsvA1WgY9znsR",
+    "account_vqr": 17584505290,
+    "mayhem": false,
+    "derived_vqr": 17584505290.389526,
+    "diff": 0.3895263671875,
+    "match": true
+   },
+   {
+    "pool": "FyEHQz4gsnJ451macxaSxbrtaArFvAdVMgVCexmj9VG1",
+    "account_vqr": 0,
+    "mayhem": true,
+    "derived_vqr": 1.1896343231201172,
+    "diff": 1.1896343231201172,
+    "match": true
+   },
+   {
+    "pool": "7oUT4cqwPKzaEfD7CY5fM9cvusQ5YCJqmbxrn1XK6Ccn",
+    "account_vqr": 17584505288,
+    "mayhem": false,
+    "derived_vqr": 17584505288.273132,
+    "diff": 0.27313232421875,
+    "match": true
+   },
+   {
+    "pool": "8FKpSmjF4jyDtExz7bjP4nYpvppVRMf22vzkQpyVT4i3",
+    "account_vqr": 17584505380,
+    "mayhem": false,
+    "derived_vqr": 17584505426.207703,
+    "diff": 46.20770263671875,
+    "match": true
+   },
+   {
+    "pool": "9FhgG2kFmTTuJicYVz2k3TtBawBtPjFVaTCBQ7zYLMqb",
+    "account_vqr": 17584505402,
+    "mayhem": false,
+    "derived_vqr": 17584505406.943672,
+    "diff": 4.943672180175781,
+    "match": true
+   },
+   {
+    "pool": "9nurXnbBbE2DtkR9wTFxaN3FKvbyVT3ZD2q9q8AQE1M1",
+    "account_vqr": 0,
+    "mayhem": true,
+    "derived_vqr": 0.2493281364440918,
+    "diff": 0.2493281364440918,
+    "match": true
+   },
+   {
+    "pool": "2jffQrSSE6cGUkvPSep65rLoYK7uwaj4pKjKQxhyBYmf",
+    "account_vqr": 17584505288,
+    "mayhem": false,
+    "derived_vqr": 17584505288.273132,
+    "diff": 0.27313232421875,
+    "match": true
+   },
+   {
+    "pool": "9WN62QQkYttdCckgWMoyHjAscJAsg58Yz4SNDesYJ956",
+    "account_vqr": 17584505288,
+    "mayhem": false,
+    "derived_vqr": 17584505288.043945,
+    "diff": 0.0439453125,
+    "match": true
+   },
+   {
+    "pool": "D3z93pBRbMr353jXz33NqdfVWm7krvfzLyHSj6AGafkv",
+    "account_vqr": 17584505331,
+    "mayhem": false,
+    "derived_vqr": 17584505332.77011,
+    "diff": 1.770111083984375,
+    "match": true
+   },
+   {
+    "pool": "9eUNP4YjjEqx5j7eeae2LijYZRbUtchGPthPav2sZPxk",
+    "account_vqr": 0,
+    "mayhem": true,
+    "derived_vqr": 9.344440519809723,
+    "diff": 9.344440519809723,
+    "match": true
+   },
+   {
+    "pool": "9Mzo6xxaDnxvNs4UiUmLEEV4eUdFBwcfqSa68rxhBj75",
+    "account_vqr": 17584505303,
+    "mayhem": false,
+    "derived_vqr": 17584505310.245773,
+    "diff": 7.2457733154296875,
+    "match": true
+   },
+   {
+    "pool": "GFMnUJrDUFHkAX6bgPFuNbtRirRp8v8xM863wEM9aDcr",
+    "account_vqr": 17584506087,
+    "mayhem": false,
+    "derived_vqr": 17584506099.44468,
+    "diff": 12.444679260253906,
+    "match": true
+   },
+   {
+    "pool": "6ThTLbRWGPa2yZWTAXu29asaqyv4LUeFunmzetg5KKFn",
+    "account_vqr": 17584505348,
+    "mayhem": false,
+    "derived_vqr": 17584505366.284958,
+    "diff": 18.284957885742188,
+    "match": true
+   },
+   {
+    "pool": "2VbRRj2rpJEP59WKE4Qx4APPguUQJzZ5fB5jiQZWprwa",
+    "account_vqr": 17584505288,
+    "mayhem": false,
+    "derived_vqr": 17584505288.012695,
+    "diff": 0.0126953125,
+    "match": true
+   },
+   {
+    "pool": "3N5jNJqCk7j1yMzkxnJ2oykdn3XFnvYT1JX4cNr4NLTF",
+    "account_vqr": 17584505289,
+    "mayhem": false,
+    "derived_vqr": 17584505289.426346,
+    "diff": 0.4263458251953125,
+    "match": true
+   },
+   {
+    "pool": "AeMjUq11ABRxbLNAZTUVNnAfSyEq4NFPrLsQJULcxYDN",
+    "account_vqr": 17584505322,
+    "mayhem": false,
+    "derived_vqr": 17584505333.710144,
+    "diff": 11.71014404296875,
+    "match": true
+   },
+   {
+    "pool": "DXrxGJSYGmR3Z95JpQ2a5NkDhg4WbBkYBQcvj6BV6Qr1",
+    "account_vqr": 17584505311,
+    "mayhem": false,
+    "derived_vqr": 17584505312.866753,
+    "diff": 1.8667526245117188,
+    "match": true
+   },
+   {
+    "pool": "7vXfN7jiWt9BhH6Lx15nbzx7cS5Au7VXdryWnvWnm4DB",
+    "account_vqr": 17584505620,
+    "mayhem": false,
+    "derived_vqr": 17584505628.187775,
+    "diff": 8.187774658203125,
+    "match": true
+   },
+   {
+    "pool": "8SQFq2mmEWgTA5D6Zg4MZLi9mQ6PUXf7gWv6tNGvG3Xc",
+    "account_vqr": 17584505444,
+    "mayhem": false,
+    "derived_vqr": 17584505444.163513,
+    "diff": 0.16351318359375,
+    "match": true
+   },
+   {
+    "pool": "4ikVfEwpHroKzjq368tsHvkSqJHMBJpnbTQdXcAzmQrv",
+    "account_vqr": 17584505289,
+    "mayhem": false,
+    "derived_vqr": 17584505306.21733,
+    "diff": 17.217330932617188,
+    "match": true
+   },
+   {
+    "pool": "GJzMLgheh5timzWMP8PNCrkSSiAb1L8n1jfHazuPYahv",
+    "account_vqr": 17584505398,
+    "mayhem": false,
+    "derived_vqr": 17584505404.561478,
+    "diff": 6.5614776611328125,
+    "match": true
+   },
+   {
+    "pool": "Dunk4dydFBxv1TfTRVLjvZVmm5uNenwsN1d6i3SiSBBt",
+    "account_vqr": 17584505467,
+    "mayhem": false,
+    "derived_vqr": 17584505467.007248,
+    "diff": 0.0072479248046875,
+    "match": true
+   },
+   {
+    "pool": "GijEe3G2Z5AXghVYUL8MiwP5d53NJq8yDZafXpfRANui",
+    "account_vqr": 0,
+    "mayhem": true,
+    "derived_vqr": 4.154599875211716,
+    "diff": 4.154599875211716,
+    "match": true
+   },
+   {
+    "pool": "3QzDAUsbagugG6WZFMJHvvDYTUJcwqTmYwCNT8BdGy49",
+    "account_vqr": 0,
+    "mayhem": true,
+    "derived_vqr": 0.9085590839385986,
+    "diff": 0.9085590839385986,
+    "match": true
+   },
+   {
+    "pool": "8mJU1pwy8oFTxATEX57bMqmUPJYgD7MDbENxMxAFNcvg",
+    "account_vqr": 17584505423,
+    "mayhem": false,
+    "derived_vqr": 17584505429.662186,
+    "diff": 6.6621856689453125,
+    "match": true
+   },
+   {
+    "pool": "soHisoG5znaWQ32PwfBKZ5ZrsQjQJCMT8tGP7jVjsFU",
+    "account_vqr": 17584505327,
+    "mayhem": false,
+    "derived_vqr": 17584505339.72632,
+    "diff": 12.726318359375,
+    "match": true
+   },
+   {
+    "pool": "F1ugnp2zFmbWyWMsPjZ8mWT1V11CvBtSQn7mszAvQKpV",
+    "account_vqr": 17584505581,
+    "mayhem": false,
+    "derived_vqr": 17584505589.55545,
+    "diff": 8.555450439453125,
+    "match": true
+   },
+   {
+    "pool": "9wkoQXRgU4fdY3rTqoQdaG7oRM8oQVFLyuyFcgSmAziW",
+    "account_vqr": 17584505359,
+    "mayhem": false,
+    "derived_vqr": 17584505365.348778,
+    "diff": 6.348777770996094,
+    "match": true
+   },
+   {
+    "pool": "7zQYgM3FwkDdrRFYJ3A32MSorRbQNVak44uNLwjM15Mn",
+    "account_vqr": 17584505290,
+    "mayhem": false,
+    "derived_vqr": 17584505318.694016,
+    "diff": 28.694015502929688,
+    "match": true
+   },
+   {
+    "pool": "4gNkA5eTeNK9dSEVc9BRsCCmKGE8PKASyofR3UyEsjAq",
+    "account_vqr": 17584505426,
+    "mayhem": false,
+    "derived_vqr": 17584505433.423126,
+    "diff": 7.423126220703125,
+    "match": true
+   },
+   {
+    "pool": "3eMU53LRieqJMBfKjAZWsXNnf91fjyRNifDyrrSd1uGH",
+    "account_vqr": 17584505592,
+    "mayhem": false,
+    "derived_vqr": 17584505603.61644,
+    "diff": 11.616439819335938,
+    "match": true
+   },
+   {
+    "pool": "AhbUgPQDYX6DWwCJSK9vgF7NwH39qCNVLy4zHrZXb4ZX",
+    "account_vqr": 17584505388,
+    "mayhem": false,
+    "derived_vqr": 17584505400.023697,
+    "diff": 12.023696899414062,
+    "match": true
+   },
+   {
+    "pool": "HBXamjvBdgDb9yj5z5cypU2igzHz3UFX37rTX4rXaEMW",
+    "account_vqr": 0,
+    "mayhem": true,
+    "derived_vqr": 5.195356845855713,
+    "diff": 5.195356845855713,
+    "match": true
+   }
+  ]
+ },
+ "reserve_fill": {
+  "null": 0,
+  "zero_or_near": 275,
+  "about_17_58_sol": 779,
+  "other": 1
+ },
+ "null_counts": {
+  "px_grad": 0,
+  "px_g15": 1,
+  "px_g60": 1,
+  "px_g240": 0,
+  "px_7d": 0,
+  "peak_24h_g240": 102,
+  "mdd_7d_g240": 69,
+  "cb_p50": 0,
+  "cs_p50": 0,
+  "creator": 22,
+  "token_program": 22
+ },
+ "cost_bps": {
+  "buy_p50": 118.57809383380244,
+  "sell_p50": 125.00003973464601,
+  "buy_negative": 0
+ },
+ "price_paths": {
+  "g15": {
+   "tokens": 1054,
+   "ret7_p10_p25_p50_p75_p90": [
+    0.0004,
+    0.0276,
+    0.2088,
+    0.7832,
+    0.9878
+   ],
+   "ret7_mean": 0.4196,
+   "share_above_entry": 0.0436,
+   "peak7_p50": 1.2055,
+   "share_reaching_2x": 0.2407,
+   "peak24_p50": 1.1764,
+   "mdd7_p50": 0.8622,
+   "entry_over_graduation_p50": 0.191,
+   "real_quote_reserve_sol_p50": 10.568,
+   "h5_winners": 17
+  },
+  "g60": {
+   "tokens": 1054,
+   "ret7_p10_p25_p50_p75_p90": [
+    0.0009,
+    0.0966,
+    0.507,
+    0.9606,
+    0.9989
+   ],
+   "ret7_mean": 0.5985,
+   "share_above_entry": 0.0474,
+   "peak7_p50": 1.0568,
+   "share_reaching_2x": 0.1532,
+   "peak24_p50": 1.0318,
+   "mdd7_p50": 0.5927,
+   "entry_over_graduation_p50": 0.0829,
+   "real_quote_reserve_sol_p50": 3.55,
+   "h5_winners": 10
+  },
+  "g240": {
+   "tokens": 1055,
+   "ret7_p10_p25_p50_p75_p90": [
+    0.039,
+    0.3496,
+    0.8177,
+    0.9901,
+    1.0
+   ],
+   "ret7_mean": 0.7652,
+   "share_above_entry": 0.0559,
+   "peak7_p50": 1.0021,
+   "share_reaching_2x": 0.1105,
+   "peak24_p50": 1.0003,
+   "mdd7_p50": 0.3721,
+   "entry_over_graduation_p50": 0.0594,
+   "real_quote_reserve_sol_p50": 2.065,
+   "h5_winners": 10
+  }
+ },
+ "g240_by_pool_kind": {
+  "mayhem (vqr 0)": {
+   "tokens": 275,
+   "ret7_p50": 0.4743,
+   "ret7_mean": 0.5452
+  },
+  "with virtual reserve": {
+   "tokens": 780,
+   "ret7_p50": 0.9307,
+   "ret7_mean": 0.8428
+  }
+ }
+}

@@ -54,10 +54,12 @@ def test_latency_is_none_when_unmeasured_never_zero():
     assert actors.fund_to_first_buy_s([row("a", lat=10), row("b", lat=30), row("c")]) == 20
 
 
-def test_block_id_falls_back_to_the_creator_wallet():
-    assert actors.block_id(row("cr", "F1", 3), "cr", **KW) == "F:F1"
+def test_block_is_keyed_by_address_alone():
+    assert actors.block_id(row("cr", "F1", 3), "cr", **KW) == "F1"
     for r in (row("cr", "EXCH", 3), row("cr", "BIG", 5000), row("cr"), None):
-        assert actors.block_id(r, "cr", **KW) == "C:cr"
+        assert actors.block_id(r, "cr", **KW) == "cr"
+    # R2: a wallet that creates one token and funds the creator of another is ONE block
+    assert actors.block_id(row("X", "EXCH", 3), "X", **KW) == actors.block_id(row("W", "X", 3), "W", **KW) == "X"
 
 
 def test_label_beats_fan_out():
@@ -69,7 +71,7 @@ def test_a_factory_links_where_a_hub_does_not():
     assert actors.resolution.actor_count(actors.token_record(rows, **KW)) == 2
     rec = actors.token_record(rows, factories={"BIG"}, **KW)
     assert actors.resolution.actor_count(rec) == 1 and rec["collapse_state"] == "collapsed"
-    assert actors.block_id(row("cr", "BIG", 5000), "cr", factories={"BIG"}, **KW) == "F:BIG"
+    assert actors.block_id(row("cr", "BIG", 5000), "cr", factories={"BIG"}, **KW) == "BIG"
 
 
 def test_grouped_rows_give_the_same_record_as_member_rows():
@@ -112,6 +114,42 @@ def test_latency_from_group_rows_is_the_median_across_members():
     groups = [{"lat_s": [10, 30]}, {"lat_s": [50]}, {"lat_s": None}]
     assert actors.fund_to_first_buy_s(groups) == 30
     assert actors.fund_to_first_buy_s([{"lat_s": None}, {"lat_s": []}]) is None
+
+
+def test_r1_a_creator_and_the_wallets_it_funded_are_one_actor():
+    # creator came from an exchange; it funded two wallets and its own fan-out is small, so it links
+    members = [row("cr", "EXCH", 2), row("a", "cr", 3), row("b", "cr", 3)]
+    assert actors.resolution.actor_count(actors.token_record(members, **KW)) == 1
+    groups = [{"funder": "EXCH", "fan_out": 2, "n_members": 1, "b_only_n": None, "creator": "cr", "n_creator": 1},
+              {"funder": "cr", "fan_out": 3, "n_members": 2, "b_only_n": None, "creator": "cr", "n_creator": 0}]
+    mfs = [{"member": "cr", "funder": "EXCH", "fan_out": 2, "b_only_n": None}]
+    assert actors.resolution.actor_count(actors.token_record_grouped(groups, mfs, **KW)) == 1
+    assert actors.resolution.actor_count(actors.token_record_grouped(groups, **KW)) == 1      # creator rebuilt from the groups
+
+
+def test_r1_chain_and_non_creator_member_funder():
+    # F1 links cr and a; a links b; so cr, a, b are one actor. c stands alone behind a hub.
+    members = [row("cr", "F1", 3), row("a", "F1", 3), row("b", "a", 2), row("c", "BIG", 5000)]
+    assert actors.resolution.actor_count(actors.token_record(members, **KW)) == 2
+    groups = [{"funder": "F1", "fan_out": 3, "n_members": 2, "b_only_n": None, "creator": "cr", "n_creator": 1},
+              {"funder": "a", "fan_out": 2, "n_members": 1, "b_only_n": None, "creator": "cr", "n_creator": 0},
+              {"funder": "BIG", "fan_out": 5000, "n_members": 1, "b_only_n": None, "creator": "cr", "n_creator": 0}]
+    mfs = [{"member": "a", "funder": "F1", "fan_out": 3, "b_only_n": None}]
+    assert actors.resolution.actor_count(actors.token_record_grouped(groups, mfs, **KW)) == 2
+
+
+def test_r1_does_not_merge_through_a_funder_that_does_not_link():
+    # the creator funds 5,000 wallets: a hub by fan-out, so nothing is merged (the factory class would)
+    members = [row("cr", "EXCH", 2), row("a", "cr", 5000), row("b", "cr", 5000)]
+    assert actors.resolution.actor_count(actors.token_record(members, **KW)) == 3
+
+
+def test_fan_rate_table_replaces_the_row_value_and_absence_is_a_measured_zero():
+    members = [row("a", "F1", 5000), row("b", "F1", 5000)]
+    assert actors.resolution.actor_count(actors.token_record(members, **KW)) == 2
+    assert actors.resolution.actor_count(actors.token_record(members, rates={"F1": 3.0}, **KW)) == 1
+    assert actors.resolution.actor_count(actors.token_record(members, rates={}, **KW)) == 1
+    assert actors.resolution.actor_count(actors.token_record(members, rates={"F1": 900.0}, **KW)) == 2
 
 
 def test_parity_with_consensus_m10():

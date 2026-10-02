@@ -1,0 +1,81 @@
+{
+ "file": "barrel/recon/sql/events_burned_day.sql",
+ "label": "MR-15 B1: event query with derived reserve, one post-BOOST day 2026-08-10 (burned week), hard cap 50",
+ "execution_id": "01M3XHSQQ2J8S8EM4FCM4BFK7G",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 10.66132353,
+ "cap": 50.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   0.0025
+  ],
+  [
+   2.9,
+   0.148256487
+  ],
+  [
+   5.3,
+   0.392455157
+  ],
+  [
+   7.8,
+   0.6360247
+  ],
+  [
+   10.2,
+   0.883597073
+  ],
+  [
+   12.7,
+   1.128212053
+  ],
+  [
+   15.1,
+   1.371740509
+  ],
+  [
+   17.6,
+   1.615220857
+  ],
+  [
+   20.0,
+   1.858372639
+  ],
+  [
+   22.4,
+   2.10194409
+  ],
+  [
+   24.9,
+   2.344922839
+  ],
+  [
+   27.3,
+   2.588433232
+  ],
+  [
+   29.7,
+   2.832184265
+  ],
+  [
+   32.2,
+   3.075296716
+  ],
+  [
+   34.6,
+   1.308382353
+  ],
+  [
+   44.4,
+   10.66132353
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T05:36:08.419232Z",
+ "rows": null,
+ "error": null,
+ "exported": "data/events_burned_day_20261002T053653.json",
+ "n_rows": 1055
+}

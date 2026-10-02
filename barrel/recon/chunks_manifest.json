@@ -29,6 +29,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2025-03_fan.sql",
+    "projected_credits": 12.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-03_b3.sql",
     "projected_credits": 81.1,
@@ -67,6 +72,11 @@
    "b2": {
     "file": "recon/sql/chunks/2025-04_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2025-04_fan.sql",
+    "projected_credits": 30.0,
     "review": "ok"
    },
    "b3": {
@@ -109,6 +119,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2025-05_fan.sql",
+    "projected_credits": 31.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-05_b3.sql",
     "projected_credits": 154.4,
@@ -147,6 +162,11 @@
    "b2": {
     "file": "recon/sql/chunks/2025-06_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2025-06_fan.sql",
+    "projected_credits": 30.0,
     "review": "ok"
    },
    "b3": {
@@ -189,6 +209,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2025-07_fan.sql",
+    "projected_credits": 31.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-07_b3.sql",
     "projected_credits": 154.4,
@@ -225,6 +250,11 @@
    "b2": {
     "file": "recon/sql/chunks/2025-08_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2025-08_fan.sql",
+    "projected_credits": 31.0,
     "review": "ok"
    },
    "b3": {
@@ -265,6 +295,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2025-09_fan.sql",
+    "projected_credits": 30.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-09_b3.sql",
     "projected_credits": 150.6,
@@ -301,6 +336,11 @@
    "b2": {
     "file": "recon/sql/chunks/2025-10_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2025-10_fan.sql",
+    "projected_credits": 31.0,
     "review": "ok"
    },
    "b3": {
@@ -341,6 +381,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2025-11_fan.sql",
+    "projected_credits": 30.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-11_b3.sql",
     "projected_credits": 150.6,
@@ -377,6 +422,11 @@
    "b2": {
     "file": "recon/sql/chunks/2025-12_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2025-12_fan.sql",
+    "projected_credits": 31.0,
     "review": "ok"
    },
    "b3": {
@@ -417,6 +467,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2026-01_fan.sql",
+    "projected_credits": 31.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-01_b3.sql",
     "projected_credits": 154.4,
@@ -453,6 +508,11 @@
    "b2": {
     "file": "recon/sql/chunks/2026-02_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2026-02_fan.sql",
+    "projected_credits": 28.0,
     "review": "ok"
    },
    "b3": {
@@ -493,6 +553,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2026-03_fan.sql",
+    "projected_credits": 31.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-03_b3.sql",
     "projected_credits": 154.4,
@@ -529,6 +594,11 @@
    "b2": {
     "file": "recon/sql/chunks/2026-04_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2026-04_fan.sql",
+    "projected_credits": 30.0,
     "review": "ok"
    },
    "b3": {
@@ -569,6 +639,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2026-05_fan.sql",
+    "projected_credits": 31.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-05_b3.sql",
     "projected_credits": 154.4,
@@ -607,6 +682,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2026-06_fan.sql",
+    "projected_credits": 30.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-06_b3.sql",
     "projected_credits": 150.6,
@@ -643,6 +723,11 @@
    "b2": {
     "file": "recon/sql/chunks/2026-07_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2026-07_fan.sql",
+    "projected_credits": 31.0,
     "review": "ok"
    },
    "b3": {
@@ -685,6 +770,11 @@
     "projected_credits": 0.5,
     "review": "ok"
    },
+   "fan": {
+    "file": "recon/sql/chunks/2026-08_fan.sql",
+    "projected_credits": 31.0,
+    "review": "ok"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-08_b3.sql",
     "projected_credits": 233.2,
@@ -721,6 +811,11 @@
    "b2": {
     "file": "recon/sql/chunks/2026-09_b2.sql",
     "projected_credits": 0.5,
+    "review": "ok"
+   },
+   "fan": {
+    "file": "recon/sql/chunks/2026-09_fan.sql",
+    "projected_credits": 20.0,
     "review": "ok"
    },
    "b3": {

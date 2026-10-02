@@ -13,13 +13,24 @@ ALLOWANCE = 2500.0; RESERVE = 0.15
 def consumed():
     m = re.search(r"Total consumed: ([\d.]+)", LEDGER.read_text(encoding="utf-8")); return float(m.group(1)) if m else 0.0
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--export", action="store_true"); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
+    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--export", action="store_true"); ap.add_argument("--funders-from", dest="funders_from", default=None); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
     # MR-14 ruling 5: a query carrying a registered verdict constant is never submitted. No override.
     verdict_constants.refuse(sql, what=a.sql)     # also enforced in dune_roundtrip.dune, the one request function
     # A query that says its rows name wallets is never written to the tracked tree, whatever flags were given.
     if "--private-rows" in sql and not (a.private_rows or a.export or a.no_rows):
         a.private_rows = True; print("rows name wallets (query header): forcing --private-rows")
+    # Fan-out query (MR-15 B3): its senders are the funders in the chunk's exported aligned-set rows. The
+    # addresses go into the text sent to Dune and nowhere else; the file in the repo keeps the placeholder.
+    if "__FUNDERS__" in sql:
+        if not a.funders_from: raise SystemExit("REFUSED: this query needs --funders-from <exported aligned-set rows>")
+        own = set(owner_wallets.owner_wallets())
+        frows = json.loads(pathlib.Path(a.funders_from).read_text(encoding="utf-8"))
+        fset = sorted({v for r in frows for v in (r.get("funder"), r.get("member_own_funder")) if v and v not in own})
+        if not fset: raise SystemExit("REFUSED: no funder in the rows given")
+        if not all(re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", f) for f in fset): raise SystemExit("REFUSED: a funder value is not a base58 address")
+        sql = sql.replace("__FUNDERS__", ", ".join(f"'{f}'" for f in fset))
+        print(f"funders substituted: {len(fset)} (query text {len(sql) / 1e6:.2f} MB)")
     # Owner-wallet exclusion (MR-3.4): SQL files write __NOT_OWNER(col)__; the addresses are read
     # from barrel/private/ at run time and reach only the query text sent to Dune, never the repo.
     for m_ in set(re.findall(r"__NOT_OWNER\(([A-Za-z0-9_.]+)\)__", sql)):

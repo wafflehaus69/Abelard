@@ -1,0 +1,29 @@
+{
+ "file": "barrel/recon/sql/fanout_day_2026-09-01.sql",
+ "label": "MR-15 B3: fan-out query, one-day proving run 2026-09-01 (new pattern, hard cap 8)",
+ "execution_id": "01M3XJDG78TTCB8JX4K9AZKK63",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.513441177,
+ "cap": 8.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   0.0025
+  ],
+  [
+   2.9,
+   0.188117044
+  ],
+  [
+   5.5,
+   0.513441177
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T05:46:56.10553Z",
+ "rows": null,
+ "error": null,
+ "exported": "data/fanout_day_2026-09-01_20261002T054659.json",
+ "n_rows": 1120
+}

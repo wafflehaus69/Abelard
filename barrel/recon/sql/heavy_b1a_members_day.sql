@@ -116,19 +116,12 @@ inb AS (    -- funder = the last sender before the first action; funded_ts = tha
   FROM (SELECT *, row_number() OVER (PARTITION BY mint, w ORDER BY slot_last DESC, sender DESC) AS rn,
                count(*) OVER (PARTITION BY mint, w) AS n_senders
         FROM inb0)
-  WHERE rn = 1),
-fan AS (
-  SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
-  FROM tokens_solana.sol_transfers s
-  WHERE s.block_time >= TIMESTAMP '2025-06-05 00:00:00' AND s.block_time < TIMESTAMP '2025-06-11 00:00:00'
-    AND CAST(s.amount AS double) >= 1e6
-  GROUP BY 1)
+  WHERE rn = 1)
 SELECT m.mint, m.w, m.is_creator, m.is_funded, m.bundle_n, m.cr_sol, m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0,
        m.grad_time, m.t0, m.first_in, m.b15, m.b60, m.b240, m.net_after,
-       i.funder, i.funded_ts, i.funded_sol, i.n_senders, f.fan_out, f.n_out,
+       i.funder, i.funded_ts, i.funded_sol, i.n_senders,
        date_diff('second', i.funded_ts, m.first_in) AS fund_to_first_buy_s,
        sup.b15 AS supply15, sup.b60 AS supply60, sup.b240 AS supply240
 FROM mm m
 LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
-LEFT JOIN fan f ON f.a = i.funder
 LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'

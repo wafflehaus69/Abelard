@@ -117,29 +117,39 @@ inb AS (    -- funder = the last sender before the first action; funded_ts = tha
                count(*) OVER (PARTITION BY mint, w) AS n_senders
         FROM inb0)
   WHERE rn = 1),
-fan AS (
-  SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
-  FROM tokens_solana.sol_transfers s
-  WHERE s.block_time >= TIMESTAMP '2025-10-28 00:00:00' AND s.block_time < TIMESTAMP '2025-12-02 00:00:00'
-    AND CAST(s.amount AS double) >= 1e6
-  GROUP BY 1)
-SELECT m.mint, i.funder,
-       -- b_only_n: NULL for the creator and wallets the creator funded (always in the set); for a
-       -- wallet that is a candidate only as a creation-slot trader, its same-funder count
-       CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS b_only_n,
-       arbitrary(m.creator) AS creator,
-       count(*) AS n_members, count_if(m.is_creator) AS n_creator, count_if(m.is_funded) AS n_funded,
-       max(m.n_all) AS n_all, max(m.n_funded_all) AS n_funded_all, max(m.bundle_n_max) AS bundle_n_max, max(m.n_slot0) AS n_slot0,
-       max(f.fan_out) AS fan_out, max(i.n_senders) AS n_senders_max,
-       sum(m.b15) AS b15, sum(m.b60) AS b60, sum(m.b240) AS b240, sum(m.net_after) AS net_after,
-       sum(m.f0) AS f0, sum(m.f1) AS f1, sum(m.f2) AS f2, sum(m.f3) AS f3, sum(m.f4) AS f4, sum(m.f5) AS f5, sum(m.f6) AS f6, sum(m.f7) AS f7,
-       -- every member's funding-to-first-acquisition seconds (no wallet in it): the per-token median of
-       -- column 86 is taken locally across the set's members, as ruled (MR-12.2)
-       array_agg(date_diff('second', i.funded_ts, m.first_in)) FILTER (WHERE i.funded_ts IS NOT NULL AND m.first_in IS NOT NULL) AS lat_s,
-       min(m.first_in) AS first_in_min, arbitrary(m.grad_time) AS grad_time, arbitrary(m.t0) AS t0,
-       arbitrary(sup.b15) AS supply15, arbitrary(sup.b60) AS supply60, arbitrary(sup.b240) AS supply240
-FROM mm m
-LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
-LEFT JOIN fan f ON f.a = i.funder
-LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'
-GROUP BY 1, 2, 3
+mf AS (
+  SELECT m.mint, m.w, m.creator, m.is_creator, m.is_funded,
+         -- bo: NULL for the creator and wallets the creator funded (always in the set); for a wallet that
+         -- is a candidate only as a creation-slot trader, its same-funder count (the cut is local)
+         CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS bo,
+         m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0, m.b15, m.b60, m.b240, m.net_after, m.f0, m.f1, m.f2, m.f3, m.f4, m.f5, m.f6, m.f7,
+         m.first_in, m.grad_time, m.t0, i.funder, i.funded_ts, i.n_senders,
+         sup.b15 AS supply15, sup.b60 AS supply60, sup.b240 AS supply240
+  FROM mm m
+  LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
+  LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY')
+SELECT CASE WHEN grouping(x.key) = 0 THEN 'member_funder' ELSE 'group' END AS row_kind,
+       mf.mint, mf.funder, mf.bo AS b_only_n,
+       x.key AS member,
+       max(mf.funder) FILTER (WHERE x.kind = 'M') AS member_own_funder, max(mf.bo) FILTER (WHERE x.kind = 'M') AS member_b_only_n,
+       count(*) FILTER (WHERE x.kind = 'F') AS n_funded_by_member,
+       arbitrary(mf.creator) FILTER (WHERE x.kind = 'M') AS creator,
+       count(*) FILTER (WHERE x.kind = 'M') AS n_members,
+       count(*) FILTER (WHERE x.kind = 'M' AND mf.is_creator) AS n_creator,
+       count(*) FILTER (WHERE x.kind = 'M' AND mf.is_funded) AS n_funded,
+       max(mf.n_all) FILTER (WHERE x.kind = 'M') AS n_all, max(mf.n_funded_all) FILTER (WHERE x.kind = 'M') AS n_funded_all,
+       max(mf.bundle_n_max) FILTER (WHERE x.kind = 'M') AS bundle_n_max, max(mf.n_slot0) FILTER (WHERE x.kind = 'M') AS n_slot0,
+       max(mf.n_senders) FILTER (WHERE x.kind = 'M') AS n_senders_max,
+       sum(mf.b15) FILTER (WHERE x.kind = 'M') AS b15, sum(mf.b60) FILTER (WHERE x.kind = 'M') AS b60, sum(mf.b240) FILTER (WHERE x.kind = 'M') AS b240, sum(mf.net_after) FILTER (WHERE x.kind = 'M') AS net_after,
+       sum(mf.f0) FILTER (WHERE x.kind = 'M') AS f0, sum(mf.f1) FILTER (WHERE x.kind = 'M') AS f1, sum(mf.f2) FILTER (WHERE x.kind = 'M') AS f2, sum(mf.f3) FILTER (WHERE x.kind = 'M') AS f3, sum(mf.f4) FILTER (WHERE x.kind = 'M') AS f4, sum(mf.f5) FILTER (WHERE x.kind = 'M') AS f5, sum(mf.f6) FILTER (WHERE x.kind = 'M') AS f6, sum(mf.f7) FILTER (WHERE x.kind = 'M') AS f7,
+       -- every member's seconds from its funder's first transfer to its first acquisition (no wallet in it):
+       -- the per-token median of column 86 is taken locally across members (MR-12.2)
+       array_agg(date_diff('second', mf.funded_ts, mf.first_in))
+         FILTER (WHERE x.kind = 'M' AND mf.funded_ts IS NOT NULL AND mf.first_in IS NOT NULL) AS lat_s,
+       min(mf.first_in) FILTER (WHERE x.kind = 'M') AS first_in_min, arbitrary(mf.grad_time) FILTER (WHERE x.kind = 'M') AS grad_time, arbitrary(mf.t0) FILTER (WHERE x.kind = 'M') AS t0,
+       arbitrary(mf.supply15) FILTER (WHERE x.kind = 'M') AS supply15, arbitrary(mf.supply60) FILTER (WHERE x.kind = 'M') AS supply60, arbitrary(mf.supply240) FILTER (WHERE x.kind = 'M') AS supply240
+FROM mf
+CROSS JOIN UNNEST(ARRAY['M', 'F'], ARRAY[mf.w, mf.funder]) AS x(kind, key)
+WHERE x.key IS NOT NULL
+GROUP BY GROUPING SETS ((mf.mint, mf.funder, mf.bo), (mf.mint, x.key))
+HAVING grouping(x.key) = 1 OR (bool_or(x.kind = 'M') AND bool_or(x.kind = 'F'))

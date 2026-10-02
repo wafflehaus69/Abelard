@@ -21,9 +21,8 @@ dropped. Without this every token shows a "funded" set of four or more (a3_seta_
 
 Every window is per token, so a token gets the same treatment wherever it falls in a chunk:
 creation within 3 days before its graduation day, funding looked for from 4 days before its
-graduation day, first acquisition within 9 days after graduation. ONE definition is still
-chunk-dependent and is an open point for the Architect: fan_out is counted over the chunk's
-whole scan (RUNBOOK_v1 section 1).
+graduation day, first acquisition within 9 days after graduation. Fan-out is not computed here at all
+(MR-15 B3): it is a property of the funder over a fixed window, recon/gen_fanout.py.
 
 Funder of a member = sender of the last SOL transfer of at least 0.001 SOL received up to the
 slot of the member's first action; the latency runs from that funder's FIRST transfer (MR-12.2) (creation time for the creator, first acquisition of the token
@@ -168,54 +167,76 @@ inb AS (    -- funder = the last sender before the first action; funded_ts = tha
   FROM (SELECT *, row_number() OVER (PARTITION BY mint, w ORDER BY slot_last DESC, sender DESC) AS rn,
                count(*) OVER (PARTITION BY mint, w) AS n_senders
         FROM inb0)
-  WHERE rn = 1),
-fan AS (
-  SELECT s.from_owner AS a, approx_distinct(s.to_owner) AS fan_out, count(*) AS n_out
-  FROM tokens_solana.sol_transfers s
-  WHERE {bounds}
-  GROUP BY 1)
+  WHERE rn = 1)
 SELECT m.mint, m.w, m.is_creator, m.is_funded, m.bundle_n, m.cr_sol, m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0,
        m.grad_time, m.t0, m.first_in, m.b15, m.b60, m.b240, m.net_after,
-       i.funder, i.funded_ts, i.funded_sol, i.n_senders, f.fan_out, f.n_out,
+       i.funder, i.funded_ts, i.funded_sol, i.n_senders,
        date_diff('second', i.funded_ts, m.first_in) AS fund_to_first_buy_s,
        sup.b15 AS supply15, sup.b60 AS supply60, sup.b240 AS supply240
 FROM mm m
 LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
-LEFT JOIN fan f ON f.a = i.funder
 LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'"""
 
 
 def members_grouped(gd0: str, gd1: str) -> str:
-    """Build form of B1a: one row per (token, funder) instead of one per member, so a set of
-    thousands of wallets behind one funder is one row. Everything the local collapse, the block
-    and the registry need survives the grouping: members per funder, the funder's fan-out, summed
-    balances and flows, and whether the creator is in the group. Members with no funder found
-    are the group with funder NULL. NEW PATTERN: not yet run; one-day scope first."""
+    """Build form of B1a. One result, two kinds of row (column row_kind):
+
+      group          one row per (token, funder, candidate class): members behind that funder,
+                     summed balances and flows, every member's funding-to-acquisition seconds.
+                     Members with no funder found are the group with funder NULL.
+      member_funder  one row for each member that is ALSO the funder of another member of the
+                     same token, with that member's own funder. MR-15 R1 merges such a member
+                     with the wallets it funds; the local code needs to know who they are.
+
+    Both come from one pass over the member rows (GROUPING SETS over each row taken once as a
+    member and once as its funder), so nothing upstream is evaluated twice.
+
+    The funder's fan-out is NOT here (MR-15 B3): it is a property of the funder over a fixed
+    window and comes from the separate per-chunk query, recon/gen_fanout.py."""
     full = members(gd0, gd1)
-    fsum = ", ".join(f"sum(m.f{k}) AS f{k}" for k in range(8))
+    m = lambda expr: f"{expr} FILTER (WHERE x.kind = 'M')"                         # noqa: E731
+    fsum = ", ".join(f"sum(mf.f{k}) FILTER (WHERE x.kind = 'M') AS f{k}" for k in range(8))
+    fcols = ", ".join(f"m.f{k}" for k in range(8))
     cut = full.index("SELECT m.mint, m.w, m.is_creator")
-    return (full[:cut].replace("-- Heavy tier B1a: aligned-set members with funding records",
-                               "-- Heavy tier B1a (build form): aligned-set members grouped by funder")
-            + f"""SELECT m.mint, i.funder,
-       -- b_only_n: NULL for the creator and wallets the creator funded (always in the set); for a
-       -- wallet that is a candidate only as a creation-slot trader, its same-funder count
-       CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS b_only_n,
-       arbitrary(m.creator) AS creator,
-       count(*) AS n_members, count_if(m.is_creator) AS n_creator, count_if(m.is_funded) AS n_funded,
-       max(m.n_all) AS n_all, max(m.n_funded_all) AS n_funded_all, max(m.bundle_n_max) AS bundle_n_max, max(m.n_slot0) AS n_slot0,
-       max(f.fan_out) AS fan_out, max(i.n_senders) AS n_senders_max,
-       sum(m.b15) AS b15, sum(m.b60) AS b60, sum(m.b240) AS b240, sum(m.net_after) AS net_after,
+    return (full[:cut].rstrip().replace("-- Heavy tier B1a: aligned-set members with funding records",
+                                         "-- Heavy tier B1a (build form): aligned-set members grouped by funder")
+            + f""",
+mf AS (
+  SELECT m.mint, m.w, m.creator, m.is_creator, m.is_funded,
+         -- bo: NULL for the creator and wallets the creator funded (always in the set); for a wallet that
+         -- is a candidate only as a creation-slot trader, its same-funder count (the cut is local)
+         CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS bo,
+         m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0, m.b15, m.b60, m.b240, m.net_after, {fcols},
+         m.first_in, m.grad_time, m.t0, i.funder, i.funded_ts, i.n_senders,
+         sup.b15 AS supply15, sup.b60 AS supply60, sup.b240 AS supply240
+  FROM mm m
+  LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
+  LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY')
+SELECT CASE WHEN grouping(x.key) = 0 THEN 'member_funder' ELSE 'group' END AS row_kind,
+       mf.mint, mf.funder, mf.bo AS b_only_n,
+       x.key AS member,
+       {m("max(mf.funder)")} AS member_own_funder, {m("max(mf.bo)")} AS member_b_only_n,
+       count(*) FILTER (WHERE x.kind = 'F') AS n_funded_by_member,
+       {m("arbitrary(mf.creator)")} AS creator,
+       {m("count(*)")} AS n_members,
+       count(*) FILTER (WHERE x.kind = 'M' AND mf.is_creator) AS n_creator,
+       count(*) FILTER (WHERE x.kind = 'M' AND mf.is_funded) AS n_funded,
+       {m("max(mf.n_all)")} AS n_all, {m("max(mf.n_funded_all)")} AS n_funded_all,
+       {m("max(mf.bundle_n_max)")} AS bundle_n_max, {m("max(mf.n_slot0)")} AS n_slot0,
+       {m("max(mf.n_senders)")} AS n_senders_max,
+       {m("sum(mf.b15)")} AS b15, {m("sum(mf.b60)")} AS b60, {m("sum(mf.b240)")} AS b240, {m("sum(mf.net_after)")} AS net_after,
        {fsum},
-       -- every member's funding-to-first-acquisition seconds (no wallet in it): the per-token median of
-       -- column 86 is taken locally across the set's members, as ruled (MR-12.2)
-       array_agg(date_diff('second', i.funded_ts, m.first_in)) FILTER (WHERE i.funded_ts IS NOT NULL AND m.first_in IS NOT NULL) AS lat_s,
-       min(m.first_in) AS first_in_min, arbitrary(m.grad_time) AS grad_time, arbitrary(m.t0) AS t0,
-       arbitrary(sup.b15) AS supply15, arbitrary(sup.b60) AS supply60, arbitrary(sup.b240) AS supply240
-FROM mm m
-LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
-LEFT JOIN fan f ON f.a = i.funder
-LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'
-GROUP BY 1, 2, 3""")
+       -- every member's seconds from its funder's first transfer to its first acquisition (no wallet in it):
+       -- the per-token median of column 86 is taken locally across members (MR-12.2)
+       array_agg(date_diff('second', mf.funded_ts, mf.first_in))
+         FILTER (WHERE x.kind = 'M' AND mf.funded_ts IS NOT NULL AND mf.first_in IS NOT NULL) AS lat_s,
+       {m("min(mf.first_in)")} AS first_in_min, {m("arbitrary(mf.grad_time)")} AS grad_time, {m("arbitrary(mf.t0)")} AS t0,
+       {m("arbitrary(mf.supply15)")} AS supply15, {m("arbitrary(mf.supply60)")} AS supply60, {m("arbitrary(mf.supply240)")} AS supply240
+FROM mf
+CROSS JOIN UNNEST(ARRAY['M', 'F'], ARRAY[mf.w, mf.funder]) AS x(kind, key)
+WHERE x.key IS NOT NULL
+GROUP BY GROUPING SETS ((mf.mint, mf.funder, mf.bo), (mf.mint, x.key))
+HAVING grouping(x.key) = 1 OR (bool_or(x.kind = 'M') AND bool_or(x.kind = 'F'))""")
 
 
 def c06(gd0: str, gd1: str) -> str:

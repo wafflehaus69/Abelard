@@ -1,0 +1,101 @@
+{
+ "sampled": {
+  "none -> funder": 6,
+  "funder -> other funder": 6
+ },
+ "result": {
+  "none -> funder: not checked: acquisition not found in the transactions read": 5,
+  "none -> funder: chain agrees with the earlier rows": 1,
+  "funder -> other funder: chain agrees with the regenerated query": 4,
+  "funder -> other funder: not checked: history too long": 2
+ },
+ "detail": [
+  {
+   "kind": "none -> funder",
+   "verdict": "not checked: acquisition not found in the transactions read",
+   "status": "acquisition not found in the transactions read",
+   "new_funder_is_creator": true
+  },
+  {
+   "kind": "none -> funder",
+   "verdict": "not checked: acquisition not found in the transactions read",
+   "status": "acquisition not found in the transactions read",
+   "new_funder_is_creator": true
+  },
+  {
+   "kind": "none -> funder",
+   "verdict": "chain agrees with the earlier rows",
+   "status": "ok",
+   "acq_slot": 443512680,
+   "inflows_up_to_acq_slot": 0,
+   "inflows_in_acq_slot": 0,
+   "new_funder_is_creator": true
+  },
+  {
+   "kind": "none -> funder",
+   "verdict": "not checked: acquisition not found in the transactions read",
+   "status": "acquisition not found in the transactions read",
+   "new_funder_is_creator": true
+  },
+  {
+   "kind": "none -> funder",
+   "verdict": "not checked: acquisition not found in the transactions read",
+   "status": "acquisition not found in the transactions read",
+   "new_funder_is_creator": true
+  },
+  {
+   "kind": "none -> funder",
+   "verdict": "not checked: acquisition not found in the transactions read",
+   "status": "acquisition not found in the transactions read",
+   "new_funder_is_creator": true
+  },
+  {
+   "kind": "funder -> other funder",
+   "verdict": "chain agrees with the regenerated query",
+   "status": "ok",
+   "acq_slot": 443508456,
+   "inflows_up_to_acq_slot": 11,
+   "inflows_in_acq_slot": 0,
+   "new_funder_is_creator": false
+  },
+  {
+   "kind": "funder -> other funder",
+   "verdict": "not checked: history too long",
+   "status": "history too long",
+   "new_funder_is_creator": false
+  },
+  {
+   "kind": "funder -> other funder",
+   "verdict": "not checked: history too long",
+   "status": "history too long",
+   "new_funder_is_creator": false
+  },
+  {
+   "kind": "funder -> other funder",
+   "verdict": "chain agrees with the regenerated query",
+   "status": "ok",
+   "acq_slot": 443489010,
+   "inflows_up_to_acq_slot": 10,
+   "inflows_in_acq_slot": 0,
+   "new_funder_is_creator": false
+  },
+  {
+   "kind": "funder -> other funder",
+   "verdict": "chain agrees with the regenerated query",
+   "status": "ok",
+   "acq_slot": 443327603,
+   "inflows_up_to_acq_slot": 10,
+   "inflows_in_acq_slot": 0,
+   "new_funder_is_creator": false
+  },
+  {
+   "kind": "funder -> other funder",
+   "verdict": "chain agrees with the regenerated query",
+   "status": "ok",
+   "acq_slot": 443341377,
+   "inflows_up_to_acq_slot": 123,
+   "inflows_in_acq_slot": 0,
+   "new_funder_is_creator": false
+  }
+ ]
+}

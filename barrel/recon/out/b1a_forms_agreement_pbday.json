@@ -1,0 +1,28 @@
+{
+ "day": "pbday",
+ "member_file": "rows_heavy_b1a_members_pbday_20261001T174118.json",
+ "grouped_file": "heavy_b1a_grouped_pbday_20261002T053913.json",
+ "member_rows": 76999,
+ "group_rows": 2361,
+ "member_funder_rows": 414,
+ "group_rows_outside_the_set_after_the_local_cut": 737,
+ "result": {
+  "tokens": 1087,
+  "set size: agree": 1087,
+  "exactly one creator on each side: agree": 1087,
+  "creator-funded members: agree": 1087,
+  "holdings g15: agree": 1087,
+  "holdings g60: agree": 1087,
+  "holdings g240: agree": 1087,
+  "net flow after entry: agree": 1087,
+  "supply at g15 / g60 / g240: agree": 1087,
+  "latency median: agree": 420,
+  "funders and members per funder: agree": 755,
+  "actors after collapse: agree": 819
+ },
+ "tokens_disagreeing": {
+  "latency median": 667,
+  "funders and members per funder": 332,
+  "actors after collapse": 268
+ }
+}

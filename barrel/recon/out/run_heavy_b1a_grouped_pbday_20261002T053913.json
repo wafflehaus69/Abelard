@@ -1,0 +1,93 @@
+{
+ "file": "barrel/recon/sql/heavy_b1a_grouped_pbday.sql",
+ "label": "MR-15 B2: regenerated aligned-set query (build form), one post-BOOST day 2026-09-01, hard cap 70",
+ "execution_id": "01M3XHX7N815ZPNY93EGMH07KB",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 40.555441177,
+ "cap": 70.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.5,
+   0.0025
+  ],
+  [
+   2.9,
+   0.124562024
+  ],
+  [
+   5.4,
+   0.368102669
+  ],
+  [
+   7.8,
+   0.611360439
+  ],
+  [
+   10.2,
+   0.85465936
+  ],
+  [
+   12.7,
+   1.099204703
+  ],
+  [
+   15.1,
+   1.342244691
+  ],
+  [
+   17.5,
+   1.585431558
+  ],
+  [
+   20.0,
+   1.829175
+  ],
+  [
+   22.5,
+   2.079923343
+  ],
+  [
+   24.9,
+   2.323876098
+  ],
+  [
+   27.4,
+   2.567393185
+  ],
+  [
+   29.8,
+   2.811732936
+  ],
+  [
+   32.3,
+   3.056856352
+  ],
+  [
+   34.7,
+   5.833088236
+  ],
+  [
+   47.5,
+   23.6425
+  ],
+  [
+   59.7,
+   33.044852942
+  ],
+  [
+   69.8,
+   40.244852942
+  ],
+  [
+   72.3,
+   40.555441177
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T05:38:03.048928Z",
+ "rows": null,
+ "error": null,
+ "exported": "data/heavy_b1a_grouped_pbday_20261002T053913.json",
+ "n_rows": 2775
+}
