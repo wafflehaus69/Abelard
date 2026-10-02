@@ -29,7 +29,9 @@ def latest(pattern: str) -> str:
 
 
 def close(a, b, rel=1e-9) -> bool:
-    a, b = a or 0.0, b or 0.0
+    """Both missing is NOT agreement here: callers pass sums (never None) or values that must exist."""
+    if a is None or b is None:
+        return False
     return abs(a - b) <= rel * max(1.0, abs(a), abs(b))
 
 
@@ -37,7 +39,7 @@ def main(tag: str) -> None:
     mfile, gfile = latest(f"rows_heavy_b1a_members_{tag}_*.json"), latest(f"rows_heavy_b1a_grouped_{tag}_*.json")
     members, groups = json.load(open(mfile)), json.load(open(gfile))
     bm, bg = collections.defaultdict(list), collections.defaultdict(list)
-    for r in members:
+    for r in actors.aligned(members):
         bm[r["mint"]].append(r)
     for r in actors.aligned(groups):
         bg[r["mint"]].append(r)
@@ -53,12 +55,14 @@ def main(tag: str) -> None:
             continue
         checks = {
             "set size": len(m) == sum(x["n_members"] for x in g),
-            "creator present": sum(bool(x["is_creator"]) for x in m) == sum(x["n_creator"] for x in g),
+            "exactly one creator on each side": sum(bool(x["is_creator"]) for x in m) == 1 == sum(x["n_creator"] for x in g),
+            "creator-funded members": sum(bool(x["is_funded"]) for x in m) == sum(x["n_funded"] for x in g),
             "holdings g15": close(sum(x["b15"] or 0 for x in m), sum(x["b15"] or 0 for x in g)),
             "holdings g60": close(sum(x["b60"] or 0 for x in m), sum(x["b60"] or 0 for x in g)),
             "holdings g240": close(sum(x["b240"] or 0 for x in m), sum(x["b240"] or 0 for x in g)),
             "net flow after entry": close(sum(x["net_after"] or 0 for x in m), sum(x["net_after"] or 0 for x in g)),
-            "supply at g240": close(m[0]["supply240"], g[0]["supply240"]),
+            "supply at g15 / g60 / g240": all(close(m[0][k], g[0][k]) for k in ("supply15", "supply60", "supply240")),
+            "latency median": (actors.fund_to_first_buy_s(m) == actors.fund_to_first_buy_s(g)) if "lat_s" in g[0] else None,
         }
         fm = collections.Counter(x["funder"] for x in m)
         fg = collections.Counter()
@@ -72,6 +76,9 @@ def main(tag: str) -> None:
         a, b = actors.token_record(m, **kw), actors.token_record_grouped(g, **kw)
         checks["actors after collapse"] = (a[actors.ACTORS_KEY], a["collapse_state"]) == (b[actors.ACTORS_KEY], b["collapse_state"])
         for k, ok in checks.items():
+            if ok is None:
+                res[f"{k}: not comparable (grouped rows predate the column)"] += 1
+                continue
             res[f"{k}: agree"] += ok
             if not ok:
                 mism[k].append(mint)

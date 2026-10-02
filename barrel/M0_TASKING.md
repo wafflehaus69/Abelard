@@ -673,7 +673,7 @@ Full text: `docs/RUNBOOK_ARCHITECT_2026-10-01.md`. Operational version, with the
 * **§6 hypotheses, new: H5 winners' study.** Winner = 24 h peak ≥ 3× entry at G240 **and** 7-day price ≥ entry. Exploratory comparison on the calibration slice only; a marker that separates there is tested on the holdout as a one-sided hypothesis. Candidate markers, closed list: creator track record (prior tokens' RUG-A rate), aligned-set state at entry, concentration, pool depth, bundle, organic-v2 takers in the first hour, factory funding. No other marker without re-registration.
 * **§9 deliverables, new: actor registry v0.** From the exported aligned-set and funding records: a persistent actor per collapsed funder, with tokens deployed, funded and bundled, cadence, hold time, dump timing and RUG-A rate. One hop only in M0.
 * **Pre-registered for a later forward collector (not M0):** tokens with measurable chatter before graduation have higher 7-day survival and a higher winner rate than matched tokens without. Compliance and terms-of-service check before any collector runs.
-* **Standing rule, sharpened:** verdicts and thresholds never enter Dune at all, saved or not. Reading proposed in `docs/RUNBOOK_v1.md` §1 point 5, awaiting confirmation.
+* **Standing rule, sharpened:** verdicts and thresholds never enter Dune at all, saved or not. Reading proposed in `docs/RUNBOOK_v1.md` (appendix, point 5); **confirmed by MR-14 ruling 5.**
 * **Contingency C1's sampled window,** by the same seed: pre-BOOST 2025-10-30 → 2026-01-27; post-BOOST the whole era less the burned week, because no 90-day block exists.
 * **Build plan:** 19 calendar chunks (not 20), 2025-03-20 → 2026-09-20; core build projected at 4,808 credits (`recon/chunks_manifest.json`).
 * **Out of scope for the paid month, as placed by the runbook:** multi-hop funding and H3 (M0b), live syndicate tracking (M1), chatter (M1/M2).
@@ -691,9 +691,7 @@ Full text: `docs/RULINGS_2026-10-01_C.md`. Operational effect: `docs/RUNBOOK_v1.
   * curve proceeds = `(q + v) × base_in / (B + base_in)`;
   * **exit-adjusted value = the smaller of the curve proceeds and `q`**, then net of the token's own observed sell cost. The virtual term sets the price but cannot be withdrawn, so no exit can pay out more than the real reserve.
   * The position is marked at zero when exit-adjusted ÷ spot-marked is below F. F is set in v1.2; no value of F is in any query.
-  * "Deepest pool" in the routing rule (MR-3.2, MR-4 item 2) means deepest by **real** quote reserve.
   * `v` is the pool's own derived value (below), 0 before BOOST and on mayhem-mode pools.
-  * **Consequence for v1.2:** the calibration slice is entirely pre-BOOST, where `v = 0` and the cap can never bind on a small position. F set there says nothing about post-BOOST pools, where the median real reserve four hours after graduation is 1.4 SOL. Gate 0 therefore reports the ratio's distribution per era, and the post-BOOST distribution comes from the burned week, not the slice.
   * **Struck:** the dry run in `docs/VALIDATION_1_4_CENSUS.md` ("p50 0.93; 2 tokens below F = 20%"). It used base reserves only, ignored the cap, and priced every post-BOOST pool without its virtual term.
 * **§5 cost model, virtual quote reserve.** It is not one constant (`docs/VQR_CHECK.md`): post-BOOST pools in mayhem mode carry 0, the others about 17.58 SOL, fixed for the pool's life. `vqr` is derived per pool from its own buy events by the validated fill model. **Post-BOOST price columns are halted** until that derivation is accepted and has run at one-day scope. Post-BOOST price results reported before 2026-10-01 are struck (list in `docs/VQR_CHECK.md`).
 * **Storage (amends MR-10):** on Analyst the table is analysed in the warehouse; the real export rate is measured on day 0. **The aligned-set funder-group output is always exported and never materialized**, whatever the rate: a public view naming wallets is not acceptable. Exported rows live in gitignored `barrel/data/`; the manifest of checksums, row counts and null counts is committed the same day.
@@ -701,3 +699,16 @@ Full text: `docs/RULINGS_2026-10-01_C.md`. Operational effect: `docs/RUNBOOK_v1.
 * **Phase A budget:** 400 / 500, taken from phase C, and it runs the whole 2026-08 chunk including the aligned-set query.
 * **Recorded for the first paid chunk (order 4):** why the burned week shows the swapped buy fields on most buys and the single sampled days do not. Probe written, not run: `recon/sql/buy_field_swap_by_day.sql`.
 * **Open:** ruling 6 refers to "one addition for Mando below" that is not in the relayed text.
+
+#### MR-14 — builder's proposals arising from order 5, NOT ruled, awaiting confirmation
+
+Order 5 said: depth floor against withdrawable reserve; dry run struck. These two follow from it but were not in the ruling, and an earlier version of the block above stated them as if they were:
+
+* "Deepest pool" in the routing rule (MR-3.2, MR-4 item 2) read as deepest by **real** quote reserve.
+* The calibration slice is entirely pre-BOOST, where the virtual term is 0 and the cap cannot bind on a small position, so F set there says nothing about post-BOOST pools. Proposed: Gate 0 reports the ratio's distribution per era, with the post-BOOST distribution taken from the burned week.
+
+#### MR-14 — found by review the same day, recorded in `docs/RUNBOOK_v1.md` §1
+
+* Three blockers before purchase: post-BOOST prices halted (B1); the aligned-set query changed after its proving run, with every window now per token (B2); fan-out measured on a window that varies with chunk length (B3, needs a ruling).
+* Open rulings R1–R9 there, among them: collapse does not merge a funder that is itself a set member; `blk` can put one wallet in two blocks; organic-v2 is costed but not scheduled; the analysis columns must leave Dune even under in-warehouse.
+* The threshold check is enforced in `recon/dune_roundtrip.dune`, the one request function, not only in the runner.

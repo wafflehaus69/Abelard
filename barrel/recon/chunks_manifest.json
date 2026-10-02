@@ -32,7 +32,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-03_b3.sql",
     "projected_credits": 81.1,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -69,7 +72,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-04_b3.sql",
     "projected_credits": 150.6,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -106,7 +112,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-05_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -143,7 +152,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-06_b3.sql",
     "projected_credits": 150.6,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -180,7 +192,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-07_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -215,7 +230,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-08_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -250,7 +268,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-09_b3.sql",
     "projected_credits": 150.6,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -285,7 +306,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-10_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -320,7 +344,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-11_b3.sql",
     "projected_credits": 150.6,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -355,7 +382,10 @@
    "b3": {
     "file": "recon/sql/chunks/2025-12_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -390,7 +420,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-01_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -425,7 +458,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-02_b3.sql",
     "projected_credits": 142.9,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -460,7 +496,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-03_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -495,7 +534,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-04_b3.sql",
     "projected_credits": 150.6,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -530,7 +572,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-05_b3.sql",
     "projected_credits": 154.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -565,7 +610,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-06_b3.sql",
     "projected_credits": 150.6,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -600,7 +648,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-07_b3.sql",
     "projected_credits": 182.4,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -637,7 +688,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-08_b3.sql",
     "projected_credits": 233.2,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  },
@@ -672,7 +726,10 @@
    "b3": {
     "file": "recon/sql/chunks/2026-09_b3.sql",
     "projected_credits": 169.1,
-    "review": "ok"
+    "review": [
+     "NOT SCHEDULED, not runnable as written",
+     "verdict constant: line 29: >= 3"
+    ]
    }
   }
  }

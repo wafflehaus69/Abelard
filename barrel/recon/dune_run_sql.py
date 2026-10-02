@@ -13,14 +13,13 @@ ALLOWANCE = 2500.0; RESERVE = 0.15
 def consumed():
     m = re.search(r"Total consumed: ([\d.]+)", LEDGER.read_text(encoding="utf-8")); return float(m.group(1)) if m else 0.0
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
+    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--export", action="store_true"); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
     # MR-14 ruling 5: a query carrying a registered verdict constant is never submitted. No override.
-    vh = verdict_constants.hits(sql)
-    if vh:
-        print(f"REFUSED: {a.sql} carries {len(vh)} registered verdict constant(s); the cut is applied locally, not in Dune")
-        for name_, no_, text_ in vh: print(f"   line {no_}: {text_!r}  <- {name_}")
-        sys.exit(3)
+    verdict_constants.refuse(sql, what=a.sql)     # also enforced in dune_roundtrip.dune, the one request function
+    # A query that says its rows name wallets is never written to the tracked tree, whatever flags were given.
+    if "--private-rows" in sql and not (a.private_rows or a.export or a.no_rows):
+        a.private_rows = True; print("rows name wallets (query header): forcing --private-rows")
     # Owner-wallet exclusion (MR-3.4): SQL files write __NOT_OWNER(col)__; the addresses are read
     # from barrel/private/ at run time and reach only the query text sent to Dune, never the repo.
     for m_ in set(re.findall(r"__NOT_OWNER\(([A-Za-z0-9_.]+)\)__", sql)):
@@ -31,10 +30,12 @@ def main():
         allowance, used, src = float(u["credits_included"]), float(u["credits_used"]), "api"
     else:
         allowance, used, src = ALLOWANCE, consumed(), "ledger"
-    # Trial burn-down ground rule: a HARD reserve of 180 credits stays untouched, whichever is stricter.
-    usable = min((allowance - used) * (1 - RESERVE), allowance - used - 180.0)
+    # Reserve: 15% of the period's ALLOWANCE, untouchable (launch runbook section 0). The 14-day trial keeps
+    # its own ruled reserve of 180 (15% of what remained when the burn-down orders were issued).
+    reserve = 180.0 if allowance <= 2500.0 else RESERVE * allowance
+    usable = allowance - used - reserve
     if a.expect > usable:
-        print(f"REFUSED: expect {a.expect} > usable {usable:.1f} ({src}: allowance {allowance:.0f}, used {used:.2f}, reserve {RESERVE:.0%})"); sys.exit(2)
+        print(f"REFUSED: expect {a.expect} > usable {usable:.1f} ({src}: allowance {allowance:.0f}, used {used:.2f}, reserve {reserve:.0f})"); sys.exit(2)
     print(f"meter[{src}]: used {used:.2f} / {allowance:.0f}, usable {usable:.1f}, this run expects {a.expect}")
     # HARD CAP (added 2026-09-23 after a runaway: expect 8, billed 840). A query is cancelled the
     # moment Dune's in-flight execution_cost_credits exceeds max(3 x expect, 5). --expect above 25
@@ -92,6 +93,21 @@ def main():
         pdir = ROOT / "private" / "out"; pdir.mkdir(parents=True, exist_ok=True)
         (pdir / f"rows_{name}.json").write_text(json.dumps(rows, default=str), encoding="utf-8")
         rec["rows"] = None; rec["rows_private"] = True; rec["n_rows"] = len(rows or [])
+    # --export (MR-14 ruling 6): build rows go to gitignored barrel/data/; what is committed is the manifest
+    # entry: SHA-256 of the file, row count, and the null count of every column.
+    if a.export and rows is not None:
+        import hashlib
+        ddir = ROOT / "data"; ddir.mkdir(parents=True, exist_ok=True)
+        blob = json.dumps(rows, default=str).encode("utf-8")
+        (ddir / f"{name}.json").write_bytes(blob)
+        cols = sorted({k for r in rows for k in r})
+        entry = {"file": f"data/{name}.json", "sql": a.sql, "execution_id": eid, "sha256": hashlib.sha256(blob).hexdigest(),
+                 "bytes": len(blob), "n_rows": len(rows), "null_counts": {c: sum(r.get(c) is None for r in rows) for c in cols}}
+        mpath = ROOT / "recon" / "export_manifest.json"
+        man = json.loads(mpath.read_text(encoding="utf-8")) if mpath.exists() else []
+        man.append(entry); mpath.write_text(json.dumps(man, indent=1), encoding="utf-8")
+        rec["rows"] = None; rec["exported"] = entry["file"]; rec["n_rows"] = len(rows)
+        print(f"exported {len(rows)} rows to barrel/{entry['file']}; manifest entry added")
     (OUT / f"run_{name}.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
     # append to ledger
     txt = LEDGER.read_text(encoding="utf-8"); n = txt.count("\n| ") ; total = used + cost
@@ -99,13 +115,13 @@ def main():
     txt = re.sub(r"(\|[^\n]*\|\n)(\n\*\*Total consumed)", lambda m_: m_.group(1) + row + "\n" + m_.group(2), txt, count=1)
     api_used = float((dune_usage.usage() or {}).get("credits_used") or total)
     txt = re.sub(r"\*\*Total consumed: [\d.]+ credits\. Remaining: \d+\. Usable after 15% reserve: \d+\.\*\*",
-                 f"**Total consumed: {total:.2f} credits. Remaining: {ALLOWANCE-total:.0f}. Usable after 15% reserve: {(ALLOWANCE-total)*0.85:.0f}.**", txt)
+                 f"**Total consumed: {total:.2f} credits. Remaining: {allowance-total:.0f}. Usable after 15% reserve: {allowance-total-reserve:.0f}.**", txt)
     txt = re.sub(r"\n_API says used: [^\n]*_", "", txt)
-    txt += f"\n_API says used: {api_used:.3f} of {ALLOWANCE:.0f} (authoritative; ledger undercounts pre-ledger probes)_"
+    txt += f"\n_API says used: {api_used:.3f} of {allowance:.0f}; spendable above the reserve of {reserve:.0f}: {allowance-api_used-reserve:.1f} (authoritative; ledger undercounts pre-ledger probes)_"
     LEDGER.write_text(txt, encoding="utf-8")
     print(f"state={rec['state']} credits={cost:.3f} error={rec['error']}")
     print(f"cap={cap:.1f} proven={a.proven} in-flight samples={samples[-6:]} rows={len(rows or [])} dropped_owner={dropped}")
     if a.private_rows: print(f"rows written to barrel/private/out/rows_{name}.json")
-    if not a.quiet and not a.private_rows:
+    if not a.quiet and not a.private_rows and not a.export:
         for r in rec["rows"] or []: print("  ", r)
 if __name__ == "__main__": main()

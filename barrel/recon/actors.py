@@ -121,7 +121,11 @@ def in_aligned_set(row: dict[str, Any], bundle_min: int = BUNDLE_MIN) -> bool:
     creator-funded members, the same-funder count for a wallet that is only a bundle candidate)."""
     if "b_only_n" in row:
         return row["b_only_n"] is None or row["b_only_n"] >= bundle_min
-    return bool(row.get("is_creator") or row.get("is_funded") or (row.get("bundle_n") or 0) >= bundle_min)
+    if "bundle_n" in row:
+        return bool(row["is_creator"] or row["is_funded"] or (row["bundle_n"] or 0) >= bundle_min)
+    if "is_bundle" in row:      # member rows from before MR-14: the cut was applied in the query
+        return True
+    raise KeyError("row is neither a group row (b_only_n), a member row (bundle_n) nor an earlier member row (is_bundle)")
 
 
 def aligned(rows: list[dict[str, Any]], bundle_min: int = BUNDLE_MIN) -> list[dict[str, Any]]:
@@ -153,7 +157,12 @@ def token_record_grouped(groups: list[dict[str, Any]], **kw) -> dict[str, Any]:
 def fund_to_first_buy_s(rows: list[dict[str, Any]]) -> float | None:
     """Median seconds from a member's funding to its first acquisition of the token, over the
     members where both were measured. None when it was measured for nobody; never 0."""
-    v = [r["fund_to_first_buy_s"] for r in rows if r.get("fund_to_first_buy_s") is not None]
+    v = []
+    for r in rows:
+        if "lat_s" in r:                                   # group rows: every member's seconds
+            v += [x for x in (r["lat_s"] or []) if x is not None]
+        elif r.get("fund_to_first_buy_s") is not None:     # member rows
+            v.append(r["fund_to_first_buy_s"])
     return statistics.median(v) if v else None
 
 

@@ -102,6 +102,18 @@ def test_bundle_cut_is_local_and_the_same_for_member_and_group_rows():
     assert sum(g["n_members"] for g in actors.aligned(groups, bundle_min=4)) == 4
 
 
+def test_in_aligned_set_refuses_a_row_it_does_not_recognise():
+    with pytest.raises(KeyError):
+        actors.in_aligned_set({"w": "a", "funder": "F1"})
+    assert actors.in_aligned_set({"is_creator": False, "is_funded": False, "is_bundle": True})   # pre-MR-14 member row
+
+
+def test_latency_from_group_rows_is_the_median_across_members():
+    groups = [{"lat_s": [10, 30]}, {"lat_s": [50]}, {"lat_s": None}]
+    assert actors.fund_to_first_buy_s(groups) == 30
+    assert actors.fund_to_first_buy_s([{"lat_s": None}, {"lat_s": []}]) is None
+
+
 def test_parity_with_consensus_m10():
     root = pathlib.Path(__file__).resolve().parents[2]
     sys.path[:0] = [str(root / "consensus"), str(root / "daemons" / "common")]

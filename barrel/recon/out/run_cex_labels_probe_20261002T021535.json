@@ -1,0 +1,28 @@
+{
+ "file": "barrel/recon/sql/cex_labels_probe.sql",
+ "label": "runner smoke test after the review fixes",
+ "execution_id": "01M3X6AJYEBG9RWHFD0202PMCB",
+ "state": "QUERY_STATE_COMPLETED",
+ "credits": 0.042745455,
+ "cap": 1.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.6,
+   0.042745455
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-02T02:15:37.678968Z",
+ "rows": [
+  {
+   "address_filled": 166,
+   "addrs": 166,
+   "max_len": 44,
+   "min_len": 34,
+   "n": 166,
+   "names": 27
+  }
+ ],
+ "error": null
+}

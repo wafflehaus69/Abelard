@@ -603,5 +603,17 @@ ERRATA, 2026-10-01 (added after the report was delivered)
   E5. Section 3.4, bundle at creation and every count of set members: the cut of five is
       now applied locally, not in the query; the numbers do not change (checked on one
       day, 236 of 236 tokens).
-  Unaffected: everything pre-BOOST, including all of section 3.7; the fill model; the
-  aligned set, funders, blocks and factory results; every credit and cost figure.
+  E6. Section 6 and the 20-chunk / 610-day figures: the window is 19 calendar chunks
+      (MR-14 ruling 1). The core Analyst build projects at 4,808 credits; the 20-chunk
+      lines are about 5% high.
+  E7. Sections 3.9 and 3.10, every fan-out figure, and every funder classification that
+      rests on one: fan-out was counted over whatever the query scanned (6 days in the
+      one-day runs, 13 in the week, 12 in the calibration histogram), so the figures are
+      not on one scale. Funder choice was also arbitrary when two senders shared a second
+      (1 of 236 tokens on 2025-06-09). Set sizes, holdings and the sell-fraction
+      distribution do not depend on either. docs/RUNBOOK_v1.md B3.
+  E8. Section 6.2: organic-v2 is in the Analyst cost but no chunk query builds it, and
+      the in-warehouse figure of 50 credits for getting data out is too low once the
+      analysis columns are counted. docs/PURCHASE_DECISION.md section 10.
+  Unaffected: everything pre-BOOST in sections 3.1 to 3.8, including all of 3.7; the fill
+  model; set sizes, holdings and sell fractions; every credit already spent.

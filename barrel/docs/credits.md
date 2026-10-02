@@ -130,8 +130,9 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 123 | barrel/recon/sql/createpool_columns_probe.sql (createpool event columns (one row)) | `01M3X3ZHBGHB…` | 1.339 | 2149.92 |
 | 124 | barrel/recon/sql/mayhem_flag_probe.sql (mayhem flag: sampled pools and fill per era) | `01M3X40DYHD3…` | 1.105 | 2151.02 |
 | 125 | barrel/recon/sql/vqr_implied_probe.sql (implied virtual reserve from buy events, 35 pools of known account value (hard cap 20)) | `01M3X42153EV…` | 3.828 | 2154.86 |
+| 126 | barrel/recon/sql/cex_labels_probe.sql (runner smoke test after the review fixes) | `01M3X6AJYEBG…` | 0.043 | 2154.90 |
 
-**Total consumed: 2154.86 credits. Remaining: 345. Usable after 15% reserve: 293.**
+**Total consumed: 2154.90 credits. Remaining: 345. Usable after 15% reserve: 165.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _INCIDENT 2026-09-23: `slippage_sell_txids.sql` (expect 8) billed **840.28 credits** — a `pool IN (subquery)` joined with an OR on the partition column defeated pruning and scanned the sell-event history. Cancel arrived after completion. Runner now cancels in flight above max(3×expect, 5) and refuses --expect > 25 without --confirm. Free tier after: 1,010.7 / 2,500 used._
@@ -141,4 +142,4 @@ _API says used (pre-incident line, superseded above): 1010.738 of 2500 (authorit
 _2026-09-30: `swap_rows_by_month.sql` billed 27.86 against an expectation of 10 (cap 30) — near-miss, recorded. Correction: the 2,500 credits are a one-time 14-day Plus trial ending 2026-10-06, not a recurring free tier; the account becomes view-only after._
 
 _2026-09-30, burn-down item 3: usage 1,301.4 → 1,414.5 (113.1 credits). Authoritative per-step figures are in `recon/out/burn_3a.json` and `burn_3b.json`; these runs did not go through `dune_run_sql.py`, so they have no rows in the table above._
-_API says used: 2154.862 of 2500 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 2154.904 of 2500; spendable above the reserve of 180: 165.1 (authoritative; ledger undercounts pre-ledger probes)_

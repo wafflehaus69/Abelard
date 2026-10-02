@@ -39,6 +39,7 @@ def read_pool(addr: str) -> dict:
         rec["status"] = "field absent (short layout)"
         return rec
     rec["virtual_quote_reserves"] = int.from_bytes(raw[OFF:OFF + 16], "little", signed=True)
+    rec["is_mayhem_mode"], rec["is_cashback_coin"] = raw[OFF - 2] != 0, raw[OFF - 1] != 0
     rec["quote_vault"] = d.b58encode(raw[8 + 3 + 32 * 5:8 + 3 + 32 * 6])
     rec["status"] = "ok"
     return rec
@@ -66,6 +67,9 @@ def main() -> None:
         "post_spread_relative": ((vals[-1] - vals[0]) / vals[-1]) if vals and vals[-1] else None,
         "pre_values": sorted({x.get("virtual_quote_reserves") for x in out if x["era"] == "pre_boost" and x.get("status") == "ok"}),
         "pre_absent": sum(1 for x in out if x["era"] == "pre_boost" and x.get("status") != "ok"),
+        "post_by_mayhem_and_reserve": {f"mayhem={m}, reserve>0={z}": sum(1 for x in post if x.get("status") == "ok"
+                                         and x["is_mayhem_mode"] == m and (x["virtual_quote_reserves"] > 0) == z)
+                                       for m in (True, False) for z in (True, False)},
     }
     (OUT / "vqr_check.json").write_text(json.dumps({"summary": summary, "pools": out}, indent=1), encoding="utf-8")
     print(json.dumps(summary, indent=1))

@@ -2,7 +2,7 @@
 
 **Author:** ClaudeCode · **Revised:** 2026-10-01, third version · **For:** Mando, at checkout
 **Rule being applied:** `RULINGS_2026-10-01_B.md` (MR-12). **Measurements:** `MATERIALIZATION_UNITS.md`, `HEAVY_TIER_UNITS.md`, `FACTORY_CLASS.md`. **Designs:** `STORAGE_DESIGNS.md`.
-**Trial ends:** 2026-10-06 (view-only after). **Balance:** 2,052.5 of 2,500 used; 267.5 spendable above the 180 reserve.
+**Trial ends:** 2026-10-06 (view-only after). **Balance:** 2,154.9 of 2,500 used; 165.1 spendable above the 180 reserve (as of the end of 2026-10-01).
 
 ## The decision, as ruled
 
@@ -73,7 +73,7 @@ Getting the table out (F) depends on the plan and is in each path.
 |---|---|---|
 | A + B1 + B3 + B4 | 6,200 | 8,800 |
 | Census and passes (D + E) | 30 | 200 |
-| Getting the table out (F): in-warehouse 50 · export-first at 3 credits/MB 1,100 · at the documented 10, 1,900+ | 50 | 1,900 |
+| Getting the table out (F): in-warehouse 50 · export-first at 3 credits/MB 1,100 · at 5 per MB (five times the rate measured on the trial) 1,900 · at Dune's documented 10 per MB 3,700 | 50 | 1,900 |
 | **Total** | **6,300** | **10,900** |
 
 * **Two months (8,000) cover the low end. The high end needs a third,** which the two-month rule sends back for a ruling.
@@ -113,7 +113,7 @@ Getting the table out (F) depends on the plan and is in each path.
 ## 8. Amendment, 2026-10-01 — after the chunk list and the burned week
 
 * **The window is 19 calendar chunks, not 20.** With every chunk's query generated (`recon/chunks_manifest.json`), the Analyst core build (event columns, aligned set and funding, concentration, authorities) projects at **4,808 credits**, about 6,200 if every chunk costs the post-BOOST rate. Section 2's B1 and A lines were computed on 20 chunks and are about 5% high.
-* **On Analyst, getting the table out is the binding item,** not the build: 1,100 credits at 3 per MB, 3,700 at the documented rate, for the event table alone. In-warehouse analysis is the expected design on that plan (`RUNBOOK_v1.md` §1 point 3). On Plus it is about 375.
+* **On Analyst, getting the table out is the binding item,** not the build: 1,100 credits at 3 per MB, 1,900 at 5, 3,700 at Dune's documented 10, for the event table alone. Section 4's high total (10,900) uses 1,900; at 10 per MB it would be 12,700. In-warehouse analysis is the expected design on that plan (`RUNBOOK_v1.md` §1 point 3). On Plus it is about 375.
 * ~~The burned post-BOOST week agrees with the June 2025 week.~~ **Struck the same day** (`VQR_CHECK.md`): the post-BOOST prices assumed a virtual reserve that a third of pools do not have. The decision-value reasoning in the trial report rests on one pre-BOOST week until the burned week is re-counted.
 * **Fees re-measured** after a mapping defect: about 2.2–2.4% round trip since October 2025; post-BOOST buys 99 bps, sells 120.
 
@@ -122,3 +122,10 @@ Getting the table out (F) depends on the plan and is in each path.
 * **Phase A is 400 / 500** and runs the whole 2026-08 chunk. On Analyst the table is analysed in the warehouse; only the aligned-set funder groups are exported, always.
 * **One blocker stands between this document and a purchase:** post-BOOST price columns are halted (`VQR_CHECK.md`). The fix is written and matched the chain on 35 of 35 pools; it needs the Architect's acceptance and one post-BOOST day at a hard cap (30–50 trial credits, requested). Nothing else in `RUNBOOK_v1.md` is open on the builder's side.
 * The plan paths, their costs and the checkout steps above are unchanged.
+
+## 10. Amendment, 2026-10-01 — after the review of the MR-14 work
+
+* **Not one blocker but three** (`RUNBOOK_v1.md` §1): post-BOOST prices (B1), the aligned-set query changed after its proving run (B2), and fan-out measured on a window that varies with chunk length (B3). B1 and B2 need up to 120 trial credits; B3 needs a ruling.
+* **Organic-v2 is in section 4's Analyst path (line B3, 900–1,800) and has no chunk query.** Either it is scheduled or the Analyst path is 5,300–7,000 without it. To be ruled (`RUNBOOK_v1.md` R3).
+* **In-warehouse does not make export free.** Verdicts are applied locally, so the analysis columns still leave Dune: roughly 50–100 MB, 150–1,000 credits depending on the rate (`RUNBOOK_v1.md` R4). Section 4's "in-warehouse 50" is too low.
+* The plan paths and the checkout steps are otherwise unchanged.

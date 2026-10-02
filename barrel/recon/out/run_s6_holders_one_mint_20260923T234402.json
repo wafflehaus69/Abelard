@@ -9,19 +9,19 @@
   {
    "actions": "mint,transfer,burn",
    "balance": "8.38117412742E11",
-   "owner": "27HFmP7ccLadGswvQfvea4o3juLw75cPF4V6jWpHM3MX",
+   "owner": "27HFmP…(truncated 2026-10-01: holder address)",
    "transfer_rows": 427
   },
   {
    "actions": "mint,transfer,burn",
    "balance": "7.30143597E8",
-   "owner": "5uH885EKjPYPqLrJeJeJJFW4N7nqdAgCCBrSKZvQey9d",
+   "owner": "5uH885…(truncated 2026-10-01: holder address)",
    "transfer_rows": 427
   },
   {
    "actions": "mint,transfer,burn",
    "balance": "1.999160558541364E15",
-   "owner": "CYZkgb4WdR1c2CGTHt1hHKKBYURzYbhpEbm8qcx8ogm9",
+   "owner": "CYZkgb…(truncated 2026-10-01: holder address)",
    "transfer_rows": 427
   }
  ],

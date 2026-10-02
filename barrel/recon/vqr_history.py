@@ -1,7 +1,7 @@
 """MR-14 order 2, follow-up to the halt: for the sampled post-BOOST pools, what did the swap
 EVENTS carry as virtual_quote_reserves early in the pool's life and late in it?
 
-The pool accounts say 11 of 31 post-BOOST pools hold 0 today and 20 hold about 17.58 SOL. That
+The pool accounts say 10 of 31 post-BOOST pools hold 0 today and 21 hold about 17.58 SOL. That
 is today's state. This reads each pool's own swap transactions over RPC (free), decodes the
 events with the pinned full layout, and reports the field at the oldest and newest swaps found,
 so "zero from birth" can be told from "zeroed later".

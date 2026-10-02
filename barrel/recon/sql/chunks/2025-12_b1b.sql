@@ -17,7 +17,9 @@ cr AS (
   FROM pumpdotfun_solana.pump_evt_createevent
   WHERE evt_block_date BETWEEN DATE '2025-11-28' AND DATE '2025-12-31' AND mint IN (SELECT mint FROM u)
   GROUP BY 1),
-base AS (SELECT u.mint, u.grad_time, u.pool, cr.creator, cr.t0, cr.s0 FROM u JOIN cr ON cr.mint = u.mint),
+base AS (   -- per-token creation bound: the same 3 days for every token, wherever it falls in the chunk
+  SELECT u.mint, u.grad_time, u.pool, cr.creator, cr.t0, cr.s0 FROM u JOIN cr ON cr.mint = u.mint
+  WHERE cr.t0 >= date_trunc('day', u.grad_time) - INTERVAL '3' DAY),
 bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, plus chain supply
   SELECT t.token_mint_address AS mint, x.w,
     sum(x.d) FILTER (WHERE t.block_time <= b.grad_time + INTERVAL '15' MINUTE) AS b15,
@@ -32,7 +34,9 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
     sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '5' DAY AND t.block_time < b.grad_time + INTERVAL '6' DAY) AS f5,
     sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '6' DAY AND t.block_time < b.grad_time + INTERVAL '7' DAY) AS f6,
     sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '7' DAY AND t.block_time < b.grad_time + INTERVAL '8' DAY) AS f7,
-    min(t.block_time) FILTER (WHERE x.d > 0) AS first_in,
+    -- first acquisition, within the same horizon for every token (9 days after graduation)
+    min(t.block_time) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in,
+    min(t.block_slot) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in_slot,
     bool_or(x.tag = 'to' AND t.from_owner IS NULL) AS got_mint
   FROM tokens_solana.transfers t
   JOIN base b ON b.mint = t.token_mint_address

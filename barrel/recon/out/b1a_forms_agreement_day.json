@@ -6,12 +6,14 @@
  "result": {
   "tokens": 236,
   "set size: agree": 236,
-  "creator present: agree": 236,
+  "exactly one creator on each side: agree": 236,
+  "creator-funded members: agree": 236,
   "holdings g15: agree": 236,
   "holdings g60: agree": 236,
   "holdings g240: agree": 236,
   "net flow after entry: agree": 236,
-  "supply at g240: agree": 236,
+  "supply at g15 / g60 / g240: agree": 236,
+  "latency median: not comparable (grouped rows predate the column)": 236,
   "funders and members per funder: agree": 235,
   "fan-out per funder: agree": 235,
   "actors after collapse: agree": 236

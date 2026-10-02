@@ -100,6 +100,17 @@ def find_v1_specimen() -> tuple[str, str] | None:
 # ------------------------------------------------------------------------ dune
 
 def dune(method: str, path: str, key: str, body: dict | None = None) -> dict:
+    # Chokepoint (MR-14 ruling 5, review 2026-10-01): every query text that goes to Dune passes here,
+    # ad hoc, saved query or view definition alike. Checked before any network call.
+    for _k in ("sql", "query_sql"):
+        if body and isinstance(body.get(_k), str):
+            import re as _re
+            import verdict_constants as _vc
+            _vc.refuse(body[_k], what=f"{method} {path}")
+            _t = _vc.strip(body[_k]).strip()
+            if _re.match(r"(?is)^SELECT\s+\*\s+FROM\b", _t) and not _re.search(r"(?i)\bLIMIT\s+0\s*$", _t):
+                raise SystemExit("REFUSED: a bare SELECT * fetches whatever the table carries, quarantined metadata "
+                                 "and wallets included. Column probes use LIMIT 0 and read metadata.column_names.")
     req = urllib.request.Request(
         f"{DUNE}{path}", method=method,
         data=json.dumps(body).encode() if body is not None else None,

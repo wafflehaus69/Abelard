@@ -103,7 +103,10 @@ fund AS (    -- every sender of SOL to an early buyer in the 7 days before gradu
 grp AS (SELECT mint, funder, count(*) AS n_buyers FROM fund GROUP BY 1, 2 HAVING count(*) >= 3),
 sells AS (   -- first sell by any member of the group, and the price in that event
   SELECT g.mint, g.funder, min(sv.evt_block_time) AS t1,
-         min_by(CAST(sv.pool_quote_token_reserves AS double) / CAST(sv.pool_base_token_reserves AS double), sv.evt_block_time) AS px_t1
+         -- raw pre-swap reserves at the group's first sell; the price needs the pool's virtual reserve,
+         -- which the event query derives, so it is computed locally and never here
+         min_by(CAST(sv.pool_quote_token_reserves AS double), sv.evt_block_time) AS q_t1,
+         min_by(CAST(sv.pool_base_token_reserves AS double), sv.evt_block_time) AS b_t1
   FROM grp g JOIN fund f ON f.mint = g.mint AND f.funder = g.funder
   JOIN u ON u.mint = g.mint
   JOIN pumpdotfun_solana.pump_amm_evt_sellevent sv ON sv.pool = u.pool AND sv."user" = f.w
@@ -115,7 +118,7 @@ fan AS (
   WHERE {bounds}
   GROUP BY 1),
 ne AS (SELECT mint, count(*) AS n_early FROM early GROUP BY 1)
-SELECT g.mint, g.funder, g.n_buyers, ne.n_early, f.fan_out, sl.t1, sl.px_t1
+SELECT g.mint, g.funder, g.n_buyers, ne.n_early, f.fan_out, sl.t1, sl.q_t1, sl.b_t1
 FROM grp g JOIN ne ON ne.mint = g.mint LEFT JOIN fan f ON f.a = g.funder
 LEFT JOIN sells sl ON sl.mint = g.mint AND sl.funder = g.funder"""
 

@@ -43,8 +43,9 @@ e AS (
          -- pool's life, and Dune's mayhem flag is empty before late August 2026. The fill model gives
          -- V = B * x / base_out - Q - x on every buy; taken at the pool's largest buy it matched the
          -- pool account on 35 of 35 pools to within 77 lamports (vqr_implied_probe.sql).
-         max_by(CASE WHEN ev.side = 'buy' AND ev.base_amt > 0 THEN ev.b * ev.net / ev.base_amt - ev.q - ev.net END,
-                CASE WHEN ev.side = 'buy' AND ev.base_amt > 0 THEN ev.net END) OVER (PARTITION BY ev.pool) AS v,
+         -- only buys of at least 0.001 SOL: on a dust buy, integer rounding of base_out can move V by whole SOL
+         max_by(CASE WHEN ev.side = 'buy' AND ev.base_amt > 0 AND ev.net >= 1e6 THEN ev.b * ev.net / ev.base_amt - ev.q - ev.net END,
+                CASE WHEN ev.side = 'buy' AND ev.base_amt > 0 AND ev.net >= 1e6 THEN ev.net END) OVER (PARTITION BY ev.pool) AS v,
          CASE WHEN ev.side = 'buy' THEN ev.q + ev.net + ev.lp ELSE ev.q - ev.gross + ev.lp END AS q_post,
          CASE WHEN ev.side = 'buy' THEN ev.b - ev.base_amt ELSE ev.b + ev.base_amt END AS b_post
   FROM ev JOIN u ON u.pool = ev.pool

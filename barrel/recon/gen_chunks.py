@@ -42,7 +42,7 @@ LARGE = {
     "tokens_solana.transfers": {"b1a": 1, "b1b": 1},
     "pumpdotfun_solana.pump_amm_evt_buyevent": {"events": 1, "b3": 1},
     "pumpdotfun_solana.pump_amm_evt_sellevent": {"events": 1, "b3": 1},
-    "pumpdotfun_solana.pump_evt_tradeevent": {"b1a": 1},
+    "pumpdotfun_solana.pump_evt_tradeevent": {"b1a": 2},
 }
 # Measured units (HEAVY_TIER_UNITS.md, MATERIALIZATION_UNITS.md): credits = a + b * days of large table scanned,
 # times the post-BOOST ratio for the share of the chunk that is post-BOOST.
@@ -81,8 +81,7 @@ def review(kind: str, sql: str, d0: dt.date, d1: dt.date) -> list[str]:
         problems.append("wallet-bearing query without the owner filter")
     if f"DATE '{d0.isoformat()}'" not in sql or f"DATE '{d1.isoformat()}'" not in sql:
         problems.append("chunk bounds not found in the query text")
-    if kind != "b3":   # b3 is unscheduled and keeps a group-size cut; the runner refuses it as it stands
-        problems += [f"verdict constant: line {no}: {text}" for _n, no, text in verdict_constants.hits(sql)]
+    problems += [f"verdict constant: line {no}: {text}" for _n, no, text in verdict_constants.hits(sql)]
     if re.search(r"\b(CREATE|INSERT|DELETE|UPDATE)\b", sql):
         problems.append("statement other than SELECT")
     if re.search(r"block_date[^\n]*\bOR\b|\bOR\b[^\n]*block_date", sql):
@@ -105,13 +104,17 @@ def main() -> None:
             sql = fn(d0.isoformat(), d1.isoformat())
             (out / f"{name}_{kind}.sql").write_text(sql, encoding="utf-8")
             problems = review(kind, sql, d0, d1)
-            bad += len(problems)
+            if kind == "b3":   # not scheduled: it keeps a group-size cut and the runner refuses it as it stands
+                problems = ["NOT SCHEDULED, not runnable as written"] + problems
+            else:
+                bad += len(problems)
             row["queries"][kind] = {"file": f"recon/sql/chunks/{name}_{kind}.sql", "projected_credits": project(kind, d0, d1),
                                     "review": problems or "ok"}
         manifest.append(row)
     (ROOT / "recon" / "chunks_manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     tot = {k: round(sum(r["queries"][k]["projected_credits"] for r in manifest)) for k in builders}
-    print(f"{len(manifest)} chunks, {len(manifest) * len(builders)} files, review problems: {bad}")
+    print(f"{len(manifest)} chunks, {len(manifest) * (len(builders) - 1)} scheduled files, review problems: {bad}; "
+          f"{len(manifest)} b3 files unscheduled and refused by the runner")
     print("projected credits:", tot, "| events + b1a + b1b + b2 =", tot["events"] + tot["b1a"] + tot["b1b"] + tot["b2"])
     for r in manifest:
         q = r["queries"]

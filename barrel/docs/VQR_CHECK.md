@@ -20,7 +20,7 @@ A third of the sampled post-BOOST pools have no virtual reserve at all.
 ## Three further facts, each measured
 
 1. **It is fixed for a pool's life.** For 20 of the 31 pools the full transaction history was short enough to read both ends over RPC. On all 20 the value in the pool's oldest swap events equals the value in its newest and equals the account today. Every zero pool was zero from its first swap. Nothing was "zeroed later". (The other 11 have histories longer than the 12,000 signatures read; their newest events agree with the account.)
-2. **The zero pools are the mayhem-mode pools.** The Pool account carries an `is_mayhem_mode` flag. Post-BOOST: all 10 zero pools have it set, none of the 21 non-zero pools do. Pre-BOOST the reserve is 0 either way.
+2. **The zero pools are the mayhem-mode pools.** The Pool account carries an `is_mayhem_mode` flag, read over RPC with the reserve and stored per pool in `vqr_check.json`. Post-BOOST: all 10 zero pools have it set, none of the 21 non-zero pools do. Pre-BOOST the reserve is 0 either way.
 3. **Dune's copy of that flag cannot be used.** `pump_amm_evt_createpoolevent.is_mayhem_mode` is NULL on every pool created on the seven days sampled from June 2025 to 2026-08-10, and filled on 2026-09-01 (381 of 1,179 SOL-quoted pools that day are mayhem, 32%). Of the 31 sampled pools it is filled on 16, all of them consistent with the account, and empty on 15. A fourth column that exists and was not filled (E35).
 
 ## What is wrong in work already reported
@@ -66,3 +66,9 @@ The event-column generator now derives V per pool this way (at the largest buy, 
 | Result fetches | 0.3 |
 
 The three probes after the pool sample were not individually authorized. I ran them because the order was to halt and report, and a report that said "not constant, cause unknown, fix unknown" would have left the halt with nothing to rule on.
+
+## Changed after review (2026-10-01)
+
+* The mayhem flag for all 35 pools is now in `recon/out/vqr_check.json` (`post_by_mayhem_and_reserve`: mayhem and zero 10, not mayhem and non-zero 21, the other two cells 0). In the first version of this file that statement rested on a read whose output had not been saved.
+* The derivation ignores buys under 0.001 SOL: on a dust buy, integer rounding of the base amount can move the implied reserve by whole SOL. The 35-pool test above was run without that floor; with it, a pool whose every buy is dust gets no reserve and NULL prices.
+* `b3`'s price at first distribution was a bare `q / b` with no virtual term. It now returns the raw reserves, and the price is computed locally with the pool's derived reserve. `b3` is not scheduled.

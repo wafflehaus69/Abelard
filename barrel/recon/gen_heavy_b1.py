@@ -19,8 +19,14 @@ that never touch the token (fee accounts, tip accounts, rent for new accounts) a
 n_all and otherwise dropped; the owner that received the initial mint (the bonding curve) is
 dropped. Without this every token shows a "funded" set of four or more (a3_seta_day, 2026-10-01).
 
-Funder of a member = sender of the last SOL transfer of at least 0.001 SOL received strictly
-before the member's first action; the latency runs from that funder's FIRST transfer (MR-12.2) (creation time for the creator, first acquisition of the token
+Every window is per token, so a token gets the same treatment wherever it falls in a chunk:
+creation within 3 days before its graduation day, funding looked for from 4 days before its
+graduation day, first acquisition within 9 days after graduation. ONE definition is still
+chunk-dependent and is an open point for the Architect: fan_out is counted over the chunk's
+whole scan (RUNBOOK_v1 section 1).
+
+Funder of a member = sender of the last SOL transfer of at least 0.001 SOL received up to the
+slot of the member's first action; the latency runs from that funder's FIRST transfer (MR-12.2) (creation time for the creator, first acquisition of the token
 for everyone else), inside the scanned window. No such transfer = funding unknown.
 """
 import datetime as dt
@@ -55,7 +61,9 @@ cr AS (
   FROM pumpdotfun_solana.pump_evt_createevent
   WHERE evt_block_date BETWEEN DATE '{p['cr0']}' AND DATE '{p['gd1']}' AND mint IN (SELECT mint FROM u)
   GROUP BY 1),
-base AS (SELECT u.mint, u.grad_time, u.pool, cr.creator, cr.t0, cr.s0 FROM u JOIN cr ON cr.mint = u.mint),
+base AS (   -- per-token creation bound: the same 3 days for every token, wherever it falls in the chunk
+  SELECT u.mint, u.grad_time, u.pool, cr.creator, cr.t0, cr.s0 FROM u JOIN cr ON cr.mint = u.mint
+  WHERE cr.t0 >= date_trunc('day', u.grad_time) - INTERVAL '3' DAY),
 bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, plus chain supply
   SELECT t.token_mint_address AS mint, x.w,
     sum(x.d) FILTER (WHERE t.block_time <= b.grad_time + INTERVAL '15' MINUTE) AS b15,
@@ -70,7 +78,9 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
     sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '5' DAY AND t.block_time < b.grad_time + INTERVAL '6' DAY) AS f5,
     sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '6' DAY AND t.block_time < b.grad_time + INTERVAL '7' DAY) AS f6,
     sum(x.d) FILTER (WHERE t.block_time >= b.grad_time + INTERVAL '7' DAY AND t.block_time < b.grad_time + INTERVAL '8' DAY) AS f7,
-    min(t.block_time) FILTER (WHERE x.d > 0) AS first_in,
+    -- first acquisition, within the same horizon for every token (9 days after graduation)
+    min(t.block_time) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in,
+    min(t.block_slot) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in_slot,
     bool_or(x.tag = 'to' AND t.from_owner IS NULL) AS got_mint
   FROM tokens_solana.transfers t
   JOIN base b ON b.mint = t.token_mint_address
@@ -130,20 +140,26 @@ seta AS (
 mm0 AS (
   SELECT s.mint, s.w, s.is_creator, s.is_funded, s.bundle_n, s.cr_sol,
          bs.grad_time, bs.t0, bs.creator, b.first_in, b.b15, b.b60, b.b240, b.net_after, b.got_mint,
+         CASE WHEN s.is_creator THEN bs.s0 ELSE b.first_in_slot END AS slot_act, n0.n_slot0,
          b.f0, b.f1, b.f2, b.f3, b.f4, b.f5, b.f6, b.f7,
          CASE WHEN s.is_creator THEN bs.t0 ELSE b.first_in END AS t_act,
          count(*) OVER (PARTITION BY s.mint) AS n_all,
          count_if(s.is_funded) OVER (PARTITION BY s.mint) AS n_funded_all,
          max(s.bundle_n) OVER (PARTITION BY s.mint) AS bundle_n_max
   FROM seta s JOIN base bs ON bs.mint = s.mint
-  LEFT JOIN bal b ON b.mint = s.mint AND b.w = s.w),
+  LEFT JOIN bal b ON b.mint = s.mint AND b.w = s.w
+  -- creation-slot traders per token, so S8 can say UNKNOWN (none decoded) apart from 'no'
+  LEFT JOIN (SELECT mint, count(*) AS n_slot0 FROM buyers0 GROUP BY 1) n0 ON n0.mint = s.mint),
 mm AS (SELECT * FROM mm0 WHERE (is_creator OR first_in IS NOT NULL) AND NOT coalesce(got_mint, false)),
 inb0 AS (   -- one row per (member, sender): first and last transfer before the member's first action
   SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_slot) AS slot_last,
          max_by(CAST(s.amount AS double), s.block_slot) / 1e9 AS last_sol
   FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
   WHERE {bounds}
-    AND s.from_owner <> m.w AND s.block_time < m.t_act
+    -- per-token window: 4 days before the token's graduation day, up to and including the slot of the
+    -- member's first action (funding and acting in one slot is the bundle pattern; seconds cannot order it)
+    AND s.from_owner <> m.w AND s.block_slot <= m.slot_act
+    AND s.block_time >= date_trunc('day', m.grad_time) - INTERVAL '4' DAY
   GROUP BY 1, 2, 3),
 inb AS (    -- funder = the last sender before the first action; funded_ts = that funder's FIRST transfer (MR-12.2).
             -- "Last" is by slot, then by address: block_time is whole seconds and two senders can share one
@@ -158,7 +174,7 @@ fan AS (
   FROM tokens_solana.sol_transfers s
   WHERE {bounds}
   GROUP BY 1)
-SELECT m.mint, m.w, m.is_creator, m.is_funded, m.bundle_n, m.cr_sol, m.n_all, m.n_funded_all, m.bundle_n_max,
+SELECT m.mint, m.w, m.is_creator, m.is_funded, m.bundle_n, m.cr_sol, m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0,
        m.grad_time, m.t0, m.first_in, m.b15, m.b60, m.b240, m.net_after,
        i.funder, i.funded_ts, i.funded_sol, i.n_senders, f.fan_out, f.n_out,
        date_diff('second', i.funded_ts, m.first_in) AS fund_to_first_buy_s,
@@ -186,12 +202,13 @@ def members_grouped(gd0: str, gd1: str) -> str:
        CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS b_only_n,
        arbitrary(m.creator) AS creator,
        count(*) AS n_members, count_if(m.is_creator) AS n_creator, count_if(m.is_funded) AS n_funded,
-       max(m.n_all) AS n_all, max(m.n_funded_all) AS n_funded_all, max(m.bundle_n_max) AS bundle_n_max,
+       max(m.n_all) AS n_all, max(m.n_funded_all) AS n_funded_all, max(m.bundle_n_max) AS bundle_n_max, max(m.n_slot0) AS n_slot0,
        max(f.fan_out) AS fan_out, max(i.n_senders) AS n_senders_max,
        sum(m.b15) AS b15, sum(m.b60) AS b60, sum(m.b240) AS b240, sum(m.net_after) AS net_after,
        {fsum},
-       approx_percentile(date_diff('second', i.funded_ts, m.first_in), 0.5) AS lat_p50,
-       count(i.funded_ts) FILTER (WHERE m.first_in IS NOT NULL) AS n_lat,
+       -- every member's funding-to-first-acquisition seconds (no wallet in it): the per-token median of
+       -- column 86 is taken locally across the set's members, as ruled (MR-12.2)
+       array_agg(date_diff('second', i.funded_ts, m.first_in)) FILTER (WHERE i.funded_ts IS NOT NULL AND m.first_in IS NOT NULL) AS lat_s,
        min(m.first_in) AS first_in_min, arbitrary(m.grad_time) AS grad_time, arbitrary(m.t0) AS t0,
        arbitrary(sup.b15) AS supply15, arbitrary(sup.b60) AS supply60, arbitrary(sup.b240) AS supply240
 FROM mm m
