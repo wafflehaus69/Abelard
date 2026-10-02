@@ -2046,7 +2046,7 @@ def _build_sentinels_csv(con, p, full):
 
 _CLUSTER_BUY_COLS = ["ticker", "issuer_cik", "n_buyers", "n_buys", "window_start",
                      "event_filed", "span_days", "calendar_months", "capitulation",
-                     "total_value"]
+                     "total_value", "unmapped"]
 _CLUSTER_SELL_COLS = ["ticker", "issuer_cik", "distinct_sellers_window",
                       "distinct_sellers_12mo", "window_sell_value",
                       "expected_window_rate", "rate_ratio", "baseline_sufficient",

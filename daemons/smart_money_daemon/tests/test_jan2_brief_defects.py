@@ -172,6 +172,42 @@ def test_two_unmapped_issuers_stay_two_clusters():
         os.unlink(db)
 
 
+def test_the_buy_cluster_export_carries_a_real_row_and_its_unmapped_mark():
+    """J2 added `unmapped` to every cluster row and not to the export's column list, so
+    the CSV completeness contract raised and /clusters.csv?which=buy answered 500 for
+    nine days. The suite stayed green throughout: its fixture formed no cluster, so the
+    contract only ever saw a header. This one forms two."""
+    rows = [("P{}".format(i), str(100 + i), "555", "NONE", "P", 10, 5.0) for i in range(4)]
+    rows += [("M{}".format(i), str(200 + i), "777", "MAPD", "P", 10, 5.0) for i in range(3)]
+    db = _db(rows=rows)
+    con = q.connect_ro(db)
+    try:
+        p = dash._params({"anchor": ["2026-06-30"]})
+        for full in (False, True):
+            lines = dash._build_clusters_csv(con, p, full=full, which="buy").splitlines()
+            assert lines[0].split(",")[-1] == "unmapped", lines[0]
+            assert len(lines) == 3, "header plus the two clusters, got %r" % (lines,)
+            body = {ln.split(",")[0]: ln.split(",")[-1] for ln in lines[1:]}
+            assert body == {"unmapped (CIK 555)": "True", "MAPD": "False"}, body
+    finally:
+        con.close()
+        os.unlink(db)
+
+
+def test_every_cluster_row_key_is_exported():
+    """The general form of the same defect: a key the query adds must reach the column
+    list, or the export fails loud on the first real row."""
+    db = _db(rows=[("P{}".format(i), str(100 + i), "555", "AAA", "P", 10, 5.0)
+                   for i in range(3)])
+    con = q.connect_ro(db)
+    try:
+        row = q.q_cluster_context(con, floor=3, anchor="2026-06-30", lookback=365)["rows"][0]
+        assert set(row) <= set(dash._CLUSTER_BUY_COLS), set(row) - set(dash._CLUSTER_BUY_COLS)
+    finally:
+        con.close()
+        os.unlink(db)
+
+
 # ------------------------------------------------------------------ J3 --
 
 def test_pressure_ranks_on_dollars_not_raw_shares():
