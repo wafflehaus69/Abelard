@@ -51,6 +51,8 @@ def main(path: str) -> None:
 
     # 1. derived reserve against pool accounts
     sample = sorted(rows, key=lambda r: hashlib.sha256(f"{SEED}|{r['pool']}".encode()).hexdigest())[:35]
+    # every pool whose derived value is neither about 0 nor about 17.58 SOL is checked too, outside the 35
+    odd = [r for r in rows if r.get("vqr") is not None and not abs(r["vqr"]) < 1e6 and not 17.5e9 < r["vqr"] < 17.7e9 and r not in sample]
     checks = []
     for r in sample:
         truth, mayhem = chain_vqr(r["pool"])
@@ -59,6 +61,13 @@ def main(path: str) -> None:
         checks.append({"pool": r["pool"], "account_vqr": truth, "mayhem": mayhem, "derived_vqr": derived,
                        "diff": None if truth is None or derived is None else derived - truth, "match": ok})
         time.sleep(0.12)
+    odd_checks = []
+    for r in odd:
+        truth, mayhem = chain_vqr(r["pool"])
+        odd_checks.append({"pool": r["pool"], "account_vqr": truth, "mayhem": mayhem, "derived_vqr": r["vqr"],
+                           "diff": None if truth is None else r["vqr"] - truth,
+                           "match": truth is not None and abs(r["vqr"] - truth) <= max(1000.0, 1e-6 * truth)})
+    out["reserve_check_other_values"] = {"pools": len(odd_checks), "match": sum(c["match"] for c in odd_checks), "detail": odd_checks}
     out["reserve_check"] = {"pools": len(checks), "match": sum(c["match"] for c in checks),
                             "derived_null": sum(c["derived_vqr"] is None for c in checks),
                             "account_unreadable": sum(c["account_vqr"] is None for c in checks),
@@ -98,11 +107,11 @@ def main(path: str) -> None:
                               and r[f"peak_24h_g{g}"] >= H5_PEAK * r[f"px_g{g}"] and r["px_7d"] >= r[f"px_g{g}"]),
         }
     out["price_paths"] = paths
-    by = {"mayhem (vqr 0)": [r for r in rows if r.get("vqr") is not None and abs(r["vqr"]) < 1e6],
+    by = {"reserve about 0 (mayhem pools post-BOOST; every pool pre-BOOST)": [r for r in rows if r.get("vqr") is not None and abs(r["vqr"]) < 1e6],
           "with virtual reserve": [r for r in rows if r.get("vqr") is not None and r["vqr"] > 1e9]}
     out["g240_by_pool_kind"] = {k: {"tokens": len(vv),
-                                    "ret7_p50": round(pct([r["px_7d"] / r["px_g240"] for r in vv if r.get("px_g240") and r.get("px_7d") is not None], 50) or 0, 4),
-                                    "ret7_mean": round(statistics.mean([r["px_7d"] / r["px_g240"] for r in vv if r.get("px_g240") and r.get("px_7d") is not None] or [0]), 4)}
+                                    **(lambda x: {"ret7_p50": round(pct(x, 50), 4) if x else None, "ret7_mean": round(statistics.mean(x), 4) if x else None})(
+                                        [r["px_7d"] / r["px_g240"] for r in vv if r.get("px_g240") and r.get("px_7d") is not None])}
                                 for k, vv in by.items()}
     name = pathlib.Path(path).stem
     (ROOT / "recon" / "out" / f"events_validation_{name}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")

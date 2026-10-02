@@ -97,8 +97,21 @@ def _fan(row: dict[str, Any], funder: str | None, rates: dict[str, float] | None
     a rates table that was supplied sent nothing in the window, which is a measured 0. Rows from
     before MR-15 carry a raw count in ``fan_out``, on whatever window their query scanned."""
     if rates is not None:
-        return rates.get(funder, 0.0) if funder else None
+        return rates.get(funder) if funder else None      # not in the table = not measured = 'unknown'; fan_rates() writes the zeros
     return row.get("fan_rate", row.get("fan_out"))
+
+
+def fan_rates(fan_rows: list[dict[str, Any]], asked: Iterable[str]) -> dict[str, float]:
+    """The rates table for MR-15 rows, and the only way one is built: recipients per day of the
+    window, from the fan-out query's rows. ``asked`` is the funder list the query was given. A
+    funder that was asked about and returned no row sent nothing in the window: a measured 0. A
+    funder that was NOT asked about is absent from the table and classifies as 'unknown'."""
+    rates = {f: 0.0 for f in asked if f}
+    for r in fan_rows:
+        if r["funder"] not in rates:
+            raise ValueError("the fan-out rows name a funder that was not in the list asked: wrong file for this chunk")
+        rates[r["funder"]] = r["recipients"] / r["window_days"]
+    return rates
 
 
 def _split(kw: dict) -> tuple[dict[str, float] | None, dict]:
@@ -190,11 +203,16 @@ def split_grouped(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], lis
     member that is also the funder of another member ('member_funder'). Rows from before MR-15
     have no row_kind and are all groups."""
     groups = [r for r in rows if r.get("row_kind", "group") == "group"]
-    mfs = [r for r in rows if r.get("row_kind") == "member_funder"]
+    # On a member_funder row the query's `funder` and `b_only_n` are NULL (they belong to the other
+    # grouping set); the member's own values are in member_own_funder / member_b_only_n. Renamed HERE,
+    # so that every reader gets rows it can pass straight to token_record_grouped.
+    mfs = [{**r, "funder": r["member_own_funder"], "b_only_n": r["member_b_only_n"]}
+           for r in rows if r.get("row_kind") == "member_funder"]
     return groups, mfs
 
 
-def token_record_grouped(groups: list[dict[str, Any]], member_funders: list[dict[str, Any]] | None = None, **kw) -> dict[str, Any]:
+def token_record_grouped(groups: list[dict[str, Any]], member_funders: list[dict[str, Any]] | None = None,
+                         bundle_min: int = BUNDLE_MIN, **kw) -> dict[str, Any]:
     """Same record as token_record, from the BUILD form: one row per (token, funder, candidate
     class) with ``n_members``, plus the member-funder rows. A group with funder None is members
     whose funding was not found: the set is unresolved. A linking funder is one actor however many
@@ -223,7 +241,7 @@ def token_record_grouped(groups: list[dict[str, Any]], member_funders: list[dict
         member_funders = [{"member": g["creator"], "funder": g["funder"], "b_only_n": None, **{k: g[k] for k in ("fan_rate", "fan_out") if k in g}}
                           for g in groups if g.get("n_creator") and g.get("creator")]
     merged_standalone = 0
-    for m in aligned(member_funders):
+    for m in aligned(member_funders, bundle_min):      # the same cut the caller applied to the groups
         x = m["member"]
         if ("A", x) not in comp.p:               # x does not link anyone in the aligned set
             continue
@@ -248,11 +266,35 @@ def fund_to_first_buy_s(rows: list[dict[str, Any]]) -> float | None:
 
 
 def block_id(creator_row: dict[str, Any] | None, creator: str, **kw) -> str:
-    """Block for effective-n, keyed by ADDRESS alone (MR-15 R2): the creator's funder when that
-    funder links, otherwise the creator wallet. One wallet is one block whether it appears as a
-    funder of creators, as a creator, or both."""
+    """ONE token's block edge, by address (MR-15 R2): the creator's funder when that funder links,
+    otherwise the creator. This is a per-token answer. It does not by itself put one wallet in one
+    block: a wallet whose own funder links, or a creator whose funder differs between two of its
+    tokens, needs the whole set. Use assign_blocks for the block column."""
     rates, kw = _split(kw)
     if creator_row and creator_row.get("funder"):
         if classify_funder(creator_row["funder"], _fan(creator_row, creator_row["funder"], rates), **kw) in LINKING:
             return creator_row["funder"]
     return creator
+
+
+def assign_blocks(tokens: list[dict[str, Any]], **kw) -> dict[str, str]:
+    """Block per token over the WHOLE evaluation set (MR-11 section 2, MR-12 ruling 5, MR-15 R2).
+
+    ``tokens``: one dict per token with ``mint``, ``creator`` and the creator's member/group row
+    fields (``funder``, and a fan measure or a ``rates`` table in kw). Creators are joined to their
+    linking funders and the block is the connected component, named by its smallest address. So a
+    wallet is in one block whether it appears as a creator, as a funder of creators, or as both;
+    a chain funder -> creator-who-also-funds -> creator is one block; and a creator is in one block
+    across all its tokens even when its funder was found for some of them and not for others."""
+    rates, kw = _split(kw)
+    comp = _Components()
+    for t in tokens:
+        comp.find(t["creator"])
+        f = t.get("funder")
+        if f and classify_funder(f, _fan(t, f, rates), **kw) in LINKING:
+            comp.union(t["creator"], f)
+    members: dict[Any, list[str]] = {}
+    for x in comp.p:
+        members.setdefault(comp.find(x), []).append(x)
+    name = {root_: min(v) for root_, v in members.items()}
+    return {t["mint"]: name[comp.find(t["creator"])] for t in tokens}

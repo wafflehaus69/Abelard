@@ -46,7 +46,7 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
           CASE WHEN t.from_owner IS NULL THEN CAST(t.amount AS double)
                WHEN t.to_owner IS NULL THEN -CAST(t.amount AS double) ELSE 0e0 END],
     ARRAY['to', 'from', 'sup']) AS x(w, d, tag)
-  WHERE t.block_date BETWEEN DATE '2025-03-17' AND DATE '2025-04-09'
+  WHERE t.block_date BETWEEN DATE '2025-03-17' AND DATE '2025-04-10'
     AND t.token_mint_address IN (SELECT mint FROM base) AND x.w IS NOT NULL
   GROUP BY 1, 2),
 buyers0 AS (
@@ -102,7 +102,7 @@ inb0 AS (   -- one row per (member, sender): first and last transfer before the 
   SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_slot) AS slot_last,
          max_by(CAST(s.amount AS double), s.block_slot) / 1e9 AS last_sol
   FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
-  WHERE s.block_time >= TIMESTAMP '2025-03-16 00:00:00' AND s.block_time < TIMESTAMP '2025-04-02 00:00:00'
+  WHERE s.block_time >= TIMESTAMP '2025-03-16 00:00:00' AND s.block_time < TIMESTAMP '2025-04-11 00:00:00'
     AND CAST(s.amount AS double) >= 1e6
     -- per-token window: 4 days before the token's graduation day, up to and including the slot of the
     -- member's first action (funding and acting in one slot is the bundle pattern; seconds cannot order it)

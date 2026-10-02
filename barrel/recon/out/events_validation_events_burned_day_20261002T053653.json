@@ -1,6 +1,20 @@
 {
  "file": "events_burned_day_20261002T053653.json",
  "tokens": 1055,
+ "reserve_check_other_values": {
+  "pools": 1,
+  "match": 1,
+  "detail": [
+   {
+    "pool": "2pTsg5XxBSZ9MQWCcoJKp4hkQn7AyeB146LuhgrnNxrH",
+    "account_vqr": 19870920062,
+    "mayhem": false,
+    "derived_vqr": 19870920073.323822,
+    "diff": 11.323822021484375,
+    "match": true
+   }
+  ]
+ },
  "reserve_check": {
   "pools": 35,
   "match": 35,
@@ -375,7 +389,7 @@
   }
  },
  "g240_by_pool_kind": {
-  "mayhem (vqr 0)": {
+  "reserve about 0 (mayhem pools post-BOOST; every pool pre-BOOST)": {
    "tokens": 275,
    "ret7_p50": 0.4743,
    "ret7_mean": 0.5452

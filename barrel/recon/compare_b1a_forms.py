@@ -42,10 +42,11 @@ def main(tag: str) -> None:
     mfile, gfile = latest(f"heavy_b1a_members_{tag}_*.json"), latest(f"heavy_b1a_grouped_{tag}_*.json")
     members = json.load(open(mfile))
     groups, mfs = actors.split_grouped(json.load(open(gfile)))
-    mfs = [{"mint": r["mint"], "member": r["member"], "funder": r["member_own_funder"], "b_only_n": r["member_b_only_n"]} for r in mfs]
     # one fan measure for BOTH forms, so the collapse comparison tests the logic and not the window:
     # the counts carried by the earlier member rows, used as a rates table
     fanmap = {r["funder"]: r["fan_out"] for r in members if r.get("funder") and r.get("fan_out") is not None}
+    if not fanmap:
+        raise SystemExit("the member rows carry no fan measure: collapse cannot be compared")
     bm, bg = collections.defaultdict(list), collections.defaultdict(list)
     for r in actors.aligned(members):
         bm[r["mint"]].append(r)
@@ -82,11 +83,15 @@ def main(tag: str) -> None:
                                             == {x["funder"]: x["fan_out"] for x in g if x["funder"]})
         kw = dict(fanout_threshold=actors.FANOUT_PROVISIONAL, rates=fanmap)
         tm = [x for x in mfs if x["mint"] == mint] if "row_kind" in g[0] else None
-        a, b = actors.token_record(m, **kw), actors.token_record_grouped(g, tm, **kw)
-        checks["actors after collapse"] = (a[actors.ACTORS_KEY], a["collapse_state"]) == (b[actors.ACTORS_KEY], b["collapse_state"])
+        named = {x["funder"] for x in g if x["funder"]} | {x["funder"] for x in (tm or []) if x["funder"]}
+        if named - set(fanmap):      # a funder only the regenerated rows name has no carried measure: not comparable
+            checks["actors after collapse"] = None
+        else:
+            a, b = actors.token_record(m, **kw), actors.token_record_grouped(g, tm, **kw)
+            checks["actors after collapse"] = (a[actors.ACTORS_KEY], a["collapse_state"]) == (b[actors.ACTORS_KEY], b["collapse_state"])
         for k, ok in checks.items():
             if ok is None:
-                res[f"{k}: not comparable (grouped rows predate the column)"] += 1
+                res[f"{k}: not comparable"] += 1
                 continue
             res[f"{k}: agree"] += ok
             if not ok:

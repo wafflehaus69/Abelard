@@ -105,7 +105,7 @@ Dune table: `dune.<user>.result_pt_features` (view names must start with `result
 | 84 | `n_7d` | bigint | `n_swaps_7d` | swaps in (grad, grad + 7d] |
 | 85 | `qv_7d` | double | `quote_volume_7d` | quote volume in (grad, grad + 7d] |
 | 86 | `seta_lat_s` | double | `fund_to_first_buy_s` | seconds from a set member's first SOL inflow from its classified funder to its first acquisition of the token; per token, the median across set members; NULL when the funder is unknown (MR-12.2) |
-| 87 | `blk` | varchar | `block_id` | block for effective-n: 'F:' + the creator's funder when that funder links (purpose-built, or factory once shipped), else 'C:' + the creator wallet (MR-11 s2, fallback per MR-12.5) |
+| 87 | `blk` | varchar | `block_id` | block for effective-n, an address (MR-15 R2): creators are joined to their funder when that funder links, over the whole evaluation set, and the block is the component, named by its smallest address; a creator with no linking funder is its own block. Assigned locally (actors.assign_blocks), NULL in Dune |
 | 88 | `seta_actors` | integer | `aligned_set_actors` | seta_n after funding-mesh collapse; NULL when any member's funding is unknown |
 | 89 | `cluster_actors` | integer | `syndicate_cluster_actors` | cluster_n after collapse; NULL when unresolved |
 | 90 | `org1_actors_7d` | integer | `organic_v1_actors_7d` | org1_n_7d after collapse; NULL when unresolved |

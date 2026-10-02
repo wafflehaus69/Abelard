@@ -72,3 +72,19 @@ The three probes after the pool sample were not individually authorized. I ran t
 * The mayhem flag for all 35 pools is now in `recon/out/vqr_check.json` (`post_by_mayhem_and_reserve`: mayhem and zero 10, not mayhem and non-zero 21, the other two cells 0). In the first version of this file that statement rested on a read whose output had not been saved.
 * The derivation ignores buys under 0.001 SOL: on a dust buy, integer rounding of the base amount can move the implied reserve by whole SOL. The 35-pool test above was run without that floor; with it, a pool whose every buy is dust gets no reserve and NULL prices.
 * `b3`'s price at first distribution was a bare `q / b` with no virtual term. It now returns the raw reserves, and the price is computed locally with the pool's derived reserve. `b3` is not scheduled.
+
+## Halt lifted — MR-15 B1, 2026-10-02
+
+The derivation was accepted and run: `recon/sql/events_burned_day.sql`, graduations of 2026-08-10 (a day of the burned week), **10.66 credits** against a cap of 50, 1,055 tokens, exported to `barrel/data/` (manifest entry in `recon/export_manifest.json`). Checked by `recon/validate_events_rows.py`; result in `recon/out/events_validation_events_burned_day_*.json`.
+
+| Check | Result |
+|---|---|
+| Derived reserve against pool accounts, 35 pools taken by seeded hash | **35 of 35**, largest difference 46 lamports; 6 of the 35 are mayhem pools |
+| Pools with no derived reserve | 0 of 1,055 |
+| Derived value near 0 | 275 (26%) |
+| Derived value about 17.58 SOL | 779 |
+| Any other value | **1: 19.87 SOL. The pool account says 19,870,920,062; the derivation gave that to within 11 lamports.** It was not among the seeded 35, so the check now reads every such pool as well. A constant per pool kind would have been wrong for it. |
+| Buy cost, median | 118.6 bps (it was −120 with the field mapping that read `ix_name`) |
+| Sell cost, median | 125.0 bps |
+
+The halt is lifted for the event query as generated at this commit. Day 0 repeats the account check on 30 fresh pools from the first paid chunk.

@@ -18,11 +18,12 @@
   "supply at g15 / g60 / g240: agree": 1087,
   "latency median: agree": 420,
   "funders and members per funder: agree": 755,
-  "actors after collapse: agree": 819
+  "actors after collapse: not comparable": 241,
+  "actors after collapse: agree": 759
  },
  "tokens_disagreeing": {
   "latency median": 667,
   "funders and members per funder": 332,
-  "actors after collapse": 268
+  "actors after collapse": 87
  }
 }

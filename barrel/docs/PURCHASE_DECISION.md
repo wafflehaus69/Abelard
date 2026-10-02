@@ -129,3 +129,12 @@ Getting the table out (F) depends on the plan and is in each path.
 * **Organic-v2 is in section 4's Analyst path (line B3, 900–1,800) and has no chunk query.** Either it is scheduled or the Analyst path is 5,300–7,000 without it. To be ruled (`RUNBOOK_v1.md` R3).
 * **In-warehouse does not make export free.** Verdicts are applied locally, so the analysis columns still leave Dune: roughly 50–100 MB, 150–1,000 credits depending on the rate (`RUNBOOK_v1.md` R4). Section 4's "in-warehouse 50" is too low.
 * The plan paths and the checkout steps are otherwise unchanged.
+
+## 11. Amendment, 2026-10-02 — after MR-15
+
+* **Two of the three blockers are closed, and the third is one run from closed.** Derived reserve: 35 of 35 against pool accounts (10.7 credits). Fan-out: its own query per chunk, proven at one-day scope (0.5 credits). Regenerated aligned-set query: agrees with the earlier rows wherever the definitions are the same (40.6 credits), but a review then found its funder scan stopped at a chunk-level date; it is fixed and needs one more one-day run, after a ruling on whether token-account rent counts as funding (`RUNBOOK_v1.md` §1).
+* **Analyst path, as ruled: no organic-v2, no `cluster_*`, no `c07b`.** Core build, 19 chunks: event columns 1,014 · aligned set and funding 3,417 · concentration 367 · authorities 10 · fan-out 579 = **5,387 credits** (about 6,800 if every chunk costs the post-BOOST rate). The aligned-set figure was measured while that query still carried the fan-out scan, so it is on the high side; the fan-out line was priced at 1 credit per day scanned and measured 0.5 on its one day.
+* **Plus the one export of the analysis columns** (R4): 50–100 MB, priced on day 0 from the measured rate; phase D's ceiling is that × 1.3.
+* **Against two Analyst months (6,800 spendable):** 5,387 + census 100 + export leaves room for the export only if the rate is at or under about 13 credits per MB at 100 MB. At the high build rate (6,800) two months leave nothing for the export, and a third month goes back for a ruling, as already ruled.
+* The Plus path is unchanged: everything ruled, including organic-v2, at 19,900–25,900 against 25,000.
+* Balance: 2,213.9 of 2,500 used; 106.1 spendable above the 180 reserve.

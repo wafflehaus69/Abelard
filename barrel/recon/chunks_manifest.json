@@ -31,7 +31,7 @@
    },
    "fan": {
     "file": "recon/sql/chunks/2025-03_fan.sql",
-    "projected_credits": 12.0,
+    "projected_credits": 31.0,
     "review": "ok"
    },
    "b3": {
@@ -815,7 +815,7 @@
    },
    "fan": {
     "file": "recon/sql/chunks/2026-09_fan.sql",
-    "projected_credits": 20.0,
+    "projected_credits": 30.0,
     "review": "ok"
    },
    "b3": {

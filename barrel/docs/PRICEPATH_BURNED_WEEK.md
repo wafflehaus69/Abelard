@@ -67,3 +67,26 @@ The run returned a **negative** median buy cost (−120 bps). Cause, measured (`
 
 * The virtual quote reserve is taken as one constant (17,584,505,500 lamports) for every pool born from 2026-07-21. It was read from ten post-BOOST swaps, all within 1,000 lamports of that. Whether it is the same on every pool, and whether the buy-and-burn changes it, is unverified. A check against pool accounts over RPC costs nothing and is in the runbook's day-one list.
 * One week. Chosen by seed, so not picked for its result, but one week.
+
+## Re-count from per-token rows, one day of the week (MR-15 B1, 2026-10-02)
+
+Graduations of **2026-08-10 only**, 1,055 tokens, each pool priced with its own derived reserve, every cut applied locally (`recon/validate_events_rows.py`). The other six days are re-counted the same way when phase A builds the 2026-08 chunk; they are not re-run on the trial. The day is burned with its week. Descriptive only.
+
+| Entry lag | 15 min | 60 min | 240 min |
+|---|---|---|---|
+| Price at 7 d ÷ entry, median | 0.21 | 0.51 | 0.82 |
+| Price at 7 d ÷ entry, mean | **0.42** | **0.60** | **0.77** |
+| Share above entry at 7 d | 4.4% | 4.7% | 5.6% |
+| Peak within 7 d ÷ entry, median | 1.21 | 1.06 | 1.00 |
+| Share reaching 2× at any time | 24.1% | 15.3% | 11.1% |
+| Peak within 24 h ÷ entry, median | 1.18 | 1.03 | 1.00 |
+| Max drawdown within 7 d, median | 86% | 59% | 37% |
+| Entry price ÷ graduation price, median | 0.19 | 0.08 | 0.06 |
+| Real quote reserve at entry, median (SOL) | 10.6 | 3.6 | 2.1 |
+| H5 winners (24 h peak ≥ 3× entry and 7-day price ≥ entry) | 17 | 10 | 10 |
+
+At the 240-minute lag, by pool kind: **mayhem pools (275): median 0.47, mean 0.55. Pools with a virtual reserve (780): median 0.93, mean 0.84.**
+
+What the struck table got wrong, now visible: with a phantom 17.58 SOL added to the mayhem pools, their ratios were pulled toward 1. Priced correctly, the mayhem quarter of this day loses about half its value over the week from a four-hour entry. The qualitative reading survives: under 6% of tokens are above entry after seven days at any lag, and 1–2% meet the winner definition.
+
+One day, one era. Not H4 and not a verdict.

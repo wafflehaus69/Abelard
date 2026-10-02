@@ -29,7 +29,16 @@ def main():
         fset = sorted({v for r in frows for v in (r.get("funder"), r.get("member_own_funder")) if v and v not in own})
         if not fset: raise SystemExit("REFUSED: no funder in the rows given")
         if not all(re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", f) for f in fset): raise SystemExit("REFUSED: a funder value is not a base58 address")
+        # the list must be the chunk's own: a fan-out file for 2026-08 takes rows whose file name carries 2026-08
+        cm = re.match(r"(\d{4}-\d{2})_fan", pathlib.Path(a.sql).stem)
+        if cm and cm.group(1) not in pathlib.Path(a.funders_from).name:
+            raise SystemExit(f"REFUSED: {a.sql} is the fan-out query of chunk {cm.group(1)}; --funders-from does not name that chunk")
         sql = sql.replace("__FUNDERS__", ", ".join(f"'{f}'" for f in fset))
+        import hashlib as _h
+        # what was asked is recorded (count and hash, never the addresses): a funder absent from the result
+        # is a measured zero only if it was in this list
+        asked = {"funders_from": pathlib.Path(a.funders_from).name, "n_funders": len(fset),
+                 "funders_sha256": _h.sha256("\n".join(fset).encode()).hexdigest()}
         print(f"funders substituted: {len(fset)} (query text {len(sql) / 1e6:.2f} MB)")
     # Owner-wallet exclusion (MR-3.4): SQL files write __NOT_OWNER(col)__; the addresses are read
     # from barrel/private/ at run time and reach only the query text sent to Dune, never the repo.
@@ -84,10 +93,19 @@ def main():
     rows = (res.get("result") or {}).get("rows")
     # A result larger than one page comes back with next_offset; fetch every page (export is billed per MB).
     off = res.get("next_offset")
-    while rows is not None and off:
+    fetch_error = res.get("_http_error")
+    expected_rows = ((res.get("result") or {}).get("metadata") or {}).get("total_row_count")
+    while rows is not None and off and not fetch_error:
         pg = rt.dune("GET", f"/execution/{eid}/results?limit=1000&offset={off}", key)
+        fetch_error = pg.get("_http_error")
         rows += (pg.get("result") or {}).get("rows") or []
         off = pg.get("next_offset")
+    # A failed page must not look like the end of the result: nothing is exported from an incomplete fetch.
+    # The execution id is kept, so the rows can be fetched again without re-running the query.
+    incomplete = bool(fetch_error) or (rows is not None and expected_rows is not None and len(rows) != expected_rows)
+    if incomplete:
+        print(f"INCOMPLETE FETCH: http error {fetch_error}, rows {len(rows or [])} of {expected_rows}; nothing written but the run record")
+        rows = None
     # Owner wallets never reach the repo: drop any fetched row naming one, and say so.
     dropped = 0
     if rows:
@@ -96,7 +114,8 @@ def main():
         dropped, rows = len(rows) - len(keep), keep
     rec = {"file": a.sql, "label": a.label, "execution_id": eid, "state": (f"CANCELLED BY WATCHDOG ({killed})" if killed else st.get("state", "NOT RUN (15 min)")), "credits": cost,
            "cap": cap, "proven": a.proven, "inflight_samples": samples, "rows_dropped_owner": dropped,
-           "submitted_at": st.get("submitted_at"), "rows": rows, "error": res.get("error")}
+           "submitted_at": st.get("submitted_at"), "rows": rows, "error": res.get("error") or (f"INCOMPLETE FETCH ({fetch_error})" if incomplete else None)}
+    if "asked" in dir(): rec["asked"] = asked
     name = pathlib.Path(a.sql).stem + "_" + dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S")
     # --private-rows: the rows name wallets. They go to barrel/private/out (gitignored); the
     # committed run file keeps the cost, the samples and the row count only.
@@ -114,6 +133,7 @@ def main():
         cols = sorted({k for r in rows for k in r})
         entry = {"file": f"data/{name}.json", "sql": a.sql, "execution_id": eid, "sha256": hashlib.sha256(blob).hexdigest(),
                  "bytes": len(blob), "n_rows": len(rows), "null_counts": {c: sum(r.get(c) is None for r in rows) for c in cols}}
+        if "asked" in dir(): entry["asked"] = asked
         mpath = ROOT / "recon" / "export_manifest.json"
         man = json.loads(mpath.read_text(encoding="utf-8")) if mpath.exists() else []
         man.append(entry); mpath.write_text(json.dumps(man, indent=1), encoding="utf-8")
@@ -125,12 +145,13 @@ def main():
     row = f"| {n} | {a.sql}{(' ('+a.label+')') if a.label else ''} | `{eid[:12]}…` | {cost:.3f} | {total:.2f} |"
     txt = re.sub(r"(\|[^\n]*\|\n)(\n\*\*Total consumed)", lambda m_: m_.group(1) + row + "\n" + m_.group(2), txt, count=1)
     api_used = float((dune_usage.usage() or {}).get("credits_used") or total)
-    txt = re.sub(r"\*\*Total consumed: [\d.]+ credits\. Remaining: \d+\. Usable after 15% reserve: \d+\.\*\*",
+    txt = re.sub(r"\*\*Total consumed: [\d.]+ credits\. Remaining: -?\d+\. Usable after 15% reserve: -?\d+\.\*\*",
                  f"**Total consumed: {total:.2f} credits. Remaining: {allowance-total:.0f}. Usable after 15% reserve: {allowance-total-reserve:.0f}.**", txt)
     txt = re.sub(r"\n_API says used: [^\n]*_", "", txt)
     txt += f"\n_API says used: {api_used:.3f} of {allowance:.0f}; spendable above the reserve of {reserve:.0f}: {allowance-api_used-reserve:.1f} (authoritative; ledger undercounts pre-ledger probes)_"
     LEDGER.write_text(txt, encoding="utf-8")
     print(f"state={rec['state']} credits={cost:.3f} error={rec['error']}")
+    if incomplete: sys.exit(4)
     print(f"cap={cap:.1f} proven={a.proven} in-flight samples={samples[-6:]} rows={len(rows or [])} dropped_owner={dropped}")
     if a.private_rows: print(f"rows written to barrel/private/out/rows_{name}.json")
     if not a.quiet and not a.private_rows and not a.export:

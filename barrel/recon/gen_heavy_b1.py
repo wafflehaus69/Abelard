@@ -41,7 +41,10 @@ def head(gd0: str, gd1: str) -> tuple[str, dict]:
              cr0=(d0 - dt.timedelta(days=3)).isoformat(),
              st0=(d0 - dt.timedelta(days=4)).isoformat(),
              st1=(d1 + dt.timedelta(days=2)).isoformat(),
-             tr1=(d1 + dt.timedelta(days=9)).isoformat(),
+             # a pool can be created up to a day after the chunk's last completion, and acquisition counts for
+             # 9 days after graduation: the ledger and the funder scan must reach that for the last token too
+             tr1=(d1 + dt.timedelta(days=10)).isoformat(),
+             fu1=(d1 + dt.timedelta(days=11)).isoformat(),
              pool_end=(d1 + dt.timedelta(days=1)).isoformat())
     sql = f"""WITH comp AS (
   SELECT mint, evt_block_time AS ct FROM pumpdotfun_solana.pump_evt_completeevent
@@ -99,6 +102,10 @@ def members(gd0: str, gd1: str) -> str:
     h, p = head(gd0, gd1)
     bounds = (f"s.block_time >= TIMESTAMP '{p['st0']} 00:00:00' AND s.block_time < TIMESTAMP '{p['st1']} 00:00:00'\n"
               f"    AND CAST(s.amount AS double) >= 1e6")
+    # the funder scan reaches the last possible first acquisition of the chunk's last token; the per-token
+    # predicates below it are what decide, so no token is cut short by where it falls in the chunk
+    fbounds = (f"s.block_time >= TIMESTAMP '{p['st0']} 00:00:00' AND s.block_time < TIMESTAMP '{p['fu1']} 00:00:00'\n"
+               f"    AND CAST(s.amount AS double) >= 1e6")
     return f"""-- Heavy tier B1a: aligned-set members with funding records, graduations {gd0} .. {gd1}.
 -- Rows name wallets: run with --private-rows. No threshold, no classification, no verdict here.
 {h},
@@ -154,7 +161,7 @@ inb0 AS (   -- one row per (member, sender): first and last transfer before the 
   SELECT m.mint, m.w, s.from_owner AS sender, min(s.block_time) AS t_first, max(s.block_slot) AS slot_last,
          max_by(CAST(s.amount AS double), s.block_slot) / 1e9 AS last_sol
   FROM tokens_solana.sol_transfers s JOIN mm m ON s.to_owner = m.w
-  WHERE {bounds}
+  WHERE {fbounds}
     -- per-token window: 4 days before the token's graduation day, up to and including the slot of the
     -- member's first action (funding and acting in one slot is the bundle pattern; seconds cannot order it)
     AND s.from_owner <> m.w AND s.block_slot <= m.slot_act

@@ -43,7 +43,7 @@ LARGE = {
     "tokens_solana.transfers": {"b1a": 1, "b1b": 1},
     "pumpdotfun_solana.pump_amm_evt_buyevent": {"events": 1, "b3": 1},
     "pumpdotfun_solana.pump_amm_evt_sellevent": {"events": 1, "b3": 1},
-    "pumpdotfun_solana.pump_evt_tradeevent": {"b1a": 2},
+    "pumpdotfun_solana.pump_evt_tradeevent": {"b1a": 1},   # textual references; the CTE is read twice
 }
 # Measured units (HEAVY_TIER_UNITS.md, MATERIALIZATION_UNITS.md): credits = a + b * days of large table scanned,
 # times the post-BOOST ratio for the share of the chunk that is post-BOOST.
@@ -80,8 +80,13 @@ def review(kind: str, sql: str, d0: dt.date, d1: dt.date) -> list[str]:
             tail = sql[m.end():m.end() + 900]
             if not re.search(r"(block_date|evt_block_date|call_block_date)\s+(BETWEEN|=)\s+DATE '|block_time >= TIMESTAMP '", tail):
                 problems.append(f"{table}: no literal partition bound after reference at {m.start()}")
-    if kind == "fan" and "__FUNDERS__" not in sql:
-        problems.append("fan-out query without the funder placeholder")
+    if kind == "fan":
+        t0, t1, days = gen_fanout.month_window(d0)
+        if "__FUNDERS__" not in sql:
+            problems.append("fan-out query without the funder placeholder")
+        if (f"TIMESTAMP '{t0} 00:00:00'" not in sql or f"TIMESTAMP '{t1} 00:00:00'" not in sql
+                or f"{days} AS window_days" not in sql):
+            problems.append("fan-out window is not the chunk's calendar month")
     if kind in ("b1a", "b3") and "__NOT_OWNER(" not in sql:
         problems.append("wallet-bearing query without the owner filter")
     if kind != "fan" and (f"DATE '{d0.isoformat()}'" not in sql or f"DATE '{d1.isoformat()}'" not in sql):
@@ -118,10 +123,10 @@ def main() -> None:
         manifest.append(row)
     w = ss.burned_week().isoformat()
     (ROOT / "recon" / "sql" / "events_burned_day.sql").write_text(ta.build(w, w), encoding="utf-8")   # MR-15 B1
-    (ROOT / "recon" / "chunks_manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     for r in manifest:   # the fan-out query scans its whole calendar month, whatever the chunk's length
         d0 = dt.date.fromisoformat(r["from"])
         r["queries"]["fan"]["projected_credits"] = float(gen_fanout.month_window(d0)[2])
+    (ROOT / "recon" / "chunks_manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     tot = {k: round(sum(r["queries"][k]["projected_credits"] for r in manifest)) for k in builders}
     print(f"{len(manifest)} chunks, {len(manifest) * (len(builders) - 1)} scheduled files, review problems: {bad}; "
           f"{len(manifest)} b3 files unscheduled and refused by the runner")

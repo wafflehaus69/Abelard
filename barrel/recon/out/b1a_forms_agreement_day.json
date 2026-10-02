@@ -1,7 +1,10 @@
 {
  "day": "day",
+ "member_file": "rows_heavy_b1a_members_day_20261001T014415.json",
+ "grouped_file": "rows_heavy_b1a_grouped_day_20261002T012425.json",
  "member_rows": 461,
  "group_rows": 563,
+ "member_funder_rows": 0,
  "group_rows_outside_the_set_after_the_local_cut": 251,
  "result": {
   "tokens": 236,
@@ -13,12 +16,14 @@
   "holdings g240: agree": 236,
   "net flow after entry: agree": 236,
   "supply at g15 / g60 / g240: agree": 236,
-  "latency median: not comparable (grouped rows predate the column)": 236,
+  "latency median: not comparable": 236,
   "funders and members per funder: agree": 235,
   "fan-out per funder: agree": 235,
-  "actors after collapse: agree": 236
+  "actors after collapse: agree": 234,
+  "actors after collapse: not comparable": 1
  },
  "tokens_disagreeing": {
+  "actors after collapse": 1,
   "funders and members per funder": 1,
   "fan-out per funder": 1
  }

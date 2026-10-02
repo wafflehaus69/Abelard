@@ -1,47 +1,44 @@
 # BARREL M0 — Paid-Month Runbook v1 (operational)
 
 **Author:** ClaudeCode · **Date:** 2026-10-01, revised twice the same day · **Returns:** the Architect's launch order (`RUNBOOK_ARCHITECT_2026-10-01.md`, MR-13) with the operational detail filled in.
-**Status: NOT READY.** Revised after MR-14 (`RULINGS_2026-10-01_C.md`) and after an adversarial review of that revision. §1 lists what stands between this document and a purchase.
+**Status: NOT READY — one ruling and one run remain (§1).** Revised after MR-14, MR-15 (`RULINGS_2026-10-02.md`) and two adversarial reviews.
 **Plan assumed:** Analyst, month-to-month, 4,000 credits a month, 3,400 spendable after the 15% reserve, two months authorized. Under the Plus rule the same phases run uncut in one month.
 
 ---
 
 ## 1. Status before purchase
 
-### The six orders of MR-14
+**Not ready. One ruling and one run remain.** Everything else the Architect ordered or ruled is done, run and recorded.
 
-| Order | Result |
+### What MR-15 closed (`RULINGS_2026-10-02.md`)
+
+| Item | Result |
 |---|---|
-| 1. Grouped `b1a`, one day, ≤ 60 | **Run, 46.2 credits.** Member and grouped forms agree on 236 of 236 tokens for set size, creator, creator-funded members, holdings at all three lags, net flow and supply at all three lags; on 235 for funders. The one difference is two senders in the same second. **The query has been changed since that run** (below), so the run proves the grouping, not the text now on disk. `B1A_GROUPED_VALIDATION.md` |
-| 2. Virtual reserve over RPC | **HALT.** Not one constant: 10 of 31 post-BOOST pools carry 0 (all 10 are mayhem-mode pools), 21 carry about 17.58 SOL. Fixed for a pool's life. A derivation from each pool's own buys matched the accounts on 35 of 35. `VQR_CHECK.md` |
-| 3. Threshold grep in the runner | **Done, then hardened.** The first version had holes the review found (constant on the far side of a product, `5e0`, line breaks, ratios against 1, and the saved-query path did not pass through it at all). Now enforced in the one function every request to Dune goes through. Burned-week query refused; 76 scheduled chunk files pass; 19 `b3` files are refused and marked so. |
-| 4. Null-count item for the first paid chunk | **Recorded.** `recon/sql/buy_field_swap_by_day.sql`, day 0 step 5. |
-| 5. Depth floor against withdrawable reserve | **Done.** `M0_TASKING.md` MR-14; the dry run is struck. |
-| 6. "Ready", and the day | **Not ready.** See the three blockers. If the rulings and the authorization below arrive on 2026-10-02, the two proving runs take about an hour and day 0 can be **2026-10-03**. The trial credits that pay for them lapse on 2026-10-06. |
+| **B1** derived virtual reserve | **Closed.** One post-BOOST day (2026-08-10), 10.7 credits. Derived reserve matches the pool account on 35 of 35 seeded pools (largest difference 46 lamports), and on the one pool carrying a third value (19.87 SOL). Halt lifted. `VQR_CHECK.md` |
+| Burned-week price paths, re-counted locally | Done for the one day run; the other six days when phase A builds 2026-08. `PRICEPATH_BURNED_WEEK.md` |
+| **B3** fan-out on a fixed window | **Closed.** Fan-out left the aligned-set query. One query per chunk over the full calendar month, recipients per day; funders substituted at run time. Proven at one-day scope, 0.5 credits. `recon/gen_fanout.py`, `actors.fan_rates` |
+| **R1** member-funder is one actor | Implemented in `recon/actors.py`, both forms, tested |
+| **R2** block keyed by address | Implemented as a component over the whole set (`actors.assign_blocks`), which is what puts one wallet in one block; the component reading is mine |
+| **R3** organic-v2 cut on Analyst | H5 re-registered without it (`M0_TASKING.md` MR-15) |
+| **R4** analysis-column export | Phase D ceiling = day-0 rate x 1.3 (§5) |
+| **R5** view mode | Built only if day 0 selects in-warehouse, before phase B. Not built. |
+| **R6, R8, R9** | Recorded |
+| **R7** back up `barrel/data/` off the machine | Mando's. The list it was said to be in was not relayed. |
 
-### Blockers (each needs a run, a ruling, or both)
+### What is still open
 
 | # | What | Needs |
 |---|---|---|
-| **B1** | **Post-BOOST prices are halted.** The event query now derives the virtual reserve per pool from its own buys (largest buy of at least 0.001 SOL). Not run. | The Architect's acceptance of the derivation, and one post-BOOST day of the regenerated event query. **≤ 50 trial credits, hard cap. Requested.** |
-| **B2** | **`b1a` was changed after its proving run.** The review found that three of its definitions depended on where a token falls in the chunk, which a one-day run cannot show: how far back a funder is looked for (4 days for a first-day graduate, up to 34 for a last-day one), which creations are found, and how long a candidate has to acquire the token. All three are now per token (4 days before the token's graduation day; creation within 3 days; acquisition within 9). Also changed: funder ties broken by slot; funding counted up to and including the slot of the first action instead of strictly before its second; per-member latencies returned so the median is taken across members as ruled; creation-slot trader count returned so S8 can say UNKNOWN. | One post-BOOST day of the regenerated grouped query, compared against the member rows on disk for 2026-09-01. **≤ 70 trial credits, hard cap. Requested.** |
-| **B3** | **Fan-out is measured over whatever the query scans.** Six days in the one-day run, thirteen in the week, twelve in the calibration histogram, up to thirty-six in a monthly chunk. The provisional line of 400 therefore means something different at each scope, and a funder can move between `dedicated` and `hub` because of chunk length alone. Every fan-out figure reported so far carries its own window. | **A ruling.** Options: (a) a fixed window per token (the 6 days around its graduation day), built from daily sketches and merged, which adds work to the SOL-transfer aggregation and has not been costed; (b) keep the chunk-wide count and express the line as recipients per day; (c) a separate fan-out query per chunk on a fixed window, costed like the calibration histogram (about 1 credit per day scanned). Not implemented: the choice changes what the classifier means. |
+| **Q1** | **Does token-account rent count as funding?** The B2 run showed the slot rule's largest effect: 295 of the 303 members that gained a funder gained the token's creator on exactly 0.00203928 SOL, the rent of the token account the creator created for them while delivering tokens. Rent is above the 0.001 SOL floor, so it also decides membership: 100 of 2,317 creator-funded members in the June week are in the set on rent alone, and 68 of them hold at entry. Options and their effects: `B1A_GROUPED_VALIDATION.md`. My recommendation: leave membership as it is; for the funder either leave it or exclude a transfer made inside the member's own first-acquisition transaction. | **A ruling.** |
+| **B2** | **The aligned-set query changed again after its run.** B2 itself ran (40.6 credits) and agreed with the earlier member rows on set size, holdings, flows and supply for 1,087 of 1,087 tokens; 342 of 76,999 members have a different funder, in the direction the ratified definitions predict. A second review then found the funder scan still stopped at a chunk-level date (two days after the chunk's last day, against an acquisition horizon of nine). Fixed; the text on disk has not run. | **One post-BOOST day, after Q1 so it is run once. Up to 70 trial credits, hard cap. Requested.** 106 are spendable until 2026-10-06. |
 
-165 trial credits are spendable above the reserve. B1 and B2 together ask for up to 120.
+If Q1 and the authorization arrive on 2026-10-02 or 10-03, the run takes under an hour and day 0 can be the following day. After 2026-10-06 the same run is step A1 of phase A, inside its 500 ceiling.
 
-### Rulings needed, no run
+### Carried, not blocking
 
-| # | Point |
-|---|---|
-| R1 | **Collapse does not merge a funder with the wallets it funds when that funder is itself in the set.** The aligned set's defining shape, a creator and the wallets it funded, is therefore always at least two actors. Proposed: a member whose address is another member's linking funder is the same actor. Not implemented; it changes ruled collapse semantics. |
-| R2 | **`blk` puts one wallet in two blocks** when it both creates tokens (`C:`) and funds creators (`F:`), which overstates block n. Proposed: key the block by address alone. Not implemented. |
-| R3 | **Organic-v2 is costed in the Analyst path of `PURCHASE_DECISION.md` (900–1,800) and has no chunk query here.** It is also on H5's marker list. Schedule it (one proving day, then per chunk) or rule it cut on Analyst. |
-| R4 | **"No thresholds in Dune" and "analyse in the warehouse" pull against each other.** Thresholds are set and verdicts applied locally, so the columns they read have to leave Dune. About 25 numeric columns for 180,543 tokens is 50–100 MB [estimate]: 150 to 1,000 credits depending on the rate measured on day 0. Phase D's 200 / 300 does not cover that at the documented rate. Proposed: one column-pruned export of the analysis columns, budgeted from the measured rate; the full 91 columns stay in the warehouse. |
-| R5 | **Nothing in the repo creates a view from a chunk file.** The runner submits ad hoc only; the view code that exists is the trial's, hard-wired to one file. If day 0 selects in-warehouse, a view mode has to be added to the runner (same cap, reserve, ledger and threshold check; refuses `b1a`) before phase B. Half a day of work; not started. |
-| R6 | **Two things in `M0_TASKING.md` MR-14 were mine, not the ruling's:** "deepest pool" read as deepest by real reserve, and the post-BOOST depth-floor distribution taken from the burned week because the calibration slice has no post-BOOST pools. Now marked as proposals there. |
-| R7 | Ruling 6 says "one addition for Mando below". **None was in the text relayed.** |
-| R8 | **Pushed history contains wallet addresses that should not be in the repo:** the holders of one test token in three S6 files, and one buyer in a column probe. Truncated in the working tree today. Removing them from history means rewriting a pushed branch, which is Mando's call. |
-| R9 | The stratum-N queries read a LaunchLab column that may be the token's name/symbol/uri struct rather than its mint. Not confirmed. Stratum N is outside the paid build. Those three queries are not to be run until a `LIMIT 0` column probe settles it; "LaunchLab removals: 0" is struck as unmeasured. |
+* The view mode (R5) is half a day of work if day 0 selects in-warehouse.
+* Column 86 has been compared only against rows that used the earlier definition. It is validated when a member-form and a grouped-form run of one text are compared; phase A step A1 does that.
+* No chunk longer than one day has run for the aligned-set query. Phase A is where the per-token windows are first exercised across a month.
 
 ### Rulings applied (MR-14)
 
@@ -94,8 +91,9 @@ One calendar month of stratum-P graduations per chunk. Files: `recon/sql/chunks/
 
 | Query | Feeds | What has actually run |
 |---|---|---|
-| `events` | the event-derived columns | An earlier text: one day and two weeks pre-BOOST. **The text on disk (per-pool derived reserve, gross and net by size) has not run.** First run: B1. |
-| `b1a` | aligned set grouped by funder: c07, c08, `seta_*`, `seta_lat_s`, `blk`, registry | Member form: day, week, post-BOOST day. Grouped form: one pre-BOOST day (46.2). **The text on disk (per-token windows, slot tie-break, slot cutoff, latency arrays) has not run.** First run: B2. |
+| `events` | the event-derived columns | **The text on disk ran on one post-BOOST day (2026-08-10), 10.7 credits; reserve 35 of 35 against pool accounts.** Earlier texts: one day and two weeks pre-BOOST. |
+| `b1a` | aligned set grouped by funder: c07, c08, `seta_*`, `seta_lat_s`, registry | Grouped form with per-token windows, slot cutoff and tie-break: one post-BOOST day (2026-09-01), 40.6 credits. **The text on disk differs from that run by the length of the funder scan and one ledger day; not run.** |
+| `fan` | funder fan-out, recipients per day over the calendar month; feeds the classifier, collapse and `blk` | one-day scope, 0.5 credits. Month scope not run. |
 | `b1b` | c06, supply at entry | day, week, post-BOOST day. Text changed only by the per-token creation bound and the acquisition horizon it shares with `b1a`. |
 | `b2` | c01, c02, `token_program` | day, week, post-BOOST day |
 | `b3` | `cluster_*` (H2) | An earlier text ran at day, week and post-BOOST day. **Not scheduled, and not runnable as written:** it keeps a group-size cut that the threshold rule refuses, and it returns raw reserves instead of a price. |
@@ -125,9 +123,9 @@ Projected credits per chunk (measured units: a fixed part plus a rate per day of
 | 2026-09 | 09-01 → 09-20 | 20 | post | 57 | 177 | 18 | 252 | 169 | |
 | **Total** | | 550 | | **1,014** | **3,417** | **367** | **4,808** | 2,948 | b2 adds about 10 in all |
 
-**4,808 credits for the core build**, against 6,800 spendable over two Analyst months. If every chunk costs the post-BOOST rate, about 6,200. Neither figure includes getting data out (R4).
+**4,808 credits for these four, plus 579 for the fan-out query (one per chunk, its calendar month): 5,387 for the core build**, against 6,800 spendable over two Analyst months. If every chunk costs the post-BOOST rate, about 6,800. The `b1a` unit was measured while it still carried the fan-out scan and before its funder scan was lengthened; the two roughly offset. Neither figure includes the analysis-column export.
 
-What the static review checks on every scheduled file, and found nothing wrong with: each large table carries literal partition bounds; no large table is referenced more often than designed (SOL transfers three times in `b1a`; token ledger once; bonding-curve trades twice in `b1a`; swap events once); wallet-bearing queries carry the owner filter; the chunk's dates are in the text; no `OR` on a partition column; `SELECT` only; no registered verdict constant. It cannot show a query is cheap, and it did not catch the chunk-length dependence that a reviewer reading the definitions did.
+What the static review checks on every scheduled file, and found nothing wrong with: each large table carries literal partition bounds; no large table is referenced more often than designed (SOL transfers twice in `b1a` and once in `fan`; token ledger once; bonding-curve trades once in the text; swap events once); the fan-out window is the chunk's calendar month; wallet-bearing queries carry the owner filter; the chunk's dates are in the text; no `OR` on a partition column; `SELECT` only; no registered verdict constant. It cannot show a query is cheap, and it did not catch the chunk-length dependence that a reviewer reading the definitions did.
 
 ---
 
@@ -146,7 +144,8 @@ Order of chunks in every phase: **2026-08 first** (phase A), then post-BOOST and
 | Step | File | Cap |
 |---|---|---|
 | A0 | `events`, one post-BOOST day (skipped if B1 ran on the trial) | 50, hard |
-| A1 | `heavy_b1a_grouped_pbday.sql`, one post-BOOST day (skipped if B2 ran on the trial) | 70, hard |
+| A1 | `heavy_b1a_grouped_pbday.sql` and `heavy_b1a_members_pbday.sql`, one post-BOOST day each, compared (the grouped one is skipped if it ran on the trial after Q1) | 70 each, hard |
+| A1b | `chunks/2026-08_fan.sql` with the chunk's funders, after A4 | 40, hard |
 | A2 | `chunks/2026-08_events.sql` | 90, hard |
 | A3 | `chunks/2026-08_b1b.sql`, `2026-08_b2.sql` | 35 and 5 |
 | A4 | `chunks/2026-08_b1a.sql` | 320, hard |
@@ -160,13 +159,13 @@ On landing, per chunk: row count against the monthly P counts already measured (
 **In-warehouse needs R5 built first.**
 
 ### Phase C — heavy tier, remaining 18 chunks (days 9–22, and month 2). Budget 1,550 / 1,750 in month 1 (250 moved to A), up to 3,000 in month 2.
-`b1b` and `b2` for all chunks first (about 350 together, cheap, and c06 is H1). Then `b1a` in the chunk order above, about 180 each, always `--export`.
+`b1b` and `b2` for all chunks first (about 350 together, cheap, and c06 is H1). Then `b1a` in the chunk order above, about 180 each, always `--export`, each followed by its `fan` query (`--funders-from` that chunk's export; about 30 each, 579 in all, inside this phase's budget as ruled).
 **Day-10 check:** phase B complete and month-to-date ≤ 3,000, else C2.
 **Month 1 stops** when the next `b1a` would cross the reserve. On the projection that is after about eight `b1a` chunks.
 **Month-2 ruling** uses the measured mean cost of the `b1a` chunks run so far times the chunks remaining; bought only if that is ≤ 3,000.
 
 ### Phase D — census and reconciliation (throughout). Budget 200 / 300.
-Gate 0 census: one query with `GROUP BY` week over the small tables. The 20-token hand reconciliation (`VALIDATION_1_4_CENSUS.md`, seed 20260922) on day 1: acceptance 19 of 20. The analysis-column export of R4 is not inside this budget until it is ruled and its rate measured.
+Gate 0 census: one query with `GROUP BY` week over the small tables. The 20-token hand reconciliation (`VALIDATION_1_4_CENSUS.md`, seed 20260922) on day 1: acceptance 19 of 20. **The analysis-column export (MR-15 R4) is in this phase: one column-pruned export, and the phase's ceiling becomes the day-0 measured rate x the export's size x 1.3.**
 
 ### Phase E — cancel (last day)
 Plan cancelled before renewal. **Before any view is deleted:** every column the local analysis needs is exported and its manifest entry committed. Then views deleted, storage read back as 0, the Read/Write key revoked if it was used.
@@ -177,10 +176,10 @@ Plan cancelled before renewal. **Before any view is deleted:** every column the 
 |---|---|---|---|
 | A | 400 / 500 | 338, plus up to 120 for A0 and A1 if not run on the trial | whole 2026-08 chunk |
 | B | 1,000 / 1,500 | 945 for 18 chunks | fits |
-| C | 1,550 / 1,750 + ≤ 3,000 | 3,525 for 18 chunks; about 4,600 at the post-BOOST rate throughout | fits the 4,750 combined ceiling at either rate, narrowly at the high one |
-| D | 200 / 300 | 30–100 for the census; `b1a` group export a few credits per chunk | R4's export is extra |
+| C | 1,550 / 1,750 + ≤ 3,000 | 3,525 for 18 chunks plus 579 for fan-out = 4,104; about 5,200 at the post-BOOST rate throughout | fits the 4,750 combined ceiling on the projection; **over it by about 450 at the high rate**, which the day-10 check and the month-2 ruling govern |
+| D | census 200 / 300; export ceiling = measured rate x size x 1.3 (MR-15 R4) | 30–100 for the census; `b1a` and `fan` exports a few credits per chunk; analysis columns 50–100 MB | |
 | Month 1 | 3,150 plan, 3,400 spendable | A 338–458, B 945, D 100, C about 1,900 | C runs to the reserve |
-| Month 2 | ≤ 3,000 | C remainder about 1,650 | |
+| Month 2 | ≤ 3,000 | C remainder about 2,200 with fan-out | |
 
 ---
 
@@ -204,7 +203,7 @@ contingency in force   none / C_
 | | Trigger, as measured | Action |
 |---|---|---|
 | **C1** | 2026-08 chunk > 440, or mean chunk cost > 1.3 × projection after any three chunks | Build only: pre-BOOST 2025-10-30 → 2026-01-27 (chunks 2025-11, 2025-12 and the two partial months, regenerated to the block's exact dates), and all of post-BOOST (2026-07-21 → 09-20). Every cell labelled SAMPLED. |
-| **C2** | projected heavy remainder > remaining budget | Drop, in this order only: `b3` (already unscheduled), organic-v2 (not scheduled; R3), `seta_lat_s` (remove the latency arrays from `b1a`'s output; saves little, since the funding scan stays), `b2`. Never `b1a`'s set, funding and block columns, never `b1b`. |
+| **C2** | projected heavy remainder > remaining budget | Drop, in this order only: `b3` (already unscheduled), organic-v2 (cut on Analyst by MR-15 R3), `seta_lat_s` (remove the latency arrays from `b1a`'s output; saves little, since the funding scan stays), `b2`. Never `b1a`'s set, funding and block columns, never `b1b`. |
 | **C3** (the expected path on Analyst) | export rate > 3 per MB | `events`, `b1b` and `b2` chunk queries become view definitions: same cost, rows stay on Dune. Needs the view mode of R5, the Read/Write key, expiry before the first cron firing, and the public-table acceptance already given. **`b1a` is never a view** (MR-14 ruling 3): it is always an ad-hoc query whose rows are exported to `barrel/data/`. What leaves Dune for analysis is R4. |
 | **C4** | a chunk fails on engine limits or time | Regenerate that month as two halves with `gen_chunks.py`; same budget line. |
 | **C5** | an input column is empty, a count does not reconcile, the derived reserve disagrees with pool accounts | Halt the phase. Null-count across all eras. Patch the generator. Re-run only chunks whose columns are touched. Logged in `credits.md` and the validation document for that column. |
@@ -219,11 +218,12 @@ Inputs: the exported analysis columns (R4), the funder-group rows, the member ro
 * The burned week 2026-08-10 → 08-16 and the calibration slice are excluded from evaluation; every cell reports raw n and block n.
 * H5 and the actor registry use the funder-group rows. One limit to state now: **the registry's actor is a funder seen within four days before a token's graduation day.** Actors who fund further ahead are unlinked creators until M0b.
 * `seta_lat_s` is the median across the set's members, computed locally from the per-member seconds the query returns.
-* Actor counts and block counts are subject to R1, R2 and B3.
+* Actor counts use R1; blocks are assigned over the whole evaluation set (`actors.assign_blocks`); both read the fan-out rate table built by `actors.fan_rates` from each chunk's fan-out export. The line between hub and purpose-built is a per-day rate set in v1.2; until then no classification is final.
+* **H5 on the Analyst path is registered without organic-v2** (MR-15 R3).
 
 ## 9. Not in this plan
 
-`b3` early-buyer groups, fee-share recipients, collapsed organic counts: built only under the Plus path or a later ruling. Organic-v2: R3. Multi-hop funding, live tracking, chatter and H3 are as placed by the launch order's §5.
+`b3` early-buyer groups, organic-v2, fee-share recipients, collapsed organic counts: built only under the Plus path or a later ruling. Multi-hop funding, live tracking, chatter and H3 are as placed by the launch order's §5.
 
 ---
 

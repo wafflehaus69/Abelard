@@ -702,7 +702,7 @@
    "internal": "block_id",
    "type": "varchar",
    "group": "control",
-   "definition": "block for effective-n: 'F:' + the creator's funder when that funder links (purpose-built, or factory once shipped), else 'C:' + the creator wallet (MR-11 s2, fallback per MR-12.5)",
+   "definition": "block for effective-n, an address (MR-15 R2): creators are joined to their funder when that funder links, over the whole evaluation set, and the block is the component, named by its smallest address; a creator with no linking funder is its own block. Assigned locally (actors.assign_blocks), NULL in Dune",
    "n": 87
   },
   {

@@ -123,3 +123,9 @@ The three open points in §6 are ruled (`RULINGS_2026-10-01_B.md`). What changed
 **Every fan-out figure in this document carries its own window.** Fan-out was counted over whatever each query scanned: 12 days in the calibration histogram (§2), 13 days in the week's member rows (§3), 15 in the early-buyer groups, 6 in the one-day runs. The same sender has a larger fan-out over a longer window, so the thresholds 32 / 400 / 8,192 do not mean the same thing across those tables, and the classification counts and block counts in §3, §4 and §8 are indicative only until the window is ruled (`RUNBOOK_v1.md` B3). The qualitative findings do not depend on it: fan-out alone does not separate exchanges from factories, and the largest early-buyer groups are behind very high fan-out senders at any of these windows.
 
 Two further points, both put to the Architect in `RUNBOOK_v1.md` §1: collapse does not merge a funder that is itself in the set with the wallets it funds (R1), and `blk` keeps a wallet's funder block and creator block apart (R2).
+
+## 10. Resolved by MR-15 (2026-10-02)
+
+* **Fan-out window (§9):** ruled. Recipients per day over the chunk's full calendar month, from its own query; the line is a per-day rate set in v1.2. The counts and thresholds in §2–§4 and §8 are superseded as classification inputs and stand only as the evidence that fan-out alone does not classify.
+* **Collapse (R1):** a member that is another member's linking funder is one actor with the wallets it funds.
+* **Blocks (R2):** keyed by address alone. The block counts in §4 and §8 were made with prefixed keys and count-based fan-out; they are indicative until the first chunk is built under the ruled definitions.

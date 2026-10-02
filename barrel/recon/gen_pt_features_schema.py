@@ -101,7 +101,7 @@ c("n_7d", "n_swaps_7d", "bigint", "cost", "swaps in (grad, grad + 7d]")
 c("qv_7d", "quote_volume_7d", "double", "cost", "quote volume in (grad, grad + 7d]")
 # MR-11 (CONSENSUS crossover, 2026-10-01): two additions ordered by the Architect; definitions signed by MR-12.
 c("seta_lat_s", "fund_to_first_buy_s", "double", "rug_a", "seconds from a set member's first SOL inflow from its classified funder to its first acquisition of the token; per token, the median across set members; NULL when the funder is unknown (MR-12.2)")
-c("blk", "block_id", "varchar", "control", "block for effective-n: 'F:' + the creator's funder when that funder links (purpose-built, or factory once shipped), else 'C:' + the creator wallet (MR-11 s2, fallback per MR-12.5)")
+c("blk", "block_id", "varchar", "control", "block for effective-n, an address (MR-15 R2): creators are joined to their funder when that funder links, over the whole evaluation set, and the block is the component, named by its smallest address; a creator with no linking funder is its own block. Assigned locally (actors.assign_blocks), NULL in Dune")
 # MR-12 ruling 3: every count column carries its collapsed twin. Collapsed is what the hypotheses read; NULL = unresolved, never the raw count.
 c("seta_actors", "aligned_set_actors", "integer", "rug_a", "seta_n after funding-mesh collapse; NULL when any member's funding is unknown")
 c("cluster_actors", "syndicate_cluster_actors", "integer", "h2", "cluster_n after collapse; NULL when unresolved")

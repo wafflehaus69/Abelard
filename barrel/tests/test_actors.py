@@ -144,12 +144,50 @@ def test_r1_does_not_merge_through_a_funder_that_does_not_link():
     assert actors.resolution.actor_count(actors.token_record(members, **KW)) == 3
 
 
-def test_fan_rate_table_replaces_the_row_value_and_absence_is_a_measured_zero():
+def test_fan_rate_table_replaces_the_row_value_and_only_an_asked_funder_is_a_measured_zero():
     members = [row("a", "F1", 5000), row("b", "F1", 5000)]
     assert actors.resolution.actor_count(actors.token_record(members, **KW)) == 2
     assert actors.resolution.actor_count(actors.token_record(members, rates={"F1": 3.0}, **KW)) == 1
-    assert actors.resolution.actor_count(actors.token_record(members, rates={}, **KW)) == 1
     assert actors.resolution.actor_count(actors.token_record(members, rates={"F1": 900.0}, **KW)) == 2
+    # a funder the table does not cover was never measured: 'unknown', which never links
+    assert actors.resolution.actor_count(actors.token_record(members, rates={}, **KW)) == 2
+    # asked about and absent from the query's rows: sent nothing in the window, a measured zero, links
+    assert actors.resolution.actor_count(actors.token_record(members, rates=actors.fan_rates([], ["F1"]), **KW)) == 1
+
+
+def test_fan_rates_is_recipients_per_day_and_refuses_rows_for_a_funder_not_asked():
+    rates = actors.fan_rates([{"funder": "F1", "recipients": 62, "window_days": 31}], ["F1", "F2"])
+    assert rates == {"F1": 2.0, "F2": 0.0}
+    with pytest.raises(ValueError):
+        actors.fan_rates([{"funder": "ZZ", "recipients": 1, "window_days": 31}], ["F1"])
+
+
+def test_rows_shaped_as_the_query_returns_them_go_straight_through_split_grouped():
+    # on a member_funder row the query's funder / b_only_n are NULL; the member's own are in member_own_*
+    rows = [{"row_kind": "group", "mint": "T", "funder": "EXCH", "b_only_n": None, "member": None, "n_members": 1, "creator": "cr", "n_creator": 1},
+            {"row_kind": "group", "mint": "T", "funder": "cr", "b_only_n": None, "member": None, "n_members": 2, "creator": "cr", "n_creator": 0},
+            {"row_kind": "member_funder", "mint": "T", "funder": None, "b_only_n": None, "member": "cr",
+             "member_own_funder": "EXCH", "member_b_only_n": None, "n_members": 1}]
+    groups, mfs = actors.split_grouped(rows)
+    assert mfs[0]["funder"] == "EXCH" and len(groups) == 2
+    rec = actors.token_record_grouped(groups, mfs, rates={"EXCH": 5.0, "cr": 2.0}, **KW)
+    assert actors.resolution.actor_count(rec) == 1          # cr and the two wallets it funded
+    # a member-funder that is only a bundle candidate below the cut is not in the set: nothing is merged through it
+    rows[2]["member_b_only_n"] = 3
+    groups, mfs = actors.split_grouped(rows)
+    assert actors.resolution.actor_count(actors.token_record_grouped(groups, mfs, rates={"EXCH": 5.0, "cr": 2.0}, **KW)) == 2
+    assert actors.resolution.actor_count(actors.token_record_grouped(groups, mfs, bundle_min=3, rates={"EXCH": 5.0, "cr": 2.0}, **KW)) == 1
+
+
+def test_assign_blocks_puts_one_wallet_in_one_block_across_the_whole_set():
+    tokens = [{"mint": "t1", "creator": "X", "funder": "G", "fan_out": 3},        # G funds X
+              {"mint": "t2", "creator": "W", "funder": "X", "fan_out": 3},        # X funds W: the chain G -> X -> W
+              {"mint": "t3", "creator": "X", "funder": None},                     # same creator, funder not found this time
+              {"mint": "t4", "creator": "Y", "funder": "EXCH", "fan_out": 2},     # an exchange never links
+              {"mint": "t5", "creator": "Z", "funder": "EXCH", "fan_out": 2}]
+    b = actors.assign_blocks(tokens, **KW)
+    assert b["t1"] == b["t2"] == b["t3"] == "G"
+    assert b["t4"] == "Y" and b["t5"] == "Z" and len(set(b.values())) == 3
 
 
 def test_parity_with_consensus_m10():

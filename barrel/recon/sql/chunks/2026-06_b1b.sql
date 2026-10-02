@@ -46,7 +46,7 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
           CASE WHEN t.from_owner IS NULL THEN CAST(t.amount AS double)
                WHEN t.to_owner IS NULL THEN -CAST(t.amount AS double) ELSE 0e0 END],
     ARRAY['to', 'from', 'sup']) AS x(w, d, tag)
-  WHERE t.block_date BETWEEN DATE '2026-05-29' AND DATE '2026-07-09'
+  WHERE t.block_date BETWEEN DATE '2026-05-29' AND DATE '2026-07-10'
     AND t.token_mint_address IN (SELECT mint FROM base) AND x.w IS NOT NULL
   GROUP BY 1, 2),
 rk AS (

@@ -55,3 +55,64 @@ An adversarial review the same day found definitions in the shared part of the q
 Still open, because the fix changes what the classifier means: **fan-out is counted over the whole scan**, so it is on a 6-day window in this run, 13 in the week, and up to 36 in a monthly chunk (`RUNBOOK_v1.md` B3).
 
 On a one-day run the first three per-token definitions give the same result as the chunk-wide ones did. The slot cutoff and the tie-break can change which funder a member gets. **The text on disk needs its own one-day run** (`RUNBOOK_v1.md` B2).
+
+## The regenerated query, run — MR-15 B2, 2026-10-02
+
+`recon/sql/heavy_b1a_grouped_pbday.sql`, graduations of 2026-09-01, **40.56 credits** against a cap of 70 (the member form cost 59.7 on the same day, when it also carried the fan-out scan). 2,361 group rows and 414 member-funder rows, 2.8 MB, exported to `barrel/data/`. Compared against the 76,999 member rows produced on 2026-10-01 by the earlier query (`recon/compare_b1a_forms.py pbday`, result in `recon/out/b1a_forms_agreement_pbday.json`).
+
+| Check, per token (1,087) | Agree |
+|---|---|
+| Set size | **1,087** |
+| Exactly one creator on each side | 1,087 |
+| Creator-funded members | 1,087 |
+| Holdings at 15, 60 and 240 minutes | 1,087 each |
+| Net flow after entry | 1,087 |
+| Supply at 15, 60 and 240 minutes | 1,087 |
+| Funders, and members behind each | 755 |
+| Latency median | 420 |
+| Actors after collapse | 819 |
+
+**Everything the definitions did not change agrees on every token.** The three that differ are the three the ratified definitions were meant to change:
+
+* **Funders.** Of 76,999 members, **342 (0.44%) have a different funder.** 303 had none and now have one; 39 changed from one funder to another; **none lost a funder.** Members with no funder found fell from 422 to 119.
+  * The 39: checked against the chain for a sample (`recon/roundtrip_b1a_funders.py`). Of 6 sampled, 4 could be read and **4 of 4 agree with the regenerated query**; in each the difference is which of several senders in one second came last by slot. Two wallets had histories too long to read.
+  * The 303: 301 gained **the token's creator**. A query on those pairs (3.2 credits; it names wallets and is not in the repo) shows what the creator sent: **on 295 it is exactly 0.00203928 SOL in the same second as the member's first acquisition.** That is the rent of a token account. The creator created the member's token account in the transaction that delivered the tokens; under the earlier rule a transfer in that second was not "before" the acquisition, and under the ratified rule it is "through the slot of first action". Two others received 0.007 SOL and one 0.012.
+* **Latency.** The ruled definition starts the clock at the funder's first transfer; the earlier rows used the last. They differ wherever a funder paid more than once.
+* **Actors.** They follow the funders, and R1 now merges a member with the wallets it funds.
+
+### One thing to put in front of the Architect
+
+The slot rule does what it was ratified to do, and its largest effect is one nobody named in advance: **it makes the creator the funder of wallets whose token accounts the creator paid for.** That is a true creator link, and those wallets were already in the set as creator-funded. It is counted as funding only because the 0.001 SOL floor is below token-account rent (0.00204 SOL). A floor above rent would drop it. Under the earlier rule, rent-sized transfers chose the funder for under 1% of members (4% of creators on the post-BOOST day). Left as ratified.
+
+### The latency and actor differences, checked
+
+* **Latency: the new value is never smaller.** On the 755 tokens whose funders are identical in both forms, the median is the same on 272, larger on 384, smaller on none, and unmeasured in both on 99. On 535 single-member tokens with the same funder: equal on 236, larger on 299, smaller on 0. That is what "the clock starts at the funder's first transfer" predicts against "its last". **The earlier member rows therefore cannot validate column 86**; it is validated when a member-form and a grouped-form run of the same text are compared.
+* **Actors: 759 agree, 87 differ, 241 not comparable** (their regenerated rows name a funder the earlier rows carry no fan measure for). The 87 are among the tokens whose funders changed.
+
+### After a second review: the text changed once more, and one question is open
+
+A second adversarial review of this work found one more chunk-level date in the query, and it is in the part this run exercised:
+
+* **The funder scan stopped two days after the chunk's last graduation day**, while a member's first acquisition is accepted for nine days after graduation. For a token graduating late in a chunk, SOL received between those dates was never read. In this one-day run the scan stopped on 2026-09-03 for tokens whose members could first acquire until 2026-09-10; in the 2026-09 chunk the same tokens would have been scanned to 2026-09-22 and could have come back with different funders. **Fixed:** the funder scan now reaches eleven days past the chunk's last day and the per-token predicates decide. The ledger scan gains a day for the same reason. Cost: about nine more scanned days on one of the query's two SOL-transfer references.
+* **So the text on disk is again not the text that ran.** It needs one one-day run (`RUNBOOK_v1.md` §1).
+
+### The question for the Architect: does token-account rent count as funding?
+
+Dune attributes the rent of a token account to the account's owner, and rent (0.00204 SOL) is above the 0.001 SOL floor. So whoever creates a wallet's token account is, to this query, a sender of SOL to that wallet.
+
+* **In the funder:** the 295 members above. Where the creator delivered tokens and paid the rent in one transaction, the creator is now the member's last sender by construction, ahead of any earlier real funder, and the latency is 0.
+* **In membership, under both the earlier and the ratified text:** a wallet is "creator-funded" if the creator sent it 0.001 SOL within 24 hours, rent included. In the June calibration week **100 of 2,317 creator-funded members are in the set on a rent-sized total, and 68 of those 100 hold the token at entry.** On 2026-09-01 it is 301 of 75,874, with 15 holding.
+
+Three ways to rule it, with what each does:
+
+| Option | Membership | Funder |
+|---|---|---|
+| **(a) Leave as ratified** | rent counts: the creator's distribution wallets are in the set | the creator, when it paid the rent in or before the slot of first acquisition |
+| **(b) Exclude a transfer made in the member's first-acquisition transaction from the funder choice only** | unchanged | the earlier real funder, or none; same-slot funding in a separate transaction still counts |
+| **(c) Raise the floor above rent (for example 0.0025 SOL) everywhere** | the 100 June-week wallets leave the set, 68 holders among them | rent never chooses a funder |
+
+The builder's recommendation is **(a) or (b), not (c)**: the wallets a creator hands tokens to are exactly what the aligned set is for, and (c) removes them. (b) needs the first-acquisition transaction id carried out of the ledger step and one more predicate; no extra scan. Either way the proving run comes after the ruling, so it is run once.
+
+### What is proven now
+
+The grouped form, the per-token creation, lookback and acquisition windows, the slot cutoff and the tie-break ran on one post-BOOST day and agree with the earlier member rows wherever the definitions are the same. Not proven: the text on disk (funder scan lengthened), column 86 against a member-form run of the same text, and any chunk longer than one day.
