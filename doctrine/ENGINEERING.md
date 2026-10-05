@@ -1108,3 +1108,95 @@ than as silence.
 
 Corollary — this is why "built and tested" is not a status. Of the five above,
 all five had passing tests at the moment they were doing nothing.
+
+## E37 — A source is admitted by a known-transaction round-trip, never by its samples
+Ruled 2026-09-21 (Architect, relayed and ratified by Mando); drafted by ClaudeCode
+from the originating incident.
+
+Incident: BARREL M0, source selection. The BigQuery public Solana dataset passed
+every check it was given. Freshness was 0 minutes behind head, all 629 days were
+present, weekly gaps stayed under 3.65%, and sampled rows were well-formed and
+plausible: 29.3M PumpSwap rows on a day where the live rate predicted about that. It
+was then asked for two transactions taken from the chain, one direct swap and one
+routed through Jupiter. It had the direct swap's top-level instruction. It had **no
+row at all** for the routed swap's six PumpSwap calls, because the table holds only
+top-level instructions. It had no swap events for either, because `log_messages`
+is an empty string where the chain holds 75 lines. And it had no inner token
+transfers. Roughly a quarter of the flow and every executed amount were missing,
+with no nulls, no errors, and nothing in any sample to suggest it. The recommendation
+to price the cost model from that table had already been ratified.
+
+Rule: **no data source is wired into a pipeline until it passes a known-transaction
+round-trip.** Take specimens from the ground truth first, at minimum one plain case
+and one routed or nested case (for Solana: one direct and one aggregator-routed
+swap), and look each one up in the candidate by its durable key. Compare field by
+field against the chain's own copy: every instruction including inner ones, every
+event, every transfer. Pass or fail is recorded per specimen, per field, before any
+schema is designed against the source. The test takes minutes. The failure it
+prevents surfaces weeks later, as a matcher bug.
+
+**Why an entry and not a citation under [E4] or [E6].** E4 requires calibration by
+live-curling feeds and inspecting samples. That was done here, and it passed, because
+inspecting a sample can only confirm what is present: every row BigQuery returned was
+correct. A round-trip runs the other way. It starts from what must be there and asks
+the source for it, which is the only direction in which absence becomes visible. E6
+names the hazard (a convenience layer silently drops content) but gives no procedure
+for detecting it before it bites. This entry is that procedure. A reader applying E4
+correctly still admits BigQuery, which is the test for a new entry.
+
+Corollary — pick specimens that exercise the layer boundary. A direct transaction
+alone would have passed: its top-level instruction was present. What failed was
+nesting. Specimens are chosen to cross each boundary the source might flatten: inner
+versus outer instructions, logs versus instructions, the newest transaction version
+(version-1 transactions broke the builder's own RPC probes in the same week), and a
+day near a known coverage gap.
+
+Corollary — the round-trip is re-run on each new source and on each new use of an
+admitted one. BigQuery stays admitted for block coverage and top-level census, where
+it passed. It is not admitted for swaps, where it failed. Admission is per use.
+
+*Numbering.* Written on 2026-09-21 as E34 on a local checkout; main had taken E34–E36 for other entries by the time it was pushed (2026-10-05), so it lands as **E37**. BARREL documents and rulings dated before 2026-10-05 cite it as E34.
+
+## E38 — A column that exists is not a column that was filled; null-count it per era
+Ruled 2026-10-01 (Architect, relayed and ratified by Mando); drafted by ClaudeCode
+from the originating incident.
+
+Incident: BARREL M0, trial burn-down. A query built each token's deployer-aligned
+wallet set from `creator` on Dune's decoded pump.fun create events. The column exists
+in the table, the query parsed, ran for 85 credits, and returned one row per token
+with a set of size one and no flows: a result with the right shape and nothing in it.
+`creator` is NULL on every creation before the program added the field (28,102 of
+28,102 on 2025-06-09; 13,836 of 13,836 on 2025-10-15) and populated in 2026. The older
+layout carries the deployer in `user`. A decoded table is built from the newest layout,
+so it keeps a column that older events never filled, and joins on it match nothing
+without raising anything. The evidence was already on disk: the same column was blank
+on all 1,573 rows of a table exported hours earlier, whose validation had counted
+creation *times*, which were present, and never counted creators.
+
+Rule: **before any column from a decoded or schema-on-read source carries a join, a
+filter or a label, count its non-nulls in every era the work will touch.** One day
+per era is enough, and it costs about a credit. A validation that checks row counts
+and a few plausible values has checked the shape of the output and nothing about
+whether its inputs were populated. The check belongs in the first run at the smallest
+scope, and its result is recorded next to the query.
+
+**Why an entry and not a citation under [E7] or [E37].** E7 covers a tag that was
+*abandoned*: the old concept still resolves, to stale numbers. Here nothing resolves:
+the field is new, and its absence in old rows is a NULL that looks like "no data for
+this token". E37 admits a source by looking up known transactions; it would have
+passed, because the 2026 specimens used there have the column filled. The round-trip
+proves a source carries the present; this rule is about the past it also claims to
+cover. A reader applying both correctly still runs the empty query.
+
+Corollary — fall back by layout, never by guess. The repair was
+`COALESCE(creator, "user")`, which is right only because the probe also measured where
+the two differ (211 of 36,202 in 2026). A fallback column is itself null-counted and
+compared before it is trusted.
+
+Corollary — an empty result is a finding to explain, not a zero to report. "No funded
+wallets on any of 236 tokens" was implausible against a five-token sample that had
+found thirteen to 1,128. Implausible-and-uniform is the signature of an unpopulated
+input, and the response is to stop and count, before the next scope multiplies the
+cost.
+
+*Numbering.* Written on 2026-10-01 as E35 on a local checkout; lands as **E38** for the same reason. BARREL documents and rulings dated before 2026-10-05 cite it as E35.
