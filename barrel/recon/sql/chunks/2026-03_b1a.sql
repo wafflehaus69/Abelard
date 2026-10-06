@@ -72,7 +72,9 @@ hit AS (
   JOIN keys k ON k.k = x.addr AND k.role = x.role
   WHERE s.block_time >= TIMESTAMP '2026-02-25 00:00:00' AND s.block_time < TIMESTAMP '2026-04-02 00:00:00'
     AND CAST(s.amount AS double) >= 1e6
-    AND ((k.role = 'F' AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0 + INTERVAL '24' HOUR)
+    -- a creator's transfer to itself (wrapping SOL, moving between its own accounts) is not a wallet it paid:
+    -- without the guard the creator's own row came back creator-funded with a link type (13 of 2,846 tokens measured)
+    AND ((k.role = 'F' AND s.to_owner <> s.from_owner AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0 + INTERVAL '24' HOUR)
       OR (k.role = 'B' AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0))
   GROUP BY 1, 2, 3, 4),
 memb AS (
@@ -121,7 +123,8 @@ inb0 AS (   -- one row per (member, sender): first and last transfer before the 
     AND s.from_owner <> m.w AND s.block_slot <= m.slot_act
     -- MR-16: a transfer inside the member's own first-acquisition transaction is rent for the account that
     -- received the tokens, not funding. Same-slot funding in a SEPARATE transaction still counts.
-    AND (m.first_in_tx IS NULL OR s.tx_id <> m.first_in_tx)
+    -- NULL-safe: only a transfer KNOWN to be in that transaction is excluded; an empty tx_id excludes nothing
+    AND (m.first_in_tx IS NULL OR s.tx_id IS NULL OR s.tx_id <> m.first_in_tx)
     AND s.block_time >= date_trunc('day', m.grad_time) - INTERVAL '4' DAY
   GROUP BY 1, 2, 3),
 inb AS (    -- funder = the last sender before the first action; funded_ts = that funder's FIRST transfer (MR-12.2).

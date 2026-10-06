@@ -1,7 +1,7 @@
 # BARREL M0 — Paid-Month Runbook v1 (operational)
 
 **Author:** ClaudeCode · **Date:** 2026-10-01; last revised 2026-10-06 · **Returns:** the Architect's launch order (`RUNBOOK_ARCHITECT_2026-10-01.md`, MR-13) with the operational detail filled in.
-**Status: READY TO PURCHASE, with the aligned-set query's proving run as step one of phase A (§1).** Revised after MR-14, MR-15, MR-16 (`RULINGS_2026-10-05.md`) and two adversarial reviews; a third, of the aligned-set query as MR-16 changed it, was still running when this revision was written, and its findings are fixed before A1 runs. The trial closed on 2026-10-06.
+**Status: READY TO PURCHASE, with the aligned-set query's proving run as step one of phase A (§1).** Revised after MR-14, MR-15, MR-16 (`RULINGS_2026-10-05.md`) and three adversarial reviews. The third, of the aligned-set query as MR-16 changed it, found three minor points; two are fixed and one is a limit of the rule as ruled (`B1A_GROUPED_VALIDATION.md`, last section). The trial closed on 2026-10-06.
 **Plan:** by MR-16, one Plus month if it is sold month-to-month under $400 (§5b); otherwise Analyst, month-to-month, 4,000 credits a month, 3,400 spendable after the 15% reserve (§5), where two months no longer fit the core build with margin and a third needs its own ruling.
 
 ---
@@ -16,7 +16,7 @@
 |---|---|---|
 | **Aligned-set query (`b1a`), the most expensive query of the build** | The text on disk (per-token windows, slot cutoff, tie-break, lengthened funder scan, MR-16 rent rule and link type) **has not run.** Its trial re-run was cancelled at the ruled cap of 70 after 243 seconds, billed 73.7, no result. The text before the last two changes ran on 2026-10-02 (40.6 credits) and agreed with the earlier member rows wherever definitions were unchanged. | **Phase A step A1, cap 150.** Before any chunk. |
 | Its per-chunk cost | Projected at about 180 pre-BOOST and 245 for 2026-08, on an earlier text. The cancelled run shows the lengthened funder scan costs more than its share; a one-day run pays 15 days of that scan for one day of tokens, a chunk pays 45 for 30, so the projection is a lower bound, not an estimate. | Phase A step A4 |
-| `tx_id` filled in every era on both transfer tables | Exists on both (zero-row probe). The null-count was cancelled at its cap. If empty, the rent rule does nothing and every creator tie reads `sol_funding`. | Day 0 step 5; and the link column of A1 (about 300 delivery ties expected on 2026-09-01) |
+| `tx_id` and `tx_index` filled in every era on both transfer tables | Exist on both (zero-row probe). The null-count was cancelled at its cap. If `tx_id` is empty on either table the rent rule excludes nothing and every creator tie reads `sol_funding` (the predicate was made null-safe after the third review; before that an empty `tx_id` on the SOL table would have removed funders). | Day 0 step 5 (`tx_id_nullcount_probe.sql`, three eras, cap 30); and the link column of A1 (about 300 delivery ties expected on 2026-09-01) |
 | Column 86 (`seta_lat_s`) | Compared only against rows that used an earlier definition | A1: member form and grouped form of one text, compared |
 | Fan-out query at month scope | One-day scope only (0.5 credits) | Phase A step A1b |
 | Any chunk longer than a day for `b1a` | none | Phase A step A4 |
@@ -35,6 +35,7 @@
 ### For the Architect, not blocking
 
 * **Does a `token_delivery_by_creator` tie make the wallet the creator's actor in collapse?** With rent no longer a funder, a delivered wallet that received no other SOL has no funder, and one unfunded member makes its set unresolved. Local switch `delivery_as_creator`, default off. No effect on the build.
+* **The rent rule excludes by transaction, not by sender or amount** (third review, finding 3). A wallet funded and made to buy inside one transaction loses that funder, while the same-funder count of creation-slot traders still counts it; such a group passes the bundle cut with its funder unknown. That is the rule as ruled, so nothing was changed. A1 measures how many bundle groups it touches at no extra cost. If the number is not small, the choice is between the rule as it stands and limiting the exclusion to transfers at the rent amount.
 * **Under Plus, three column groups have no runnable chunk query yet** (§5b), and two of them (organic-v2, early-buyer groups) are inside the ruled day-15 criterion. The work is two to four days inside the month.
 * **Against the 15% reserve the uncut Plus scope is tight** (§5b): 17,145–21,370 before the unmeasured collapsed organic counts, against 21,250 spendable. A drop order is proposed there.
 * **Phase A's ceiling, needed before step A4, not before purchase.** Ruled 400 / 500. A1 will cost at least 150 for its two forms (the grouped form was past 73.7 when it was cancelled) and at most 300; the chunk projects at 368 with its fan-out and is gated at 440. So the ruled 500 is exceeded on the projection itself. A1 alone fits and runs under the ruled figure. **Requested before A4: a ceiling of 800 on Analyst (from C) or 900 on Plus.**
@@ -93,7 +94,7 @@
 |---|---|
 | Post-BOOST price-path week, burned, by seed, recorded first | **Run (44.05 of 50); its price results are STRUCK** (`VQR_CHECK.md`). Re-counted from per-token rows after B1. Week 2026-08-10 → 08-16 stays burned. |
 | `PURCHASE_DECISION.md` with both paths | Done (third version, amended through §12, which carries the MR-16 plan rule and what the Plus path still needs built). |
-| Chunk list, queries generated and reviewed, zero credits | 19 chunks; **76 scheduled files, review problems 0**; 19 `b3` files generated, not scheduled, refused by the runner as written. `recon/chunks_manifest.json`. |
+| Chunk list, queries generated and reviewed, zero credits | 19 chunks; **95 scheduled files (five per chunk), review problems 0**; 19 `b3` files generated, not scheduled, refused by the runner as written. `recon/chunks_manifest.json`. |
 | `RUNBOOK_v1.md` | this document |
 | Defects found on the way | `ix_name` NULL on every buy event; virtual reserve not constant; Dune's mayhem flag empty before late August 2026; `b1a` definitions that varied with chunk length; holes in the first threshold check. |
 
@@ -154,7 +155,7 @@ Order of chunks in every phase: **2026-08 first** (phase A), then post-BOOST and
 2. If overage bills automatically, the runner already stops at the reserve computed on the plan's allowance; confirm the allowance the usage API reports.
 3. **Export rate, measured:** one fetch of about 1 MB from a kept trial result. Decides how R4's export is budgeted and whether C3 applies.
 4. **Virtual reserve:** repeat the free RPC read on 30 fresh post-BOOST pools and compare with the reserve the event query derived for the same pools in phase A. Any mismatch is C5.
-5. **Null-count probes, about 10 credits:** one hour per era for every input column of `events`, `b1a`, `b1b`, `b2`; and `recon/sql/buy_field_swap_by_day.sql` (MR-14 order 4): per day from 2026-08-08 to 09-02, how many buys have each quote field the larger, on stratum-P pools and on all pools, to explain why the burned week and the single sampled days disagree.
+5. **Null-count probes, about 10 credits, plus `tx_id_nullcount_probe.sql` (cap 30; it cost 12.5 for two eras on the trial and now covers three):** one hour per era for every input column of `events`, `b1a`, `b1b`, `b2`; and `recon/sql/buy_field_swap_by_day.sql` (MR-14 order 4): per day from 2026-08-08 to 09-02, how many buys have each quote field the larger, on stratum-P pools and on all pools, to explain why the burned week and the single sampled days disagree.
 
 ### Phase A — proving run, then scaling check (days 1–2). Budget 400 / 500 as ruled, taken from phase C; see the request in §1.
 | Step | File | Cap |
@@ -167,7 +168,7 @@ Order of chunks in every phase: **2026-08 first** (phase A), then post-BOOST and
 
 **Gate:** measured cost of the 2026-08 chunk ≤ 1.3 × 338 = **440**. Above that → C1. The gate is on the chunk; A1 is outside it. A1 at up to 300 and the chunk at up to 440 do not fit the ruled 500 ceiling together: the request in §1.
 **If A1 is cancelled at its cap: stop. No chunk runs.** The query goes back to design at zero credits (the funder scan is the suspect; it can be split from the member scan into its own query, the way fan-out was), and the Architect is told the same day. C7 applies.
-**Also checked here:** the link column of A1 (about 300 `token_delivery_by_creator` ties expected on 2026-09-01; none at all means `tx_id` is empty and the rent rule did nothing: C5). A1's grouped rows against the member rows on disk for 2026-09-01 (`recon/compare_b1a_forms.py pbday`); block count for the month; share of sets unresolved; the derived reserve against pool accounts (day 0 step 4).
+**Also checked here:** the link column of A1 (about 300 `token_delivery_by_creator` ties expected on 2026-09-01; none at all means `tx_id` is empty and the rent rule did nothing: C5). bundle-only groups of five or more with no funder, against the same groups in the rows of 2026-10-02 (third review, finding 3). A1's grouped rows against the member rows on disk for 2026-09-01 (`recon/compare_b1a_forms.py pbday`); block count for the month; share of sets unresolved; the derived reserve against pool accounts (day 0 step 4).
 
 ### Phase B — event columns, remaining 18 chunks (days 2–8). Budget 1,000 / 1,500.
 `chunks/<chunk>_events.sql`, `--proven` after A2. Projected 945. **Gate:** cumulative events ≤ 1,500 by day 8, else C1 or C4.
