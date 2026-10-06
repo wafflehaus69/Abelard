@@ -1,0 +1,19 @@
+{
+ "file": "barrel/recon/sql/tx_id_nullcount_probe.sql",
+ "label": "E35 null-count of tx_id / tx_index / block_slot, both transfer tables, two eras (re-run; the first try lost its connection)",
+ "execution_id": "01M477JQDWDPP7BK0FBRHVDBZD",
+ "state": "CANCELLED BY WATCHDOG (credits 12.5 > cap 8.0)",
+ "credits": 12.517794118,
+ "cap": 8.0,
+ "proven": false,
+ "inflight_samples": [
+  [
+   0.4,
+   12.517794118
+  ]
+ ],
+ "rows_dropped_owner": 0,
+ "submitted_at": "2026-10-05T23:49:57.308786Z",
+ "rows": null,
+ "error": null
+}

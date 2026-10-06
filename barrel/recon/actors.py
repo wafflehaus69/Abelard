@@ -119,6 +119,15 @@ def _split(kw: dict) -> tuple[dict[str, float] | None, dict]:
     return kw.pop("rates", None), kw
 
 
+LINK_DELIVERY, LINK_SOL, LINK_BOTH = "token_delivery_by_creator", "sol_funding", "both"   # MR-16
+
+
+def delivered_by_creator(row: dict[str, Any]) -> bool:
+    """True when the creator opened this member's (or group's) token account and handed it tokens.
+    The tie is real, but it is not funding (MR-16), so it never appears as the row's funder."""
+    return row.get("link") in (LINK_DELIVERY, LINK_BOTH)
+
+
 def member_funding(rows: list[dict[str, Any]], **kw) -> dict[str, dict[str, Any] | None]:
     """wallet -> funding record for one token's members. A member whose funder was not found
     in the scanned window maps to None, which makes the whole set unresolved. ``funder_kind``
@@ -158,26 +167,38 @@ def _record(n_wallets: int, actors: int | None, unknown: int) -> dict[str, Any]:
     return rec
 
 
-def token_record(rows: list[dict[str, Any]], **kw) -> dict[str, Any]:
+def token_record(rows: list[dict[str, Any]], delivery_as_creator: bool = False, **kw) -> dict[str, Any]:
     """Per-token set record from MEMBER rows: raw size, post-collapse actors (None = unresolved),
     and the u_code to add when unresolved. Read the actor count through ``resolution`` only.
 
     Collapse is collapse_actors' rule (wallets sharing a linking funder are one actor) plus MR-15
     R1: a member that is another member's linking funder is the same actor as the wallets it
-    funds. Without R1 a creator and the wallets it funded are always at least two actors."""
+    funds. Without R1 a creator and the wallets it funded are always at least two actors.
+
+    ``delivery_as_creator`` (MR-16, NOT RULED, default off): the creator opened some members'
+    token accounts and handed them tokens (link token_delivery_by_creator). That tie is not
+    funding. With the switch off such a member is judged on its SOL funder alone, and one with no
+    SOL funder leaves the set unresolved. With it on, a delivered member is the creator's actor
+    whatever its SOL funder, and needs none."""
     mf = member_funding(rows, **kw)
-    unknown = sum(v is None for v in mf.values())
-    if not mf or collapse_actors(mf) is None:
+    by_w = {r["w"]: r for r in rows}
+    creators = [r["w"] for r in rows if r.get("is_creator")]
+    # the switch needs a creator to attach to; a set given without its creator row is judged without it
+    deliv = {w for w in mf if delivery_as_creator and creators and delivered_by_creator(by_w[w])}
+    unknown = sum(1 for w, v in mf.items() if v is None and w not in deliv)
+    if not mf or unknown:
         return _record(len(mf), None, unknown)
     comp = _Components()
-    node = {w: (("A", f["funder"]) if f["funder_kind"] == "dedicated" else ("W", w)) for w, f in mf.items()}
+    node = {w: (("A", f["funder"]) if f and f["funder_kind"] == "dedicated" else ("W", w)) for w, f in mf.items()}
     for n in node.values():
         comp.find(n)
     linking_funders = {n[1] for n in node.values() if n[0] == "A"}
     for w in mf:                       # R1: member w is itself a linking funder of another member
         if w in linking_funders:
             comp.union(node[w], ("A", w))
-    return _record(len(mf), comp.count(), unknown)
+    for w in deliv:                    # the switch: a delivered member is the creator's actor
+        comp.union(node[w], node[creators[0]])
+    return _record(len(mf), len({comp.find(n) for n in node.values()}), unknown)
 
 
 def in_aligned_set(row: dict[str, Any], bundle_min: int = BUNDLE_MIN) -> bool:
@@ -206,49 +227,70 @@ def split_grouped(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], lis
     # On a member_funder row the query's `funder` and `b_only_n` are NULL (they belong to the other
     # grouping set); the member's own values are in member_own_funder / member_b_only_n. Renamed HERE,
     # so that every reader gets rows it can pass straight to token_record_grouped.
-    mfs = [{**r, "funder": r["member_own_funder"], "b_only_n": r["member_b_only_n"]}
+    mfs = [{**r, "funder": r["member_own_funder"], "b_only_n": r["member_b_only_n"], "member_link": r.get("member_link")}
            for r in rows if r.get("row_kind") == "member_funder"]
     return groups, mfs
 
 
 def token_record_grouped(groups: list[dict[str, Any]], member_funders: list[dict[str, Any]] | None = None,
-                         bundle_min: int = BUNDLE_MIN, **kw) -> dict[str, Any]:
+                         bundle_min: int = BUNDLE_MIN, delivery_as_creator: bool = False, **kw) -> dict[str, Any]:
     """Same record as token_record, from the BUILD form: one row per (token, funder, candidate
-    class) with ``n_members``, plus the member-funder rows. A group with funder None is members
-    whose funding was not found: the set is unresolved. A linking funder is one actor however many
-    groups it appears in; any other group counts each member; and by R1 a member that is a linking
-    funder is merged with the actor it funds.
+    class, creator link) with ``n_members``, plus the member-funder rows. Pass groups already
+    cut with aligned(groups, bundle_min); the same cut is applied to the member-funder rows here.
 
-    ``member_funders`` rows: {member, funder (the member's own), b_only_n}. When none are supplied
-    (rows from before MR-15) the creator's is reconstructed from the group that holds the creator;
-    other member-funders are then not seen, and the count can be one too high per such member."""
+    A group with funder None is members whose SOL funding was not found: the set is unresolved,
+    unless the switch is on and the group was delivered by the creator. A linking funder is one
+    actor however many groups it appears in; any other group counts each member; by R1 a member
+    that is a linking funder is merged with the actor it funds.
+
+    ``member_funders`` rows (from split_grouped): {member, funder (the member's own), b_only_n,
+    member_link}. When none are supplied (rows from before MR-15) the creator's is rebuilt from
+    the group that holds the creator; other member-funders are then not seen, and the count can
+    be one too high per such member."""
     rates, kw = _split(kw)
     n_wallets = sum(g["n_members"] for g in groups)
-    unknown = sum(g["n_members"] for g in groups if not g.get("funder"))
-    if not groups or unknown:
-        return _record(n_wallets, None, unknown)
 
     def links(funder, row):
-        return classify_funder(funder, _fan(row, funder, rates), **kw) in LINKING
+        return bool(funder) and classify_funder(funder, _fan(row, funder, rates), **kw) in LINKING
 
-    comp, standalone = _Components(), 0
+    creator = next((g.get("creator") for g in groups if g.get("creator")), None)
+    cr_present = any(g.get("n_creator") for g in groups)     # every real set holds its creator; test rows may not
+
+    def delivered(row, key="link"):
+        return delivery_as_creator and cr_present and row.get(key) in (LINK_DELIVERY, LINK_BOTH)
+
+    comp, CR = _Components(), ("W", creator)
+    if cr_present:
+        comp.find(CR)                              # the creator is one member of its own set
+    standalone = unknown = 0
     for g in groups:
-        if links(g["funder"], g):
+        n, has_creator = g["n_members"], bool(g.get("n_creator"))
+        others = n - 1 if has_creator else n       # the creator is the node CR, not a counted standalone
+        if links(g.get("funder"), g):
             comp.find(("A", g["funder"]))
+            if has_creator or delivered(g):
+                comp.union(("A", g["funder"]), CR)
+        elif delivered(g):
+            pass                                   # these members are the creator's actor: they add nothing
+        elif not g.get("funder"):
+            unknown += n
         else:
-            standalone += g["n_members"]
-    if member_funders is None:
-        member_funders = [{"member": g["creator"], "funder": g["funder"], "b_only_n": None, **{k: g[k] for k in ("fan_rate", "fan_out") if k in g}}
-                          for g in groups if g.get("n_creator") and g.get("creator")]
+            standalone += others
+    if not groups or unknown:
+        return _record(n_wallets, None, unknown)
+    if member_funders is None:                     # rows from before MR-15: only the creator can be rebuilt
+        member_funders = [{"member": creator, "funder": None, "b_only_n": None}] if cr_present else []
     merged_standalone = 0
-    for m in aligned(member_funders, bundle_min):      # the same cut the caller applied to the groups
+    for m in aligned(member_funders, bundle_min):  # R1, with the same cut the caller applied to the groups
         x = m["member"]
-        if ("A", x) not in comp.p:               # x does not link anyone in the aligned set
+        if ("A", x) not in comp.p:                 # x does not link anyone in the aligned set
             continue
-        if links(m.get("funder"), m):
+        if (cr_present and x == creator) or delivered(m, "member_link"):
+            comp.union(("A", x), CR)
+        elif links(m.get("funder"), m):
             comp.union(("A", x), ("A", m["funder"]))
         else:
-            merged_standalone += 1               # x was counted once as a standalone member
+            merged_standalone += 1                 # x was counted once as a standalone member
     return _record(n_wallets, comp.count() + standalone - merged_standalone, unknown)
 
 

@@ -37,6 +37,9 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
     -- first acquisition, within the same horizon for every token (9 days after graduation)
     min(t.block_time) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in,
     min(t.block_slot) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in_slot,
+    -- the transaction of that first acquisition (earliest by slot, then by position in the slot)
+    min_by(t.tx_id, t.block_slot * 100000 + coalesce(t.tx_index, 0))
+      FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in_tx,
     bool_or(x.tag = 'to' AND t.from_owner IS NULL) AS got_mint
   FROM tokens_solana.transfers t
   JOIN base b ON b.mint = t.token_mint_address

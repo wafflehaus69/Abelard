@@ -74,9 +74,19 @@ def main():
     key = rt.api_key(); e = rt.dune("POST", "/sql/execute", key, {"sql": sql, "performance": "medium"})
     eid = e.get("execution_id")
     if not eid: print("submission refused:", e); sys.exit(1)
+    # Printed at once: if anything below fails, the result can still be fetched or the query cancelled by id.
+    print(f"submitted: execution {eid}", flush=True)
     t0 = time.time(); st = {}; killed = None; samples = []
     while time.time() - t0 < 900:
-        st = rt.dune("GET", f"/execution/{eid}/status", key)
+        try:
+            st = rt.dune("GET", f"/execution/{eid}/status", key)
+        except Exception as ex:   # the request function already retried for about a minute; keep watching
+            lost = locals().get("lost", 0) + 1
+            print(f"status poll failed ({type(ex).__name__}), attempt {lost}; execution {eid} is still being watched", flush=True)
+            if lost >= 8:
+                st = {"state": "LOST CONTACT", "is_execution_finished": False}; break
+            time.sleep(10); continue
+        lost = 0
         spent = float(st.get("execution_cost_credits") or 0)
         el = time.time() - t0
         if not samples or samples[-1][1] != spent:
@@ -88,7 +98,10 @@ def main():
             time.sleep(3); st = rt.dune("GET", f"/execution/{eid}/status", key); break
         if st.get("is_execution_finished"): break
         time.sleep(2)
-    res = rt.dune("GET", f"/execution/{eid}/results", key) if st.get("is_execution_finished") and not a.no_rows else {}  # --no-rows: cost measurement only; export is billed per MB
+    try:
+        res = rt.dune("GET", f"/execution/{eid}/results", key) if st.get("is_execution_finished") and not a.no_rows else {}  # --no-rows: cost measurement only; export is billed per MB
+    except Exception as ex:
+        res = {"_http_error": f"fetch failed: {type(ex).__name__}"}
     cost = float(st.get("execution_cost_credits") or 0)
     rows = (res.get("result") or {}).get("rows")
     # A result larger than one page comes back with next_offset; fetch every page (export is billed per MB).
@@ -96,7 +109,10 @@ def main():
     fetch_error = res.get("_http_error")
     expected_rows = ((res.get("result") or {}).get("metadata") or {}).get("total_row_count")
     while rows is not None and off and not fetch_error:
-        pg = rt.dune("GET", f"/execution/{eid}/results?limit=1000&offset={off}", key)
+        try:
+            pg = rt.dune("GET", f"/execution/{eid}/results?limit=1000&offset={off}", key)
+        except Exception as ex:
+            pg = {"_http_error": f"fetch failed: {type(ex).__name__}"}
         fetch_error = pg.get("_http_error")
         rows += (pg.get("result") or {}).get("rows") or []
         off = pg.get("next_offset")

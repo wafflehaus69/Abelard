@@ -116,12 +116,23 @@ def dune(method: str, path: str, key: str, body: dict | None = None) -> dict:
         data=json.dumps(body).encode() if body is not None else None,
         headers={"X-Dune-Api-Key": key, "Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        # The response body is reported (it explains plan/credit refusals); the key is not.
-        return {"_http_error": e.code, "_body": e.read().decode("utf-8", "replace")[:600]}
+    # A dropped connection is retried for reads, the usage call and cancellation, which are safe to repeat.
+    # A submission (POST of query text) is NOT retried: it may have reached Dune, and a second one would be
+    # a second billed query. (Incident 2026-10-05: a reset during a status poll crashed the runner.)
+    retriable = method == "GET" or path.endswith("/cancel") or path == "/usage"
+    delay = 2.0
+    for attempt in range(7):
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            # The response body is reported (it explains plan/credit refusals); the key is not.
+            return {"_http_error": e.code, "_body": e.read().decode("utf-8", "replace")[:600]}
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError):
+            if not retriable or attempt == 6:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 30.0)
 
 
 def run_sql(label: str, sql: str, key: str) -> dict:

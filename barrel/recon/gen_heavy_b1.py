@@ -24,6 +24,11 @@ creation within 3 days before its graduation day, funding looked for from 4 days
 graduation day, first acquisition within 9 days after graduation. Fan-out is not computed here at all
 (MR-15 B3): it is a property of the funder over a fixed window, recon/gen_fanout.py.
 
+Rent is not funding (MR-16): a SOL transfer inside the member's own first-acquisition
+transaction never chooses its funder. Where the creator paid a wallet in that transaction the
+wallet stays in the set and the tie is typed `token_delivery_by_creator`; a creator payment in
+any other transaction is `sol_funding`; `both` when both happened.
+
 Funder of a member = sender of the last SOL transfer of at least 0.001 SOL received up to the
 slot of the member's first action; the latency runs from that funder's FIRST transfer (MR-12.2) (creation time for the creator, first acquisition of the token
 for everyone else), inside the scanned window. No such transfer = funding unknown.
@@ -83,6 +88,9 @@ bal AS (   -- token ledger, one pass: every owner's balance at each entry lag, p
     -- first acquisition, within the same horizon for every token (9 days after graduation)
     min(t.block_time) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in,
     min(t.block_slot) FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in_slot,
+    -- the transaction of that first acquisition (earliest by slot, then by position in the slot)
+    min_by(t.tx_id, t.block_slot * 100000 + coalesce(t.tx_index, 0))
+      FILTER (WHERE x.d > 0 AND t.block_time < b.grad_time + INTERVAL '9' DAY) AS first_in_tx,
     bool_or(x.tag = 'to' AND t.from_owner IS NULL) AS got_mint
   FROM tokens_solana.transfers t
   JOIN base b ON b.mint = t.token_mint_address
@@ -122,7 +130,8 @@ hit AS (
   SELECT k.mint, k.role,
          CASE k.role WHEN 'F' THEN s.to_owner ELSE k.k END AS w,
          CASE k.role WHEN 'B' THEN s.from_owner END AS funder,
-         sum(CAST(s.amount AS double)) / 1e9 AS sol
+         sum(CAST(s.amount AS double)) / 1e9 AS sol,
+         array_agg(DISTINCT s.tx_id) FILTER (WHERE k.role = 'F') AS cr_txs   -- transactions in which the creator paid this wallet
   FROM tokens_solana.sol_transfers s
   CROSS JOIN UNNEST(ARRAY[s.from_owner, s.to_owner], ARRAY['F', 'B']) AS x(addr, role)
   JOIN keys k ON k.k = x.addr AND k.role = x.role
@@ -131,22 +140,30 @@ hit AS (
       OR (k.role = 'B' AND s.block_time BETWEEN k.t0 - INTERVAL '24' HOUR AND k.t0))
   GROUP BY 1, 2, 3, 4),
 memb AS (
-  SELECT mint, role, w, sol, count(*) OVER (PARTITION BY mint, role, funder) AS n_same_funder FROM hit),
+  SELECT mint, role, w, sol, cr_txs, count(*) OVER (PARTITION BY mint, role, funder) AS n_same_funder FROM hit),
 seta AS (
   -- bundle_n = how many creation-slot traders share this wallet's funder (itself included).
   -- Whether that makes a bundle is decided locally (MR-14 ruling 5); every candidate is returned.
   SELECT mint, w, bool_or(src = 'C') AS is_creator, bool_or(src = 'F') AS is_funded,
          max(nsf) FILTER (WHERE src = 'B') AS bundle_n,
-         sum(sol) FILTER (WHERE src = 'F') AS cr_sol
-  FROM (SELECT mint, creator AS w, 'C' AS src, CAST(NULL AS double) AS sol, CAST(NULL AS bigint) AS nsf FROM base
+         sum(sol) FILTER (WHERE src = 'F') AS cr_sol,
+         arbitrary(cr_txs) FILTER (WHERE src = 'F') AS cr_txs
+  FROM (SELECT mint, creator AS w, 'C' AS src, CAST(NULL AS double) AS sol, CAST(NULL AS bigint) AS nsf, CAST(NULL AS array(varchar)) AS cr_txs FROM base
         UNION ALL
-        SELECT mint, w, role, sol, n_same_funder FROM memb)
+        SELECT mint, w, role, sol, n_same_funder, cr_txs FROM memb)
   WHERE w IS NOT NULL AND __NOT_OWNER(w)__
   GROUP BY 1, 2),
 mm0 AS (
   SELECT s.mint, s.w, s.is_creator, s.is_funded, s.bundle_n, s.cr_sol,
          bs.grad_time, bs.t0, bs.creator, b.first_in, b.b15, b.b60, b.b240, b.net_after, b.got_mint,
-         CASE WHEN s.is_creator THEN bs.s0 ELSE b.first_in_slot END AS slot_act, n0.n_slot0,
+         CASE WHEN s.is_creator THEN bs.s0 ELSE b.first_in_slot END AS slot_act, n0.n_slot0, b.first_in_tx,
+         -- How the creator is tied to a wallet it paid (MR-16). token_delivery_by_creator: the creator's SOL reached
+         -- the wallet inside the wallet's own first-acquisition transaction (the creator opened its token account and
+         -- handed it tokens; the SOL is rent). sol_funding: the creator paid it in some other transaction. Both can hold.
+         CASE WHEN NOT s.is_funded THEN NULL
+              WHEN coalesce(contains(s.cr_txs, b.first_in_tx), false)
+                   THEN CASE WHEN cardinality(s.cr_txs) > 1 THEN 'both' ELSE 'token_delivery_by_creator' END
+              ELSE 'sol_funding' END AS link,
          b.f0, b.f1, b.f2, b.f3, b.f4, b.f5, b.f6, b.f7,
          CASE WHEN s.is_creator THEN bs.t0 ELSE b.first_in END AS t_act,
          count(*) OVER (PARTITION BY s.mint) AS n_all,
@@ -165,6 +182,9 @@ inb0 AS (   -- one row per (member, sender): first and last transfer before the 
     -- per-token window: 4 days before the token's graduation day, up to and including the slot of the
     -- member's first action (funding and acting in one slot is the bundle pattern; seconds cannot order it)
     AND s.from_owner <> m.w AND s.block_slot <= m.slot_act
+    -- MR-16: a transfer inside the member's own first-acquisition transaction is rent for the account that
+    -- received the tokens, not funding. Same-slot funding in a SEPARATE transaction still counts.
+    AND (m.first_in_tx IS NULL OR s.tx_id <> m.first_in_tx)
     AND s.block_time >= date_trunc('day', m.grad_time) - INTERVAL '4' DAY
   GROUP BY 1, 2, 3),
 inb AS (    -- funder = the last sender before the first action; funded_ts = that funder's FIRST transfer (MR-12.2).
@@ -175,7 +195,7 @@ inb AS (    -- funder = the last sender before the first action; funded_ts = tha
                count(*) OVER (PARTITION BY mint, w) AS n_senders
         FROM inb0)
   WHERE rn = 1)
-SELECT m.mint, m.w, m.is_creator, m.is_funded, m.bundle_n, m.cr_sol, m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0,
+SELECT m.mint, m.w, m.is_creator, m.is_funded, m.link, m.bundle_n, m.cr_sol, m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0,
        m.grad_time, m.t0, m.first_in, m.b15, m.b60, m.b240, m.net_after,
        i.funder, i.funded_ts, i.funded_sol, i.n_senders,
        date_diff('second', i.funded_ts, m.first_in) AS fund_to_first_buy_s,
@@ -188,7 +208,7 @@ LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY'"""
 def members_grouped(gd0: str, gd1: str) -> str:
     """Build form of B1a. One result, two kinds of row (column row_kind):
 
-      group          one row per (token, funder, candidate class): members behind that funder,
+      group          one row per (token, funder, candidate class, creator link): members behind that funder,
                      summed balances and flows, every member's funding-to-acquisition seconds.
                      Members with no funder found are the group with funder NULL.
       member_funder  one row for each member that is ALSO the funder of another member of the
@@ -212,7 +232,7 @@ mf AS (
   SELECT m.mint, m.w, m.creator, m.is_creator, m.is_funded,
          -- bo: NULL for the creator and wallets the creator funded (always in the set); for a wallet that
          -- is a candidate only as a creation-slot trader, its same-funder count (the cut is local)
-         CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS bo,
+         CASE WHEN m.is_creator OR m.is_funded THEN NULL ELSE m.bundle_n END AS bo, m.link,
          m.n_all, m.n_funded_all, m.bundle_n_max, m.n_slot0, m.b15, m.b60, m.b240, m.net_after, {fcols},
          m.first_in, m.grad_time, m.t0, i.funder, i.funded_ts, i.n_senders,
          sup.b15 AS supply15, sup.b60 AS supply60, sup.b240 AS supply240
@@ -220,9 +240,9 @@ mf AS (
   LEFT JOIN inb i ON i.mint = m.mint AND i.w = m.w
   LEFT JOIN bal sup ON sup.mint = m.mint AND sup.w = '#SUPPLY')
 SELECT CASE WHEN grouping(x.key) = 0 THEN 'member_funder' ELSE 'group' END AS row_kind,
-       mf.mint, mf.funder, mf.bo AS b_only_n,
+       mf.mint, mf.funder, mf.bo AS b_only_n, mf.link,
        x.key AS member,
-       {m("max(mf.funder)")} AS member_own_funder, {m("max(mf.bo)")} AS member_b_only_n,
+       {m("max(mf.funder)")} AS member_own_funder, {m("max(mf.bo)")} AS member_b_only_n, {m("max(mf.link)")} AS member_link,
        count(*) FILTER (WHERE x.kind = 'F') AS n_funded_by_member,
        {m("arbitrary(mf.creator)")} AS creator,
        {m("count(*)")} AS n_members,
@@ -242,7 +262,7 @@ SELECT CASE WHEN grouping(x.key) = 0 THEN 'member_funder' ELSE 'group' END AS ro
 FROM mf
 CROSS JOIN UNNEST(ARRAY['M', 'F'], ARRAY[mf.w, mf.funder]) AS x(kind, key)
 WHERE x.key IS NOT NULL
-GROUP BY GROUPING SETS ((mf.mint, mf.funder, mf.bo), (mf.mint, x.key))
+GROUP BY GROUPING SETS ((mf.mint, mf.funder, mf.bo, mf.link), (mf.mint, x.key))
 HAVING grouping(x.key) = 1 OR (bool_or(x.kind = 'M') AND bool_or(x.kind = 'F'))""")
 
 

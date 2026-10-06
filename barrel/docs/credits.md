@@ -136,8 +136,10 @@ Allowance: **2,500 / period (free; period 2026-09-22 → 2026-10-06 per API)**. 
 | 129 | C:/Users/mdiba/AppData/Local/Temp/claude/C--Users-mdiba-Code-Abelard/d60baae7-ec4f-4124-a86f-20228bbefd0d/scratchpad/newly_funded_check.sql (MR-15 B2 follow-up: what the creator sent the members that gained it as funder (query kept out of the repo)) | `01M3XJ84Z2TJ…` | 3.165 | 2213.21 |
 | 130 | barrel/recon/sql/fanout_day_2026-09-01.sql (MR-15 B3: fan-out query, one-day proving run 2026-09-01 (new pattern, hard cap 8)) | `01M3XJDG78TT…` | 0.513 | 2213.72 |
 | 131 | barrel/recon/sql/cex_labels_list.sql (runner smoke test after the second review's fixes (166 rows, paged fetch and row-count check)) | `01M3XM5GDQF4…` | 0.081 | 2213.97 |
+| 132 | barrel/recon/sql/tx_id_nullcount_probe.sql (E35 null-count of tx_id / tx_index / block_slot, both transfer tables, two eras (re-run; the first try lost its connection)) | `01M477JQDWDP…` | 12.518 | 2226.52 |
+| 133 | barrel/recon/sql/heavy_b1a_grouped_pbday.sql (MR-16 B2 re-run: aligned-set query with the rent rule and the lengthened funder scan, one post-BOOST day 2026-09-01, hard cap 70) | `01M477R5C2P8…` | 73.697 | 2300.22 |
 
-**Total consumed: 2213.97 credits. Remaining: 286. Usable after 15% reserve: 106.**
+**Total consumed: 2300.22 credits. Remaining: 200. Usable after 15% reserve: 20.**
 
 _Generated 2026-09-22T19:35:40+00:00_
 _INCIDENT 2026-09-23: `slippage_sell_txids.sql` (expect 8) billed **840.28 credits** — a `pool IN (subquery)` joined with an OR on the partition column defeated pruning and scanned the sell-event history. Cancel arrived after completion. Runner now cancels in flight above max(3×expect, 5) and refuses --expect > 25 without --confirm. Free tier after: 1,010.7 / 2,500 used._
@@ -147,4 +149,4 @@ _API says used (pre-incident line, superseded above): 1010.738 of 2500 (authorit
 _2026-09-30: `swap_rows_by_month.sql` billed 27.86 against an expectation of 10 (cap 30) — near-miss, recorded. Correction: the 2,500 credits are a one-time 14-day Plus trial ending 2026-10-06, not a recurring free tier; the account becomes view-only after._
 
 _2026-09-30, burn-down item 3: usage 1,301.4 → 1,414.5 (113.1 credits). Authoritative per-step figures are in `recon/out/burn_3a.json` and `burn_3b.json`; these runs did not go through `dune_run_sql.py`, so they have no rows in the table above._
-_API says used: 2213.982 of 2500; spendable above the reserve of 180: 106.0 (authoritative; ledger undercounts pre-ledger probes)_
+_API says used: 2300.218 of 2500; spendable above the reserve of 180: 19.8 (authoritative; ledger undercounts pre-ledger probes)_
