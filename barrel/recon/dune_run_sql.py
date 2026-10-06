@@ -1,7 +1,8 @@
 """Run a repo .sql file on Dune with the credit meter, long poll, ledger append.
 python barrel/recon/dune_run_sql.py recon/sql/x.sql --expect 5
-Refuses if --expect exceeds (remaining - 15% reserve) per the ledger. Remaining
-is ledger-derived until a usage endpoint is confirmed (readiness 1.1)."""
+Refuses if --expect exceeds what is spendable above the reserve (usage API; the ledger is the fallback).
+--refetch <execution id> reads the rows of an execution this runner already ran for the same file: nothing is
+executed, only the export is billed."""
 import argparse, json, pathlib, re, sys, time, datetime as dt
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import dune_roundtrip as rt
@@ -12,8 +13,18 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]; OUT = ROOT / "recon" / "out"
 ALLOWANCE = 2500.0; RESERVE = 0.15
 def consumed():
     m = re.search(r"Total consumed: ([\d.]+)", LEDGER.read_text(encoding="utf-8")); return float(m.group(1)) if m else 0.0
+def cancel(eid, key):
+    """Cancel and read the state back. rt.dune returns an HTTP error as a dict, so a cancel that was refused looks
+    like one that worked; a query left running has no cap."""
+    st = {}
+    for i in range(5):
+        r = rt.dune("POST", f"/execution/{eid}/cancel", key, {})
+        time.sleep(3); st = rt.dune("GET", f"/execution/{eid}/status", key)
+        if st.get("is_execution_finished") or "CANCEL" in str(st.get("state", "")).upper(): return st
+        print(f"cancel of {eid} not confirmed (attempt {i + 1}): response {str(r)[:120]}, state {st.get('state')}", flush=True)
+    print(f"CANCEL NOT CONFIRMED: execution {eid} may still be running. Cancel it by hand.", flush=True); return st
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--export", action="store_true"); ap.add_argument("--funders-from", dest="funders_from", default=None); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows")
+    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--export", action="store_true"); ap.add_argument("--funders-from", dest="funders_from", default=None); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows"); ap.add_argument("--refetch", default=None)
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
     # MR-14 ruling 5: a query carrying a registered verdict constant is never submitted. No override.
     verdict_constants.refuse(sql, what=a.sql)     # also enforced in dune_roundtrip.dune, the one request function
@@ -71,19 +82,37 @@ def main():
     cap = max(3.0 * a.expect, 5.0) if a.proven else a.expect
     if a.expect > 25 and not a.confirm:
         print(f"REFUSED: --expect {a.expect} > 25 without --confirm (run the pattern at one-partition scope first)"); sys.exit(2)
-    key = rt.api_key(); e = rt.dune("POST", "/sql/execute", key, {"sql": sql, "performance": "medium"})
-    eid = e.get("execution_id")
-    if not eid: print("submission refused:", e); sys.exit(1)
-    # Printed at once: if anything below fails, the result can still be fetched or the query cancelled by id.
-    print(f"submitted: execution {eid}", flush=True)
-    t0 = time.time(); st = {}; killed = None; samples = []
-    while time.time() - t0 < 900:
+    key = rt.api_key()
+    if a.refetch:
+        # --refetch <execution id>: read the rows of an execution that already ran and was already billed (a --no-rows
+        # cost run, or a fetch that came back incomplete). Nothing is executed and nothing is cancelled. The id must be
+        # one this runner submitted for this same file, so rows of one query are never written under another's name.
+        stem = pathlib.Path(a.sql).stem
+        prior = [r for r in (json.loads(f.read_text(encoding="utf-8")) for f in OUT.glob("run_*.json"))
+                 if r.get("execution_id") == a.refetch and pathlib.Path(str(r.get("file"))).stem == stem]
+        if not prior: raise SystemExit(f"REFUSED: no run record of {stem} carries execution {a.refetch}")
+        eid = a.refetch; st = rt.dune("GET", f"/execution/{eid}/status", key)
+        if st.get("state") != "QUERY_STATE_COMPLETED": raise SystemExit(f"REFUSED: execution {eid} is {st.get('state')}, not completed; nothing to fetch")
+        a.no_rows = False; print(f"refetch: execution {eid}, billed {float(st.get('execution_cost_credits') or 0):.3f} when it ran; nothing is executed", flush=True)
+    else:
+        e = rt.dune("POST", "/sql/execute", key, {"sql": sql, "performance": "medium"})
+        eid = e.get("execution_id")
+        if not eid: print("submission refused:", e); sys.exit(1)
+        # Printed at once: if anything below fails, the result can still be fetched or the query cancelled by id.
+        print(f"submitted: execution {eid}", flush=True)
+    t0 = time.time(); st = st if a.refetch else {}; killed = None; samples = []
+    # The loop ends only on a finished execution, a cancellation or lost contact. (Until 2026-10-06 it also ended
+    # after 900 s without cancelling, so --max-seconds above 900 would have left a query running with no cap.)
+    while not a.refetch:
         try:
             st = rt.dune("GET", f"/execution/{eid}/status", key)
         except Exception as ex:   # the request function already retried for about a minute; keep watching
             lost = locals().get("lost", 0) + 1
             print(f"status poll failed ({type(ex).__name__}), attempt {lost}; execution {eid} is still being watched", flush=True)
             if lost >= 8:
+                # an unwatched query has no cap: try to cancel; if it had finished, its rows are still there for --refetch
+                try: cancel(eid, key)
+                except Exception: print(f"LOST CONTACT and the cancel did not go through: execution {eid} may still be running", flush=True)
                 st = {"state": "LOST CONTACT", "is_execution_finished": False}; break
             time.sleep(10); continue
         lost = 0
@@ -92,17 +121,16 @@ def main():
         if not samples or samples[-1][1] != spent:
             samples.append((round(el, 1), spent))
         if not st.get("is_execution_finished") and (spent > cap or el > a.max_seconds):
-            rt.dune("POST", f"/execution/{eid}/cancel", key, {})
             killed = f"credits {spent:.1f} > cap {cap:.1f}" if spent > cap else f"elapsed {el:.0f}s > {a.max_seconds}s"
-            print(f"WATCHDOG: cancelled {eid}: {killed}")
-            time.sleep(3); st = rt.dune("GET", f"/execution/{eid}/status", key); break
+            print(f"WATCHDOG: cancelling {eid}: {killed}", flush=True)
+            st = cancel(eid, key); break
         if st.get("is_execution_finished"): break
         time.sleep(2)
     try:
         res = rt.dune("GET", f"/execution/{eid}/results", key) if st.get("is_execution_finished") and not a.no_rows else {}  # --no-rows: cost measurement only; export is billed per MB
     except Exception as ex:
         res = {"_http_error": f"fetch failed: {type(ex).__name__}"}
-    cost = float(st.get("execution_cost_credits") or 0)
+    cost = 0.0 if a.refetch else float(st.get("execution_cost_credits") or 0)   # a refetch was billed, and ledgered, when it ran
     rows = (res.get("result") or {}).get("rows")
     # A result larger than one page comes back with next_offset; fetch every page (export is billed per MB).
     off = res.get("next_offset")
@@ -132,6 +160,7 @@ def main():
            "cap": cap, "proven": a.proven, "inflight_samples": samples, "rows_dropped_owner": dropped,
            "submitted_at": st.get("submitted_at"), "rows": rows, "error": res.get("error") or (f"INCOMPLETE FETCH ({fetch_error})" if incomplete else None)}
     if "asked" in dir(): rec["asked"] = asked
+    if a.refetch: rec["refetch_of"] = eid; rec["credits_when_run"] = float(st.get("execution_cost_credits") or 0)
     name = pathlib.Path(a.sql).stem + "_" + dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S")
     # --private-rows: the rows name wallets. They go to barrel/private/out (gitignored); the
     # committed run file keeps the cost, the samples and the row count only.
@@ -158,7 +187,7 @@ def main():
     (OUT / f"run_{name}.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
     # append to ledger
     txt = LEDGER.read_text(encoding="utf-8"); n = txt.count("\n| ") ; total = used + cost
-    row = f"| {n} | {a.sql}{(' ('+a.label+')') if a.label else ''} | `{eid[:12]}…` | {cost:.3f} | {total:.2f} |"
+    row = f"| {n} | {a.sql}{(' ('+a.label+')') if a.label else ''}{' (refetch, rows only)' if a.refetch else ''} | `{eid[:12]}…` | {cost:.3f} | {total:.2f} |"
     txt = re.sub(r"(\|[^\n]*\|\n)(\n\*\*Total consumed)", lambda m_: m_.group(1) + row + "\n" + m_.group(2), txt, count=1)
     api_used = float((dune_usage.usage() or {}).get("credits_used") or total)
     txt = re.sub(r"\*\*Total consumed: [\d.]+ credits\. Remaining: -?\d+\. Usable after 15% reserve: -?\d+\.\*\*",

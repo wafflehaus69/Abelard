@@ -138,3 +138,27 @@ Getting the table out (F) depends on the plan and is in each path.
 * **Against two Analyst months (6,800 spendable):** 5,387 + census 100 + export leaves room for the export only if the rate is at or under about 13 credits per MB at 100 MB. At the high build rate (6,800) two months leave nothing for the export, and a third month goes back for a ruling, as already ruled.
 * The Plus path is unchanged: everything ruled, including organic-v2, at 19,900–25,900 against 25,000.
 * Balance: 2,213.9 of 2,500 used; 106.1 spendable above the 180 reserve.
+
+## 12. Amendment, 2026-10-05 — MR-16: the plan choice, and what each path still needs
+
+**The rule (ruled):** read both monthly prices at checkout with yearly billing off. **If Plus is sold month-to-month under $400, buy one Plus month.** Otherwise Analyst, month-to-month, and a third month needs its own ruling. Do not press "Keep Plus".
+
+**Why the arithmetic moved.** The core build is 5,387 credits, about 6,800 at the post-BOOST rate, against 6,800 spendable over two Analyst months. That leaves nothing for the analysis-column export or the first contingency; three Analyst months fit, at about $225. One Plus month covers the core, the export at the cheaper rate, and the three column groups cut from Analyst: 17,145–21,370 credits in all (`RUNBOOK_v1.md` §5b). Against the allowance of 25,000 that leaves 3,600–7,900. **Against the 21,250 spendable above the 15% reserve it leaves 4,105 at the low column and is 120 over at the high one**, before the unmeasured collapsed organic counts (3,000–4,600) and with the aligned-set cost now a lower bound. So Plus fits the measured scope; it does not fit everything ruled at the high column without touching the reserve, and the drop order in the runbook says what goes first.
+
+**What the builder has to add, so the choice is made with it in view:**
+
+| | State |
+|---|---|
+| Event columns, concentration, authorities | generated for all 19 chunks; event query proven on a post-BOOST day |
+| Aligned set + funding (`b1a`) | generated for all 19 chunks with the MR-16 rent rule; **the text on disk has not run**: its trial re-run was cancelled at the cap (73.7 credits, no result). First paid run, cap 150. |
+| Fan-out (`fan`) | generated; proven at one-day scope |
+| **Early-buyer groups (`b3`)**, Plus only | generated but **not runnable as written**: it keeps a group-size cut the threshold rule refuses. Needs a rewrite that returns counts, and a one-day proof. |
+| **Organic-v2**, Plus only | **no chunk query exists.** One readiness query for one week (43.6 credits). Needs writing and a one-day proof. |
+| **Fee-share recipients (`c07b`)**, Plus only | **no chunk query exists.** A one-day extraction was validated in readiness at 11.6 credits per day scanned (about 7,000 for the window). Needs writing as a chunk query and the local decode wired. |
+| **Collapsed organic counts**, Plus only | **nothing exists, and nothing is measured.** Priced at 3,000–4,600 by analogy. |
+
+So: **Plus buys the credits and the month for the uncut scope; three of its four extra column groups still have to be written and proven inside that month.** That is two to four days of work in the first half of the month, before the day-15 check, and it is the main schedule risk of the Plus path. The Analyst path has no such work but leaves those columns out and needs three months.
+
+**Cost of the aligned-set query is now a lower bound, not an estimate** (`B1A_GROUPED_VALIDATION.md`): its lengthened funder scan cost more than expected at one-day scope. On Plus there is room for that. On Analyst it is one more reason two months do not fit.
+
+**At checkout, unchanged:** monthly prices for both plans with yearly billing off; whether overage bills automatically; the export rate if Analyst; do not press "Keep Plus".

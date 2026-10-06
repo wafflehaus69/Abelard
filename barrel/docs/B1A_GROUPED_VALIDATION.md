@@ -116,3 +116,22 @@ The builder's recommendation is **(a) or (b), not (c)**: the wallets a creator h
 ### What is proven now
 
 The grouped form, the per-token creation, lookback and acquisition windows, the slot cutoff and the tie-break ran on one post-BOOST day and agree with the earlier member rows wherever the definitions are the same. Not proven: the text on disk (funder scan lengthened), column 86 against a member-form run of the same text, and any chunk longer than one day.
+
+## MR-16: rent is not funding — implemented, not run (2026-10-05)
+
+The Architect ruled option (b) with an addition (`RULINGS_2026-10-05.md`):
+
+* **Funder.** A SOL transfer inside the member's own first-acquisition transaction never chooses its funder. The query carries that transaction out of the ledger step (earliest inbound transfer of the token by slot, then by position in the slot) and excludes it in the funder step. Same-slot funding in another transaction still counts.
+* **Link type.** A wallet the creator paid within 24 hours of creation stays in the set, and the tie is typed: `token_delivery_by_creator` (the creator's payment is in the wallet's first-acquisition transaction), `sol_funding` (in another transaction), `both`. The type is on every member row and is part of the group key, so set size, holdings and flows come back split by it.
+
+**The re-run was cancelled without a result.** Authorized at ≤ 70 credits. Submitted 2026-10-05 23:52 UTC, cancelled by the watchdog at 72.0 after 243 seconds, billed 73.7. My estimate was 55–59. The earlier text cost 40.6 on the same day; the difference is the funder scan, lengthened from 6 days to 15, and it is the scan joined to every member wallet (77,000 on that day), so its days cost far more than the query's average. The query was still running when it was cancelled; its full cost is not known.
+
+What that means for the build:
+
+* **The text on disk has not run.** By the ruling it is step one of phase A.
+* **Its one-day cap is 150, not 70.** A one-day run pays 15 days of funder scan for one day of tokens; a monthly chunk pays 45 days for 30. So the per-chunk projection (about 180 pre-BOOST, 245 for 2026-08) is not obviously wrong, but it was measured on an earlier text and is now a lower bound until phase A measures it.
+* **Not yet checked:** whether `tx_id` is filled on both transfer tables in every era. If it were empty, nothing would be excluded and every creator tie would read `sol_funding`; the link column's distribution in the first run shows it at once (about 300 delivery ties are expected on 2026-09-01).
+
+### One question for the Architect, not blocking
+
+**Is a wallet tied by `token_delivery_by_creator` the creator's actor when actors are counted?** The ruling keeps it in the set and says the tie is real and arguably stronger than funding; it does not say what collapse does with it. With rent no longer a funder, a delivered wallet that received no other SOL has no funder, and under the standing rule one unfunded member makes the whole set unresolved. The local code has a switch, `delivery_as_creator`, default off. Off: such a set is unresolved. On: the delivered wallet is counted as the creator. Either reading works from the same exported rows.
