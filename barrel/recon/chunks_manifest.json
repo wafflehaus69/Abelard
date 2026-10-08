@@ -34,13 +34,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-03_fs.sql",
+    "projected_credits": 197.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-03_fsm.sql",
+    "projected_credits": 40.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-03_b3.sql",
-    "projected_credits": 81.1,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 52.4,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-03_org2.sql",
+    "projected_credits": 21.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -79,13 +99,33 @@
     "projected_credits": 30.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-04_fs.sql",
+    "projected_credits": 406.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-04_fsm.sql",
+    "projected_credits": 67.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-04_b3.sql",
-    "projected_credits": 150.6,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 69.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-04_org2.sql",
+    "projected_credits": 45.9,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -124,13 +164,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-05_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-05_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-05_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-05_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -169,13 +229,33 @@
     "projected_credits": 30.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-06_fs.sql",
+    "projected_credits": 406.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-06_fsm.sql",
+    "projected_credits": 67.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-06_b3.sql",
-    "projected_credits": 150.6,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 69.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-06_org2.sql",
+    "projected_credits": 45.9,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -214,13 +294,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-07_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-07_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-07_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-07_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -257,13 +357,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-08_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-08_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-08_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-08_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -300,13 +420,33 @@
     "projected_credits": 30.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-09_fs.sql",
+    "projected_credits": 406.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-09_fsm.sql",
+    "projected_credits": 67.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-09_b3.sql",
-    "projected_credits": 150.6,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 69.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-09_org2.sql",
+    "projected_credits": 45.9,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -343,13 +483,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-10_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-10_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-10_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-10_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -386,13 +546,33 @@
     "projected_credits": 30.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-11_fs.sql",
+    "projected_credits": 406.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-11_fsm.sql",
+    "projected_credits": 67.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-11_b3.sql",
-    "projected_credits": 150.6,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 69.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-11_org2.sql",
+    "projected_credits": 45.9,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -429,13 +609,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2025-12_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2025-12_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2025-12_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2025-12_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -472,13 +672,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-01_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-01_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-01_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-01_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -515,13 +735,33 @@
     "projected_credits": 28.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-02_fs.sql",
+    "projected_credits": 382.8,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-02_fsm.sql",
+    "projected_credits": 64.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-02_b3.sql",
-    "projected_credits": 142.9,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 67.8,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-02_org2.sql",
+    "projected_credits": 43.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -558,13 +798,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-03_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-03_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-03_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-03_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -601,13 +861,33 @@
     "projected_credits": 30.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-04_fs.sql",
+    "projected_credits": 406.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-04_fsm.sql",
+    "projected_credits": 67.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-04_b3.sql",
-    "projected_credits": 150.6,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 69.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-04_org2.sql",
+    "projected_credits": 45.9,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -644,13 +924,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-05_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-05_fsm.sql",
+    "projected_credits": 69.0,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-05_b3.sql",
-    "projected_credits": 154.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 70.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-05_org2.sql",
+    "projected_credits": 47.2,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -687,13 +987,33 @@
     "projected_credits": 30.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-06_fs.sql",
+    "projected_credits": 406.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-06_fsm.sql",
+    "projected_credits": 67.5,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-06_b3.sql",
-    "projected_credits": 150.6,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 69.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-06_org2.sql",
+    "projected_credits": 45.9,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -730,13 +1050,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-07_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-07_fsm.sql",
+    "projected_credits": 75.1,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-07_b3.sql",
-    "projected_credits": 182.4,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 83.4,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-07_org2.sql",
+    "projected_credits": 54.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -775,13 +1115,33 @@
     "projected_credits": 31.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-08_fs.sql",
+    "projected_credits": 417.6,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-08_fsm.sql",
+    "projected_credits": 86.2,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-08_b3.sql",
-    "projected_credits": 233.2,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 106.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-08_org2.sql",
+    "projected_credits": 66.1,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  },
@@ -818,13 +1178,33 @@
     "projected_credits": 30.0,
     "review": "ok"
    },
+   "fs": {
+    "file": "recon/sql/chunks/2026-09_fs.sql",
+    "projected_credits": 290.0,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; chunks from day 11 if the day-10 check passes, else after the day-15 check",
+    "projection": "priced, not measured"
+   },
+   "fsm": {
+    "file": "recon/sql/chunks/2026-09_fsm.sql",
+    "projected_credits": 65.6,
+    "review": "ok",
+    "gate": "MR-18: same gate as fs; runs on its chunk's decoded fs export (--pairs-from)",
+    "projection": "priced, not measured"
+   },
    "b3": {
     "file": "recon/sql/chunks/2026-09_b3.sql",
-    "projected_credits": 169.1,
-    "review": [
-     "NOT SCHEDULED, not runnable as written",
-     "verdict constant: line 29: >= 3"
-    ]
+    "projected_credits": 90.7,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after fee-share",
+    "projection": "priced, not measured"
+   },
+   "org2": {
+    "file": "recon/sql/chunks/2026-09_org2.sql",
+    "projected_credits": 45.4,
+    "review": "ok",
+    "gate": "MR-18: one-day proof first; no chunk before the day-15 check clears; after b3; needs the chunk's fee-share codes or --no-pairs",
+    "projection": "priced, not measured"
    }
   }
  }

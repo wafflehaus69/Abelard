@@ -24,7 +24,7 @@ def cancel(eid, key):
         print(f"cancel of {eid} not confirmed (attempt {i + 1}): response {str(r)[:120]}, state {st.get('state')}", flush=True)
     print(f"CANCEL NOT CONFIRMED: execution {eid} may still be running. Cancel it by hand.", flush=True); return st
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--export", action="store_true"); ap.add_argument("--funders-from", dest="funders_from", default=None); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows"); ap.add_argument("--refetch", default=None)
+    ap = argparse.ArgumentParser(); ap.add_argument("sql"); ap.add_argument("--expect", type=float, required=True); ap.add_argument("--label", default=""); ap.add_argument("--confirm", action="store_true"); ap.add_argument("--proven", action="store_true"); ap.add_argument("--max-seconds", type=float, default=420.0, dest="max_seconds"); ap.add_argument("--quiet", action="store_true"); ap.add_argument("--export", action="store_true"); ap.add_argument("--funders-from", dest="funders_from", default=None); ap.add_argument("--no-rows", action="store_true", dest="no_rows"); ap.add_argument("--private-rows", action="store_true", dest="private_rows"); ap.add_argument("--refetch", default=None); ap.add_argument("--pairs-from", dest="pairs_from", default=None); ap.add_argument("--no-pairs", action="store_true", dest="no_pairs")
     a = ap.parse_args(); sql = pathlib.Path(a.sql).read_text(encoding="utf-8")   # path as given, relative to cwd
     # MR-14 ruling 5: a query carrying a registered verdict constant is never submitted. No override.
     verdict_constants.refuse(sql, what=a.sql)     # also enforced in dune_roundtrip.dune, the one request function
@@ -51,10 +51,50 @@ def main():
         asked = {"funders_from": pathlib.Path(a.funders_from).name, "n_funders": len(fset),
                  "funders_sha256": _h.sha256("\n".join(fset).encode()).hexdigest()}
         print(f"funders substituted: {len(fset)} (query text {len(sql) / 1e6:.2f} MB)")
+    # Fee-share lists (MR-18). The fee-share member query takes the decoded (token, recipient) pairs of its chunk;
+    # the organic query takes the same pairs with a one-letter code. Like the funders above, the addresses go into
+    # the text sent to Dune and nowhere else. An organic run with no list has to say so (--no-pairs), and the query
+    # carries that in a column: a forgotten list must not read as 'no recipients'.
+    if "__FS_PAIRS__" in sql or "__FS_CODES__" in sql:
+        codes = "__FS_CODES__" in sql
+        if a.pairs_from and a.no_pairs: raise SystemExit("REFUSED: --pairs-from and --no-pairs together")
+        if not a.pairs_from and not (codes and a.no_pairs):
+            raise SystemExit("REFUSED: this query needs --pairs-from <decoded fee-share pairs>" + (", or --no-pairs said out loud" if codes else ""))
+        prows, n_own = set(), 0
+        if a.pairs_from:
+            own = set(owner_wallets.owner_wallets()); b58 = r"[1-9A-HJ-NP-Za-km-z]{32,44}"
+            # the list must be the chunk's own, as for the fan-out query
+            cm = re.match(r"(\d{4}-\d{2})_(?:fsm|org2)", pathlib.Path(a.sql).stem)
+            if cm and cm.group(1) not in pathlib.Path(a.pairs_from).name:
+                raise SystemExit(f"REFUSED: {a.sql} belongs to chunk {cm.group(1)}; --pairs-from does not name that chunk")
+            for r_ in json.loads(pathlib.Path(a.pairs_from).read_text(encoding="utf-8")):
+                mint_, w_, code_ = r_.get("mint"), r_.get("w"), r_.get("code")
+                if not (isinstance(mint_, str) and isinstance(w_, str) and re.fullmatch(b58, mint_) and re.fullmatch(b58, w_)):
+                    raise SystemExit("REFUSED: a pair is not two base58 addresses")
+                if codes and not (isinstance(code_, str) and re.fullmatch(r"[A-Z]", code_)):
+                    raise SystemExit("REFUSED: a fee-share code is not one upper-case letter")
+                if w_ in own: n_own += 1; continue
+                prows.add((mint_, w_, code_) if codes else (mint_, w_))
+        prows = sorted(prows)
+        if not prows and not codes: raise SystemExit("REFUSED: no pair in the file given: there is nothing for this query to do")
+        # an empty list is one row of typed NULLs, which the query's own `mint IS NOT NULL` removes
+        values = ", ".join("(" + ", ".join(f"'{x}'" for x in row) + ")" for row in prows) or "(" + ", ".join(["CAST(NULL AS varchar)"] * (3 if codes else 2)) + ")"
+        sql = sql.replace("__FS_CODES__" if codes else "__FS_PAIRS__", values).replace("__FS_SUPPLIED__", "TRUE" if a.pairs_from else "FALSE")
+        import hashlib as _h
+        asked = {"pairs_from": pathlib.Path(a.pairs_from).name if a.pairs_from else None, "n_pairs": len(prows), "n_owner_pairs_removed": n_own,
+                 "pairs_sha256": _h.sha256("\n".join("|".join(row) for row in prows).encode()).hexdigest()}
+        print(f"fee-share pairs substituted: {len(prows)} (query text {len(sql) / 1e6:.2f} MB)")
     # Owner-wallet exclusion (MR-3.4): SQL files write __NOT_OWNER(col)__; the addresses are read
     # from barrel/private/ at run time and reach only the query text sent to Dune, never the repo.
     for m_ in set(re.findall(r"__NOT_OWNER\(([A-Za-z0-9_.]+)\)__", sql)):
         sql = sql.replace(f"__NOT_OWNER({m_})__", owner_wallets.sql_not_owner(m_))
+    # The same for a raw payload returned as hex: a recipient inside it is not a column the macro above can test.
+    for m_ in set(re.findall(r"__NOT_OWNER_HEX\(([A-Za-z0-9_.]+)\)__", sql)):
+        sql = sql.replace(f"__NOT_OWNER_HEX({m_})__", owner_wallets.sql_not_owner_hex(m_))
+    # Nothing with a placeholder still in it is ever submitted. (2026-10-01: two submissions reached Dune with the
+    # owner placeholder unsubstituted and failed at parse; a placeholder that parsed would have run unfiltered.)
+    left = sorted(set(re.findall(r"__[A-Z][A-Z_]*(?:\([^)]*\))?__", sql)))
+    if left: raise SystemExit(f"REFUSED: placeholder(s) not substituted: {', '.join(left)}")
     # Authoritative balance from POST /v1/usage (no credits consumed); ledger is the fallback.
     u = dune_usage.usage()
     if u.get("credits_included") is not None:
@@ -153,13 +193,18 @@ def main():
     # Owner wallets never reach the repo: drop any fetched row naming one, and say so.
     dropped = 0
     if rows:
-        ow = set(owner_wallets.owner_wallets())
-        keep = [r for r in rows if not any(isinstance(v, str) and v in ow for v in r.values())]
+        ow = set(owner_wallets.owner_wallets()); oh = owner_wallets.hex_keys()
+        # an owner address as a value, or an owner key inside a hex payload (a query is expected to have blanked
+        # such a payload already: this is the second lock)
+        keep = [r for r in rows if not any(isinstance(v, str) and (v in ow or (len(v) >= 64 and any(h in v.upper() for h in oh))) for v in r.values())]
         dropped, rows = len(rows) - len(keep), keep
     rec = {"file": a.sql, "label": a.label, "execution_id": eid, "state": (f"CANCELLED BY WATCHDOG ({killed})" if killed else st.get("state", "NOT RUN (15 min)")), "credits": cost,
            "cap": cap, "proven": a.proven, "inflight_samples": samples, "rows_dropped_owner": dropped,
            "submitted_at": st.get("submitted_at"), "rows": rows, "error": res.get("error") or (f"INCOMPLETE FETCH ({fetch_error})" if incomplete else None)}
     if "asked" in dir(): rec["asked"] = asked
+    # a column probe (LIMIT 0) returns no row: what it was run for is the column names
+    cols_ = ((res.get("result") or {}).get("metadata") or {}).get("column_names")
+    if cols_ and not rows: rec["columns"] = cols_
     if a.refetch: rec["refetch_of"] = eid; rec["credits_when_run"] = float(st.get("execution_cost_credits") or 0)
     name = pathlib.Path(a.sql).stem + "_" + dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%S")
     # --private-rows: the rows name wallets. They go to barrel/private/out (gitignored); the

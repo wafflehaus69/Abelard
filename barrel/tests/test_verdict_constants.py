@@ -17,8 +17,8 @@ def test_the_burned_week_query_is_refused():
     assert any("3x" in n for n in names) and any("7 days judged" in n for n in names)
 
 
-@pytest.mark.parametrize("kind", ["events", "b1a", "b1b", "b2", "fan"])
-def test_every_scheduled_chunk_query_passes(kind):
+@pytest.mark.parametrize("kind", ["events", "b1a", "b1b", "b2", "fan", "fs", "fsm", "b3", "org2"])
+def test_every_chunk_query_passes(kind):
     files = sorted((SQL / "chunks").glob(f"*_{kind}.sql"))
     assert len(files) == 19
     for f in files:
@@ -89,13 +89,30 @@ def test_the_one_request_function_refuses_too(monkeypatch, path, key):
         rt.dune("POST", path, "no-key", {key: "SELECT * FROM pumpdotfun_solana.pump_evt_createevent WHERE evt_block_date = DATE '2026-09-01' LIMIT 1"})
 
 
-def test_b3_is_refused_and_the_manifest_says_so():
+def test_the_manifest_passes_every_query_and_marks_the_plus_only_ones_as_gated_and_priced():
+    """Until 2026-10-08 the early-buyer text kept a size cut of three, was refused, and this test said so. It was
+    rewritten under MR-18; the cut itself is still refused (the parametrized case above)."""
     import json
     man = json.loads((ROOT / "recon" / "chunks_manifest.json").read_text(encoding="utf-8"))
+    assert len(man) == 19
     for row in man:
-        assert row["queries"]["b3"]["review"] != "ok" and "NOT SCHEDULED" in row["queries"]["b3"]["review"][0]
-        assert all(row["queries"][k]["review"] == "ok" for k in ("events", "b1a", "b1b", "b2", "fan"))
-    assert vc.hits((SQL / "chunks" / "2026-08_b3.sql").read_text(encoding="utf-8"))
+        assert all(q["review"] == "ok" for q in row["queries"].values()), row["chunk"]
+        for kind, q in row["queries"].items():
+            gated = kind in ("fs", "fsm", "b3", "org2")
+            assert ("gate" in q) == gated and (q.get("projection") == "priced, not measured") == gated, (row["chunk"], kind)
+            assert not gated or q["gate"].startswith("MR-18")
+
+
+def test_the_files_on_disk_are_what_the_generators_write_today():
+    """A chunk file edited by hand, or left behind by an older generator, is not the reviewed text."""
+    sys.path.insert(0, str(ROOT / "recon"))
+    import gen_chunks as gc
+    builders = {"fs": gc.fsq.fs, "fsm": gc.fsq.fsm, "b3": gc.b23.cluster, "org2": gc.gen_org2.build, "b1a": gc.b1.members_grouped}
+    for name, d0, d1 in gc.chunks():
+        for kind, fn in builders.items():
+            text = fn(d0.isoformat(), d1.isoformat())
+            assert (SQL / "chunks" / f"{name}_{kind}.sql").read_text(encoding="utf-8") == text, (name, kind)
+            assert gc.review(kind, text, d0, d1) == [], (name, kind)
 
 
 def test_the_fan_out_query_needs_its_funder_list(monkeypatch):

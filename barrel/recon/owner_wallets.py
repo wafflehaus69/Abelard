@@ -16,6 +16,23 @@ def sql_not_owner(col: str) -> str:
     """Predicate excluding owner wallets. The addresses are inlined into the query text sent to
     Dune (unavoidable) but never into files under version control or into logs."""
     return f"{col} NOT IN ({', '.join(repr(w) for w in owner_wallets())})"
+_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+def hex_key(addr: str) -> str:
+    """A base58 address as the 64 upper-case hex characters of its 32 bytes: how it appears inside a raw
+    instruction payload that a query returns with to_hex()."""
+    n = 0
+    for ch in addr:
+        n = n * 58 + _ALPHABET.index(ch)
+    raw = n.to_bytes(32, "big")     # raises if the address is longer than 32 bytes: not a key
+    return raw.hex().upper()
+def hex_keys() -> list[str]:
+    return [hex_key(w) for w in owner_wallets()]
+def sql_not_owner_hex(col: str) -> str:
+    """True when no owner key occurs anywhere in the hex varchar `col` (a payload from to_hex(), which is
+    upper case). Layout-independent: the key is looked for at any offset. Same handling as sql_not_owner:
+    the keys reach the query text sent to Dune and nothing under version control."""
+    keys = hex_keys()
+    return "(" + " AND ".join(f"strpos({col}, '{k}') = 0" for k in keys) + ")" if keys else "TRUE"
 def assert_no_owner_rows(rows, *cols) -> None:
     ws = set(owner_wallets())
     hits = sum(1 for r in rows or [] for c in cols if r.get(c) in ws)
