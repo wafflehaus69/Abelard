@@ -1,7 +1,7 @@
 # BARREL M0 — Paid-Month Runbook v1 (operational)
 
-**Author:** ClaudeCode · **Date:** 2026-10-01; last revised 2026-10-07 · **Returns:** the Architect's launch order (`RUNBOOK_ARCHITECT_2026-10-01.md`, MR-13) with the operational detail filled in.
-**Status: READY TO PURCHASE, with the aligned-set query's proving run as step one of phase A (§1).** Revised after MR-14, MR-15, MR-16 and MR-17 (`RULINGS_2026-10-07.md`) and three adversarial reviews. The third, of the aligned-set query as MR-16 changed it, found three minor points; two are fixed and one is a limit of the rule as ruled (`B1A_GROUPED_VALIDATION.md`, last section). The trial closed on 2026-10-06.
+**Author:** ClaudeCode · **Date:** 2026-10-01; last revised 2026-10-08 · **Returns:** the Architect's launch order (`RUNBOOK_ARCHITECT_2026-10-01.md`, MR-13) with the operational detail filled in.
+**Status: READY TO PURCHASE, with the aligned-set query's proving run as step one of phase A (§1).** Revised after MR-14 to MR-18 (`RULINGS_2026-10-08.md`) and three adversarial reviews. The third, of the aligned-set query as MR-16 changed it, found three minor points; two are fixed and one is a limit of the rule as ruled (`B1A_GROUPED_VALIDATION.md`, last section). The trial closed on 2026-10-06.
 **Plan:** by MR-16, one Plus month if it is sold month-to-month under $400 (§5b); otherwise Analyst, month-to-month, 4,000 credits a month, 3,400 spendable after the 15% reserve (§5), where two months no longer fit the core build with margin and a third needs its own ruling.
 
 ---
@@ -41,13 +41,25 @@
 | Scope of the rent rule | **By transaction, until A1 reports how many groups it touches.** The count comes from `recon/rent_rule_report.py`, run in step A1. From rows already held, graduations of 2026-09-01: **bundle groups not paid by the creator, no funder differs for any of 38 members (9 groups, 8 tokens)**; creator's side, 342 of 76,961 on a net count that is a floor, 301 of them the creator's own payments. Blind spots and limits: `RULINGS_2026-10-07.md`. |
 | Drop order on Plus | **Collapsed organic counts, then early-buyer groups (`b3`), then organic-v2, fee-share recipients last.** H1's inputs are the last thing to go. §5b. |
 
+### What MR-18 settled (`RULINGS_2026-10-08.md`)
+
+| Item | Result |
+|---|---|
+| "Heavy tier" in the day-15 criterion | **Exactly the H1 inputs: aligned set and funding (`b1a`), holder concentration, authority history, blocks, and the fan-out query. Nothing else.** With the event table that is phases A, B and C: 5,565–7,170 on the projection, against 15,000 by day 15. |
+| Build order after the core | **Fee-share recipients, then early-buyer groups, then organic-v2, then collapsed organic counts**, each proven at one-day scope before its chunks run. |
+| When the Plus-only chunks may run | **None before the day-15 check clears, except fee-share, which may start once the heavy tier is through day 10 on budget.** |
+| The three Plus-only chunk queries | **Ordered, written before purchase at zero credits**, fee-share first, with static review, the threshold check and one-day proving files. State in §4. |
+| Checkout | Unchanged; the backup location for `barrel/data/` is picked first. |
+| A1 | Accepted as the first query: 150 per form; a cancel at the cap sends the query to design before any chunk runs. |
+| Loose ends | CONSENSUS orders 5–7 not before day 0 has landed and the first ledger is posted. Main left alone. BARREL stays on its branch until M0 has a verdict. |
+
 ### For the Architect, not blocking
 
-* **Build order after the core, and what "heavy tier" names in the day-15 criterion: one decision, best before day 2 and by about day 6 at the latest.** The criterion is "table and heavy tier built by day 15 inside 15,000 credits". The builder proposes the reverse of the ruled drop order (fee-share first), so that a short month drops what was ruled and not what was scheduled last. On that order the criterion has to read "core plus fee-share" (12,565–14,170, met if fee-share's last chunk lands by day 15); the reading in `PURCHASE_DECISION.md` §3 (core plus organic-v2 and early-buyer groups, 9,715–13,570) cannot be met on it, because those two are then finished at 16,715–20,570 after day 15. On §3's own order that reading is met and fee-share runs last, where a short month drops it. **Until ruled, no chunk of fee-share, organic-v2 or early-buyer groups runs.** Days 1 to 5 spend the same credits either way, but not the same writing: §5b writes fee-share first (proven by day 5, organic-v2 by day 8, `b3` by day 9), and §3's order needs the other two first. Ruled on day 6, §3's order would leave its two groups six or seven chunk days before day 15; an answer before day 2 keeps both orders fully open. Writing the three queries before purchase, at zero credits, would leave only their one-day proofs for days 2 to 5 and keep both orders open until day 6; that work is not ordered. The ruled criterion is not relaxed in the meantime.
+* **The middle pair of the build order.** MR-18 gives fee-share, early-buyer groups, organic-v2, collapsed organic counts, and calls it Monday's drop order reversed. Monday's drop order reversed is fee-share, organic-v2, early-buyer groups, collapsed organic counts. The ends agree; the middle two are the other way round. §5b follows the sequence as written in MR-18. It matters only after day 15, and only if the month runs short between the two.
+* **Two readings of MR-18 ruling 1 that are the builder's:** what "through day 10 on budget" is measured as, and that a one-day proof is not a chunk (§5b). To be confirmed.
 * **Blocks do not see delivery.** A delivered wallet is the creator's actor in the actor count, but the block for effective-n joins creators to their linking funders only, and the build form does not name delivered wallets. A delivered wallet that is itself the creator of another token therefore stays in its own block. A1's member form names them for one day; the count is taken there and reported.
 * **The evidence on the rent rule is one post-BOOST day and a net count.** Bundle groups are thin on it (38 members). The pre-BOOST rows held carry more (571 bundle members in 41 tokens over the June 2025 week) but both June results predate the slot rule, so no difference can be taken there, and A1 is the same post-BOOST day. Group rows do not name members, so the count is net per token: exact for a bundle group with one funder, a floor elsewhere. An exact count, or a pre-BOOST one, needs a column in the query or one more one-day run without the exclusion. Neither is ordered.
 * **Analyst only: phase C's month-1 ceiling of 1,450 now binds before the reserve** (§5). Month 1 then ends 235–385 credits short of the reserve. Whether phase A's unspent ceiling returns to C is asked only if the plan is Analyst.
-* **Under Plus, three column groups have no runnable chunk query yet** (§5b): fee-share recipients, organic-v2, and the early-buyer rewrite. On the proposed order fee-share is written first; on §3's order, organic-v2 and the early-buyer rewrite. The work is two to four days inside the month.
 * **Against the 15% reserve the uncut Plus scope is tight** (§5b): 17,145–21,370 before the unmeasured collapsed organic counts, against 21,250 spendable. The ruled drop order governs.
 
 ### What MR-15 closed (`RULINGS_2026-10-02.md`), kept for the record
@@ -161,7 +173,7 @@ What the static review checks on every scheduled file, and found nothing wrong w
 Order of chunks in every phase: **2026-08 first** (phase A), then post-BOOST and mixed (2026-09, 2026-07), then backwards from 2026-06 to 2025-03. The newest eras are the least measured, so their cost is learned first.
 
 ### Day 0 — at purchase, before any build query
-1. Read at checkout: monthly price, overage policy, export rate. Record in `credits.md`.
+1. Before checkout: the off-machine backup location for `barrel/data/` is picked (MR-18). Read at checkout: both monthly prices with yearly billing off, overage policy, export rate. Record in `credits.md`.
 2. If overage bills automatically, the runner already stops at the reserve computed on the plan's allowance; confirm the allowance the usage API reports.
 3. **Export rate, measured:** one fetch of about 1 MB from a kept trial result. Decides how R4's export is budgeted and whether C3 applies.
 4. **Virtual reserve:** repeat the free RPC read on 30 fresh post-BOOST pools and compare with the reserve the event query derived for the same pools in phase A. Any mismatch is C5.
@@ -201,25 +213,28 @@ Plan cancelled before renewal. **Before any view is deleted:** every column the 
 
 The launch order says the same phases run uncut and the gates do not move. Line items are those of `PURCHASE_DECISION.md` §2–§3 with the core replaced by the 19-chunk projection of §4. Low = the post-BOOST rate on post-BOOST chunks only; high = on every chunk. **The aligned-set line inside C is a lower bound until A1 and A4 have run.** Phase A's ceiling is ruled (MR-17); the other ceilings are projection x 1.3 and are a proposal.
 
-**Rows are in the build order the builder proposes: the reverse of the ruled drop order.** MR-17 ruling 4 rules the drop order; the build order is the builder's consequence and is to be confirmed together with the day-15 reading (§1). The point of it: what is dropped when the month runs short is then what has not been started, not what happened to be scheduled last. **No chunk of P3, P1 or P2 runs before that is ruled.**
+**Rows are in the build order ruled in MR-18.**
 
 | Phase | Days | Low | High | Cumulative | Ceiling | Content |
 |---|---|---|---|---|---|---|
 | A | 1–2 | 520 | 670 | | **900, ruled** | A1 (two forms, cap 150 each), then the whole 2026-08 chunk and its fan-out query. Gate as in phase A above. |
 | B | 2–6 | 945 | 1,300 | | 1,700 | event columns, 18 chunks |
-| C | 3–12 | 4,100 | 5,200 | **5,565–7,170** (core) | 6,800 | concentration and authorities for all chunks; `b1a` and `fan` for 18 chunks |
-| P3 fee-share recipients (`c07b`) — **dropped last** | written and proven 2–5; chunks 6–15 | 7,000 | 7,000 | 12,565–14,170 | 9,100 | **chunk query to be written**, local decode to be wired; one-day proof first. Feeds the aligned set and RUG-A (H1). Post-BOOST rate unknown. |
-| P1 organic-v2 — dropped third | written and proven 5–8; chunks after day 15 unless month-to-date stays under 15,000 | 900 | 1,800 | 13,465–15,970 | 2,300 | **query to be written**; one-day proof first. Feeds H5 (exploratory). |
-| P2 early-buyer groups (`b3`) — dropped second | rewritten and proven 6–9; chunks 16–24 | 3,250 | 4,600 | 16,715–20,570 | 6,000 | **rewrite needed** (returns counts and a price; the group-size cut is applied locally); one-day proof first. Feeds H2. |
+| C | 3–12 | 4,100 | 5,200 | **5,565–7,170** (table and heavy tier) | 6,800 | concentration and authorities for all chunks; `b1a` and `fan` for 18 chunks; blocks are computed locally |
+| **Day-10 check** | 10 | | | | | **Heavy tier on budget: fee-share's chunks may start.** Otherwise they wait for day 15. |
+| **Day-15 check (ruled)** | 15 | | | | **15,000** | **Table and heavy tier built inside 15,000 credits, or stop and re-rule; the month is not extended.** Clearing it releases the chunks of early-buyer groups and organic-v2. |
+| P3 fee-share recipients (`c07b`) | one-day proof 2–5; chunks from day 11 if the day-10 check passes, else from day 16 | 7,000 | 7,000 | 12,565–14,170 | 9,100 | Feeds the aligned set and RUG-A (H1). Post-BOOST rate unknown until its proof. |
+| P2 early-buyer groups (`b3`) | one-day proof before its chunks; chunks after the day-15 check | 3,250 | 4,600 | 15,815–18,770 | 6,000 | Feeds H2. Returns counts and a price; the group-size cut is applied locally. |
+| P1 organic-v2 | one-day proof before its chunks; chunks after P2 | 900 | 1,800 | 16,715–20,570 | 2,300 | Feeds H5 (exploratory). |
 | D | throughout | 430 | 800 | **17,145–21,370** | 1,100 | census, and export-first at the Plus rate (measured 1 credit per MB on the trial; re-measured on day 0); nothing public |
-| P4 collapsed organic counts — **dropped first** | after P2 | 3,000 | 4,600 | 20,145–25,970 | — | **unmeasured**, priced by analogy. Measured on one chunk first; built only as far as credits above the reserve allow. Unbuilt twins ship NULL, which reads as unresolved. |
+| P4 collapsed organic counts | after P1 | 3,000 | 4,600 | 20,145–25,970 | — | **unmeasured**, priced by analogy; no query exists. Measured on one chunk first; built only as far as credits above the reserve allow. Unbuilt twins ship NULL, which reads as unresolved. |
 | E | last day | 0 | 0 | | | cancel before renewal; nobody presses "Keep Plus" |
 
-* **Day-15 criterion (ruled): "table and heavy tier built by day 15 inside 15,000 credits"; if not, stop and re-rule; the month is not extended.** Which column groups "heavy tier" names is not settled, and it is tied to the build order (§1). On the order of this table it has to mean the core plus fee-share: 12,565–14,170, met only if fee-share's last chunk lands by day 15. The earlier decomposition (core plus organic-v2 and `b3`, 9,715–13,570 taken alone) cannot be met on this order: those two are finished at 16,715–20,570, after day 15. Whatever is ruled, by day 15 the core (A + B + C) must be built and month-to-date at or under 15,000; that is the part both readings share, it is weaker than either, and it is not offered as a substitute for the ruling.
+* **Day-15 criterion (ruled, MR-12 and MR-18): the event table and the heavy tier, which is exactly the H1 inputs (aligned set and funding, holder concentration, authority history, blocks, fan-out), built by day 15 inside 15,000 credits.** Month-to-date on day 15 includes whatever fee-share has spent since day 11.
+* **"Through day 10 on budget", as the builder measures it (to be confirmed):** (a) phases A and B complete inside their ceilings; (b) phase C's spend so far plus the measured mean cost of its chunks times the chunks remaining is at or under C's ceiling; (c) month-to-date plus that remainder plus fee-share's spend to day 15 stays at or under 15,000. If any fails, fee-share waits for the day-15 check.
+* **A one-day proof is not a chunk** (the builder's reading, to be confirmed): fee-share is proven in days 2–5 so that it can start on day 11; the other two are proven before their chunks.
 * **Against the reserve line the scope is tighter than against the allowance.** Without P4: 4,105 to spare at the low column, **120 over at the high column.** With P4: 20,145–25,970.
-* **Drop order, ruled (MR-17): P4 collapsed organic counts, then P2 early-buyer groups, then P1 organic-v2, and P3 fee-share recipients last.** The core is never dropped; inside it C2's order stands.
-* **The schedule risk is the writing, not the credits:** none of P3, P1 and P2 has a runnable chunk query today. On the proposed order fee-share is written and proven first, in days 2–5, while B and C run; on §3's order organic-v2 and the early-buyer rewrite come first.
-* Exports under Plus go to gitignored `barrel/data/` with the committed manifest; **`barrel/data/` is backed up off this machine by Mando** (MR-15 R7).
+* **Drop order, ruled (MR-17): P4 collapsed organic counts, then P2 early-buyer groups, then P1 organic-v2, and P3 fee-share recipients last.** The core is never dropped; inside it C2's order stands. The build order of MR-18 is this reversed except in its middle pair (§1).
+* Exports under Plus go to gitignored `barrel/data/` with the committed manifest; **`barrel/data/` is backed up off this machine by Mando** (MR-15 R7), and the location is picked before checkout (MR-18).
 
 ### Budget, launch order against projection
 
