@@ -8,7 +8,8 @@ The member rows were produced on 2026-10-01 by the earlier query, which applied 
 in SQL; the grouped rows by the build query, which returns same-funder counts and leaves the
 cut to actors.aligned(). Agreement therefore also tests that the local cut reproduces the old one.
 
-Reads barrel/private/out (rows name wallets); prints and writes counts only.
+Reads barrel/private/out (rows name wallets); writes counts only. On a disagreement it prints the first eight
+characters of up to four token addresses to the terminal, never a wallet.
   python barrel/recon/compare_b1a_forms.py day
 """
 import collections
@@ -28,6 +29,8 @@ DATA = ROOT / "data"
 def latest(pattern: str) -> str:
     """Newest matching file, by the timestamp in its name, in private/out or data/ (both gitignored)."""
     found = glob.glob(str(PRIV / ("rows_" + pattern))) + glob.glob(str(DATA / pattern))
+    # a run cancelled at its cap under --private-rows used to leave a rows file holding only `null`: that is not a result
+    found = [f for f in found if pathlib.Path(f).stat().st_size > 4]
     return sorted(found, key=lambda f: f[-21:])[-1]
 
 
@@ -45,8 +48,18 @@ def main(tag: str) -> None:
     # one fan measure for BOTH forms, so the collapse comparison tests the logic and not the window:
     # the counts carried by the earlier member rows, used as a rates table
     fanmap = {r["funder"]: r["fan_out"] for r in members if r.get("funder") and r.get("fan_out") is not None}
+    if not fanmap:      # member rows since MR-15 carry no fan measure: borrow the counts of the newest earlier member rows that do
+        for f in sorted(glob.glob(str(PRIV / f"rows_heavy_b1a_members_{tag}_*.json")), key=lambda f: f[-21:], reverse=True):
+            fanmap = {r["funder"]: r["fan_out"] for r in (json.load(open(f)) or []) if r.get("funder") and r.get("fan_out") is not None}
+            if fanmap:
+                break
     if not fanmap:
-        raise SystemExit("the member rows carry no fan measure: collapse cannot be compared")
+        raise SystemExit("no member rows for this day carry a fan measure: collapse cannot be compared")
+    # MR-17 ruling 2 reads the link column. Rows from before MR-16 carry none, so against them BOTH forms are read
+    # as before the ruling: otherwise the member side alone is unresolved wherever a wallet was delivered, and the
+    # two forms disagree for a reason that is not a defect in either reader.
+    both_link = "link" in members[0] and any("link" in r for r in groups)
+    ruled_reading = actors.DELIVERY_AS_CREATOR and both_link
     bm, bg = collections.defaultdict(list), collections.defaultdict(list)
     for r in actors.aligned(members):
         bm[r["mint"]].append(r)
@@ -81,7 +94,7 @@ def main(tag: str) -> None:
         if "fan_out" in g[0]:
             checks["fan-out per funder"] = ({x["funder"]: x["fan_out"] for x in m if x["funder"]}
                                             == {x["funder"]: x["fan_out"] for x in g if x["funder"]})
-        kw = dict(fanout_threshold=actors.FANOUT_PROVISIONAL, rates=fanmap)
+        kw = dict(fanout_threshold=actors.FANOUT_PROVISIONAL, rates=fanmap, delivery_as_creator=ruled_reading)
         tm = [x for x in mfs if x["mint"] == mint] if "row_kind" in g[0] else None
         named = {x["funder"] for x in g if x["funder"]} | {x["funder"] for x in (tm or []) if x["funder"]}
         if named - set(fanmap):      # a funder only the regenerated rows name has no carried measure: not comparable
@@ -89,6 +102,14 @@ def main(tag: str) -> None:
         else:
             a, b = actors.token_record(m, **kw), actors.token_record_grouped(g, tm, **kw)
             checks["actors after collapse"] = (a[actors.ACTORS_KEY], a["collapse_state"]) == (b[actors.ACTORS_KEY], b["collapse_state"])
+        if "link" in g[0]:      # MR-17 ruling 2 on the build form: the ruled reading against the one before it
+            base = dict(fanout_threshold=actors.FANOUT_PROVISIONAL, rates=fanmap)
+            ruled, before = (actors.token_record_grouped(g, tm, delivery_as_creator=s, **base) for s in (True, False))
+            res["ruling 2: sets with a link column"] += 1
+            res["ruling 2: sets unresolved, delivered wallets as the creator's actor (ruled)"] += ruled["collapse_state"] == "unresolved"
+            res["ruling 2: sets unresolved, reading before the ruling"] += before["collapse_state"] == "unresolved"
+            if not (named - set(fanmap)):      # an actor COUNT needs every named funder's fan measure
+                res["ruling 2: sets whose actor count differs between the two readings (funders all measured)"] += ruled[actors.ACTORS_KEY] != before[actors.ACTORS_KEY]
         for k, ok in checks.items():
             if ok is None:
                 res[f"{k}: not comparable"] += 1
@@ -96,11 +117,31 @@ def main(tag: str) -> None:
             res[f"{k}: agree"] += ok
             if not ok:
                 mism[k].append(mint)
-    out = {"day": tag, "member_file": pathlib.Path(mfile).name, "grouped_file": pathlib.Path(gfile).name,
+    if "link" in members[0]:      # counts the member form alone can give (the build form does not name delivered wallets)
+        in_set = actors.aligned(members)
+        creator_of = collections.defaultdict(set)
+        for r in members:
+            if r["is_creator"]:
+                creator_of[r["w"]].add(r["mint"])
+        deliv = {(r["w"], r["mint"]) for r in in_set if actors.delivered_by_creator(r)}
+        res["delivered wallets (wallet, token)"] = len(deliv)
+        # blocks do not see delivery (RULINGS_2026-10-07.md): a delivered wallet that is the creator of another token
+        res["delivered wallets that are the creator of another token that day"] = len({w for w, t in deliv if creator_of.get(w, set()) - {t}})
+        # wallets at or above the bundle cut that the creator also paid sit on the creator's side of rent_rule_report
+        paid_bundle = [r for r in in_set if r["is_funded"] and (r.get("bundle_n") or 0) >= actors.BUNDLE_MIN]
+        res["creator-paid members at or above the bundle cut"] = len(paid_bundle)
+        res["creator-paid members at or above the bundle cut with no funder"] = sum(r["funder"] is None for r in paid_bundle)
+    out = {"day": tag, "reading": ("delivered wallets are the creator's actor (MR-17)" if ruled_reading
+                                   else "before MR-17: at least one form has no link column" if not both_link
+                                   else "before MR-17: actors.DELIVERY_AS_CREATOR is off"),
+           "member_file": pathlib.Path(mfile).name, "grouped_file": pathlib.Path(gfile).name,
            "member_rows": len(members), "group_rows": len(groups), "member_funder_rows": len(mfs),
            "group_rows_outside_the_set_after_the_local_cut": dropped, "result": dict(res),
            "tokens_disagreeing": {k: len(v) for k, v in mism.items()}}
     (ROOT / "recon" / "out" / f"b1a_forms_agreement_{tag}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    # step A1 runs this twice (the member rows on disk, then A1's own): one file per pair of inputs, so the second does not replace the first
+    pair = "_".join(pathlib.Path(f).stem[-15:] for f in (mfile, gfile))
+    (ROOT / "recon" / "out" / f"b1a_forms_agreement_{tag}_{pair}.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
     print(json.dumps(out, indent=1))
     for k, v in mism.items():
         print(f"  DISAGREE {k}: {len(v)} tokens, e.g. {[x[:8] for x in v[:4]]}")

@@ -710,7 +710,7 @@
    "internal": "aligned_set_actors",
    "type": "integer",
    "group": "rug_a",
-   "definition": "seta_n after funding-mesh collapse; NULL when any member's funding is unknown",
+   "definition": "seta_n after funding-mesh collapse; a wallet the creator delivered tokens to is the creator's actor whoever paid its SOL (MR-17); NULL when any other member's funding is unknown",
    "n": 88
   },
   {

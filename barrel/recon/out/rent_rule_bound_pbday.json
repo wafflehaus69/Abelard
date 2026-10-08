@@ -1,0 +1,37 @@
+{
+ "mode": "before A1: rows from before the slot rule against slot-rule rows",
+ "unit": "net change in members per funder inside a token and side: the fewest members whose funder can differ",
+ "tag": "pbday",
+ "before": "rows_heavy_b1a_members_pbday_20261001T174118.json",
+ "after": "heavy_b1a_grouped_pbday_20261002T053913.json",
+ "bundle_min": 5,
+ "tokens": 1087,
+ "result": {
+  "bundle_only": {
+   "tokens touched": 0,
+   "groups touched (a named funder lost members)": 0,
+   "members whose funder differs (net)": 0,
+   "tokens with such members": 8,
+   "groups before (token, named funder)": 9,
+   "members before": 38,
+   "members after": 38,
+   "members with no funder before": 0,
+   "members with no funder after": 0
+  },
+  "creator_side": {
+   "tokens touched": 332,
+   "groups touched (a named funder lost members)": 39,
+   "members whose funder differs (net)": 342,
+   "tokens with such members": 1087,
+   "groups before (token, named funder)": 1237,
+   "members before": 76961,
+   "members after": 76961,
+   "members with no funder before": 422,
+   "members with no funder after": 119,
+   "  left the creator as funder": 1,
+   "  left another named funder": 38,
+   "  had no funder before and have one after": 303,
+   "  now behind the creator as funder": 301
+  }
+ }
+}

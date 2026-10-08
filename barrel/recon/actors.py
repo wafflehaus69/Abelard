@@ -120,6 +120,11 @@ def _split(kw: dict) -> tuple[dict[str, float] | None, dict]:
 
 
 LINK_DELIVERY, LINK_SOL, LINK_BOTH = "token_delivery_by_creator", "sol_funding", "both"   # MR-16
+# MR-17 ruling 2 (2026-10-07): a wallet the creator opened a token account for and handed tokens to is the
+# creator's distribution, whoever paid its SOL. It is the creator's actor. The readers take this as their default,
+# read when they are called. Pass delivery_as_creator=False to a reader for the reading before the ruling (judged
+# on its SOL funder alone), kept only so the two can be compared.
+DELIVERY_AS_CREATOR = True
 
 
 def delivered_by_creator(row: dict[str, Any]) -> bool:
@@ -130,7 +135,8 @@ def delivered_by_creator(row: dict[str, Any]) -> bool:
 
 def member_funding(rows: list[dict[str, Any]], **kw) -> dict[str, dict[str, Any] | None]:
     """wallet -> funding record for one token's members. A member whose funder was not found
-    in the scanned window maps to None, which makes the whole set unresolved. ``funder_kind``
+    in the scanned window maps to None. token_record reads that as an unresolved set, unless the
+    member was delivered by the creator (MR-17 ruling 2), which needs no funder. ``funder_kind``
     is what collapse_actors reads: a linking class is passed to it as 'dedicated', and the
     class itself is kept in ``funder_class``."""
     rates, kw = _split(kw)
@@ -167,7 +173,7 @@ def _record(n_wallets: int, actors: int | None, unknown: int) -> dict[str, Any]:
     return rec
 
 
-def token_record(rows: list[dict[str, Any]], delivery_as_creator: bool = False, **kw) -> dict[str, Any]:
+def token_record(rows: list[dict[str, Any]], delivery_as_creator: bool | None = None, **kw) -> dict[str, Any]:
     """Per-token set record from MEMBER rows: raw size, post-collapse actors (None = unresolved),
     and the u_code to add when unresolved. Read the actor count through ``resolution`` only.
 
@@ -175,11 +181,16 @@ def token_record(rows: list[dict[str, Any]], delivery_as_creator: bool = False, 
     R1: a member that is another member's linking funder is the same actor as the wallets it
     funds. Without R1 a creator and the wallets it funded are always at least two actors.
 
-    ``delivery_as_creator`` (MR-16, NOT RULED, default off): the creator opened some members'
-    token accounts and handed them tokens (link token_delivery_by_creator). That tie is not
-    funding. With the switch off such a member is judged on its SOL funder alone, and one with no
-    SOL funder leaves the set unresolved. With it on, a delivered member is the creator's actor
-    whatever its SOL funder, and needs none."""
+    ``delivery_as_creator`` (MR-17 ruling 2, ON): the creator opened some members' token accounts
+    and handed them tokens (link token_delivery_by_creator, or both). That tie is not funding, and
+    it is the strongest insider link there is: a delivered member is the creator's actor whatever
+    its SOL funder, and needs none. Builder's reading of the ruling together with R1, not the
+    ruling's words (docs/RULINGS_2026-10-07.md): actors are components, so when a delivered
+    member's own SOL funder links, that funder and the other wallets it paid are the creator's
+    actor too. Off (the reading before the ruling): such a member is judged on its SOL funder
+    alone, and one with no SOL funder leaves the set unresolved."""
+    if delivery_as_creator is None:
+        delivery_as_creator = DELIVERY_AS_CREATOR      # read at call time, so the constant is the switch
     mf = member_funding(rows, **kw)
     by_w = {r["w"]: r for r in rows}
     creators = [r["w"] for r in rows if r.get("is_creator")]
@@ -233,20 +244,23 @@ def split_grouped(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], lis
 
 
 def token_record_grouped(groups: list[dict[str, Any]], member_funders: list[dict[str, Any]] | None = None,
-                         bundle_min: int = BUNDLE_MIN, delivery_as_creator: bool = False, **kw) -> dict[str, Any]:
+                         bundle_min: int = BUNDLE_MIN, delivery_as_creator: bool | None = None, **kw) -> dict[str, Any]:
     """Same record as token_record, from the BUILD form: one row per (token, funder, candidate
     class, creator link) with ``n_members``, plus the member-funder rows. Pass groups already
     cut with aligned(groups, bundle_min); the same cut is applied to the member-funder rows here.
 
     A group with funder None is members whose SOL funding was not found: the set is unresolved,
-    unless the switch is on and the group was delivered by the creator. A linking funder is one
-    actor however many groups it appears in; any other group counts each member; by R1 a member
+    unless the group was delivered by the creator (MR-17 ruling 2; see token_record). A linking funder is one
+    actor however many groups it appears in; a delivered group behind any other funder, or none, adds
+    nothing (its members are the creator's actor); any other group counts each member; by R1 a member
     that is a linking funder is merged with the actor it funds.
 
     ``member_funders`` rows (from split_grouped): {member, funder (the member's own), b_only_n,
     member_link}. When none are supplied (rows from before MR-15) the creator's is rebuilt from
     the group that holds the creator; other member-funders are then not seen, and the count can
     be one too high per such member."""
+    if delivery_as_creator is None:
+        delivery_as_creator = DELIVERY_AS_CREATOR
     rates, kw = _split(kw)
     n_wallets = sum(g["n_members"] for g in groups)
 

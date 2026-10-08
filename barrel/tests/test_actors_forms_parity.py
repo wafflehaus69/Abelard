@@ -80,11 +80,53 @@ def test_member_and_grouped_forms_agree_on_random_sets(switch, cut):
     assert all(seen[s] > 50 for s in ("unresolved", "collapsed", "independent", "solo")), seen   # the generator covers every state
 
 
-def test_the_delivery_switch_is_off_by_default_and_changes_only_delivered_members():
+def test_a_delivered_wallet_is_the_creators_actor_by_default():
+    """MR-17 ruling 2. Off is the reading before the ruling, kept for comparison."""
     members = [{"w": "cr", "is_creator": True, "is_funded": False, "bundle_n": None, "link": None, "funder": "EXCH", "fan_out": 2},
                {"w": "a", "is_creator": False, "is_funded": True, "bundle_n": None, "link": actors.LINK_DELIVERY, "funder": None, "fan_out": None},
                {"w": "b", "is_creator": False, "is_funded": True, "bundle_n": None, "link": actors.LINK_SOL, "funder": "HUB", "fan_out": 5000}]
-    off = actors.token_record(members, **KW)
-    on = actors.token_record(members, delivery_as_creator=True, **KW)
-    assert actors.resolution.actor_count(off) is None and off["collapse_state"] == "unresolved"   # a has no SOL funder
-    assert actors.resolution.actor_count(on) == 2                                                  # a is the creator's; b stands alone
+    assert actors.DELIVERY_AS_CREATOR is True
+    ruled = actors.token_record(members, **KW)
+    before = actors.token_record(members, delivery_as_creator=False, **KW)
+    assert actors.resolution.actor_count(ruled) == 2 and ruled["collapse_state"] != "unresolved"     # a is the creator's; b stands alone
+    assert actors.resolution.actor_count(before) is None and before["collapse_state"] == "unresolved"  # a has no SOL funder
+    groups, mfs = actors.split_grouped(to_grouped(members))
+    assert actors.resolution.actor_count(actors.token_record_grouped(groups, mfs, **KW)) == 2          # the build form, same default
+
+
+def _both_forms(members, **extra):
+    groups, mfs = actors.split_grouped(to_grouped(members))
+    a = actors.token_record(members, **extra, **KW)
+    b = actors.token_record_grouped(groups, mfs, **extra, **KW)
+    assert actors.resolution.actor_count(a) == actors.resolution.actor_count(b), (a, b)
+    return actors.resolution.actor_count(a)
+
+
+def test_whoever_paid_its_sol_a_delivered_wallet_is_the_creators():
+    """'Whoever paid its SOL': an exchange, a hub, or nobody. The wallet does not stand alone."""
+    for funder, fan in (("EXCH", 2), ("HUB", 5000), (None, None)):
+        members = [{"w": "cr", "is_creator": True, "is_funded": False, "bundle_n": None, "link": None, "funder": "EXCH", "fan_out": 2},
+                   {"w": "a", "is_creator": False, "is_funded": True, "bundle_n": None, "link": actors.LINK_BOTH, "funder": funder, "fan_out": fan}]
+        assert _both_forms(members) == 1, funder
+
+
+def test_a_delivered_wallets_own_linking_funder_joins_the_creator_with_it():
+    """The builder's reading, stated in the ruling record: actors are components. F1 is purpose-built and paid
+    the delivered wallet a and an outside bundle wallet c; a is the creator's, so F1 and c are too."""
+    members = [{"w": "cr", "is_creator": True, "is_funded": False, "bundle_n": None, "link": None, "funder": "EXCH", "fan_out": 2},
+               {"w": "a", "is_creator": False, "is_funded": True, "bundle_n": None, "link": actors.LINK_DELIVERY, "funder": "F1", "fan_out": 3},
+               {"w": "c", "is_creator": False, "is_funded": False, "bundle_n": 6, "link": None, "funder": "F1", "fan_out": 3},
+               {"w": "d", "is_creator": False, "is_funded": False, "bundle_n": 6, "link": None, "funder": "HUB", "fan_out": 5000}]
+    assert _both_forms(members) == 2                                   # {cr, a, F1, c} and d
+    assert _both_forms(members, delivery_as_creator=False) == 3        # before the ruling: cr | {a, c} behind F1 | d
+
+
+def test_the_constant_is_the_switch_when_a_reader_is_called(monkeypatch):
+    """Found in review: bound as a default argument, the constant was read once at import and setting it did nothing."""
+    members = [{"w": "cr", "is_creator": True, "is_funded": False, "bundle_n": None, "link": None, "funder": "EXCH", "fan_out": 2},
+               {"w": "a", "is_creator": False, "is_funded": True, "bundle_n": None, "link": actors.LINK_DELIVERY, "funder": None, "fan_out": None}]
+    groups, mfs = actors.split_grouped(to_grouped(members))
+    assert actors.token_record(members, **KW)["collapse_state"] != "unresolved"
+    monkeypatch.setattr(actors, "DELIVERY_AS_CREATOR", False)
+    assert actors.token_record(members, **KW)["collapse_state"] == "unresolved"
+    assert actors.token_record_grouped(groups, mfs, **KW)["collapse_state"] == "unresolved"

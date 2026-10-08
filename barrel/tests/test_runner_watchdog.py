@@ -34,7 +34,9 @@ class Dune:
         if path.endswith("/status"):
             if self.cancelled: return {"state": "QUERY_STATE_CANCELLED", "is_execution_finished": True, "execution_cost_credits": 1.0}
             return self.status(self.clock)
-        if "/results" in path: return {"result": {"rows": list(self.rows), "metadata": {"total_row_count": len(self.rows)}}}
+        if "/results" in path:
+            if self.cancelled: return {"error": "execution was cancelled"}      # Dune has no result for a cancelled execution
+            return {"result": {"rows": list(self.rows), "metadata": {"total_row_count": len(self.rows)}}}
         raise AssertionError(path)
     def posted(self, suffix): return [c for c in self.calls if c[0] == "POST" and c[1].endswith(suffix)]
 
@@ -115,3 +117,16 @@ def test_refetch_never_cancels_and_never_fetches_an_execution_that_is_not_comple
     with pytest.raises(SystemExit, match="not completed"):
         run(d, "--expect", "1", "--refetch", "EXEC1", "--export")
     assert d.calls == [("GET", "/execution/EXEC1/status")]
+
+
+def test_a_cancelled_private_run_leaves_no_rows_file(env):
+    """A rows file holding only `null` was taken for the newest result by the scripts that read private/out."""
+    tmp, clock, run = env
+    d = Dune(clock, lambda c: {"state": "QUERY_STATE_EXECUTING", "is_execution_finished": False, "execution_cost_credits": 99.0})
+    run(d, "--expect", "20", "--private-rows")
+    assert d.posted("/cancel")
+    assert not list((tmp / "private" / "out").glob("rows_*.json"))
+    done = Dune(clock, lambda c: {"state": "QUERY_STATE_COMPLETED", "is_execution_finished": True, "execution_cost_credits": 1.0}, rows=[{"one": 1}])
+    clock.sleep(1)
+    run(done, "--expect", "20", "--private-rows")
+    assert len(list((tmp / "private" / "out").glob("rows_*.json"))) == 1

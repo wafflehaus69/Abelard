@@ -166,7 +166,8 @@ def main():
     # committed run file keeps the cost, the samples and the row count only.
     if a.private_rows:
         pdir = ROOT / "private" / "out"; pdir.mkdir(parents=True, exist_ok=True)
-        (pdir / f"rows_{name}.json").write_text(json.dumps(rows, default=str), encoding="utf-8")
+        # no rows (cancelled, failed, fetch incomplete) = no rows file: a file holding `null` was taken for the newest result by the readers
+        if rows is not None: (pdir / f"rows_{name}.json").write_text(json.dumps(rows, default=str), encoding="utf-8")
         rec["rows"] = None; rec["rows_private"] = True; rec["n_rows"] = len(rows or [])
     # --export (MR-14 ruling 6): build rows go to gitignored barrel/data/; what is committed is the manifest
     # entry: SHA-256 of the file, row count, and the null count of every column.
@@ -198,7 +199,7 @@ def main():
     print(f"state={rec['state']} credits={cost:.3f} error={rec['error']}")
     if incomplete: sys.exit(4)
     print(f"cap={cap:.1f} proven={a.proven} in-flight samples={samples[-6:]} rows={len(rows or [])} dropped_owner={dropped}")
-    if a.private_rows: print(f"rows written to barrel/private/out/rows_{name}.json")
+    if a.private_rows: print(f"rows written to barrel/private/out/rows_{name}.json" if rows is not None else "no rows: no rows file written")
     if not a.quiet and not a.private_rows and not a.export:
         for r in rec["rows"] or []: print("  ", r)
 if __name__ == "__main__": main()
