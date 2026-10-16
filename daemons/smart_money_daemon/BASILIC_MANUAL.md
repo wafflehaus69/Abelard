@@ -104,6 +104,22 @@ needs `git pull`.
 - **Leg C 13F** — checks each registry CIK (Aschenbrenner 0002045724) for a
   filing newer than the stored baseline. The Q1-2026 baseline is seeded, so the
   mid-August Q2 filing produces a real diff.
+- **13F arrival ledger (SM-H1)** — source line `13f_arrivals`. One unfiltered read
+  of every tracked filer's EDGAR submissions feed into `thirteenf_arrivals`: every
+  13F-family filing whatever its form, its cover and its acceptance stamp. A quiet
+  night is 28 requests. Collection only, no events, and not on the exit spine.
+  DEGRADED on any failed feed, cover or acceptance-stamp read (covers and stamps are
+  counted apart: `covers_read= stamps_read=`), with the reason in the line; on any
+  difference between the ingest roster and the registry; and on a filing recorded
+  before its filing date, which would mean EDGAR's 17:30 ET cut-off no longer holds
+  the ledger's dates. The first read of a database (618 requests, about five minutes)
+  is done by `scripts/post_deploy.sh`, not by the nightly; by hand it is
+  `.venv/bin/python -m smart_money.arrivals_ingest` (`--deep` follows each feed's
+  older pages). Its exit: 0 all read; 1 some reads failed, retried by the nightly; 3
+  NO feed was read; 2 no EDGAR contact. post_deploy.sh restarts the dashboard
+  whatever the read did and then ends non-zero on 2 or 3: run the read by hand
+  before 22:30, or that night's scan carries the whole first read. Read it at
+  `/arrivals`.
 
 Watermark discipline: per-source watermarks advance ONLY on ok-with-items to
 the newest ingested item's disclosure timestamp, never to now(). A 3-day

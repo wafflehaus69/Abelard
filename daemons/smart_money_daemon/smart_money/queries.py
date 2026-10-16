@@ -26,6 +26,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 
+from . import arrivals  # judges and reads the 13F arrival ledger; no write path
 from . import dates
 from . import db as dbmod  # path constants + find_artifact ONLY — never connect()
 
@@ -1981,10 +1982,16 @@ def _next_quarter_end(period_iso):
 
 
 def _days_to_next_13f(latest_period, anchor):
-    """Days until the next 13F is due — 45 days after the quarter end following the
-    latest reported period. Negative = the window has passed (a staleness signal)."""
+    """Days until the next 13F is due: the deadline of the quarter end following the
+    latest reported period. Negative = the window has passed (a staleness signal).
+
+    The deadline is the ROLLED one (arrivals.deadline). Quarter end + 45 calendar days
+    lands on a weekend or federal holiday for five consecutive quarters from Q3 2026,
+    and the unrolled date called 15 on-time filers late for Q4 2025 and would have
+    printed 'filing window passed' on every card through deadline day 2026-11-16."""
     try:
-        due = _next_quarter_end(latest_period) + dt.timedelta(days=45)
+        due = dt.date.fromisoformat(
+            arrivals.deadline(_next_quarter_end(latest_period).isoformat()))
         return (due - dt.date.fromisoformat(anchor)).days
     except (ValueError, TypeError):
         return None
@@ -2286,6 +2293,139 @@ def q_tracked_books(con, anchor=None):
             "book_total": sum(f["book_value"] or 0 for f in out),
             "book_total_discretionary": sum(f["book_value"] or 0 for f in disc),
             "n_filers": len(out), "n_discretionary": len(disc)}
+
+
+ARRIVAL_ANCHOR_MAX = "2099-12-31"
+
+
+def today():
+    """Today, ISO. The one place the arrival ledger's pages ask the clock, so a test
+    written against a fixed day does not turn over with the calendar: the fixtures'
+    closed quarter stops being the closed quarter on 2026-11-17."""
+    return dt.date.today().isoformat()
+
+
+def arrival_anchor(anchor):
+    """(effective anchor, what was asked for when it was refused).
+
+    The arrival ledger compares filing dates with the anchor as STRINGS, so the anchor
+    must be exactly YYYY-MM-DD: dates.iso10 refuses '20260810', which
+    date.fromisoformat accepts and which sorts above every date in its year. A value
+    that is not a date, or lies outside the range a 13F window exists for, becomes
+    today, and the page says so rather than answering a question nobody asked."""
+    if anchor in (None, ""):
+        return today(), None
+    head = dates.iso10(anchor)
+    if head and dates.FLOOR <= head <= ARRIVAL_ANCHOR_MAX:
+        return head, None
+    return today(), str(anchor)[:40]
+
+
+def _held_13f(con, anchor):
+    """{int(cik): {"periods", "accessions", "sums", "floor"}} of the 13F books held, as
+    the market had them on `anchor`: only filings dated on or before it. A past anchor
+    would otherwise pair that day's ledger with today's book and print a period as
+    awaited beside a book held for it.
+
+    `floor` alone is NOT anchored: it is the earliest period this system has ever held
+    for the filer, the lower bound of what it set out to hold. sums maps each accession
+    to (period, raw value sum, rows)."""
+    held = defaultdict(lambda: {"periods": set(), "accessions": set(), "sums": {},
+                                "floor": None})
+    for cik, period, accession, filed, raw_sum, n_rows in con.execute(
+            "SELECT cik, period, accession, MIN(filed_date), SUM(value), COUNT(*) "
+            "FROM thirteenf_holdings WHERE period IS NOT NULL "
+            "GROUP BY cik, period, accession"):
+        h = held[cik_int(cik)]
+        h["floor"] = min(h["floor"] or period, period)
+        if filed and filed > anchor:
+            continue
+        h["periods"].add(period)
+        h["accessions"].add(accession)
+        h["sums"][accession] = (period, raw_sum, n_rows)
+    return held
+
+
+def q_arrivals(con, anchor=None):
+    """SM-H1 ARRIVAL LEDGER, one row per tracked 13F filer on `anchor`.
+
+    Reads thirteenf_arrivals (what EDGAR says was filed) beside thirteenf_holdings (the
+    book this system holds), and never infers one from the other: 'filed' comes from a
+    filing that states holdings, and whether those holdings were ingested is a separate
+    column and a separate note.
+
+    closed_* is the newest quarter whose deadline has passed and open_* the quarter
+    whose window is open, each with one of the four ratified states (awaited / filed /
+    filed_empty / nt_notice) or a statement that we have not read enough to say
+    (not_read, filed_unread) or that nothing was owed (not_due). last_* is the newest
+    period any 13F-family filing reports and the form that reported it, so a filer
+    whose book is stale shows WHY: Pershing's last filing is a notice, Scion's is a
+    year-old 13F-HR.
+
+    Two counts are kept apart. amendments_not_applied is standing: the ledger records
+    an amendment and applies none. filed_not_held is a 13F-HR on EDGAR with no
+    holdings held, which is an ingest that has not run or has failed.
+
+    `ledger` is 'absent' when the tables do not exist on this database (a read-only
+    surface cannot create them), 'empty' when no feed has been read yet, else 'ok'.
+    Both are said on the page; neither is rendered as 28 filers awaited."""
+    anchor, refused = arrival_anchor(anchor)
+    filers = _tracked_filers()
+    thesis = _filer_thesis()
+    led = arrivals.load(con)
+    held = _held_13f(con, anchor)
+    tracked = {cik_int(c) for c, _ in filers}
+    rows = []
+    for cik, name in filers:
+        key = cik_int(cik)
+        row = arrivals.filer_view(cik, name, (led or {}).get(key), held[key], anchor,
+                                  tracked)
+        row["thesis"] = thesis.get(cik)
+        rows.append(row)
+    closed, open_ = arrivals.windows(anchor)
+    # Over the TRACKED filers only: a ledger row for a CIK that is no longer on the
+    # roster must not make the ledger look read.
+    reads = [e["read"]["read_unix"] for e in ((led or {}).get(k) for k in tracked)
+             if e and e["read"] and e["read"]["read_unix"]]
+    # Feeds whose last good read cannot answer for yesterday, or whose last attempt
+    # failed: (filer, the day the read answers for, the error). The states on those
+    # rows are as of that read, and a page that lists states must say so above them.
+    stale = []
+    for cik, name in filers:
+        read = ((led or {}).get(cik_int(cik)) or {}).get("read")
+        if reads and arrivals.read_is_stale(read, anchor):
+            stale.append((name, (read or {}).get("read_day"), (read or {}).get("error")))
+    return {"as_of": _as_of(), "anchor": anchor, "anchor_refused": refused,
+            "replayed": anchor != today(),
+            "stale_feeds": stale,
+            "rows": rows, "count": len(rows),
+            "ledger": ("absent" if led is None else "ok" if reads else "empty"),
+            "closed_period": closed, "closed_deadline": arrivals.deadline(closed),
+            "open_period": open_,
+            "open_deadline": arrivals.deadline(open_) if open_ else None,
+            "closed_coverage": arrivals.coverage(rows, "closed"),
+            "open_coverage": arrivals.coverage(rows, "open"),
+            "oldest_feed_read": arrivals.iso_utc(min(reads)) if reads else None,
+            "amendments_not_applied": sum(r["amendments_not_applied"] or 0
+                                          for r in rows),
+            "filed_not_held": [(r["filer"], r["filed_not_held"]) for r in rows
+                               if r["filed_not_held"]]}
+
+
+def q_arrival_gaps(con, filer_cik, after, before, anchor=None):
+    """[(period, state)] for the quarters strictly between two periods of one filer.
+
+    A quarter-over-quarter view pairs a filer's newest held period with its previous
+    HELD period, and those need not be adjacent: Thiel Macro's 2026-06-30 book is
+    compared with 2025-09-30 across two quarters it filed empty. This says what the
+    ledger knows about each quarter stepped over. [] when the ledger is absent."""
+    anchor, _refused = arrival_anchor(anchor)
+    led = arrivals.load(con)
+    if led is None or not (after and before):
+        return []
+    key = cik_int(filer_cik)
+    return arrivals.gap_states(led.get(key), _held_13f(con, anchor)[key], anchor,
+                               after, before)
 
 
 # ---------------------------------------------------------------- q_congress_breadth (SM-C1)

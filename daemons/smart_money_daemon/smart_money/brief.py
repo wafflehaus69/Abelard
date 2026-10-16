@@ -207,7 +207,7 @@ def render_brief(con, out_path, *, window=90, anchor=None, since=None,
     return build_pdf(out_path, story, title=title)
 
 
-def _cell(v):
+def _cell(v, cut=True):
     if v is None:
         return "-"
     if isinstance(v, bool):
@@ -217,7 +217,9 @@ def _cell(v):
     if isinstance(v, int):
         return "{:,}".format(v)
     s = str(v)
-    return s if len(s) <= 44 else s[:41] + "..."
+    # The cut exists because an unwrapped cell overprints its neighbour. A cell that
+    # wraps needs none, and cutting it loses text there was room for.
+    return s if (not cut or len(s) <= 44) else s[:41] + "..."
 
 
 def render_page_brief(out_path, *, title, subtitle, columns=None, rows=None,
@@ -232,19 +234,29 @@ def render_page_brief(out_path, *, title, subtitle, columns=None, rows=None,
     `tables` is [(heading, columns, rows)] for a view that draws more than one table —
     Clusters' buy and sell boards, the ticker panel. A view whose PDF showed only one of
     its tables would be as misleading as one showing somebody else's, so every table the
-    screen draws is drawn here. `columns`/`rows` remain the single-table shorthand."""
+    screen draws is drawn here. `columns`/`rows` remain the single-table shorthand.
+
+    A table may carry a fourth element: its column widths in inches. Equal widths draw
+    every cell on one line, so a cell wider than its column prints over its neighbour
+    -- a 44-character filer name over the state beside it. A table that states its
+    widths gets them, and its cells WRAP inside them."""
     from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.platypus import Table, TableStyle
 
     if tables is None:
         tables = [(None, columns or [], rows or [])]
     styles = default_styles()
+    cell = ParagraphStyle("PageCell", fontName="Helvetica", fontSize=6.5, leading=8)
+    cell_head = ParagraphStyle("PageCellHead", parent=cell, fontName="Helvetica-Bold")
     story = [_p(title, styles["Title"]),
              _p(subtitle, styles["Sub"])]
     for n in notes:
         story.append(_p(n, styles["Foot"]))
-    for heading, cols, trows in tables:
+    for table in tables:
+        heading, cols, trows = table[:3]
+        widths = table[3] if len(table) > 3 else None
         if heading:
             story.append(_p(heading, styles["H2"]))
         shown = (trows or [])[:max_rows]
@@ -253,11 +265,17 @@ def render_page_brief(out_path, *, title, subtitle, columns=None, rows=None,
                                  _quiet(styles, "No rows on this view"), styles)
             continue
         head = [c.replace("_", " ") for c in cols]
-        data = [head] + [[_cell(r.get(c)) for c in cols] for r in shown]
-        # column widths: split the usable width, giving text columns more room
-        usable = 7.2 * inch
-        w = max(0.5 * inch, usable / max(1, len(cols)))
-        tbl = Table(data, colWidths=[w] * len(cols), repeatRows=1)
+        if widths:
+            data = [[_p(h, cell_head) for h in head]] + [
+                [_p(_cell(r.get(c), cut=False), cell) for c in cols] for r in shown]
+            col_widths = [w * inch for w in widths]
+        else:
+            data = [head] + [[_cell(r.get(c)) for c in cols] for r in shown]
+            # column widths: split the usable width, giving text columns more room
+            usable = 7.2 * inch
+            w = max(0.5 * inch, usable / max(1, len(cols)))
+            col_widths = [w] * len(cols)
+        tbl = Table(data, colWidths=col_widths, repeatRows=1)
         tbl.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, -1), 6.5),

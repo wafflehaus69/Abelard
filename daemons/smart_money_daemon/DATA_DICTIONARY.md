@@ -20,7 +20,7 @@ These are not traps in how to read the data. They are things the data gets wrong
 2. **`value_flag = 'price_vs_close'` (495 rows) is partly a false positive.** It compares the filing's nominal price with `prices.close`, which is restated for later splits. 238 of the flagged rows are option exercises at the strike, and among purchases and sales 195 of 208 sit in the direction a later split produces. Their `value` is NULL although the trade is real. Detail: `dictionary/form4.md`.
 3. **39 rows exceed the guard's own ceilings and carry no flag.** `SUM(value)` over every code is $1.137 quadrillion, almost all of it one code-J row. `value_flag IS NULL` does not mean checked. Sum dollars for P and S only.
 4. **Unmarked congressional repeats.** 3,444 live rows repeat member, date, ticker, side and band in another filing; 3,226 are Senate, where `filing_status` is never filled. Amendment or separate trade: not established.
-5. **Two 13F filers have filings that stored no rows.** Thiel Macro and Founders Fund Growth II each filed a 13F-HR for 2026-03-31 and the ingest stored nothing from it; Thiel Macro's 2025-12-31 looks the same. Empty filing or parse miss: not established.
+5. **13F amendments are recorded, not applied.** On 2026-10-05 EDGAR held 10 amendments (`13F-HR/A`) for periods `thirteenf_holdings` carries, and none is reflected in a book. Six of the ten state a different cover total from their original. The largest: First Eagle's 2026-03-31 book reads $75.57bn where its restatement of 2026-05-14 states $59.00bn, a $16.57bn overstatement on one convertible note. Detail and the full list: `dictionary/thirteenf.md`, trap 9. (The earlier item here, three filings that stored no rows, is settled: they are filed-empty reports, cover table value 0.)
 
 ## Part 1 - Identity keys
 
@@ -46,6 +46,8 @@ These are not traps in how to read the data. They are things the data gets wrong
 | thirteenf_filing_meta.cik | 225 | bare, 100% | 28 |
 | thirteenf_filings_seen.cik | 230 | bare, 100% | 28 |
 | thirteenf_baseline.cik | 28 | bare, 100% | 28 |
+| thirteenf_arrivals.cik | 1,537 (trial reads, 2026-10-08 and 2026-10-15) | bare, 100% | 28 |
+| thirteenf_feed_reads.cik | 28 | bare, 100% | 28 |
 | market_cap.cik | 853 | padded-10 on 791, NULL on 62 | 788 |
 | persons.cik_or_chamber, type='insider' | 51,625 | padded-10, 100% | 51,555 |
 | persons.cik_or_chamber, type='congress' | 444 | the word `house` or `senate` | 2 |
@@ -260,7 +262,7 @@ GROUP BY 1 ORDER BY 1;
 |---|---|
 | Form 4: codes, dollars, amendments, derivatives | `dictionary/form4.md` |
 | Congress: trades, annual holdings, amendments, member identity | `dictionary/congress.md` |
-| 13F: units, instrument classes, share-class twins, the registry | `dictionary/thirteenf.md` |
+| 13F: units, instrument classes, share-class twins, the arrival ledger, the registry | `dictionary/thirteenf.md` |
 | Prices, market cap, survivorship, option chains | `dictionary/market.md` |
 | Every CSV endpoint and its parameters | `EXPORTS.md` |
 

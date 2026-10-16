@@ -322,6 +322,69 @@ CREATE TABLE IF NOT EXISTS thirteenf_filings_seen(
   seen_at_unix INTEGER NOT NULL,
   PRIMARY KEY(cik, accession)
 );
+-- SM-H1 ARRIVAL LEDGER. One row per 13F-family filing in the feed pages read for a
+-- tracked filer, whatever its form, written from an UNFILTERED read of the submissions
+-- feed (smart_money.arrivals_ingest). The pages read are filings.recent unless a read
+-- was --deep; thirteenf_feed_reads says which. thirteenf_filings_seen above is a never-refetch gate for the
+-- holdings ingest and carries no form, period or date; thirteenf_holdings can only say
+-- "rows landed". Neither can tell a quarter that is awaited from one filed empty, or
+-- from one where a notice says another manager reports the holdings. This table can,
+-- because it records what each filing STATES.
+-- Every writer names its columns: a positional INSERT is what makes adding a column
+-- to thirteenf_filings_seen or thirteenf_baseline a breaking change.
+CREATE TABLE IF NOT EXISTS thirteenf_arrivals(
+  cik TEXT NOT NULL,             -- bare integer string, as every 13F table stores it
+  accession TEXT NOT NULL,
+  form TEXT NOT NULL,            -- EDGAR's form string verbatim: 13F-HR, 13F-HR/A, 13F-NT, 13FCONP
+  period TEXT,                   -- feed reportDate; NULL when the feed states none, never guessed
+  filed_date TEXT,               -- feed filingDate: EDGAR's official date, on a 17:30 ET cut-off
+  -- Feed acceptanceDateTime, VERBATIM. It is labelled Z and is not reliably UTC (20 of
+  -- 225 stamps in the stored window are 4-5 hours off, by filer), so it orders two
+  -- filings of one filer and nothing else. accepted_et is the filing's own index page.
+  feed_accepted TEXT,
+  primary_document TEXT,         -- feed primaryDocument; says whether an XML cover exists to read
+  accepted_et TEXT,              -- 'YYYY-MM-DD HH:MM:SS' US Eastern; NULL = not read
+  report_type TEXT,              -- cover: 13F HOLDINGS REPORT / 13F NOTICE / 13F COMBINATION REPORT
+  is_amendment INTEGER,          -- cover isAmendment; the element is often absent, which reads 0
+  amendment_no TEXT,             -- text on the form: '1', '2', '01'
+  amendment_type TEXT,           -- RESTATEMENT | NEW HOLDINGS, as stated. Recorded, never applied here
+  entry_total INTEGER,           -- cover tableEntryTotal. NOT an emptiness test: 0 on two real books
+  value_total INTEGER,           -- cover tableValueTotal, raw units. 0 = the filing states an empty book
+  confidential_omitted INTEGER,
+  other_managers TEXT,           -- JSON, the COVER list: managers who report holdings FOR this filer
+  -- pending | read | no_xml_cover | failed | paper. 'failed' is ours and is retried;
+  -- it is never a statement about the filing.
+  cover_status TEXT NOT NULL,
+  -- Why the last cover or index-page read of this filing failed ('cover: ...' or
+  -- 'stamp: ...'); NULL once both are read. A cover's reason is kept over a stamp's.
+  -- Without it a filing that fails every night says only 'failed', and the reason
+  -- exists nowhere.
+  read_error TEXT,
+  -- When a read first saw the filing, written only where that read could not have
+  -- seen it before. NULL for history: everything the first read of a feed records,
+  -- and every old filing a later --deep read turns up. A backfill time is not an
+  -- arrival time.
+  first_seen_unix INTEGER,
+  recorded_unix INTEGER NOT NULL,
+  PRIMARY KEY(cik, accession)
+);
+CREATE INDEX IF NOT EXISTS idx_13fa_period ON thirteenf_arrivals(cik, period);
+-- One row per filer: the last SUCCESSFUL unfiltered read, and the last attempt. A
+-- state of 'awaited' is a claim about EDGAR that is only as good as the read behind
+-- it, so the read time is stored and shown. read_unix moves only when a feed was
+-- fetched and stored; a failed attempt writes attempted_unix and error and leaves it.
+CREATE TABLE IF NOT EXISTS thirteenf_feed_reads(
+  cik TEXT PRIMARY KEY,
+  read_unix INTEGER,
+  -- The US Eastern calendar day of that read: the day it answers for. EDGAR dates
+  -- filings in Eastern time, and the 22:30 nightly's UTC date is already tomorrow.
+  read_day TEXT,
+  newest_filed TEXT,             -- newest filing date that read saw; dates what is new next time
+  older_pages INTEGER,           -- pages the feed lists beyond filings.recent
+  deep INTEGER,                  -- 1 once a read has followed them; else the ledger starts at recent
+  attempted_unix INTEGER,
+  error TEXT
+);
 -- SM-P1b congressional ANNUAL FD holdings (Schedule A: Assets). Band-valued holdings
 -- snapshot (annual cadence), the level PTRs do not give. Unmapped assets kept with
 -- ticker NULL, never dropped. value_hi NULL = open top band. One row per asset line.

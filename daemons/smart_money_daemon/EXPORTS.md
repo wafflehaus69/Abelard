@@ -11,7 +11,7 @@ Live fetch by the author, 2026-10-01 19:18 ET, not repeated in the fact-check: 1
 | `full` | whole dataset: skips pagination and nothing else (all endpoints) | off | exactly `1` (`true` is ignored) |
 | `per_page`, `page` | page size, page number (all endpoints) | 100, 1 | 25, 50, 100, 250, 500; page >= 1 |
 | `sort`, `dir` | row order only, never contents (all endpoints) | per endpoint, `desc` | a row key; `asc`, `desc`. Trades sorts only on person, ticker, side, trade_date, reported_date, value, shares, exec_price. An unknown key is not rejected, see 9 |
-| `anchor` | "today" for date windows (trades, sentinels, clusters, flows; ignored elsewhere) | server's today | `YYYY-MM-DD`; a string that is not a date is HTTP 500 |
+| `anchor` | "today" for date windows (trades, sentinels, clusters, flows) and the as-of day for arrivals; ignored elsewhere | server's today | `YYYY-MM-DD`; a string that is not a date is HTTP 500 |
 | `window` | days back from anchor (trades, sentinels, sell clusters) | 90 | integer, clamped to 1..3650 |
 
 **Endpoints**
@@ -25,6 +25,7 @@ Live fetch by the author, 2026-10-01 19:18 ET, not repeated in the fact-check: 1
 | `/flows.csv` | one ticker: net insider flow, buys (P) minus sells (S), over 7/30/90/180/365 d and all time | `scope` (scoped; scoped, all) - `anchor` - `metric` (value; value, shares; default sort only). `window` is ignored | scope | scoped 21 - all 4,496 |
 | `/portfolios.csv` | one 13F position (CUSIP x instrument) of ONE filer in ONE period, plus synthetic `exited` rows | `filer` (CIK digits; first registry filer = Duquesne 1536411) - `period` (quarter end `YYYY-MM-DD`; that filer's newest) | one filer, one period per request | 118 default - 2,008 across all 28 filers, newest period each |
 | `/disagreements.csv` | one (ticker, instrument) where tracked 13F filers moved in opposite QoQ directions, each in its own newest period | none | - | 80 |
+| `/arrivals.csv` | one tracked 13F filer: what EDGAR says it has filed, from the arrival ledger (added by SM-H1, after the fact-check above) | `anchor` (the as-of day: only filings, and only books, dated on or before it count, so a past anchor replays that day. A value that is not exactly `YYYY-MM-DD` is replaced by today and the page says so; it is not an HTTP 500) | - | 28 |
 | `/member.csv` | one (ticker, owner) position of ONE member: latest annual FD band plus later PTR flows | `member` = `chamber\|last\|first\|state_dist`, e.g. `house\|Pelosi\|Nancy\|CA11`, `senate\|Scott\|Rick\|`; send `\|` as `%7C` (default: first alphabetically) | one member per request | 634 members selectable (506 house, 128 senate) |
 | `/insiders.csv` | one annual-FD holding line of ONE member for ONE filing year | `member` (as above) - `myear` (filing year; newest) | one member, one year per request | Pelosi 2025: 67 |
 | `/oge.csv` | one OGE Form 278e disclosure line of ONE filer. **Restricted, see below** | `member` = filer name as stored (first) | one filer per request | 1 filer (`Warsh, Kevin`), 362 lines |
@@ -46,6 +47,7 @@ Live fetch by the author, 2026-10-01 19:18 ET, not repeated in the fact-check: 1
 | `/flows.csv` | ticker, then for each of 7, 30, 90, 180, 365, all: ins_N (distinct buyers minus sellers), val_N (USD), sh_N (shares). No flag column |
 | `/portfolios.csv` | cusip, ticker, issuer, instrument (SH, PUT, CALL), value, shares, pct_of_book (percent), badge (new, added, trimmed, exited, blank), prior_value, reported_period, filed_date, **unmapped** |
 | `/disagreements.csv` | ticker, instrument, n_managers, n_accumulating, n_distributing, acc_names, dis_names, acc_value, dis_value, cross_thesis |
+| `/arrivals.csv` | filer, cik, thesis, closed_period, **closed_state**, closed_days_past_deadline, open_period, **open_state**, open_due, last_form, last_period, last_filed, last_accepted_et (US Eastern), book_period (newest period with holdings held), **book_check** (the held book against its own cover total: `matches cover`, `differs from cover`, blank when no cover is read; `differs from cover` also when the period is held from two filings), missed_periods, **filed_not_held** (periods with a 13F-HR on EDGAR and no holdings held), **amendments_not_applied**, **needs_look**, **feed_read** (UTC), notes. States: filed, filed_empty, nt_notice, awaited, and three that say what was not read or not owed: not_read, filed_unread, not_due. For a filer never read, missed_periods, filed_not_held and amendments_not_applied are blank, never 0 |
 | `/member.csv` | ticker, asset_name, owner, instrument, **tier**, anchor_lo, anchor_hi, buy_flow, sell_flow, n_buy, n_sell, last_tx, estimate_lo, estimate_hi, **unfusable** |
 | `/insiders.csv` | ticker, asset_name, instrument, owner, midpoint, value_lo, value_hi, pct_of_book, income_type, asset_type |
 | `/oge.csv` | line_no, description, ticker, owner, eif, midpoint, value_lo, value_hi, income_type, **use_restriction**, filed_date, report_type |

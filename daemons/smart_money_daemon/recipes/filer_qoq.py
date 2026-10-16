@@ -122,8 +122,9 @@ TRAPS (counts are all 28 filers on the mirror)
     8 of them are KKR at Akre (1112520), stored as lower-case CUSIP 48251w104.
   13F itself: long section-13(f) securities only, no shorts or cash, so an exit
     can be a position that left reporting rather than a sale. Only form 13F-HR is
-    ingested; amendments (13F-HR/A) are not. How many quarters were later
-    restated: not established.
+    ingested into thirteenf_holdings. Amendments (13F-HR/A) are recorded in
+    thirteenf_arrivals and applied to no book: on 2026-10-08 EDGAR held 10 for
+    the periods held, 6 stating RESTATEMENT and 4 NEW HOLDINGS.
 
 AGAINST THE HOUSE (smart_money/queries.py, commit c3b7dbb)
   q_portfolio uses the same key and the same shares-first rule. Checked on all

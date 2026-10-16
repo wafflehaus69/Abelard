@@ -6,9 +6,11 @@ never silently chooses. Mirrors network_recon.py (SM-A1 Phase 1) discipline and 
 HTTP helpers.
 
 Reported per candidate: conformed name, 13F form-type breakdown (13F-HR holdings reports,
-13F-NT notice-of-no-holdings, amendments), distinct report periods, and date range. A
-13F-NT period is a LEGITIMATE result (the filer reported no Section 13(f) holdings) and is
-rendered as such, never as an empty book — this is the expected shape for Scion.
+13F-NT notices, amendments), distinct report periods, and date range. A 13F-NT period is
+a LEGITIMATE result and is rendered as such, never as an empty book. It does NOT mean the
+filer held nothing: the form reads "no holdings reported are in this report, and all
+holdings are reported by other reporting manager(s)", and the cover names that manager
+(all 32 notices on the roster do). smart_money.arrivals records which one.
 
 DELIBERATE EXCLUSIONS (per order, not oversight): Renaissance, Citadel, Millennium, Two
 Sigma, DE Shaw, Balyasny. Quant/multistrat 13Fs are structurally illegible — RenTech files
@@ -104,8 +106,9 @@ def render(results, path):
     L.append("Read-only EDGAR resolution. Identity = EDGAR CIK. No ingest, no registry "
              "writes. Where a name resolves to more than one CIK with 13F history, EVERY "
              "candidate is listed — Mando picks, the resolver never chooses silently.\n")
-    L.append("`13F-HR` = holdings report. `13F-NT` = notice of NO Section 13(f) holdings "
-             "— a legitimate reported state, rendered as such, never as an empty book. "
+    L.append("`13F-HR` = holdings report. `13F-NT` = notice that the filer's holdings are "
+             "reported by ANOTHER manager, named on its cover — a legitimate reported "
+             "state, rendered as such, never as an empty book and never as no holdings. "
              "`/A` = amendment.\n")
     for name, tier, tag, note in TARGETS:
         cands = results.get(name, [])

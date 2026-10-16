@@ -485,6 +485,70 @@ def leg_13f_holdings(con, contact, quarters=8):
         len(report["filers"]), new, rows, len(errs)), rows), report
 
 
+def leg_13f_arrivals(con, contact, reg):
+    """SM-H1: one unfiltered read of every tracked filer's EDGAR feed into the arrival
+    ledger (thirteenf_arrivals). Collection only, NO events, and it shares nothing with
+    the two 13F legs above: a 13F-NT has no information table, so routed through their
+    path it would fail its filer every night and take that filer's real filings with it.
+
+    DEGRADED on ANY failed feed or cover read, with the count -- the holdings leg's
+    'OK unless nothing at all landed' would report 27 good reads and one dark filer as
+    OK, and the dark one is the row a reader needs. Also DEGRADED when the ingest roster
+    and the registry roster differ: the ledger is written from one and read through the
+    other, and a filer in only one of them would be read and never shown, or shown as
+    never read."""
+    from . import arrivals_ingest, thirteenf_ingest
+    roster = thirteenf_ingest.CONFIRMED
+    report = arrivals_ingest.read_roster(con, contact, roster)
+    registry = {int(e["cik"]) for e in reg["entries"]
+                if e.get("role") == "manager_13f" and e.get("cik")}
+    drift = sorted({int(c) for c in roster} ^ registry)
+    note = "filers={} read={} new={} covers_read={} stamps_read={}".format(
+        report["filers"], report["read"], len(report["new"]), report["details_read"],
+        report.get("stamps_read", 0))
+    if report["new"]:
+        note += " [{}]".format("; ".join(
+            "{} {} {}".format(n["form"], n["period"], n["name"])
+            for n in report["new"][:6]))
+    problems = []
+    # Each failure carries its reason into the scan line. A filing whose cover fails
+    # every night otherwise repeats 'cover reads failed=1' with no accession and no
+    # cause, and only a hand run of the CLI would ever say why.
+    if report["failed_reads"]:
+        problems.append("feed reads failed={} ({})".format(
+            len(report["failed_reads"]),
+            "; ".join("{}: {}".format(f["name"], f["error"])
+                      for f in report["failed_reads"][:3])))
+    for what in ("cover", "stamp"):
+        failed = [f for f in report["failed_details"] if f.get("what", "cover") == what]
+        if failed:
+            problems.append("{} reads failed={} ({})".format(
+                what, len(failed), "; ".join(
+                    "{} {}".format(f["accession"], f["error"]) for f in failed[:3])))
+    # The ledger counts a filing from EDGAR's filing date, on the measured premise that
+    # a filing accepted after 17:30 ET is not in the public feed until then. A row dated
+    # after the calendar day of the newest read means the premise failed and a page is
+    # printing 'awaited' beside a filing the ledger holds. It has never happened; say so
+    # if it does. The calendar day, not read_day: a filing dated today and recorded by
+    # an afternoon read is ordinary.
+    if con is not None:
+        early = sum(1 for filed, unix in con.execute(
+            "SELECT a.filed_date, r.read_unix FROM thirteenf_arrivals a JOIN "
+            "thirteenf_feed_reads r ON r.cik = a.cik WHERE r.read_unix IS NOT NULL "
+            "AND a.filed_date > r.read_day")
+            if filed > arrivals_ingest.calendar_day(unix))
+        if early:
+            problems.append("{} filing(s) recorded before their filing date".format(
+                early))
+    if drift:
+        problems.append("roster drift between ingest and registry, CIKs {}".format(
+            ", ".join(str(c) for c in drift[:6])))
+    if problems:
+        note += " | " + "; ".join(problems)
+    return _src("13f_arrivals", "DEGRADED" if problems else "OK", note,
+                len(report["new"])), report
+
+
 def run_scan(con, contact, raw_dir, skip_universal=False):
     scan_start = int(time.time())
     scan_id = "scan_{}".format(scan_start)
@@ -504,11 +568,20 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
         src_u, cnt_u = _src("edgar_form4_universal", "SKIPPED", "disabled"), {}
         src_e, cnt_e = _src("enrich_scoped", "SKIPPED", "disabled"), {}
         src_h = _src("13f_holdings", "SKIPPED", "disabled")
+        src_ar = _src("13f_arrivals", "SKIPPED", "disabled")
         src_ca, cnt_ca = [_src("congress_annual", "SKIPPED", "disabled")], {}
         src_o, cnt_o = _src("options_chains", "SKIPPED", "disabled"), {}
     else:
         src_u, cnt_u = leg_universal_ingest(con, contact)
         src_e, cnt_e = leg_enrich(con, contact)  # bounded scoped bands+prices
+        # SM-H1 arrival ledger, read before the holdings ingest so the ledger already
+        # holds a filing on the night its holdings land. A failure here must never stop
+        # the scan: it degrades its own source line and nothing else.
+        try:
+            src_ar, _ = leg_13f_arrivals(con, contact, reg)
+        except Exception as exc:  # noqa: BLE001 - collection leg, never fatal
+            con.rollback()
+            src_ar = _src("13f_arrivals", "DEGRADED", str(exc)[:120])
         src_h, _ = leg_13f_holdings(con, contact)  # SM-P1 durable 13F holdings ingest
         # SM-C3: annual FD HOLDINGS refresh (both chambers). Ingest-only, no events —
         # without it the holdings corpus behind /congress and the Phase F anchor ages a
@@ -518,7 +591,7 @@ def run_scan(con, contact, raw_dir, skip_universal=False):
         # spine below - it is a collection leg, not a signal source.
         src_o, cnt_o = leg_options(con)
 
-    sources = src_a + src_b + src_c + src_ca + [src_u, src_e, src_h, src_o]
+    sources = src_a + src_b + src_c + src_ca + [src_u, src_e, src_ar, src_h, src_o]
     all_events = ev_a + ev_b + ev_c
 
     # Event-level dedup across scans by event_id (scan_events ledger). A Form 4
@@ -646,7 +719,7 @@ def main(argv=None):
     # being down, nor a degraded ingest trip a false alarm.
     statuses = [s["status"] for s in envelope["sources"]
                 if s["source"] not in ("edgar_form4_universal", "enrich_scoped",
-                                       "options_chains")]
+                                       "options_chains", "13f_arrivals")]
     if statuses and all(st == "DEGRADED" for st in statuses):
         print("[scan] ALL signal sources degraded", file=sys.stderr)
         return 1

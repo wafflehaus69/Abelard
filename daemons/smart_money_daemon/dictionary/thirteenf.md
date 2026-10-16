@@ -1,6 +1,6 @@
 # 13F: manager holdings
 
-Tables: `thirteenf_holdings`, `cusip_ticker`, `thirteenf_filings_seen`, `thirteenf_baseline`, plus the filer registry (`registry.json`). Every number below is measured on the mirror (snapshot 2026-10-01). These tables were last written 2026-08-18/19. Q3 2026 filings are due around 2026-11-16.
+Tables: `thirteenf_holdings`, `cusip_ticker`, `thirteenf_filings_seen`, `thirteenf_baseline`, the arrival ledger (`thirteenf_arrivals`, `thirteenf_feed_reads`), plus the filer registry (`registry.json`). Every number below is measured on the mirror (snapshot 2026-10-01). These tables were last written 2026-08-18/19. Q3 2026 filings are due around 2026-11-16.
 
 **This is not the 13F universe.** It is 28 hand-picked filers, about 8 quarters each. "N filers hold X" means N of 28.
 
@@ -50,8 +50,8 @@ Left out: `ingested_at_unix`.
 The thin early periods are the ingest window (the newest 8 or 9 filings per filer), not small books. Do not trend totals before 2024-09-30. Totals include option notional (trap 4); 2026-03-31 includes a $16.59bn bad row (trap 2); 2026-06-30 includes $122.32bn of SpaceX, which first appears that quarter (7 filers; $115.15bn of it Alphabet and NVIDIA).
 
 No rows where you might expect them:
-- 2026-06-30: Pershing Square (last period 2026-03-31), Scion (last 2025-09-30), Founders Fund VII (last 2025-12-31). Not an ingest miss: the scan of 2026-10-01 02:30 UTC (`scans/scan_1790821801.json` in the state home) found no newer 13F-HR on EDGAR for any of the three. Why they have none: not established.
-- Gaps: Thiel Macro has nothing for 2025-12-31 and 2026-03-31; Founders Fund Growth II nothing for 2026-03-31. For 2026-03-31 both filed a 13F-HR (the scan of 2026-07-24 saw it as their newest) and the ingest stored 0 rows from it. Thiel Macro's 2025-12-31 looks the same (see `thirteenf_filings_seen`). Whether those filings were truly empty: not established.
+- 2026-06-30: Pershing Square (last period 2026-03-31), Scion (last 2025-09-30), Founders Fund VII (last 2025-12-31). Not an ingest miss. Read from EDGAR on 2026-10-02: Pershing Square filed a **13F-NT** for 2026-06-30 on 2026-08-14, a notice that its holdings are reported by PERSHING SQUARE INC. (CIK 2026053), which is not a tracked filer; that filer's 13F-HR for the quarter has 15 rows worth $19.47bn. Scion has filed nothing of any form since 2025-11-03 and Founders Fund VII nothing since 2026-02-17. Why those two stopped: not established.
+- Gaps: Thiel Macro has nothing for 2025-12-31 and 2026-03-31; Founders Fund Growth II nothing for 2026-03-31. All three are **filed-empty**, not a parse miss: each is a 13F-HR whose cover states a table value of 0 and whose table is one placeholder row (CUSIP `000000000`, value 0). Read from the covers on 2026-10-02.
 
 A missing filer-period is not evidence the filer sold everything.
 
@@ -102,7 +102,7 @@ Excluding everything but `common` and `unit` leaves equity. `instrument_class` N
 ### Traps
 
 1. **Summing `value`.** `SUM(value)` is $4,521.46bn, `SUM(value_usd)` is $4,590.44bn. The $68.98bn gap is Baupost and Duquesne read 1000x too small.
-2. **One row is 1000x too big.** First Eagle, 2026-03-31, Strategy 0% 2029 note (cusip `594972AS0`): `shares` 20,000,000,000 PRN, `value_usd` $16.59bn. Next quarter the same line is 20,000,000 par and $17.2m. It inflates First Eagle's book that quarter ($75.57bn against about $59bn). An equity-only filter removes it. Whether the filer or the parse is at fault: not established.
+2. **One row is 1000x too big.** First Eagle, 2026-03-31, Strategy 0% 2029 note (cusip `594972AS0`): `shares` 20,000,000,000 PRN, `value_usd` $16.59bn. Next quarter the same line is 20,000,000 par and $17.2m. It inflates First Eagle's book that quarter ($75.57bn against about $59bn). An equity-only filter removes it. The fault is the filer's, and it was corrected: the original `0001325447-26-000009` states 16,590,000,000, and a restatement filed two days later (13F-HR/A `0001325447-26-000018`, 2026-05-14) states 16,590,000. The restatement is recorded in `thirteenf_arrivals` and is **not applied** to this table (trap 9).
 3. **`shares` is not always shares.** 46 rows are tagged PRN (Elliott 35, Baupost 6, Horizon Kinetics 3, First Eagle 2); `shares` there is dollars of par. But `shares_type` is NULL on 6,063 rows: every long row of 19 filers (the 153 filings ingested before 2026-08-18 UTC). Only the 9 filers added that day carry it (Berkshire, TCI, Himalaya, Baupost, Akre, Kopernik, Horizon Kinetics, First Eagle, Elliott). The 238 debt-CUSIP rows of the other 19 are unmarked. Filter on `instrument_class <> 'convertible_note'` instead. The 281 debt-CUSIP note rows hold 36.63bn "shares", **40% of `SUM(shares)` over long rows** (90.71bn); 20.00bn of that is the single trap-2 row. Nearly all are par dollars (`value_usd / shares` has median 0.98). Misfits: 3 Situational Awareness rows at 2025-09-30 (Lumentum, Cipher, Western Digital) sit under a note CUSIP but hold share counts valued at the stock's close; 3 Horizon Kinetics Cheniere rows are tagged PRN but are real shares; 8 Horizon Kinetics BSV rows (a bond ETF, $4.3m) are classed convertible_note.
 4. **Option rows** (450 rows, 13 filers).
    - `shares` is the UNDERLYING share count (all 450 are multiples of 100, none zero). There is no strike and no expiry anywhere.
@@ -121,8 +121,8 @@ Excluding everything but `common` and `unit` leaves equity. `instrument_class` N
    - It over-merges tracking stocks: `531229` (Liberty Media) is Formula One and Liberty Live.
    - It does not survive a CUSIP change: Barrick is `067901` through 2025-03-31 and `06849F` from 2025-06-30.
    - It is case-sensitive: KKR is `48251W` (24 rows, 4 filers, $6.35bn) and `48251w` (Akre's 8 rows, $8.45bn). Compare on `upper(issuer_id)`.
-8. **CIK format.** Bare in all four 13F tables, zero-padded to 10 in `registry.json`. `cik = '0001536411'` returns 0 rows; the cast returns 630. Join with `queries.cik_int` or `CAST(cik AS INTEGER)`.
-9. **Coverage.** Only form `13F-HR` is ingested; amendments (`13F-HR/A`) are never read. 13F shows US-listed longs and options only: no shorts, no cash.
+8. **CIK format.** Bare in all six 13F tables, zero-padded to 10 in `registry.json`. `cik = '0001536411'` returns 0 rows; the cast returns 630. Join with `queries.cik_int` or `CAST(cik AS INTEGER)`.
+9. **Coverage.** Only form `13F-HR` is ingested into this table. Amendments (`13F-HR/A`) and notices (`13F-NT`) are recorded in `thirteenf_arrivals` with what their covers state, and **no amendment is applied to a book here**. On 2026-10-05 EDGAR held 10 amendments for periods this table carries: 6 state RESTATEMENT (Scion 2023-12-31, Founders Fund VII 2024-09-30, Elliott 2024-12-31, Coatue 2025-12-31, Himalaya 2025-12-31, First Eagle 2026-03-31) and 4 state NEW HOLDINGS (Pershing 2024-12-31, Berkshire 2025-03-31, Elliott 2025-06-30, First Eagle 2026-06-30). The stated type does not say what the table carries: the first three NEW HOLDINGS ones add 1 to 4 lines to the original, and First Eagle's repeats its whole book plus 2 lines. 13F shows US-listed longs and options only: no shorts, no cash.
 10. **Corporate filers.** Alphabet, Amazon and NVIDIA are $166.95bn of the $775.44bn at 2026-06-30 (21.5%). Alphabet's SpaceX line (`SPCX`) alone is $94.18bn. The `queries.py` comment saying 52.8% is stale: that is the share with the nine filers added 2026-08-18 left out.
 11. **House functions read raw `value`.** `q_portfolio` and `q_tracked_books` re-derive one scale per FILER. On the mirror that equals `SUM(value_usd)` for every filer's latest period (28 of 28; `q_portfolio` on all 225 filer-periods). It would be wrong for a filer that switched units.
 12. 9 rows have `value = 0` with shares (Opthea, Cue Health, Invitae), as stored.
@@ -148,7 +148,7 @@ Excluding everything but `common` and `unit` leaves equity. `instrument_class` N
 
 **One row** = one (cik, accession) the ingest has processed. **230 rows**, 28 filers, seen 2026-07-23 to 2026-08-18. Columns: `cik`, `accession`, `seen_at_unix`. No period, no filed date.
 
-225 match holdings. **5 have no holdings rows:** Thiel Macro `0001315863-20-000698`, `-20-000924`, `-26-000169`, `-26-000423`; Founders Fund Growth II `0002106825-26-000003`. The three `-26-` accessions fall where the three gaps listed above are; the two `-20-` ones are 2020 filings. This table stores no period, so the match is by accession order only. No analytic use.
+225 match holdings. **5 have no holdings rows:** Thiel Macro `0001315863-20-000698`, `-20-000924`, `-26-000169`, `-26-000423`; Founders Fund Growth II `0002106825-26-000003`. All five are filed-empty reports (cover table value 0, one placeholder row), read from EDGAR on 2026-10-02: Thiel Macro for 2020-06-30, 2020-09-30, 2025-12-31 and 2026-03-31, Founders Fund Growth II for 2026-03-31. This table stores no period, form or date; `thirteenf_arrivals` does. No analytic use.
 
 ## thirteenf_baseline
 
@@ -159,6 +159,55 @@ Excluding everything but `common` and `unit` leaves equity. `instrument_class` N
 ## thirteenf_filing_meta
 
 Not in the brief; one line because it explains `value_scale`. 225 rows, one per filing. `scale_basis`: `price_anchored` 202, `price_anchored_weak` 22 (under 3 priced lines), `inherited` 1. The cover-page control totals (`entry_total`, `value_total`) are filled for 8 filings only, all Elliott; NULL for the other 217.
+
+## thirteenf_arrivals and thirteenf_feed_reads
+
+The arrival ledger (order SM-H1). Written only by `smart_money.arrivals_ingest`; judged and read by `smart_money.arrivals` and `queries.q_arrivals`. **Both tables exist on production from the SM-H1 deploy and on the mirror from the first sync after it.** Counts below are from a trial read of real EDGAR on 2026-10-08 into a throwaway database, repeated on 2026-10-15 with the same counts.
+
+**`thirteenf_arrivals`: one row** = one 13F-family filing in the feed pages read for a tracked filer, whatever its form. **1,537 rows**, 28 filers: 1,404 `13F-HR`, 125 `13F-HR/A`, 6 `13FCONP` (paper, 1999-2012), 2 `13F-NT`. The pages read are each filer's `filings.recent` block. For 22 filers that is their whole history. For 6 (Alphabet, Amazon, NVIDIA, Berkshire, Baker Bros, Horizon Kinetics) it starts in mid-2023 and 374 older filings sit on pages a `--deep` read would follow; none has been run.
+
+| column | meaning |
+|---|---|
+| `cik` | filer CIK, bare digits (trap 8) |
+| `accession`, `form` | as EDGAR lists them. `form` is verbatim |
+| `period` | the feed's reportDate; if the feed states none, the cover's. Never guessed |
+| `filed_date` | EDGAR's official filing date. A filing accepted after 17:30 ET carries the NEXT business day |
+| `accepted_et` | acceptance time, US Eastern, from the filing's own index page. NULL = not read yet. **Use this for "when the market knew"** |
+| `feed_accepted` | the feed's acceptanceDateTime, verbatim. See the trap below |
+| `report_type` | cover: `13F HOLDINGS REPORT`, `13F NOTICE`, `13F COMBINATION REPORT` |
+| `is_amendment`, `amendment_no`, `amendment_type` | cover. `amendment_type` is `RESTATEMENT` or `NEW HOLDINGS` as stated |
+| `entry_total`, `value_total` | cover control totals, raw units (the form states no unit) |
+| `confidential_omitted` | cover: holdings omitted under a confidential treatment request |
+| `other_managers` | JSON list from the COVER: the managers who report holdings FOR this filer |
+| `cover_status` | `read` 295, `pending` 1,236 (period before 2023-12-31, never requested), `paper` 6, `no_xml_cover`, `failed` (ours; retried nightly) |
+| `read_error` | why the last cover or index-page read failed (`cover: ...` / `stamp: ...`); a cover's reason is kept over a stamp's, since the states wait on the cover. NULL on all 1,537 |
+| `first_seen_unix` | when a read first saw the filing, set only where that read could not have seen it before. **NULL on all 1,537 backfilled rows**: a backfill time is not an arrival time |
+
+**`thirteenf_feed_reads`: one row** = one filer. `read_unix` and `read_day` are the last SUCCESSFUL read. `read_day` is the last US Eastern day whose filings that read can have seen: the read's own Eastern date if it ran at or after 17:30 ET, EDGAR's same-day cut-off, else the day before. The 22:30 nightly answers for its own day; a deploy-time read at 09:00 answers for yesterday, and so cannot stand in for deadline night; `attempted_unix` and `error` the last attempt; `newest_filed` the newest filing date that read saw; `older_pages` and `deep` say whether feed pages beyond `filings.recent` exist and whether a read has followed them (6 filers have older pages, none read).
+
+**The four arrival states** of a (filer, period), derived by `arrivals.period_state` from that period's filings:
+
+- `filed`: any filing for the period whose cover states holdings.
+- `nt_notice`: a notice and no book.
+- `filed_empty`: a holdings report whose cover states a table value of 0.
+- `awaited`: nothing filed, as of a feed read that answers for the day it is judged against.
+
+Three more labels are not states of the filer. `not_read`: no read can answer for the period (the feed was never read, or the period's deadline has passed and no read answers for deadline day, or the period lies behind feed pages that were not read). `filed_unread`, printed `filed (contents not read)`: a 13F is on EDGAR for the period and what it states has not been read; it outranks `nt_notice` and `filed_empty`, because the unread filing may be the book. It is also what a period reads when holdings for it are held and the ledger has no filing for it (the ledger's read is behind the holdings ingest), and what the quarter just ended reads when a filing's stated period is not a quarter end; such a filing blocks 'awaited' for that quarter only. `not_due`: the period is before the filer's first 13F.
+
+Among the 295 covers read: 274 holdings reports, 20 combination reports, 1 notice; 12 amendments (6 RESTATEMENT, 6 NEW HOLDINGS); 3 with `value_total = 0`.
+
+**What `q_arrivals` adds per filer.** `closed_*` is the newest quarter whose deadline has passed and `open_*` the quarter whose window is open. `book_period` is the newest period held in `thirteenf_holdings` as of the anchor, and `book_check` compares that book's raw value sum with its own cover's `value_total`: on the trial read 28 of 28 newest books match their cover (the two agree to within 4 on every held filing). The allowance is half a unit per line held, never under 5: a filer rounds each line and the total separately. A wider gap prints `differs from cover` and is a partial parse or a wrong filing; so does a period held from two filings, because every card sums the period. `amendments_not_applied` counts amendments on EDGAR for periods from the earliest one ever held (10). `filed_not_held` lists periods with a 13F-HR on EDGAR and no holdings held (none today), an ingest that has not run or has failed, and periods whose only book is an amendment (a placeholder 13F-HR restated into a book: the holdings ingest reads 13F-HR only and will never hold it). `needs_look` is true for a closed state other than `filed` or `not_due`, an open-quarter filing that is not a book, a filing not held, a book that differs from its cover, or a last read attempt that failed. `missed_periods` lists quarters since the later of the filer's first 13F and 2023-12-31 whose deadline passed with nothing filed: Scion 3, Founders Fund VII 2, Thiel Macro 4 (2023-12-31 to 2024-09-30, the end of its 16 silent quarters).
+
+**Traps**
+
+- **`feed_accepted` is labelled Z and is not reliably UTC.** Measured against each filing's index page: Horizon Kinetics' stamps are 4 to 5 hours late, and Scion's and Founders Fund VII's are raw Eastern time. It orders two filings of ONE filer and nothing else. `accepted_et` is the stamp to use.
+- **`filed_date` is not the acceptance date** for 19 of the 295 filings read. Situational Awareness's Q1 2026 13F is dated Monday 2026-05-18 and was accepted Friday 2026-05-15 18:33:35 ET. Such a filing is not in the public feed until its `filed_date`, which is why the ledger counts filings by that date.
+- **An empty book is `value_total = 0`, never `entry_total`.** The entry total is 0 on two real books (Third Point 2019-09-30, Scion 2023-12-31) and 1 on fifteen real one-position books.
+- **A `13F-NT` is not a notice of no holdings.** It says the holdings are in another manager's report; `other_managers` names it. That manager's CIK is optional on the form (86 of 124 cover entries on this roster give only a file number), though every notice read so far gives one.
+- **`13F COMBINATION REPORT` means the book is partial.** Kopernik in every held quarter and First Eagle from 2024-12-31: part of the book is reported by the manager in `other_managers`.
+- **Nothing here is applied to `thirteenf_holdings`.** "Filed" in the ledger does not mean the holdings were ingested, and an amendment in the ledger is not in any book.
+- **The older 13F legs are unchanged.** The nightly diff (`thirteenf.latest_13f`) and the holdings ingest (`thirteenf_ingest`) still read form `13F-HR` only and each still fetches the feed itself, so every filer's feed is read three times a night. The diff leg will keep logging "no new filing since 2026-03-31" for Pershing beside a ledger that holds its notice. The boards and the QoQ badges still compare each filer's newest held period with its previous held one; the ledger is shown beside them.
+- **The deadline is rolled.** 45 days after quarter end, moved to the next day that is neither a weekend nor a federal holiday: 2026-11-16 for Q3 2026, 2027-02-16 for Q4 2026.
 
 ## Registry
 

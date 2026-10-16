@@ -21,6 +21,7 @@ import io
 import os
 import sys
 import tempfile
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -29,7 +30,8 @@ from . import queries as q
 
 MEMBER_PREFIX = "/congress/member/"
 
-NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/insiders", "Insider books"),
+NAV = [("/", "Front"), ("/portfolios", "Portfolios"), ("/arrivals", "13F arrivals"),
+       ("/insiders", "Insider books"),
        ("/disagreements", "Disagreements"), ("/congress", "Congress"),
        ("/committees", "Committees"), ("/oge", "OGE 278e"),
        ("/trades", "Trades"), ("/flows", "Net flows"), ("/clusters", "Clusters"),
@@ -433,10 +435,155 @@ def _int(v, d):
         return d
 
 
-def _tracked_books_strip(books):
+# ---------------------------------------------------------------- 13F arrivals (SM-H1)
+def _arr_state_text(row, which):
+    """'2026-06-30 awaited, 49d past the deadline' for the closed or the open period."""
+    period, state = row.get(which + "_period"), row.get(which + "_state")
+    if not period or not state:
+        return ""
+    txt = "{} {}".format(period, q.arrivals.LABEL.get(state, state))
+    if state == q.arrivals.AWAITED and which == "closed":
+        txt += ", {}d past the deadline".format(row.get("closed_days_past_deadline"))
+    elif state == q.arrivals.AWAITED:
+        txt += ", due {}".format(row.get("open_due"))
+    return txt
+
+
+def _arr_card_line(row, always_last=False, card_period=None):
+    """One filer's arrival state as plain text: the closed period, the open one, and
+    the newest filing. On a card the newest filing is left out when it IS the book the
+    card shows two lines up (card_period); off a card (always_last) it is always
+    stated, with its filing date, because nothing else on the line says how old the
+    filer's word is."""
+    bits = [t for t in (_arr_state_text(row, "closed"), _arr_state_text(row, "open")) if t]
+    shown = card_period if card_period is not None else row.get("book_period")
+    if row.get("last_period") and (always_last or row.get("last_period") != shown):
+        last = "last 13F: {} for {}".format(row["last_form"], row["last_period"])
+        if always_last and row.get("last_filed"):
+            last += ", filed {}".format(row["last_filed"])
+        bits.append(last)
+    return "; ".join(bits)
+
+
+def _arr_coverage_text(arr, which):
+    """'2026-06-30 (due 2026-08-14): 25 filed, 1 NT-notice, 2 awaited of 28'."""
+    period = arr.get(which + "_period")
+    if not period:
+        return ""
+    cov = arr[which + "_coverage"]
+    A = q.arrivals
+    parts = ["{} {}".format(cov[s], A.LABEL[s])
+             for s in (A.FILED, A.FILED_EMPTY, A.NT_NOTICE, A.AWAITED, A.FILED_UNREAD,
+                       A.NOT_DUE, A.NOT_READ) if cov.get(s)]
+    return "{} (due {}): {} of {} tracked filers".format(
+        period, arr[which + "_deadline"], ", ".join(parts) or "none", arr["count"])
+
+
+def _arrivals_safe(con, p):
+    """(arrivals, '') or (None, a red line), for a page that is not ABOUT the ledger.
+
+    The front page and /portfolios carry the ledger as one line among many. An
+    exception in it must cost that page the line, not the page: /portfolios answered
+    200 for any anchor before the ledger existed. /arrivals itself still fails loud."""
+    try:
+        return q.q_arrivals(con, anchor=p["anchor"]), ""
+    except Exception as exc:  # noqa: BLE001 - degrade this line, never the page
+        # Degraded on the page, loud in the log: a 200 with one red line would
+        # otherwise be the only trace of a programming error on the front page.
+        sys.stderr.write("[dash] 13F arrival ledger could not be read\n")
+        traceback.print_exc(file=sys.stderr)
+        return None, ("<p class='reported'>13F arrival ledger could not be read: {}"
+                      "</p>".format(html.escape(type(exc).__name__ + ": " + str(exc))))
+
+
+def _arrivals_summary(arr, params=None):
+    """The statement no surface made: how many filers have reported for the period on
+    screen, and which have not and why. An absent or unread ledger says so in its own
+    words -- it is never rendered as every filer awaited."""
+    if arr["ledger"] == "absent":
+        return ("<p class='reported'>13F arrival ledger not built on this database. "
+                "Whether a filer has filed is not known here, and no card below should "
+                "be read as awaited.</p>")
+    if arr["ledger"] == "empty":
+        return ("<p class='reported'>13F arrival ledger holds no EDGAR read yet. "
+                "Whether a filer has filed is not known here, and no card below should "
+                "be read as awaited.</p>")
+    lines = [html.escape(t) for t in (_arr_coverage_text(arr, "closed"),
+                                      _arr_coverage_text(arr, "open")) if t]
+    for r in arr["rows"]:
+        if r["needs_look"]:
+            lines.append("{}: {}".format(
+                html.escape(r["filer"] or "?"),
+                html.escape(_arr_card_line(r, always_last=True))))
+    # Two counts, never pooled. A 13F-HR on EDGAR with no holdings held is an ingest
+    # that has not happened and wants a look tonight; an amendment not applied is a
+    # standing condition, and saying what it changes is not the ledger's to say.
+    if arr["filed_not_held"]:
+        lines.append("<span class='reported'>filed on EDGAR, no book held here: {}"
+                     "</span>".format(html.escape("; ".join(
+                         "{} {}".format(name, periods)
+                         for name, periods in arr["filed_not_held"]))))
+    if arr["amendments_not_applied"]:
+        lines.append("{} amendment(s) on EDGAR are not applied to the books held "
+                     "here".format(arr["amendments_not_applied"]))
+    # A stale or failed read was said only in a row note the front page never prints:
+    # 28 cards read 'awaited, due ...' off a read five weeks old with nothing above
+    # them but a small timestamp.
+    if arr.get("stale_feeds"):
+        days = sorted(d for _n, d, _e in arr["stale_feeds"] if d)
+        failed = [n for n, _d, e in arr["stale_feeds"] if e]
+        lines.insert(0, "<span class='reported'>{} of {} feeds have no read that "
+                     "answers for the day before {}{}{}: their states are as of that "
+                     "read</span>".format(
+                         len(arr["stale_feeds"]), arr["count"],
+                         html.escape(arr["anchor"]),
+                         " (oldest answers for {})".format(html.escape(days[0]))
+                         if days else "",
+                         "; the last attempt failed for {}".format(html.escape(
+                             ", ".join(failed[:3]) + (" and others" if len(failed) > 3
+                                                      else ""))) if failed else ""))
+    if arr.get("replayed"):
+        lines.append("the ledger is replayed as of {}: the books and the boards on "
+                     "these pages are today's".format(html.escape(arr["anchor"])))
+    refused = ("<br><span class='reported'>anchor {} is not a date this page can "
+               "answer for; showing {}</span>".format(
+                   html.escape(repr(arr["anchor_refused"])), html.escape(arr["anchor"]))
+               if arr.get("anchor_refused") else "")
+    return ("<p class='muted'><b>13F arrivals</b> as of {} &middot; read from EDGAR, "
+            "oldest read {} &middot; <a href='/arrivals{}'>ledger</a>{}<br>{}</p>".format(
+                html.escape(arr["anchor"]),
+                html.escape(arr.get("oldest_feed_read") or "-"),
+                _qs(params) if params else "", refused, "<br>".join(lines)))
+
+
+# The floor warning asserts one of two causes. Where the ledger holds the cover of the
+# book on the card and the two totals agree, both causes are ruled out by the filing.
+_SMALL_BOOK_STATED = ("reported book equals the total on the filer's own cover page, "
+                      "which is under the $100M 13F threshold")
+
+
+def _book_warning(warn, row, period):
+    """(text, replaced). The floor warning for a small book is replaced only when the
+    ledger holds the cover of THAT book and the totals agree; an unread cover, a
+    different period or a book that differs keeps the warning as it is."""
+    if (warn and "sanity floor" in warn and row and period
+            and row.get("book_period") == period
+            and row.get("book_check") == "matches cover"):
+        return _SMALL_BOOK_STATED, True
+    return warn, False
+
+
+def _tracked_books_strip(books, arr=None, params=None, arr_error=""):
     cards = []
+    arr_by = {q.cik_int(r["cik"]): r for r in (arr or {}).get("rows", [])}
+    ledger_ok = bool(arr) and arr["ledger"] == "ok"
     ordered = sorted(books["filers"], key=lambda b: -(b.get("book_value") or 0))
     for b in ordered:
+        row = arr_by.get(q.cik_int(b["cik"]))
+        # A card that needs a look is the one the reader came for, and by book size it
+        # sorts last: Pershing is card 11, Scion 24, Founders Fund VII 28, all behind
+        # the fold.
+        odd = bool(ledger_ok and row and row["needs_look"])
         # The two largest cards here are Alphabet and NVIDIA — operating companies
         # marking balance-sheet stakes, not managers expressing a view — and they
         # rendered indistinguishably from a hedge fund's book.
@@ -445,31 +592,43 @@ def _tracked_books_strip(books):
                  "balance-sheet stake, not a manager expressing a view'>"
                  "balance sheet</span>")
         warn = b.get("magnitude_warning")
+        warn = _book_warning(warn, row if ledger_ok else None, b.get("period"))[0]
         warn_html = ("<br><span class='reported'>{}</span>".format(
             html.escape(warn)) if warn else "")
+        # With a ledger the card states what was FILED. Without one it falls back to
+        # the countdown, which can only say when a filing is due.
+        d2f = b.get("days_to_filing")
+        when = (html.escape(_arr_card_line(row, card_period=b.get("period")))
+                if ledger_ok and row else
+                "filing window passed" if d2f is not None and d2f < 0 else
+                "{}d to next filing".format(d2f) if d2f is not None else "-")
         if not b["period"]:
-            cards.append("<div class='book'><b>{}</b>{}<br><span class='muted'>no "
-                         "filings</span>{}</div>".format(
-                             html.escape(b["name"] or "?"), badge, warn_html))
+            # 'no filings' was the only wording for a filer with no rows, and it was
+            # false for one that had filed a notice or an empty report.
+            cards.append((odd, "<div class='book'><b>{}</b>{}<br><span class='muted'>no "
+                          "book held<br>{}</span>{}</div>".format(
+                              html.escape(b["name"] or "?"), badge, when, warn_html)))
             continue
         top = ", ".join("{} {}%".format(
             html.escape(t["ticker"]), "?" if t["pct"] is None else t["pct"])
             for t in b["top3"]) or "-"
-        d2f = b["days_to_filing"]
-        d2f_txt = ("filing window passed" if d2f is not None and d2f < 0 else
-                   "{}d to next filing".format(d2f) if d2f is not None else "-")
-        cards.append(
+        cards.append((odd, (
             "<div class='book'><a href='/portfolios?filer={cik}'><b>{name}</b></a>{badge}"
             "<br><span class='muted'>{per} &middot; {book}</span><br>top3 {top}<br>"
-            "<span class='muted'>{d2f}</span>{warn}</div>".format(
+            "<span class='muted'>{d2f}</span>{warn}</div>").format(
                 cik=q.cik_int(b["cik"]), name=html.escape(b["name"] or "?"),
-                badge=badge, per=html.escape(b["period"]),
-                book=_money0(b["book_value"]), top=top, d2f=d2f_txt,
-                warn=warn_html))
+                badge=badge,
+                per=html.escape(b["period"]) + (
+                    " (book held today)" if ledger_ok and row
+                    and row.get("book_period") != b["period"] else ""),
+                book=_money0(b["book_value"]), top=top, d2f=when,
+                warn=warn_html)))
     # SM-P2: at 16 filers the strip swamps the front page. Show the biggest books,
-    # collapse the rest behind a native <details> (no JS).
+    # collapse the rest behind a native <details> (no JS) -- except the cards that
+    # need a look, which stay in view whatever their size.
     TOP_N = 6
-    head, rest = cards[:TOP_N], cards[TOP_N:]
+    head = [c for _odd, c in cards[:TOP_N]] + [c for odd, c in cards[TOP_N:] if odd]
+    rest = [c for odd, c in cards[TOP_N:] if not odd]
     more = ("<details><summary>{} more tracked book(s)</summary>"
             "<div class='strip'>{}</div></details>".format(len(rest), "".join(rest))
             if rest else "")
@@ -478,11 +637,73 @@ def _tracked_books_strip(books):
             "<p class='muted'>{n} filers, {nd} discretionary. Book {tot} of which "
             "{td} is discretionary — the remainder is operating companies marking "
             "balance-sheet stakes, shown but never pooled into a consensus.</p>"
-            "<div class='strip'>{head}</div>{more}".format(
+            "{arrivals}<div class='strip'>{head}</div>{more}".format(
                 n=books.get("n_filers", "?"), nd=books.get("n_discretionary", "?"),
                 tot=_money0(books.get("book_total")),
                 td=_money0(books.get("book_total_discretionary")),
+                arrivals=arr_error or (_arrivals_summary(arr, params) if arr else ""),
                 head="".join(head), more=more))
+
+
+def _board_offphase(con, res):
+    """Plain sentences, one per filer on the disagreement board whose entries are not a
+    quarter-over-quarter comparison into the closed quarter, plus the closed period.
+
+    The board pairs each filer's newest HELD period with its previous held one. Three
+    kinds of entry are something else: a book older than the closed quarter (Pershing,
+    Scion), a book already at the open quarter (from the first Q3 arrival on), and two
+    books that are not adjacent quarters (Thiel Macro across two empty reports). The
+    ledger does not change the board; it says which entries these are. Always as of
+    today, because the board is never replayed."""
+    today = q.today()
+    closed, open_ = q.arrivals.windows(today)
+    try:
+        arr = q.q_arrivals(con, anchor=today)
+    except Exception:  # noqa: BLE001 - the board stands without the line
+        sys.stderr.write("[dash] 13F arrival ledger could not be read\n")
+        traceback.print_exc(file=sys.stderr)
+        return closed, ["the arrival ledger could not be read, so entries that are not "
+                        "a comparison into {} are not named here".format(closed)]
+    rows = {q.cik_int(r["cik"]): r for r in arr["rows"]}
+    on_board = {}
+    for r in res["rows"]:
+        for e in r["accumulating"] + r["distributing"]:
+            on_board[q.cik_int(e["cik"])] = (e["cik"], e["filer"])
+    out = []
+    for key, (cik, name) in sorted(on_board.items(), key=lambda kv: kv[1][1] or ""):
+        periods = q._filer_periods(con, cik)
+        if len(periods) < 2:
+            continue
+        newest, prior = periods[0], periods[1]
+        row, parts = rows.get(key), []
+        if newest == open_:
+            parts.append("its book is already {}, the open quarter".format(newest))
+        elif newest != closed:
+            parts.append("its newest book is {}{}".format(
+                newest, "; " + _arr_state_text(row, "closed")
+                if row and arr["ledger"] == "ok" else ""))
+        if q.arrivals.prev_quarter_end(newest) != prior:
+            gaps = (q.q_arrival_gaps(con, cik, prior, newest, today)
+                    if arr["ledger"] == "ok" else [])
+            parts.append("compares {} with {}{}".format(
+                newest, prior, ", stepping across " + "; ".join(
+                    "{} {}".format(per, q.arrivals.LABEL.get(st, st))
+                    for per, st in gaps) if gaps else ""))
+        if parts:
+            out.append("{}: {}".format(name, "; ".join(parts)))
+    return closed, out
+
+
+def _books_not_at_the_closed_period(con, p, res):
+    closed, lines = _board_offphase(con, res)
+    if not lines:
+        return ""
+    return ("<p class='muted'><b>Not a quarter-over-quarter comparison into {}:</b> "
+            "the board pairs each filer's newest held book with its previous held "
+            "one, and the arrival ledger is shown beside it, not applied to it."
+            "<br>{} &middot; <a href='/arrivals{}'>ledger</a></p>".format(
+                html.escape(closed), "<br>".join(html.escape(t) for t in lines),
+                _qs(p, anchor=None)))
 
 
 def _disagreements_section(con, limit=8):
@@ -539,6 +760,7 @@ def view_disagreements(con, p):
             "directions in their newest reported period, across {f} filers with enough "
             "history to express a direction. {note}. Click a column to sort.</p>".format(
                 n=res["count"], f=res["filers_compared"], note=html.escape(res["note"])),
+            _books_not_at_the_closed_period(con, p, res),
             _pager(p, meta, "/disagreements.csv"), "".join(trs),
             _pager(p, meta, "/disagreements.csv")]
     return _page("Cross-manager disagreements", "".join(body), p)
@@ -602,6 +824,11 @@ def _float_coverage_note(press):
     return "<p class='muted'>{}</p>".format(html.escape(" ".join(bits)))
 
 
+def _arrivals_for_strip(con, p):
+    arr, error = _arrivals_safe(con, p)
+    return arr, p, error
+
+
 def view_front(con, p):
     sent = q.q_sentinel_log(con, window=p["window"] * 2, anchor=p["anchor"])
     conv = q.q_principal_convergence(con)
@@ -611,7 +838,8 @@ def view_front(con, p):
         "<p class='muted'>as-of {}. Front page = tracked books, sentinels, principal "
         "convergence, ownership pressure, overlay-flagged events. Clusters are "
         "context.</p>".format(html.escape(press["as_of"])),
-        _tracked_books_strip(q.q_tracked_books(con, anchor=p["anchor"])),
+        _tracked_books_strip(q.q_tracked_books(con, anchor=p["anchor"]),
+                             *_arrivals_for_strip(con, p)),
         _disagreements_section(con),
         "<h2>Sentinel activity ({} events)</h2>".format(sent["count"]),
         _table(["event_date", "src", "seed", "ticker", "action"], sent["rows"][:15]),
@@ -1286,13 +1514,70 @@ def view_portfolios(con, p):
                 unmv=_money0(res["unmapped_value"])))
     # SM-P2 G1 gate: an unanchored unit scale or an implausible book means these figures
     # may be 1000x wrong. Say so loudly rather than letting them read as trustworthy.
-    warn = res.get("magnitude_warning")
-    banner = ("<p class='restrict-banner'><b>UNIT SCALE NOT VERIFIED</b><br>{}</p>".format(
-        html.escape(warn)) if warn else "")
-    body = [banner, head, _PORT_CAVEAT, _portfolio_filter_form(p, res),
+    row, lines, ledger_error = _portfolio_ledger(con, p, res)
+    # The floor warning says the unit scale is wrong or the book partly ingested. Where
+    # the ledger holds this book's cover and the totals agree, the filing rules out
+    # both, and the card that links here already says so.
+    warn, stated = _book_warning(res.get("magnitude_warning"), row, res.get("period"))
+    banner = ("" if not warn else
+              "<p class='muted'>{}</p>".format(html.escape(warn)) if stated else
+              "<p class='restrict-banner'><b>UNIT SCALE NOT VERIFIED</b><br>{}</p>".format(
+                  html.escape(warn)))
+    body = [banner, head, _portfolio_arrival(p, lines, ledger_error), _PORT_CAVEAT,
+            _portfolio_filter_form(p, res),
             _pager(p, meta, "/portfolios.csv"), "".join(trs),
             _pager(p, meta, "/portfolios.csv")]
     return _page("Reported portfolio", "".join(body), p)
+
+
+def _portfolio_ledger(con, p, res):
+    """(the filer's arrival row or None, plain lines, an error or banner in HTML).
+
+    What this filer has FILED, beside the book the page shows. The period select lists
+    only periods with holdings rows, so a quarter filed empty or as a notice is not
+    selectable and the newest book would otherwise read as the filer's latest word.
+    And when the page compares two books that are not adjacent quarters, it says what
+    the ledger holds for each quarter stepped over. One source for the screen and for
+    the printed page, so the two cannot differ."""
+    if not res.get("filer_cik"):
+        return None, [], ""
+    arr, error = _arrivals_safe(con, p)
+    if error:
+        return None, [], error
+    if arr["ledger"] != "ok":
+        return None, [], _arrivals_summary(arr, p)
+    row = next((r for r in arr["rows"]
+                if q.cik_int(r["cik"]) == q.cik_int(res["filer_cik"])), None)
+    if not row:
+        return None, [], ""
+    lines = [_arr_card_line(row, always_last=True)]
+    if arr.get("replayed"):
+        lines.append("the ledger is replayed as of {}: the book on this page is "
+                     "today's".format(arr["anchor"]))
+    elif res.get("period") and res.get("prior_period"):
+        try:
+            gaps = q.q_arrival_gaps(con, res["filer_cik"], res["prior_period"],
+                                    res["period"], p["anchor"])
+            if gaps:
+                lines.append("the QoQ comparison above steps across {}".format(
+                    "; ".join("{} {}".format(per, q.arrivals.LABEL.get(st, st))
+                              for per, st in gaps)))
+        except Exception:  # noqa: BLE001 - said on the page and in the log
+            sys.stderr.write("[dash] 13F arrival gap states could not be read\n")
+            traceback.print_exc(file=sys.stderr)
+            lines.append("the quarters between these two books could not be read "
+                         "from the ledger")
+    lines += [n for n in (row["notes"] or "").split(" | ") if n]
+    return row, lines, ""
+
+
+def _portfolio_arrival(p, lines, error):
+    if error or not lines:
+        return error
+    return ("<p class='muted'><b>13F arrivals</b> &middot; {} &middot; "
+            "<a href='/arrivals{}'>ledger</a>{}</p>".format(
+                html.escape(lines[0]), _qs(p),
+                "".join("<br>{}".format(html.escape(n)) for n in lines[1:])))
 
 
 # `unmapped` marks a holding whose CUSIP never resolved to a ticker — the exact
@@ -1313,6 +1598,156 @@ def _build_portfolio_csv(con, p, full):
     if not full:
         rows = _page_slice(rows, p["per_page"], p["page"])[0]
     return _csv_bytes(_PORT_CSV_COLS, rows)
+
+
+# Every key of a q_arrivals row, so the export states what the page states.
+_ARR_CSV_COLS = ["filer", "cik", "thesis", "closed_period", "closed_state",
+                 "closed_days_past_deadline", "open_period", "open_state", "open_due",
+                 "last_form", "last_period", "last_filed", "last_accepted_et",
+                 "book_period", "book_check", "missed_periods", "filed_not_held",
+                 "amendments_not_applied", "needs_look", "feed_read", "notes"]
+# The printed table. The renderer draws equal-width columns unless told otherwise, and
+# at seven equal columns the filer name overprinted the state beside it on 20 of 28
+# rows, including every row that was not 'filed'. These widths sum to the page's 7.2in,
+# the cells wrap inside them, and no header word is wider than its column.
+_ARR_PDF_WIDTHS = [2.2, 1.1, 0.8, 1.1, 0.7, 0.7, 0.6]
+_ARR_PDF_LAST = "not applied"       # amendments not applied; the page says so in a note
+
+_ARR_CAVEAT = (
+    "<p class='muted'><b>What EDGAR says was filed</b>, read from each filer's "
+    "submissions feed with no filter on form. <b>filed</b> = a 13F that states "
+    "holdings. <b>filed-empty</b> = a 13F-HR whose cover states a table value of 0. "
+    "<b>NT-notice</b> = a 13F-NT: the holdings exist and are in another manager's "
+    "report, named in the notes. <b>awaited</b> = no 13F of any form for that period "
+    "as of the EDGAR read shown. <b>not read</b> = no read can answer for the period, "
+    "which is never the same as awaited. The deadline is 45 days after quarter end, "
+    "rolled to the next filing day. <b>book held</b> is the newest period this system "
+    "holds holdings for as of the day shown, a separate fact from what was filed. "
+    "Amendments are listed, never applied to a book. The boards on /disagreements and "
+    "the QoQ badges on /portfolios still compare each filer's newest held period with "
+    "its previous held one: this ledger is shown beside them and changes neither.</p>")
+
+
+def _arr_rank(r):
+    """Default order: what needs a look first, then filers with an amendment not
+    applied, then by name. Derivable from the columns on screen."""
+    return (0 if r["needs_look"] else 1 if r["amendments_not_applied"] else 2,
+            (r["filer"] or "").lower())
+
+
+def _arr_rows(con, p):
+    arr = q.q_arrivals(con, anchor=p["anchor"])
+    # A clicked sort is applied ON TOP of the default order, so ties fall back to an
+    # order the page explains instead of the registry's, which is on no column.
+    rows = sorted(arr["rows"], key=_arr_rank)
+    if p["sort"]:
+        rows = _sorted(rows, p["sort"], p["dir"])
+    return arr, rows
+
+
+def _arr_cell(v):
+    """A count or list the ledger could not establish reads 'not read', never 0."""
+    return "not read" if v is None else (v or "-")
+
+
+def view_arrivals(con, p):
+    arr, rows = _arr_rows(con, p)
+    page_rows, meta = _page_slice(rows, p["per_page"], p["page"])
+    cols = [("filer", "filer"), ("closed_state", arr["closed_period"]),
+            ("open_state", arr["open_period"] or "no open window"),
+            ("last_period", "last 13F"), ("last_filed", "filed"),
+            ("book_period", "book held"),
+            ("missed_periods", "deadlines passed, nothing filed (since {})".format(
+                q.arrivals.COVER_FLOOR)),
+            ("filed_not_held", "filed, no book held"),
+            ("amendments_not_applied", "amendments not applied"),
+            ("feed_read", "EDGAR read"), (None, "notes")]
+    header = _sort_headers(p, cols, lambda **kw: _qs(p, **kw), p["sort"], p["dir"])
+    trs = ["<table>" + header]
+    for r in page_rows:
+        last = ("-" if not r["last_period"] else "{} {}".format(
+            r["last_form"], r["last_period"]))
+        filed = r["last_filed"] or "-"
+        if r["last_accepted_et"]:
+            filed += " (accepted {} ET)".format(r["last_accepted_et"])
+        book = r["book_period"] or "none"
+        if r["book_check"] == "differs from cover":
+            book += " (differs from its cover)"
+        trs.append(
+            "<tr{hot}><td><a href='/portfolios{link}'>{name}</a></td><td>{closed}"
+            "</td><td>{open}</td><td>{last}</td><td>{filed}</td><td>{book}</td>"
+            "<td>{missed}</td><td>{unheld}</td><td>{amend}</td><td>{read}</td>"
+            "<td>{notes}</td></tr>".format(
+                hot=(" class='hot'" if r["needs_look"] else ""),
+                link=_qs(p, filer=q.cik_int(r["cik"]), period=None, sort=None, dir=None,
+                         page=None),
+                name=html.escape(r["filer"] or "?"),
+                closed=html.escape(_arr_state_text(r, "closed").split(" ", 1)[-1]),
+                open=html.escape(_arr_state_text(r, "open").split(" ", 1)[-1] or "-"),
+                last=html.escape(last), filed=html.escape(filed),
+                book=html.escape(book),
+                missed=html.escape(str(_arr_cell(r["missed_periods"]))),
+                unheld=html.escape(str(_arr_cell(r["filed_not_held"]))),
+                amend=html.escape(str(_arr_cell(r["amendments_not_applied"]))),
+                read=html.escape(r["feed_read"] or "never"),
+                notes="<br>".join(html.escape(n)
+                                  for n in (r["notes"] or "").split(" | ") if n) or "-"))
+    trs.append("</table>")
+    body = [_arrivals_summary(arr, p), _ARR_CAVEAT, _pager(p, meta, "/arrivals.csv"),
+            "<div style='overflow-x:auto'>" + "".join(trs) + "</div>",
+            _pager(p, meta, "/arrivals.csv")]
+    return _page("13F arrivals", "".join(body), p)
+
+
+def _build_arrivals_csv(con, p, full):
+    _arr, rows = _arr_rows(con, p)
+    if not full:
+        rows = _page_slice(rows, p["per_page"], p["page"])[0]
+    return _csv_bytes(_ARR_CSV_COLS, rows)
+
+
+def _arr_pdf_spec(con, p):
+    """The printed ledger: states in words, as on the screen, in columns wide enough
+    for the longest filer name, with every note carried as a full line."""
+    arr, rows = _arr_rows(con, p)
+    closed = arr["closed_period"]
+    open_ = arr["open_period"] or "no open window"
+    cols = ["filer", closed, open_, "last 13F", "filed", "book held", _ARR_PDF_LAST]
+    table = []
+    for r in rows:
+        table.append({
+            "filer": r["filer"],
+            closed: _arr_state_text(r, "closed").split(" ", 1)[-1],
+            open_: _arr_state_text(r, "open").split(" ", 1)[-1] or "-",
+            "last 13F": ("{} {}".format(r["last_form"], r["last_period"])
+                         if r["last_period"] else "-"),
+            "filed": r["last_filed"] or "-",
+            "book held": r["book_period"] or "none",
+            _ARR_PDF_LAST: _arr_cell(r["amendments_not_applied"])})
+    notes = [t for t in (_arr_coverage_text(arr, "closed"),
+                         _arr_coverage_text(arr, "open")) if t]
+    notes.append("Last column: amendments on EDGAR not applied to the book held.")
+    if arr["ledger"] != "ok":
+        notes.insert(0, "ARRIVAL LEDGER {} - no state on this page is known".format(
+            arr["ledger"].upper()))
+    if arr.get("stale_feeds"):
+        notes.append("{} of {} feeds have no read that answers for the day before {}: "
+                     "their states are as of that read".format(
+                         len(arr["stale_feeds"]), arr["count"], arr["anchor"]))
+    if arr["filed_not_held"]:
+        notes.append("Filed on EDGAR, no book held here: {}".format("; ".join(
+            "{} {}".format(name, periods) for name, periods in arr["filed_not_held"])))
+    for r in rows:
+        if r["missed_periods"]:
+            notes.append("{}: deadlines passed with nothing filed for {}".format(
+                r["filer"], r["missed_periods"]))
+        for n in (r["notes"] or "").split(" | "):
+            if n:
+                notes.append("{}: {}".format(r["filer"], n))
+    return {"title": "13F arrivals",
+            "subtitle": "as of {} - EDGAR read, oldest {}".format(
+                arr["anchor"], arr.get("oldest_feed_read") or "-"),
+            "tables": [(None, cols, table, _ARR_PDF_WIDTHS)], "notes": notes}
 
 
 _CONGRESS_CAVEAT = (
@@ -2111,13 +2546,21 @@ def _view_spec(con, p, path):
     if path == "/portfolios":
         res = q.q_portfolio(con, filer_cik=p["filer"] or None, period=p["period"] or None)
         notes = ["Reported 13F book. Band-valued, 45 days stale, long US-listed only."]
-        if res.get("magnitude_warning"):
-            notes.insert(0, "UNIT SCALE NOT VERIFIED - " + res["magnitude_warning"])
+        row, lines, ledger_error = _portfolio_ledger(con, p, res)
+        warn, stated = _book_warning(res.get("magnitude_warning"), row,
+                                     res.get("period"))
+        if warn:
+            notes.insert(0, warn if stated else "UNIT SCALE NOT VERIFIED - " + warn)
+        if ledger_error:
+            notes.append("13F arrival ledger not available for this page")
+        notes += ["13F arrivals: " + lines[0]] + lines[1:] if lines else []
         return ("Reported portfolio - {}".format(res.get("filer_name") or "?"),
                 "period {} - {} positions - book {}".format(
                     res.get("period") or "-", res.get("count") or 0,
                     _money0(res.get("book_value"))),
                 _PORT_CSV_COLS, srt(res["rows"], "value"), notes)
+    if path == "/arrivals":
+        return _arr_pdf_spec(con, p)
     if path == "/insiders":
         res = q.q_member_book(con, member_key=p["member"] or None, year=p["myear"])
         notes = ["Annual FD snapshot, band midpoints, never a mark."]
@@ -2166,10 +2609,13 @@ def _view_spec(con, p, path):
                  "Standing caveat: " + ("; ".join(res["sub_bar_cells"]) or "none")])
     if path == "/disagreements":
         res = q.q_opposed_pairs(con)
+        closed, offphase = _board_offphase(con, res)
         return ("Cross-manager disagreements",
                 "{} tickers - {} filers with a determinable direction".format(
                     res["count"], res["filers_compared"]),
-                _DIS_CSV_COLS, srt(res["rows"], "n_managers"), [res["note"]])
+                _DIS_CSV_COLS, srt(res["rows"], "n_managers"),
+                [res["note"]] + (["Not a quarter-over-quarter comparison into {}:"
+                                  .format(closed)] + offphase if offphase else []))
     if path == "/congress":
         if p["cticker"]:
             res = q.q_congress_holders(con, p["cticker"], p["cinstr"])
@@ -2294,13 +2740,14 @@ def _page_brief_spec(con, p, path):
 # Every route either prints ITSELF or is not printable. test_dashboard pins this set
 # against ROUTES so a new view cannot be added with a silent front-brief fallback.
 PRINTABLE_VIEWS = frozenset({
-    "/portfolios", "/insiders", "/oge", "/congress_gaps", "/breadth_yoy",
+    "/portfolios", "/arrivals", "/insiders", "/oge", "/congress_gaps", "/breadth_yoy",
     "/disagreements", "/congress", "/trades", "/sentinels", "/flows", "/member",
     "/committees", "/clusters", "/ticker",
 })
 
 
 ROUTES = {"/": view_front, "/portfolios": view_portfolios, "/congress": view_congress,
+          "/arrivals": view_arrivals,
           "/insiders": view_insiders, "/oge": view_oge, "/member": view_member,
           "/disagreements": view_disagreements,
           "/congress_gaps": view_congress_gaps,
@@ -2361,6 +2808,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._portfolios_csv(con, p, parse_qs(u.query))
             if u.path == "/disagreements.csv":
                 return self._disagreements_csv(con, p, parse_qs(u.query))
+            if u.path == "/arrivals.csv":
+                return self._arrivals_csv(con, p, parse_qs(u.query))
             if u.path == "/member.csv":
                 return self._member_csv(con, p, parse_qs(u.query))
             if u.path == "/oge.csv":
@@ -2435,6 +2884,13 @@ class Handler(BaseHTTPRequestHandler):
         full = qsd.get("full", ["0"])[0] == "1"
         data = _build_disagreements_csv(con, p, full)
         self._send_download(data, "disagreements.csv")
+
+    def _arrivals_csv(self, con, p, qsd):
+        full = qsd.get("full", ["0"])[0] == "1"
+        data = _build_arrivals_csv(con, p, full)
+        # Named for the day the rows answer for, which is not always the one asked.
+        self._send_download(data, "13f_arrivals_{}.csv".format(
+            q.arrival_anchor(p["anchor"])[0]))
 
     def _member_csv(self, con, p, qsd):
         full = qsd.get("full", ["0"])[0] == "1"
